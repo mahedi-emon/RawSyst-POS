@@ -46,8 +46,33 @@ go run ./cmd/lintwording ..              # forbidden compliance claims
 ## The bug the tests caught
 Migration 0002 forced RLS everywhere, which made tenant provisioning impossible: a row with no tenant context satisfies no policy. Fixed not by weakening isolation but by modelling Super Admin as a separate plane (`is_platform_admin()`), granted **only** on tables A4 puts under Super Admin. **Business tables must never get that predicate** — `TestPlatformAdminHasNoBusinessDataAccess` fails if one does, so add new business tables freely and the guard holds.
 
+## Built since (2026-08-15, second pass)
+| Package | Contains |
+|---|---|
+| `identity/service.go` | Login · refresh · logout · lockout (8 attempts / 15 min) · change password · **Super-Admin-assisted recovery** |
+| `identity/token.go` | HS256 JWT + opaque refresh tokens. **No permissions in the token** |
+| `identity/authz.go` | `Grants` + `Authorizer`. Permissions resolved **per request**, 5 s cache with explicit `Invalidate` |
+| `identity/middleware.go` | `Authenticate` · `Require(perm)` · `RequireSuperAdmin` · `CheckAmountLimit` · `CheckStoreScope` |
+| `api/router.go` | **Routes declared as data** — a route with no declared access fails a test |
+| `api/handlers.go` | login/refresh/logout/me/change-password/admin-reset, health, version |
+| `platform/httpx/middleware.go` | RequestID · Logger (no query string — PDPL) · Recover · SecurityHeaders · CORS allowlist · Timeout |
+| `cmd/api` | Server with graceful shutdown, schema-version gate, **registry release-blocker gate** |
+
+Migrations now **0001–0008**. 0007 = refresh token chain, 0008 = role_permission RLS.
+
+## Three real defects the tests caught
+1. **Refresh rotation overwrote the token hash**, so reuse detection could never fire — a replayed token looked like a garbage one. Fixed by the per-token chain in 0007.
+2. **Temporary-password alphabet contained `B`** while its comment claimed 8/B were excluded. It is read aloud during recovery.
+3. **`role_permission` had no RLS at all** (0003 protected `role` but not it). Any tenant could read every other tenant's role configuration. Fixed in 0008 with a policy deriving tenant through `role`.
+
+## Standing guards that will fail on careless changes
+- `TestPlatformAdminHasNoBusinessDataAccess` — any new table granting Super Admin access must be justified in the allowlist
+- `TestEveryRouteDeclaresItsAccess` — a route with no permission or no stated reason fails
+- `TestPublicRoutesAreOnlyTheExpectedOnes` — the public surface cannot grow quietly
+- `TestSeededSaudiRulesAreUnverified` — nobody may stamp `verified_on` without checking the source
+
 ## Next
-Auth service (login/refresh/logout/lockout) → authorization middleware (QA gate M7) → HTTP server + `cmd/api` → tenant provisioning + onboarding.
+Tenant provisioning + Owner account creation + the 7-step onboarding wizard (blueprint A5), then catalog/inventory.
 
 ## Related
 [[design/index]] · [[architecture/decisions]] · [[tooling/serena-setup]]

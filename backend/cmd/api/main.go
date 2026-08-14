@@ -19,6 +19,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 )
 
@@ -69,7 +70,9 @@ func run() error {
 		return err
 	}
 
-	srv := api.NewServer(authSvc, mw, authz,
+	provSvc := provisioning.NewService(pool)
+
+	srv := api.NewServer(authSvc, mw, authz, provSvc,
 		func() error { return pool.Health(ctx) }, version)
 
 	handler := srv.Handler(
@@ -153,8 +156,8 @@ func verifySchema(ctx context.Context, pool *db.Pool) error {
 // reportRegistryHealth surfaces regulatory verification state at startup.
 //
 // In production an unverified release-blocker refuses to start. Blueprint E8.4
-// names three — the ZATCA schema version, the GOSI dated rate schedule and the
-// Mudad wage-file format — and shipping with any of them still a placeholder
+// names three â€” the ZATCA schema version, the GOSI dated rate schedule and the
+// Mudad wage-file format â€” and shipping with any of them still a placeholder
 // means computing a legal figure from a guess. Failing to boot is a far cheaper
 // failure than a wrong tax return.
 func reportRegistryHealth(

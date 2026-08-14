@@ -84,12 +84,12 @@ const temporaryPasswordAlphabet = "ACDEFGHJKMNPQRTUVWXYZacdefghjkmnpqrtuvwxyz234
 // satisfies the policy it will be checked against.
 const temporaryPasswordLen = 16
 
-// generateTemporaryPassword produces a one-time password for account recovery.
+// GenerateTemporaryPassword produces a one-time password for account recovery.
 //
 // crypto/rand, not math/rand. A predictable recovery password would let anyone
 // who knows when a reset happened guess their way into the account, which is
 // precisely the account this flow exists to protect.
-func generateTemporaryPassword() (string, error) {
+func GenerateTemporaryPassword() (string, error) {
 	var sb strings.Builder
 	sb.Grow(temporaryPasswordLen + 3)
 

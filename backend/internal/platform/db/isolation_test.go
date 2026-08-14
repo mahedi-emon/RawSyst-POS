@@ -283,6 +283,10 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		// able to end one without the tenant's cooperation.
 		"user_session": true, "session_refresh_token": true,
 		"audit_log": true,
+		// Setup state, not business data: which of the seven steps a new client
+		// has reached. A client stuck on step 3 is a support call waiting to
+		// happen, and provisioning is a platform responsibility (A5).
+		"onboarding_progress": true,
 	}
 
 	var offenders []string

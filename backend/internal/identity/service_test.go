@@ -411,7 +411,7 @@ func TestLoginIsAudited(t *testing.T) {
 func TestTemporaryPasswordIsRandomAndUnambiguous(t *testing.T) {
 	seen := make(map[string]bool, 200)
 	for i := 0; i < 200; i++ {
-		p, err := generateTemporaryPassword()
+		p, err := GenerateTemporaryPassword()
 		if err != nil {
 			t.Fatalf("generateTemporaryPassword: %v", err)
 		}

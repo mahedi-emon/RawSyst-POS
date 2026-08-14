@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 )
 
 // Access says who may reach a route.
@@ -58,21 +59,30 @@ type Route struct {
 
 // Server holds the handler dependencies.
 type Server struct {
-	auth    *identity.Service
-	mw      *identity.Middleware
-	authz   *identity.Authorizer
-	health  func() error
-	version string
+	auth         *identity.Service
+	mw           *identity.Middleware
+	authz        *identity.Authorizer
+	provisioning *provisioning.Service
+	health       func() error
+	version      string
 }
 
 func NewServer(
 	auth *identity.Service,
 	mw *identity.Middleware,
 	authz *identity.Authorizer,
+	prov *provisioning.Service,
 	health func() error,
 	version string,
 ) *Server {
-	return &Server{auth: auth, mw: mw, authz: authz, health: health, version: version}
+	return &Server{
+		auth:         auth,
+		mw:           mw,
+		authz:        authz,
+		provisioning: prov,
+		health:       health,
+		version:      version,
+	}
 }
 
 // Routes returns every route as data.
@@ -99,7 +109,24 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/auth/change-password", AccessAuthenticated, "", s.handleChangePassword,
 			"changes the caller's own password; the current password is re-verified"},
 
+		// --- onboarding (blueprint A5) ---
+		//
+		// Gated on identity.view rather than a dedicated permission: setup is
+		// the Owner's job, and the Owner role already holds it. Inventing an
+		// onboarding-only permission would mean every tenant's custom roles
+		// need updating before anyone can finish setup.
+		{http.MethodGet, "/api/v1/onboarding", AccessPermission, "identity.view",
+			s.handleOnboardingProgress, ""},
+		{http.MethodPut, "/api/v1/onboarding/steps/{step}", AccessPermission, "identity.edit",
+			s.handleOnboardingSaveStep, ""},
+		{http.MethodPost, "/api/v1/onboarding/steps/{step}/complete", AccessPermission, "identity.edit",
+			s.handleOnboardingCompleteStep, ""},
+		{http.MethodPost, "/api/v1/onboarding/company", AccessPermission, "identity.edit",
+			s.handleOnboardingCommitCompany, ""},
+
 		// --- platform control plane ---
+		{http.MethodPost, "/api/v1/platform/tenants", AccessSuperAdmin, "",
+			s.handleCreateTenant, ""},
 		{http.MethodPost, "/api/v1/platform/users/{userID}/reset-password",
 			AccessSuperAdmin, "", s.handleAdminResetPassword, ""},
 	}

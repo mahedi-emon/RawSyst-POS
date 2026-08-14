@@ -32,8 +32,12 @@ cover: ## Run tests with a coverage report
 	go tool cover -func=coverage.out | tail -1
 
 .PHONY: vet
-vet: ## Run go vet
+vet: ## Run go vet, including build-tagged files
 	go vet ./...
+	@# Integration tests live behind a build tag, so a plain vet never compiles
+	@# them. A rename that misses a tagged file then reaches CI as a test
+	@# failure instead of a vet error, which is slower and harder to read.
+	go vet -tags=integration ./...
 
 .PHONY: fmt
 fmt: ## Format all Go source

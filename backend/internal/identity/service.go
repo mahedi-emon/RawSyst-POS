@@ -487,7 +487,7 @@ func (s *Service) ResetPasswordAsSuperAdmin(
 			"Record how you verified this person's identity before resetting their password.")
 	}
 
-	temp, err := generateTemporaryPassword()
+	temp, err := GenerateTemporaryPassword()
 	if err != nil {
 		return RecoveryResult{}, err
 	}

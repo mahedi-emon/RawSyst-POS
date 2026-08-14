@@ -3,7 +3,7 @@
 // QA gate M7, mechanised.
 //
 // Blueprint Part M item 7: "Attempt every restricted action via direct API call
-// while logged in as a Cashier — all must be rejected server-side, not just
+// while logged in as a Cashier Ã¢â‚¬â€ all must be rejected server-side, not just
 // hidden in the UI."
 //
 // These tests do exactly that: real HTTP requests against the real router with
@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 )
 
 const testPassword = "a reasonably long passphrase"
@@ -66,7 +68,10 @@ func newHarness(t *testing.T) *harness {
 	authSvc := identity.NewService(pool, tokens)
 	mw := identity.NewMiddleware(tokens, authz)
 
-	srv := NewServer(authSvc, mw, authz, func() error { return pool.Health(ctx) }, "test")
+	provSvc := provisioning.NewService(pool)
+
+	srv := NewServer(authSvc, mw, authz, provSvc,
+		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
 	ts := httptest.NewServer(handler)
@@ -194,6 +199,34 @@ func (h *harness) do(t *testing.T, method, path, token string, body any) *http.R
 	return resp
 }
 
+// doRaw sends a body verbatim, for step payloads whose shape is free-form.
+func (h *harness) doRaw(t *testing.T, method, path, token, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, h.server.URL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request %s %s: %v", method, path, err)
+	}
+	return resp
+}
+
+// readBody drains a response for use in a failure message.
+func readBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "<unreadable>"
+	}
+	return string(b)
+}
+
 // --- the gate ----------------------------------------------------------
 
 // Every non-public route must refuse an unauthenticated caller.
@@ -235,7 +268,7 @@ func TestCashierCannotReachPlatformControlPlane(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404 — a tenant user must not learn that the "+
+		t.Fatalf("status = %d, want 404 Ã¢â‚¬â€ a tenant user must not learn that the "+
 			"platform endpoint exists", resp.StatusCode)
 	}
 }
