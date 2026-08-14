@@ -24,15 +24,24 @@ jobs:
         working-directory: backend
 
     services:
+      # The container's own POSTGRES_USER is created as a SUPERUSER, and a
+      # superuser ignores row-level security entirely — FORCE ROW LEVEL SECURITY
+      # only covers the table owner, not a superuser. Connecting the application
+      # as one gives a run with no tenant isolation at all, silently, while
+      # every policy still sits in the catalogue looking correct.
+      #
+      # So the container keeps `postgres` for administration, and the step below
+      # creates the unprivileged role the application actually uses. That
+      # mirrors production, which is the only environment worth testing against.
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: rawsyst
-          POSTGRES_PASSWORD: rawsyst
-          POSTGRES_DB: rawsyst_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U rawsyst"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -63,6 +72,24 @@ jobs:
 
       - name: Unit tests
         run: make test
+
+      # Deliberately NOSUPERUSER NOBYPASSRLS, matching production. Without this
+      # the isolation tests run against a connection that ignores every policy,
+      # which is worse than not running them: they would pass by accident once
+      # someone "fixed" them to match the broken environment.
+      - name: Create the unprivileged application role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+            CREATE ROLE rawsyst WITH LOGIN PASSWORD 'rawsyst'
+              NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+            CREATE DATABASE rawsyst_test OWNER rawsyst ENCODING 'UTF8';
+          SQL
+          echo "--- confirming the role cannot bypass RLS ---"
+          psql -h localhost -U postgres -tAc \
+            "SELECT rolname || ' super=' || rolsuper || ' bypassrls=' || rolbypassrls
+             FROM pg_roles WHERE rolname='rawsyst';"
 
       - name: Migrations and database-backed tests
         env:

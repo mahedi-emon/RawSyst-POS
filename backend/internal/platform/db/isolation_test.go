@@ -94,6 +94,46 @@ func ctxAsPlatform() context.Context {
 	})
 }
 
+// The assumption every other test in this file rests on: the connection cannot
+// bypass row-level security.
+//
+// A PostgreSQL superuser ignores RLS entirely, and FORCE ROW LEVEL SECURITY
+// does not change that — FORCE only covers the table owner. So an application
+// connecting as a superuser has no tenant isolation at all, silently, with
+// every policy still sitting in the catalogue looking correct.
+//
+// This is not hypothetical. CI ran for its first several days against a
+// superuser, because the official postgres image creates POSTGRES_USER as one,
+// and every isolation test failed there while passing locally. The tests were
+// right; the environment was wrong. This one makes that impossible to miss
+// again: it names the cause instead of leaving six confusing failures.
+func TestConnectionCannotBypassRowLevelSecurity(t *testing.T) {
+	pool := testPool(t)
+
+	var role string
+	var isSuper, canBypass bool
+	err := pool.Raw().QueryRow(context.Background(), `
+		SELECT rolname, rolsuper, rolbypassrls
+		FROM pg_roles WHERE rolname = current_user`).
+		Scan(&role, &isSuper, &canBypass)
+	if err != nil {
+		t.Fatalf("read current role: %v", err)
+	}
+
+	if isSuper {
+		t.Fatalf("the application connects as %q, which is a PostgreSQL "+
+			"SUPERUSER. Superusers ignore row-level security completely, so this "+
+			"deployment has no tenant isolation regardless of what the policies "+
+			"say. Create a role with NOSUPERUSER NOBYPASSRLS and connect as that.",
+			role)
+	}
+	if canBypass {
+		t.Fatalf("the application connects as %q, which holds BYPASSRLS. Every "+
+			"tenant policy is inert for this connection. Remove it with "+
+			"ALTER ROLE %s NOBYPASSRLS.", role, role)
+	}
+}
+
 // QA gate M8. Tenant A must not be able to read tenant B's rows, even when the
 // query carries no tenant filter at all — which is the realistic failure, since
 // a developer forgetting a WHERE clause is far more likely than an attacker
