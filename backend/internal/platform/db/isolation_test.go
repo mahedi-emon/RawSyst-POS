@@ -292,6 +292,11 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		// platform health dashboard, which is the same reason `device` carries
 		// the predicate. It exposes certificate state, never invoice content.
 		"egs_unit": true,
+		// Sync queue depth, which A4 names explicitly for the platform health
+		// dashboard. Both carry counts and timings only — sync_item, which holds
+		// the actual payload, is deliberately tenant-only (migration 0017).
+		"sync_batch":         true,
+		"device_sync_cursor": true,
 	}
 
 	var offenders []string
@@ -328,6 +333,101 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		t.Fatalf("these tables grant Super Admin access but are not platform "+
 			"administration tables: %s. Business data must stay tenant-only.",
 			strings.Join(offenders, ", "))
+	}
+}
+
+// The platform may see how deep a device's sync queue is, and never what is in
+// it. Blueprint A4 asks for queue depth on the health dashboard; sync_item
+// carries the actual invoice payload, so the two had to be separated.
+//
+// Migration 0016 granted the platform predicate to all three sync tables and
+// the boundary test above caught it. This is the narrower guarantee.
+func TestPlatformSeesSyncDepthButNotPayloads(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	tenantA, companyA := seedTenant(t, pool, "Alpha")
+
+	var storeID, unitID, deviceID uuid.UUID
+	if err := pool.Tx(ctxAs(tenantA), func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO store (tenant_id, company_id, code, name)
+			VALUES ($1,$2,'MAIN','Main') RETURNING id`,
+			tenantA, companyA).Scan(&storeID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO egs_unit (tenant_id, company_id, store_id, label, architecture)
+			VALUES ($1,$2,$3,'till','smart_pos') RETURNING id`,
+			tenantA, companyA, storeID).Scan(&unitID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO device (tenant_id, company_id, store_id, terminal_label, status)
+			VALUES ($1,$2,$3,'Till','active') RETURNING id`,
+			tenantA, companyA, storeID).Scan(&deviceID); err != nil {
+			return err
+		}
+
+		var batchID uuid.UUID
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO sync_batch (tenant_id, device_id, idempotency_key, item_count)
+			VALUES ($1,$2,'k',1) RETURNING id`,
+			tenantA, deviceID).Scan(&batchID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO device_sync_cursor (device_id, tenant_id, last_applied_seq, highest_seen_seq)
+			VALUES ($1,$2,0,1)`, deviceID, tenantA); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO sync_item
+			  (tenant_id, batch_id, device_id, seq, entity_uuid, entity_type, payload, state)
+			VALUES ($1,$2,$3,1,$4,'sales_invoice',
+			        '{"customer":"Abdullah Trading","total":"48290.00"}'::jsonb,'pending')`,
+			tenantA, batchID, deviceID, uuid.New())
+		return err
+	}); err != nil {
+		t.Fatalf("seed sync state: %v", err)
+	}
+
+	// The platform sees the depth.
+	var depth int
+	if err := pool.Tx(ctxAsPlatform(), func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT count(*) FROM device_sync_cursor WHERE device_id = $1`,
+			deviceID).Scan(&depth)
+	}); err != nil {
+		t.Fatalf("read cursor as platform: %v", err)
+	}
+	if depth != 1 {
+		t.Fatal("the platform cannot see sync queue depth, which A4 puts on the " +
+			"health dashboard")
+	}
+
+	// And nothing of what was sold.
+	var payloads int
+	if err := pool.Tx(ctxAsPlatform(), func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT count(*) FROM sync_item WHERE device_id = $1`, deviceID).Scan(&payloads)
+	}); err != nil {
+		t.Fatalf("read sync_item as platform: %v", err)
+	}
+	if payloads != 0 {
+		t.Fatal("the platform operator can read queued invoice payloads; A4 says " +
+			"Super Admin does not interfere in the Owner's business data")
+	}
+
+	// The tenant still sees its own, or the queue would be invisible to the
+	// person who actually needs to act on it.
+	if err := pool.Tx(ctxAs(tenantA), func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT count(*) FROM sync_item WHERE device_id = $1`, deviceID).Scan(&payloads)
+	}); err != nil {
+		t.Fatalf("read sync_item as tenant: %v", err)
+	}
+	if payloads != 1 {
+		t.Fatalf("the tenant sees %d of its own sync items, want 1", payloads)
 	}
 }
 
