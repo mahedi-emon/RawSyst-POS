@@ -50,3 +50,7 @@ build/
 .claude/settings.local.json
 .serena/project.local.yml
 .serena/cache/
+
+# Serena runtime output (config and memories ARE committed)
+.serena/cache/
+.serena/logs/

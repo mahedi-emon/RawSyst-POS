@@ -1,0 +1,14 @@
+// Workspace file for the repository root.
+//
+// The Go module lives in backend/, not at the repository root, because this
+// repo also holds the Next.js web app, the Tauri POS and the design docs.
+// Without this file gopls opens the root as an "AdHoc" view, sees no module,
+// and cannot resolve symbols inside backend/ — which silently disables Serena's
+// symbolic tools even though the language server appears to start correctly.
+//
+// It also gives a home to the desktop and web tooling later without another
+// round of editor configuration.
+
+go 1.26
+
+use ./backend

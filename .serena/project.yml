@@ -26,7 +26,11 @@ project_name: "RawSyst POS"
 # When using multiple languages, the first language server that supports a given file will be used for that file.
 # The first language is the default language and the respective language server will be used as a fallback.
 # Note that when using the JetBrains backend, language servers are not used and this list is correspondingly ignored.
-languages: [go, sql, typescript, markdown]
+# NOTE: only values from the list above are valid. There is no `sql` language
+# server here — adding one crashes Serena at startup, which is what happened on
+# 2026-08-15. Migrations are read as plain text; that is fine, since the
+# symbolic tools are for Go and TypeScript.
+languages: [go, typescript, markdown]
 
 # the encoding used by text files in the project
 # For a list of possible encodings, see https://docs.python.org/3.11/library/codecs.html#standard-encodings
