@@ -52,15 +52,9 @@ migrate: ## Apply pending database migrations
 lint-wording: ## Fail on compliance claims we must never make
 	@# Blueprint A1: the software SUPPORTS compliance, it never guarantees it.
 	@# Saying otherwise is a legal exposure, not a style preference.
-	@if grep -rniE 'zatca[- ]certified|certified compliant|guaranteed compliant|never at legal risk' \
-	     --include='*.go' --include='*.sql' --include='*.md' --include='*.json' \
-	     --include='*.ts' --include='*.tsx' . ; then \
-	  echo ""; \
-	  echo "Forbidden compliance wording found. Use 'supports ZATCA requirements',"; \
-	  echo "'built to support ZATCA and PDPL requirements', or 'WPS/Mudad-ready'."; \
-	  exit 1; \
-	fi
-	@echo "wording check passed"
+	@# A plain grep flags the docs that TEACH the rule, so this is a real check
+	@# that separates product output from documentation stating the prohibition.
+	@go run ./cmd/lintwording ..
 
 .PHONY: check
 check: fmt-check vet lint-wording test ## Everything CI runs

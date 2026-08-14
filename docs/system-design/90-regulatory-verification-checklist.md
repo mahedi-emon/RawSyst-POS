@@ -128,10 +128,10 @@ Applies to code, UI strings, documentation, sales material, and this repository.
 
 | ❌ Never | ✅ Always |
 |---|---|
-| "ZATCA-certified" | "supports ZATCA requirements" |
-| "certified compliant" | "built to support ZATCA and PDPL requirements" |
-| "guaranteed compliant" | "WPS/Mudad-ready" |
-| "never at legal risk" | — |
+| ~~"ZATCA-certified"~~ | "supports ZATCA requirements" |
+| ~~"certified compliant"~~ | "built to support ZATCA and PDPL requirements" |
+| ~~"guaranteed compliant"~~ | "WPS/Mudad-ready" |
+| ~~"never at legal risk"~~ | — |
 
 Three specific framings the blueprint mandates:
 

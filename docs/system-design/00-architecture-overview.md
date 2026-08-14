@@ -39,10 +39,10 @@ These come from blueprint A2 and are non-negotiable. Every doc in this set is ch
 
 | Never write | Always write |
 |---|---|
-| "ZATCA-certified" | "supports ZATCA requirements" |
-| "certified compliant" | "built to support ZATCA and PDPL requirements" |
-| "guaranteed compliant" | "WPS/Mudad-ready" |
-| "never at legal risk" | — |
+| ~~"ZATCA-certified"~~ | "supports ZATCA requirements" |
+| ~~"certified compliant"~~ | "built to support ZATCA and PDPL requirements" |
+| ~~"guaranteed compliant"~~ | "WPS/Mudad-ready" |
+| ~~"never at legal risk"~~ | — |
 
 Passing ZATCA SDK validation is a **technical self-check, not ZATCA approval**. Final legal responsibility for WPS submission remains the employer's. This is enforced as a CI lint over `docs/`, UI locale files, and templates.
 

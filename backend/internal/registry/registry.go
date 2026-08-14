@@ -15,6 +15,7 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -206,14 +207,9 @@ func (s *Service) gate(r Rule) (Rule, error) {
 // represent 0.15 exactly, and a VAT calculation that is wrong in the last
 // hallala is wrong on a tax return.
 func (s *Service) Decimal(ctx context.Context, q Query, field string) (decimal.Decimal, error) {
-	rule, err := s.Resolve(ctx, q)
+	raw, rule, err := s.decodePayload(ctx, q)
 	if err != nil {
 		return decimal.Zero, err
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(rule.Payload, &raw); err != nil {
-		return decimal.Zero, errs.Wrap(err, errs.CodeInternal,
-			"A regulatory value could not be read.")
 	}
 	v, ok := raw[field]
 	if !ok {
@@ -238,27 +234,54 @@ func (s *Service) Decimal(ctx context.Context, q Query, field string) (decimal.D
 	return d, nil
 }
 
-// Int resolves an integer field.
+// Int resolves an integer field, such as a deadline in days or hours.
+//
+// Decoding uses json.Number rather than the default any-typed decode, which
+// would land on float64. No legal value passes through binary floating point in
+// this system, even one that looks safely small: the habit is what matters, and
+// the same helper shape is used for values where it would not be safe.
 func (s *Service) Int(ctx context.Context, q Query, field string) (int64, error) {
-	rule, err := s.Resolve(ctx, q)
+	raw, rule, err := s.decodePayload(ctx, q)
 	if err != nil {
 		return 0, err
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(rule.Payload, &raw); err != nil {
-		return 0, errs.Wrap(err, errs.CodeInternal, "A regulatory value could not be read.")
 	}
 	v, ok := raw[field]
 	if !ok {
 		return 0, errs.Newf(errs.CodeInternal, "Regulatory rule %q has no field %q.", q.Key, field)
 	}
-	f, ok := v.(float64) // encoding/json decodes numbers as float64
+	num, ok := v.(json.Number)
 	if !ok {
-		return 0, errs.Newf(errs.CodeUnverifiedRule,
-			"Regulatory rule %q field %q is not yet a number — it may still be a placeholder.",
-			q.Key, field)
+		if s, isStr := v.(string); isStr && s == Placeholder {
+			return 0, errs.Newf(errs.CodeUnverifiedRule,
+				"The legal value %q is still a placeholder and must be verified "+
+					"against %s before it can be used.", q.Key, rule.SourceDoc)
+		}
+		return 0, errs.Newf(errs.CodeInternal,
+			"Regulatory rule %q field %q is not a number.", q.Key, field)
 	}
-	return int64(f), nil
+	n, err := num.Int64()
+	if err != nil {
+		return 0, errs.Wrap(err, errs.CodeInternal,
+			fmt.Sprintf("Regulatory rule %q field %q is not a whole number.", q.Key, field))
+	}
+	return n, nil
+}
+
+// decodePayload decodes a rule payload with numbers preserved as json.Number,
+// so no value is silently widened to float64 on the way through.
+func (s *Service) decodePayload(ctx context.Context, q Query) (map[string]any, Rule, error) {
+	rule, err := s.Resolve(ctx, q)
+	if err != nil {
+		return nil, Rule{}, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(rule.Payload))
+	dec.UseNumber()
+	var raw map[string]any
+	if err := dec.Decode(&raw); err != nil {
+		return nil, Rule{}, errs.Wrap(err, errs.CodeInternal,
+			"A regulatory value could not be read.")
+	}
+	return raw, rule, nil
 }
 
 // Into unmarshals the whole payload into a caller-supplied struct, for rules
