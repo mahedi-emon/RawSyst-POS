@@ -1,0 +1,1088 @@
+<title>RawSyst POS</title>
+<style>
+/* ============================================================
+   RawSyst POS — interactive prototype
+   Palette: warm thermal-paper ground · deep petrol accent ·
+            restrained brass for compliance/legal surfaces
+   ============================================================ */
+
+:root {
+  /* light — the complete palette lives here */
+  --paper:        #FAF8F5;
+  --surface:      #FFFFFF;
+  --sunken:       #F2EFEA;
+  --raised:       #FFFFFF;
+  --line:         #E4DFD7;
+  --line-strong:  #CFC8BC;
+
+  --ink:          #1A1C1B;
+  --ink-muted:    #5E625F;
+  --ink-subtle:   #8C918C;
+
+  --accent:       #0B5D5A;
+  --accent-hover: #094B49;
+  --accent-soft:  #E2F0EE;
+  --on-accent:    #FFFFFF;
+
+  --brass:        #8A6520;
+  --brass-soft:   #F6EEDC;
+
+  --ok:           #2E6B45;
+  --ok-soft:      #E4F0E7;
+  --warn:         #9A5A0B;
+  --warn-soft:    #FBEEDC;
+  --bad:          #A32B22;
+  --bad-soft:     #FAE7E5;
+  --info:         #1F5673;
+  --info-soft:    #E4EFF5;
+
+  --neutral-chip: #EDE9E2;
+
+  --shadow-sm: 0 1px 2px rgba(26,28,27,.06);
+  --shadow-md: 0 4px 14px rgba(26,28,27,.09);
+
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
+
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-num: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --font-ar: "Segoe UI", "Noto Sans Arabic", "Geeza Pro", Tahoma, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:        #121413;
+    --surface:      #1A1D1C;
+    --sunken:       #0D0F0E;
+    --raised:       #212523;
+    --line:         #2C312F;
+    --line-strong:  #414744;
+
+    --ink:          #EEF0EE;
+    --ink-muted:    #A3ABA6;
+    --ink-subtle:   #767E79;
+
+    --accent:       #43A79F;
+    --accent-hover: #58BCB3;
+    --accent-soft:  #12302E;
+    --on-accent:    #08211F;
+
+    --brass:        #D5A94E;
+    --brass-soft:   #2E2412;
+
+    --ok:           #5CBF83;  --ok-soft:   #12281B;
+    --warn:         #E0A155;  --warn-soft: #2E2110;
+    --bad:          #F08379;  --bad-soft:  #2E1512;
+    --info:         #6FB4D8;  --info-soft: #10242E;
+
+    --neutral-chip: #262B29;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:        #121413;
+  --surface:      #1A1D1C;
+  --sunken:       #0D0F0E;
+  --raised:       #212523;
+  --line:         #2C312F;
+  --line-strong:  #414744;
+
+  --ink:          #EEF0EE;
+  --ink-muted:    #A3ABA6;
+  --ink-subtle:   #767E79;
+
+  --accent:       #43A79F;
+  --accent-hover: #58BCB3;
+  --accent-soft:  #12302E;
+  --on-accent:    #08211F;
+
+  --brass:        #D5A94E;
+  --brass-soft:   #2E2412;
+
+  --ok:           #5CBF83;  --ok-soft:   #12281B;
+  --warn:         #E0A155;  --warn-soft: #2E2110;
+  --bad:          #F08379;  --bad-soft:  #2E1512;
+  --info:         #6FB4D8;  --info-soft: #10242E;
+
+  --neutral-chip: #262B29;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.5);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+:lang(ar), [dir="rtl"] { font-family: var(--font-ar); }
+
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.money { direction: ltr; unicode-bidi: isolate; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- shell ---------- */
+.app {
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  min-height: 100vh;
+}
+.rail {
+  background: var(--surface);
+  border-inline-end: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  padding: 18px 14px;
+  gap: 22px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding-inline: 6px; }
+.brand-mark {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center; font-weight: 700; font-size: 14px;
+  flex-shrink: 0;
+}
+.brand-name { font-weight: 650; letter-spacing: -.01em; font-size: 15px; }
+.brand-sub { font-size: 11px; color: var(--ink-subtle); }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-subtle); padding: 0 8px 6px; font-weight: 600;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: var(--r-sm);
+  color: var(--ink-muted); font-size: 14px; text-align: start;
+  width: 100%; transition: background .12s, color .12s;
+}
+.nav-item:hover { background: var(--sunken); color: var(--ink); }
+.nav-item[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-ico { width: 17px; text-align: center; flex-shrink: 0; }
+.nav-badge {
+  margin-inline-start: auto; font-size: 11px; font-weight: 650;
+  background: var(--bad); color: #fff; border-radius: 99px; padding: 1px 6px;
+  font-family: var(--font-num);
+}
+
+.rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+.toggles { display: flex; gap: 6px; }
+.tgl {
+  flex: 1; padding: 7px 6px; border: 1px solid var(--line);
+  border-radius: var(--r-sm); font-size: 12px; font-weight: 600;
+  color: var(--ink-muted); background: var(--surface);
+  transition: border-color .12s, color .12s;
+}
+.tgl:hover { border-color: var(--line-strong); color: var(--ink); }
+.tgl[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.conn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 10px; border-radius: var(--r-sm);
+  background: var(--sunken); font-size: 12.5px;
+}
+.dot { width: 7px; height: 7px; border-radius: 99px; background: var(--ok); flex-shrink: 0; }
+.offline .dot { background: var(--ink-subtle); }
+.conn-q { margin-inline-start: auto; font-family: var(--font-num); color: var(--ink-muted); font-size: 11.5px; }
+
+/* ---------- main ---------- */
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 22px; border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.page-title { font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.page-sub { font-size: 12.5px; color: var(--ink-subtle); }
+.topbar-right { margin-inline-start: auto; display: flex; align-items: center; gap: 10px; }
+.who { text-align: end; line-height: 1.25; }
+.who-name { font-size: 13px; font-weight: 600; }
+.who-role { font-size: 11.5px; color: var(--ink-subtle); }
+.avatar {
+  width: 32px; height: 32px; border-radius: 99px; background: var(--brass-soft);
+  color: var(--brass); display: grid; place-items: center; font-weight: 650; font-size: 12.5px;
+}
+.content { padding: 22px; flex: 1; }
+.screen { display: none; }
+.screen.on { display: block; }
+
+/* ---------- offline banner ---------- */
+.offbanner {
+  display: none; align-items: center; gap: 10px;
+  padding: 9px 22px; background: var(--neutral-chip);
+  border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-muted);
+}
+body.offline .offbanner { display: flex; }
+.offbanner strong { color: var(--ink); font-weight: 600; }
+
+/* ---------- generic bits ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: var(--shadow-sm);
+}
+.card-h {
+  padding: 13px 16px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px;
+}
+.card-t { font-size: 13.5px; font-weight: 650; }
+.card-b { padding: 16px; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; padding: 2.5px 8px;
+  border-radius: 99px; white-space: nowrap;
+}
+.p-ok   { background: var(--ok-soft);   color: var(--ok); }
+.p-warn { background: var(--warn-soft); color: var(--warn); }
+.p-bad  { background: var(--bad-soft);  color: var(--bad); }
+.p-info { background: var(--info-soft); color: var(--info); }
+.p-mute { background: var(--neutral-chip); color: var(--ink-muted); }
+.p-brass{ background: var(--brass-soft); color: var(--brass); }
+
+.grid { display: grid; gap: 14px; }
+
+/* ---------- POS ---------- */
+.pos { display: grid; grid-template-columns: 1fr 400px; gap: 14px; align-items: start; }
+
+.pos-search {
+  display: flex; gap: 8px; margin-bottom: 12px;
+}
+.searchbox {
+  flex: 1; display: flex; align-items: center; gap: 9px;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--r-md); padding: 11px 14px;
+}
+.searchbox input {
+  border: none; background: none; color: var(--ink);
+  font: inherit; width: 100%; outline: none;
+}
+.searchbox input::placeholder { color: var(--ink-subtle); }
+.scan-hint {
+  font-size: 11px; color: var(--ink-subtle); background: var(--sunken);
+  padding: 2px 7px; border-radius: 4px; white-space: nowrap; font-weight: 600;
+}
+
+.cats { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.cat {
+  padding: 6px 12px; border-radius: 99px; font-size: 13px;
+  border: 1px solid var(--line); color: var(--ink-muted); background: var(--surface);
+}
+.cat[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.prods { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+.prod {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 12px; text-align: start;
+  display: flex; flex-direction: column; gap: 3px; min-height: 96px;
+  transition: border-color .12s, transform .06s;
+}
+.prod:hover { border-color: var(--accent); }
+.prod:active { transform: scale(.985); }
+.prod-n { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.prod-ar { font-size: 12px; color: var(--ink-subtle); }
+.prod-f { margin-top: auto; display: flex; align-items: baseline; gap: 6px; }
+.prod-p { font-size: 14.5px; font-weight: 650; font-family: var(--font-num); }
+.prod-v { font-size: 10.5px; color: var(--ink-subtle); margin-inline-start: auto; }
+
+/* cart */
+.cart { position: sticky; top: 22px; display: flex; flex-direction: column; max-height: calc(100vh - 150px); }
+.cart-h {
+  padding: 12px 15px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 8px;
+}
+.cart-lines { overflow-y: auto; flex: 1; min-height: 120px; }
+.cl {
+  padding: 11px 15px; border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
+}
+.cl-n { font-size: 14px; font-weight: 550; }
+.cl-meta { font-size: 11.5px; color: var(--ink-subtle); }
+.cl-amt { font-size: 14px; font-weight: 600; font-family: var(--font-num); text-align: end; }
+.cl-qty {
+  font-size: 11.5px; color: var(--ink-muted); text-align: end; font-family: var(--font-num);
+}
+
+.totals { padding: 13px 15px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.tr { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--ink-muted); }
+.tr strong { color: var(--ink); }
+.tr-grand { font-size: 15px; padding-top: 7px; border-top: 1px dashed var(--line-strong); margin-top: 3px; }
+.tr-grand .money { font-size: 25px; font-weight: 700; letter-spacing: -.02em; }
+.tr-grand span:first-child { align-self: end; padding-bottom: 4px; font-weight: 600; color: var(--ink); }
+
+.tenders { padding: 12px 15px; display: grid; gap: 7px; border-bottom: 1px solid var(--line); }
+.tender-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-subtle); font-weight: 650; }
+.tender {
+  display: flex; align-items: center; gap: 9px; font-size: 13px;
+  background: var(--sunken); padding: 7px 11px; border-radius: var(--r-sm);
+}
+.tender .money { margin-inline-start: auto; font-weight: 600; }
+.tmark { width: 5px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+
+.pay {
+  margin: 12px 15px 15px; padding: 17px; border-radius: var(--r-md);
+  background: var(--accent); color: var(--on-accent);
+  font-size: 16px; font-weight: 650; display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: background .12s;
+}
+.pay:hover { background: var(--accent-hover); }
+.pay .k { font-size: 11.5px; opacity: .72; font-weight: 600; }
+
+/* ---------- dashboard ---------- */
+.kpis { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.kpi { padding: 15px 16px; }
+.kpi-l { font-size: 12px; color: var(--ink-muted); font-weight: 550; }
+.kpi-v { font-size: 27px; font-weight: 700; letter-spacing: -.025em; margin: 5px 0 3px; }
+.kpi-d { font-size: 12px; display: flex; align-items: center; gap: 5px; }
+.up { color: var(--ok); } .down { color: var(--bad); }
+.spark { display: block; margin-top: 9px; width: 100%; height: 30px; }
+
+.dash2 { grid-template-columns: 1.35fr 1fr; align-items: start; }
+@media (max-width: 1180px) { .dash2 { grid-template-columns: 1fr; } }
+
+.bars { display: grid; gap: 11px; }
+.bar-row { display: grid; grid-template-columns: 100px 1fr 88px; align-items: center; gap: 11px; font-size: 13px; }
+.bar-track { height: 9px; background: var(--sunken); border-radius: 99px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 99px; }
+.bar-val { text-align: end; font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-muted); }
+
+.feed { display: grid; }
+.fi { display: flex; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.fi:last-child { border-bottom: none; }
+.fi-t { color: var(--ink-subtle); font-size: 11.5px; font-family: var(--font-num); flex-shrink: 0; width: 46px; }
+.fi-x { color: var(--ink-muted); }
+.fi-x b { color: var(--ink); font-weight: 600; }
+
+.alerts { display: grid; gap: 8px; }
+.al { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-sm); font-size: 13px; background: var(--sunken); }
+.al-b { width: 3px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+.al .money, .al .num { margin-inline-start: auto; font-weight: 600; font-size: 12.5px; }
+
+/* ---------- compliance ---------- */
+.verdict {
+  display: flex; align-items: center; gap: 16px; padding: 20px 22px;
+  border-radius: var(--r-lg); background: var(--ok-soft);
+  border: 1px solid color-mix(in srgb, var(--ok) 25%, transparent);
+  margin-bottom: 16px;
+}
+.verdict-ico { font-size: 30px; line-height: 1; }
+.verdict-t { font-size: 19px; font-weight: 650; color: var(--ok); letter-spacing: -.015em; }
+.verdict-s { font-size: 13.5px; color: var(--ink-muted); margin-top: 2px; }
+.verdict-r { margin-inline-start: auto; text-align: end; }
+.verdict-n { font-size: 24px; font-weight: 700; font-family: var(--font-num); }
+.verdict-nl { font-size: 11.5px; color: var(--ink-muted); }
+
+.comp-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+.kv { display: grid; gap: 9px; }
+.kvr { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.kvr .k { color: var(--ink-muted); }
+.kvr .v { margin-inline-start: auto; font-weight: 600; }
+
+.term { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.term:last-child { border-bottom: none; }
+.term-id { font-family: var(--font-num); font-size: 12px; color: var(--ink-muted); }
+.term-icv { margin-inline-start: auto; font-family: var(--font-num); font-size: 12px; color: var(--ink-subtle); }
+
+.recon { display: grid; gap: 7px; }
+.rc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: var(--r-sm); background: var(--sunken); font-size: 13px; }
+.rc .money { margin-inline-start: auto; font-size: 12.5px; }
+
+.countdown {
+  display: flex; align-items: baseline; gap: 9px; padding: 13px 15px;
+  background: var(--brass-soft); border-radius: var(--r-md); margin-bottom: 13px;
+}
+.countdown-n { font-size: 31px; font-weight: 700; color: var(--brass); font-family: var(--font-num); line-height: 1; }
+.countdown-l { font-size: 13px; color: var(--ink-muted); }
+
+/* ---------- inventory ---------- */
+.inv { display: grid; grid-template-columns: 300px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .inv { grid-template-columns: 1fr; } }
+
+.plist { display: grid; }
+.pl {
+  display: flex; align-items: center; gap: 11px; padding: 11px 15px;
+  border-bottom: 1px solid var(--line); text-align: start; width: 100%;
+  transition: background .12s;
+}
+.pl:last-child { border-bottom: none; }
+.pl:hover { background: var(--sunken); }
+.pl[aria-current="true"] { background: var(--accent-soft); }
+.pl-n { font-size: 13.5px; font-weight: 600; }
+.pl-m { font-size: 11.5px; color: var(--ink-subtle); font-family: var(--font-num); }
+.pl-s { margin-inline-start: auto; font-family: var(--font-num); font-size: 12.5px; font-weight: 600; }
+
+.matrix-wrap { overflow-x: auto; }
+table.matrix { border-collapse: collapse; width: 100%; min-width: 460px; }
+table.matrix th, table.matrix td {
+  border: 1px solid var(--line); padding: 0; text-align: center;
+}
+table.matrix thead th {
+  background: var(--sunken); font-size: 12px; font-weight: 650;
+  padding: 9px 6px; color: var(--ink-muted);
+}
+table.matrix tbody th {
+  background: var(--sunken); font-size: 12.5px; font-weight: 600;
+  padding: 9px 12px; text-align: start; white-space: nowrap;
+}
+.cell {
+  padding: 11px 6px; font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 600; position: relative;
+}
+.c-ok   { color: var(--ink); }
+.c-low  { background: var(--warn-soft); color: var(--warn); }
+.c-zero { background: var(--bad-soft);  color: var(--bad); }
+.c-dead { background: var(--sunken); color: var(--ink-subtle); }
+.cell small { display: block; font-size: 9.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; opacity: .8; margin-top: 1px; font-family: var(--font-ui); }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 13px; font-size: 12px; color: var(--ink-muted); }
+.lg { display: flex; align-items: center; gap: 6px; }
+.lg-sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); }
+
+.note {
+  font-size: 12.5px; color: var(--ink-muted); background: var(--info-soft);
+  border-inline-start: 3px solid var(--info); padding: 10px 13px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0; margin-top: 14px;
+}
+[dir="rtl"] .note { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1000px) {
+  .app { grid-template-columns: 1fr; }
+  .rail {
+    flex-direction: row; align-items: center; gap: 12px;
+    padding: 10px 14px; border-inline-end: none; border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+  }
+  .nav { flex-direction: row; }
+  .nav-label { display: none; }
+  .nav-item span:not(.nav-ico):not(.nav-badge) { display: none; }
+  .nav-item { padding: 9px 11px; }
+  .rail-foot { margin-top: 0; flex-direction: row; align-items: center; margin-inline-start: auto; }
+  .conn { padding: 7px 9px; }
+  .pos { grid-template-columns: 1fr; }
+  .cart { position: static; max-height: none; }
+}
+@media (max-width: 620px) {
+  .content { padding: 14px; }
+  .topbar { padding: 12px 14px; }
+  .who { display: none; }
+  .brand-sub { display: none; }
+  .conn span:not(.dot):not(.conn-q) { display: none; }
+}
+</style>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div>
+        <div class="brand-name">RawSyst POS</div>
+        <div class="brand-sub">Al-Nakheel Trading</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">Prototype screens</div>
+      <button class="nav-item" aria-current="true" data-go="pos">
+        <span class="nav-ico">▣</span><span>POS Counter</span>
+      </button>
+      <button class="nav-item" data-go="dash">
+        <span class="nav-ico">◈</span><span>Dashboard</span>
+      </button>
+      <button class="nav-item" data-go="comp">
+        <span class="nav-ico">◆</span><span>Compliance</span><span class="nav-badge">2</span>
+      </button>
+      <button class="nav-item" data-go="inv">
+        <span class="nav-ico">▤</span><span>Inventory</span>
+      </button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="toggles">
+        <button class="tgl" id="t-theme" aria-pressed="false">Dark</button>
+        <button class="tgl" id="t-lang" aria-pressed="false">عربي</button>
+      </div>
+      <button class="conn" id="t-conn" aria-pressed="false">
+        <span class="dot"></span><span>Online</span><span class="conn-q">0 queued</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="page-title" id="pt">Point of Sale</div>
+        <div class="page-sub" id="ps">Riyadh · Olaya Branch · Terminal 02 · Shift open 09:14</div>
+      </div>
+      <div class="topbar-right">
+        <div class="who">
+          <div class="who-name">Fatima Al-Harbi</div>
+          <div class="who-role">Senior Cashier</div>
+        </div>
+        <div class="avatar">FH</div>
+      </div>
+    </header>
+
+    <div class="offbanner">
+      <span class="dot"></span>
+      <span><strong>Working offline.</strong> Sales complete normally and are signed on this terminal. They will report to ZATCA when the connection returns.</span>
+    </div>
+
+    <div class="content">
+
+      <!-- ══════════════ POS ══════════════ -->
+      <section class="screen on" id="s-pos">
+        <div class="pos">
+          <div>
+            <div class="pos-search">
+              <div class="searchbox">
+                <span style="color:var(--ink-subtle)">⌕</span>
+                <input placeholder="Scan barcode or search product…" aria-label="Search product">
+                <span class="scan-hint">Scanner ready</span>
+              </div>
+            </div>
+
+            <div class="cats">
+              <button class="cat" aria-pressed="true">Favorites</button>
+              <button class="cat">Recently sold</button>
+              <button class="cat">Thobes</button>
+              <button class="cat">Abayas</button>
+              <button class="cat">Shirts</button>
+              <button class="cat">Accessories</button>
+            </div>
+
+            <div class="prods">
+              <button class="prod">
+                <div class="prod-n">Executive Abaya</div>
+                <div class="prod-ar">عباية تنفيذية</div>
+                <div class="prod-f"><span class="prod-p">449.00</span><span class="prod-v">15 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Cotton Thobe</div>
+                <div class="prod-ar">ثوب قطني</div>
+                <div class="prod-f"><span class="prod-p">289.00</span><span class="prod-v">24 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Slim Fit Shirt</div>
+                <div class="prod-ar">قميص رجالي Slim Fit</div>
+                <div class="prod-f"><span class="prod-p">159.00</span><span class="prod-v">18 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Leather Belt</div>
+                <div class="prod-ar">حزام جلد</div>
+                <div class="prod-f"><span class="prod-p">120.00</span><span class="prod-v">4 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Silk Shemagh</div>
+                <div class="prod-ar">شماغ حرير</div>
+                <div class="prod-f"><span class="prod-p">185.00</span><span class="prod-v">6 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Formal Trousers</div>
+                <div class="prod-ar">بنطال رسمي</div>
+                <div class="prod-f"><span class="prod-p">210.00</span><span class="prod-v">21 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Prayer Cap</div>
+                <div class="prod-ar">طاقية</div>
+                <div class="prod-f"><span class="prod-p">45.00</span><span class="prod-v">3 variants</span></div>
+              </button>
+              <button class="prod">
+                <div class="prod-n">Cufflinks Set</div>
+                <div class="prod-ar">أزرار أكمام</div>
+                <div class="prod-f"><span class="prod-p">95.00</span><span class="prod-v">2 variants</span></div>
+              </button>
+            </div>
+
+            <div class="note">
+              Barcode input is captured globally — the cashier never clicks into a field. Cart maths runs entirely against local SQLite, so a scan lands in under 100&nbsp;ms with no network call.
+            </div>
+          </div>
+
+          <div class="card cart">
+            <div class="cart-h">
+              <span class="card-t">Cart</span>
+              <span class="pill p-mute">4 items</span>
+              <span style="margin-inline-start:auto" class="pill p-info">Walk-in customer</span>
+            </div>
+
+            <div class="cart-lines">
+              <div class="cl">
+                <div class="cl-n">Executive Abaya</div>
+                <div class="cl-amt money">449.00</div>
+                <div class="cl-meta">Black · L · SKU W-ABY-BLK-L</div>
+                <div class="cl-qty">1 × 449.00</div>
+              </div>
+              <div class="cl">
+                <div class="cl-n">قميص رجالي Slim Fit</div>
+                <div class="cl-amt money">318.00</div>
+                <div class="cl-meta">Navy · M · SKU M-SHR-NVY-M</div>
+                <div class="cl-qty">2 × 159.00</div>
+              </div>
+              <div class="cl">
+                <div class="cl-n">Cotton Thobe</div>
+                <div class="cl-amt money">289.00</div>
+                <div class="cl-meta">White · 56 · SKU M-THB-WHT-56</div>
+                <div class="cl-qty">1 × 289.00</div>
+              </div>
+              <div class="cl">
+                <div class="cl-n">Leather Belt</div>
+                <div class="cl-amt money">108.00</div>
+                <div class="cl-meta">Brown · 42 · <span style="color:var(--warn)">10% staff discount</span></div>
+                <div class="cl-qty">1 × 120.00</div>
+              </div>
+            </div>
+
+            <div class="totals">
+              <div class="tr"><span>Subtotal (excl. VAT)</span><span class="money">1,012.17</span></div>
+              <div class="tr"><span>Discount</span><span class="money">−12.00</span></div>
+              <div class="tr"><span>VAT 15%</span><span class="money">151.83</span></div>
+              <div class="tr tr-grand"><span>Total</span><span class="money">1,164.00</span></div>
+            </div>
+
+            <div class="tenders">
+              <div class="tender-l">Split payment · 3 tenders</div>
+              <div class="tender">
+                <span class="tmark" style="background:var(--ok)"></span>Cash<span class="money">200.00</span>
+              </div>
+              <div class="tender">
+                <span class="tmark" style="background:var(--accent)"></span>Mada<span class="money">464.00</span>
+              </div>
+              <div class="tender">
+                <span class="tmark" style="background:var(--brass)"></span>Tabby (BNPL)<span class="money">500.00</span>
+              </div>
+            </div>
+
+            <button class="pay">Complete sale <span class="k">F12</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ DASHBOARD ══════════════ -->
+      <section class="screen" id="s-dash">
+        <div class="grid kpis" style="margin-bottom:14px">
+          <div class="card kpi">
+            <div class="kpi-l">Today's sales</div>
+            <div class="kpi-v money">48,290</div>
+            <div class="kpi-d up">▲ 12.4% vs yesterday</div>
+            <svg class="spark" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,24 15,21 30,22 45,16 60,17 75,11 90,13 105,7 120,4"
+                fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="120" cy="4" r="2.6" fill="var(--accent)"/>
+            </svg>
+          </div>
+          <div class="card kpi">
+            <div class="kpi-l">Gross profit</div>
+            <div class="kpi-v money">17,384</div>
+            <div class="kpi-d up">▲ 36.0% margin</div>
+            <svg class="spark" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,20 15,18 30,21 45,15 60,18 75,14 90,12 105,10 120,9"
+                fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="120" cy="9" r="2.6" fill="var(--ok)"/>
+            </svg>
+          </div>
+          <div class="card kpi">
+            <div class="kpi-l">Expenses today</div>
+            <div class="kpi-v money">3,120</div>
+            <div class="kpi-d down">▲ 8.1% vs average</div>
+            <svg class="spark" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,14 15,17 30,13 45,19 60,12 75,16 90,11 105,15 120,8"
+                fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="120" cy="8" r="2.6" fill="var(--warn)"/>
+            </svg>
+          </div>
+          <div class="card kpi">
+            <div class="kpi-l">Cash + bank</div>
+            <div class="kpi-v money">312,940</div>
+            <div class="kpi-d" style="color:var(--ink-muted)">18,400 not yet settled</div>
+            <svg class="spark" viewBox="0 0 120 30" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,17 15,15 30,16 45,13 60,14 75,12 90,13 105,11 120,10"
+                fill="none" stroke="var(--info)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="120" cy="10" r="2.6" fill="var(--info)"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="grid dash2">
+          <div style="display:grid;gap:14px">
+            <div class="card">
+              <div class="card-h"><span class="card-t">Sales by payment method</span>
+                <span class="pill p-mute" style="margin-inline-start:auto">Today</span></div>
+              <div class="card-b">
+                <div class="bars">
+                  <div class="bar-row"><span>Mada</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:58%;background:var(--accent)"></div></div>
+                    <span class="bar-val">28,008</span></div>
+                  <div class="bar-row"><span>Visa / MC</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:19%;background:var(--info)"></div></div>
+                    <span class="bar-val">9,175</span></div>
+                  <div class="bar-row"><span>Cash</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:12%;background:var(--ok)"></div></div>
+                    <span class="bar-val">5,795</span></div>
+                  <div class="bar-row"><span>Tabby / Tamara</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:8%;background:var(--brass)"></div></div>
+                    <span class="bar-val">3,863</span></div>
+                  <div class="bar-row"><span>STC Pay</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:3%;background:var(--ink-subtle)"></div></div>
+                    <span class="bar-val">1,449</span></div>
+                </div>
+                <div class="note" style="margin-top:15px">
+                  Mada is tracked as its own tender, never folded into “card”. Its processing fee is materially lower than international credit, so mixing them would misstate true margin per sale.
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><span class="card-t">Live activity</span></div>
+              <div class="card-b" style="padding-top:4px;padding-bottom:6px">
+                <div class="feed">
+                  <div class="fi"><span class="fi-t">14:32</span><span class="fi-x"><b>Fatima</b> completed invoice <b>INV-RYD-004182</b> · SAR 1,164.00</span></div>
+                  <div class="fi"><span class="fi-t">14:28</span><span class="fi-x"><b>Omar</b> refunded <b>INV-RYD-004160</b> — credit note issued</span></div>
+                  <div class="fi"><span class="fi-t">14:19</span><span class="fi-x"><b>Sara</b> approved a 22% discount at Terminal 01</span></div>
+                  <div class="fi"><span class="fi-t">14:03</span><span class="fi-x"><b>Ahmed</b> received GRN <b>GRN-2026-0331</b> · 240 units</span></div>
+                  <div class="fi"><span class="fi-t">13:47</span><span class="fi-x"><b>Fatima</b> opened shift at Terminal 02 · float SAR 2,000</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;gap:14px">
+            <div class="card">
+              <div class="card-h"><span class="card-t">Needs attention</span></div>
+              <div class="card-b">
+                <div class="alerts">
+                  <div class="al"><span class="al-b" style="background:var(--bad)"></span>
+                    <span>ZATCA submission rejected</span><span class="num">1</span></div>
+                  <div class="al"><span class="al-b" style="background:var(--warn)"></span>
+                    <span>Invoices pending report</span><span class="num">23</span></div>
+                  <div class="al"><span class="al-b" style="background:var(--warn)"></span>
+                    <span>Products below reorder level</span><span class="num">14</span></div>
+                  <div class="al"><span class="al-b" style="background:var(--info)"></span>
+                    <span>Expenses awaiting approval</span><span class="num">6</span></div>
+                  <div class="al"><span class="al-b" style="background:var(--info)"></span>
+                    <span>Customer dues over limit</span><span class="num">3</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><span class="card-t">Dead stock</span>
+                <span class="pill p-mute" style="margin-inline-start:auto">90 days</span></div>
+              <div class="card-b">
+                <div class="kv">
+                  <div class="kvr"><span class="k">Winter Coat — Grey XXL</span><span class="v money">18</span></div>
+                  <div class="kvr"><span class="k">Silk Shemagh — Cream</span><span class="v money">31</span></div>
+                  <div class="kvr"><span class="k">Formal Trousers — 30</span><span class="v money">12</span></div>
+                  <div class="kvr" style="padding-top:8px;border-top:1px solid var(--line)">
+                    <span class="k">Capital tied up</span><span class="v money" style="color:var(--warn)">SAR 24,180</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ COMPLIANCE ══════════════ -->
+      <section class="screen" id="s-comp">
+        <div class="verdict">
+          <span class="verdict-ico" style="color:var(--ok)">◆</span>
+          <div>
+            <div class="verdict-t">No immediate legal exposure</div>
+            <div class="verdict-s">1 rejected invoice needs a credit note. Everything else is within its deadline.</div>
+          </div>
+          <div class="verdict-r">
+            <div class="verdict-n" style="color:var(--ok)">98.4%</div>
+            <div class="verdict-nl">reported on time, 30 days</div>
+          </div>
+        </div>
+
+        <div class="grid comp-grid">
+          <div class="card">
+            <div class="card-h"><span class="card-t">ZATCA e-invoicing</span>
+              <span class="pill p-ok" style="margin-inline-start:auto">Live · Production CSID</span></div>
+            <div class="card-b">
+              <div class="kv" style="margin-bottom:14px">
+                <div class="kvr"><span class="k">Reported today</span><span class="v money">312</span></div>
+                <div class="kvr"><span class="k">Signed, pending report</span><span class="v money" style="color:var(--warn)">23</span></div>
+                <div class="kvr"><span class="k">Rejected — action needed</span><span class="v money" style="color:var(--bad)">1</span></div>
+                <div class="kvr"><span class="k">Oldest unsubmitted</span><span class="v">4h 12m</span></div>
+              </div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-subtle);font-weight:650;margin-bottom:6px">Terminal chains</div>
+              <div class="term"><span>Terminal 01</span><span class="pill p-ok">Clean</span><span class="term-icv">ICV 8,441</span></div>
+              <div class="term"><span>Terminal 02</span><span class="pill p-warn">23 queued</span><span class="term-icv">ICV 4,182</span></div>
+              <div class="term"><span>Terminal 03 — Jeddah</span><span class="pill p-ok">Clean</span><span class="term-icv">ICV 2,905</span></div>
+              <div class="note">
+                Each terminal keeps its own counter and hash chain, signed locally. Chains are never merged, and a rejected invoice keeps its number — deleting it would create exactly the gap ZATCA's tamper detection looks for.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><span class="card-t">VAT return</span>
+              <span class="pill p-brass" style="margin-inline-start:auto">Quarterly filing</span></div>
+            <div class="card-b">
+              <div class="countdown">
+                <span class="countdown-n">18</span>
+                <span class="countdown-l">days until Q3 2026 is due<br>Deadline 31 October 2026</span>
+              </div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-subtle);font-weight:650;margin-bottom:7px">Four-way reconciliation</div>
+              <div class="recon">
+                <div class="rc"><span class="pill p-ok">✓</span>POS reports<span class="money">1,284,310</span></div>
+                <div class="rc"><span class="pill p-ok">✓</span>General ledger<span class="money">1,284,310</span></div>
+                <div class="rc"><span class="pill p-ok">✓</span>Bank records<span class="money">1,284,310</span></div>
+                <div class="rc"><span class="pill p-warn">!</span>Fatoora submitted<span class="money">1,281,890</span></div>
+              </div>
+              <div class="note">
+                A gap of SAR 2,420 traces to the 23 invoices still queued on Terminal 02. Mismatch between these four is the most common trigger for a ZATCA compliance notice, so the return cannot be filed until they agree.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><span class="card-t">PDPL posture</span>
+              <span class="pill p-ok" style="margin-inline-start:auto">Compliant</span></div>
+            <div class="card-b">
+              <div class="kv">
+                <div class="kvr"><span class="k">Marketing consent coverage</span><span class="v">94.2%</span></div>
+                <div class="kvr"><span class="k">Open data-subject requests</span><span class="v">2</span></div>
+                <div class="kvr"><span class="k">Nearest response deadline</span><span class="v" style="color:var(--warn)">6 days</span></div>
+                <div class="kvr"><span class="k">Open breach incidents</span><span class="v">0</span></div>
+                <div class="kvr"><span class="k">Retention job last run</span><span class="v">Today 03:00</span></div>
+                <div class="kvr"><span class="k">Records under legal hold</span><span class="v money">4,182</span></div>
+              </div>
+              <div class="note">
+                Records under legal hold are exempt from deletion requests — tax retention runs at least six years and overrides the right to erasure. Personal fields are anonymised where the law allows while the transaction record survives.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><span class="card-t">Archive &amp; registry health</span></div>
+            <div class="card-b">
+              <div class="kv" style="margin-bottom:13px">
+                <div class="kvr"><span class="k">Invoices archived</span><span class="v money">184,027</span></div>
+                <div class="kvr"><span class="k">Hash verification, last run</span><span class="v" style="color:var(--ok)">All valid</span></div>
+                <div class="kvr"><span class="k">Oldest retrievable record</span><span class="v">Mar 2024</span></div>
+                <div class="kvr"><span class="k">Last verified backup</span><span class="v">Today 02:14</span></div>
+              </div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-subtle);font-weight:650;margin-bottom:7px">Regulatory rule registry</div>
+              <div class="kv">
+                <div class="kvr"><span class="k">Rules verified in window</span><span class="v" style="color:var(--ok)">41</span></div>
+                <div class="kvr"><span class="k">Stale &gt; 6 months</span><span class="v" style="color:var(--warn)">2</span></div>
+                <div class="kvr"><span class="k">Never verified</span><span class="v" style="color:var(--bad)">3</span></div>
+              </div>
+              <div class="note">
+                Every legal figure — VAT rate, GOSI schedule, filing threshold — is dated data, not code. A March report uses March's rate even if it changed in June.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ INVENTORY ══════════════ -->
+      <section class="screen" id="s-inv">
+        <div class="inv">
+          <div class="card">
+            <div class="card-h"><span class="card-t">Products</span>
+              <span class="pill p-mute" style="margin-inline-start:auto">1,284 SKUs</span></div>
+            <div class="plist">
+              <button class="pl" aria-current="true">
+                <div><div class="pl-n">Executive Abaya</div><div class="pl-m">W-ABY · 15 variants</div></div>
+                <span class="pl-s">126</span>
+              </button>
+              <button class="pl">
+                <div><div class="pl-n">Cotton Thobe</div><div class="pl-m">M-THB · 24 variants</div></div>
+                <span class="pl-s">341</span>
+              </button>
+              <button class="pl">
+                <div><div class="pl-n">قميص رجالي Slim Fit</div><div class="pl-m">M-SHR · 18 variants</div></div>
+                <span class="pl-s">208</span>
+              </button>
+              <button class="pl">
+                <div><div class="pl-n">Formal Trousers</div><div class="pl-m">M-TRS · 21 variants</div></div>
+                <span class="pl-s">154</span>
+              </button>
+              <button class="pl">
+                <div><div class="pl-n">Silk Shemagh</div><div class="pl-m">M-SHM · 6 variants</div></div>
+                <span class="pl-s" style="color:var(--warn)">31</span>
+              </button>
+              <button class="pl">
+                <div><div class="pl-n">Leather Belt</div><div class="pl-m">M-BLT · 4 variants</div></div>
+                <span class="pl-s">88</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <span class="card-t">Executive Abaya — variant matrix</span>
+              <span class="pill p-mute" style="margin-inline-start:auto">Olaya branch</span>
+            </div>
+            <div class="card-b">
+              <div class="matrix-wrap">
+                <table class="matrix">
+                  <thead>
+                    <tr><th scope="col">Colour \ Size</th>
+                      <th scope="col">S</th><th scope="col">M</th><th scope="col">L</th>
+                      <th scope="col">XL</th><th scope="col">XXL</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><th scope="row">Black · أسود</th>
+                      <td class="cell c-ok">14</td>
+                      <td class="cell c-ok">22</td>
+                      <td class="cell c-ok">19</td>
+                      <td class="cell c-zero">0<small>Out</small></td>
+                      <td class="cell c-low">3<small>Low</small></td></tr>
+                    <tr><th scope="row">Navy · كحلي</th>
+                      <td class="cell c-ok">9</td>
+                      <td class="cell c-ok">16</td>
+                      <td class="cell c-low">4<small>Low</small></td>
+                      <td class="cell c-ok">11</td>
+                      <td class="cell c-ok">7</td></tr>
+                    <tr><th scope="row">Maroon · عنابي</th>
+                      <td class="cell c-dead">6<small>Dead</small></td>
+                      <td class="cell c-ok">8</td>
+                      <td class="cell c-ok">5</td>
+                      <td class="cell c-zero">0<small>Out</small></td>
+                      <td class="cell c-dead">2<small>Dead</small></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="legend">
+                <span class="lg"><span class="lg-sw" style="background:var(--surface)"></span>In stock</span>
+                <span class="lg"><span class="lg-sw" style="background:var(--warn-soft);border-color:var(--warn)"></span>At or below reorder level</span>
+                <span class="lg"><span class="lg-sw" style="background:var(--bad-soft);border-color:var(--bad)"></span>Out of stock</span>
+                <span class="lg"><span class="lg-sw" style="background:var(--sunken)"></span>No sale in 90 days</span>
+              </div>
+
+              <div class="note">
+                Each cell is its own SKU with its own barcode, price, cost and stock. This is the view a standard POS cannot produce — it would show “Executive Abaya: 126 in stock” and hide that Black XL is out while Maroon XXL has not moved in three months.
+              </div>
+
+              <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:15px">
+                <div class="card" style="box-shadow:none"><div class="card-b" style="padding:12px 14px">
+                  <div class="kpi-l">Total on hand</div><div class="kpi-v money" style="font-size:21px">126</div></div></div>
+                <div class="card" style="box-shadow:none"><div class="card-b" style="padding:12px 14px">
+                  <div class="kpi-l">Stock value (WAC)</div><div class="kpi-v money" style="font-size:21px">31,248</div></div></div>
+                <div class="card" style="box-shadow:none"><div class="card-b" style="padding:12px 14px">
+                  <div class="kpi-l">Needs reorder</div><div class="kpi-v money" style="font-size:21px;color:var(--warn)">4</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var body = document.body;
+
+  /* ---- screen switching ---- */
+  var meta = {
+    pos:  ['Point of Sale',        'Riyadh · Olaya Branch · Terminal 02 · Shift open 09:14'],
+    dash: ['Owner Dashboard',      'Al-Nakheel Trading · 3 branches · Today, 14 August 2026'],
+    comp: ['Compliance',           'ZATCA e-invoicing · VAT · PDPL · Record retention'],
+    inv:  ['Inventory',            'Products, variants and stock across all locations']
+  };
+  var titleAr = {
+    pos: ['نقطة البيع', 'الرياض · فرع العليا · جهاز ٠٢'],
+    dash:['لوحة المالك', 'شركة النخيل التجارية · ٣ فروع'],
+    comp:['الامتثال', 'الفوترة الإلكترونية · ضريبة القيمة المضافة'],
+    inv: ['المخزون', 'المنتجات والمقاسات والكميات']
+  };
+  var current = 'pos';
+
+  document.querySelectorAll('[data-go]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.go;
+      current = id;
+      document.querySelectorAll('[data-go]').forEach(function (b) {
+        b.setAttribute('aria-current', b === btn ? 'true' : 'false');
+      });
+      document.querySelectorAll('.screen').forEach(function (s) {
+        s.classList.toggle('on', s.id === 's-' + id);
+      });
+      paintTitle();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  function paintTitle() {
+    var ar = root.getAttribute('dir') === 'rtl';
+    var m = ar ? titleAr[current] : meta[current];
+    document.getElementById('pt').textContent = m[0];
+    document.getElementById('ps').textContent = m[1];
+  }
+
+  /* ---- theme ---- */
+  var tTheme = document.getElementById('t-theme');
+  tTheme.addEventListener('click', function () {
+    var dark = root.getAttribute('data-theme') === 'dark';
+    if (dark) {
+      root.setAttribute('data-theme', 'light');
+      tTheme.textContent = 'Dark';
+      tTheme.setAttribute('aria-pressed', 'false');
+    } else {
+      root.setAttribute('data-theme', 'dark');
+      tTheme.textContent = 'Light';
+      tTheme.setAttribute('aria-pressed', 'true');
+    }
+  });
+
+  /* ---- language + full RTL mirror ---- */
+  var tLang = document.getElementById('t-lang');
+  tLang.addEventListener('click', function () {
+    var rtl = root.getAttribute('dir') === 'rtl';
+    if (rtl) {
+      root.removeAttribute('dir');
+      root.setAttribute('lang', 'en');
+      tLang.textContent = 'عربي';
+      tLang.setAttribute('aria-pressed', 'false');
+    } else {
+      root.setAttribute('dir', 'rtl');
+      root.setAttribute('lang', 'ar');
+      tLang.textContent = 'EN';
+      tLang.setAttribute('aria-pressed', 'true');
+    }
+    paintTitle();
+  });
+
+  /* ---- online / offline ---- */
+  var tConn = document.getElementById('t-conn');
+  var queued = 0, timer = null;
+  tConn.addEventListener('click', function () {
+    var off = body.classList.toggle('offline');
+    tConn.classList.toggle('offline', off);
+    tConn.setAttribute('aria-pressed', off ? 'true' : 'false');
+    tConn.querySelector('span:nth-child(2)').textContent = off ? 'Offline' : 'Online';
+    if (off) {
+      timer = setInterval(function () {
+        queued++;
+        tConn.querySelector('.conn-q').textContent = queued + ' queued';
+      }, 1400);
+    } else {
+      clearInterval(timer);
+      queued = 0;
+      tConn.querySelector('.conn-q').textContent = '0 queued';
+    }
+  });
+})();
+</script>
