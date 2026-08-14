@@ -9,10 +9,12 @@ pnpm-debug.log*
 
 # Go
 /bin/
+backend/bin/
 /dist/
 *.exe
 *.test
 *.out
+coverage.out
 
 # Tauri / Rust
 src-tauri/target/
