@@ -287,6 +287,11 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		// has reached. A client stuck on step 3 is a support call waiting to
 		// happen, and provisioning is a platform responsibility (A5).
 		"onboarding_progress": true,
+		// ZATCA onboarding and CSID status per EGS unit. Blueprint A4 puts
+		// failed submissions and compliance status across all tenants on the
+		// platform health dashboard, which is the same reason `device` carries
+		// the predicate. It exposes certificate state, never invoice content.
+		"egs_unit": true,
 	}
 
 	var offenders []string
@@ -400,26 +405,97 @@ func TestRegulatoryRulesCannotOverlap(t *testing.T) {
 	}
 }
 
-// Every seeded Saudi rule must ship unverified. Blueprint: "Do not let
-// developers fill these in from assumption." If this test ever fails, someone
-// has stamped verified_on without checking the official source.
-func TestSeededSaudiRulesAreUnverified(t *testing.T) {
+// A verified rule must actually be verifiable: it needs a real source document
+// and no placeholder left in its payload.
+//
+// This test previously asserted that NO seeded rule was verified, which was
+// right while every value was a placeholder. Real verification against ZATCA
+// primary sources has since happened (migration 0012), so the useful guard is
+// no longer "nothing is verified" — it is "nothing CLAIMS to be verified
+// without the evidence". Stamping verified_on to silence a warning is the
+// failure this now catches.
+func TestVerifiedRulesCarryTheirEvidence(t *testing.T) {
 	pool := testPool(t)
 
-	var total, verified int
-	err := pool.Raw().QueryRow(context.Background(),
-		`SELECT count(*), count(*) FILTER (WHERE verified_on IS NOT NULL)
-		   FROM regulatory_rule WHERE country = 'sa' AND rule_key LIKE 'SA.%'`).
-		Scan(&total, &verified)
+	rows, err := pool.Raw().Query(context.Background(), `
+		SELECT rule_key, source_document, payload::text
+		FROM regulatory_rule
+		WHERE verified_on IS NOT NULL`)
 	if err != nil {
-		t.Fatalf("count seeded rules: %v", err)
+		t.Fatalf("read verified rules: %v", err)
 	}
-	if total == 0 {
-		t.Fatal("no Saudi rules were seeded")
+	defer rows.Close()
+
+	checked := 0
+	for rows.Next() {
+		var key, sourceDoc, payload string
+		if err := rows.Scan(&key, &sourceDoc, &payload); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		checked++
+
+		// A source document naming a version and section is what makes a claim
+		// checkable a year later. "ZATCA website" is not.
+		if len(sourceDoc) < 20 {
+			t.Errorf("%s is marked verified but its source is only %q — cite the "+
+				"document, version and section", key, sourceDoc)
+		}
+		if strings.Contains(payload, "__VERIFY__") {
+			t.Errorf("%s is marked verified but its payload still contains a "+
+				"__VERIFY__ placeholder", key)
+		}
+		if strings.Contains(strings.ToUpper(payload), "VERIFY AGAINST") {
+			t.Errorf("%s is marked verified but its payload still says it needs "+
+				"verifying", key)
+		}
 	}
-	if verified != 0 {
-		t.Fatalf("%d of %d seeded Saudi rules are marked verified; "+
-			"legal values must be confirmed against their Tier 1 source first", verified, total)
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate: %v", err)
+	}
+	if checked == 0 {
+		t.Skip("no rules are marked verified yet")
+	}
+}
+
+// An unverified rule must be honestly marked: no verified_on, and its
+// placeholder still visible. The danger is the opposite of the test above —
+// a value that looks real but was never checked.
+func TestUnverifiedRulesAreNotDisguised(t *testing.T) {
+	pool := testPool(t)
+
+	var unverified int
+	err := pool.Raw().QueryRow(context.Background(), `
+		SELECT count(*) FROM regulatory_rule
+		WHERE country = 'sa' AND verified_on IS NULL`).Scan(&unverified)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if unverified == 0 {
+		return // everything has been verified, which is the goal
+	}
+
+	// Every still-unverified rule must say so in its notes, so a reader of the
+	// registry cannot mistake a starting figure for a confirmed one.
+	rows, err := pool.Raw().Query(context.Background(), `
+		SELECT rule_key, coalesce(notes, '') FROM regulatory_rule
+		WHERE country = 'sa' AND verified_on IS NULL`)
+	if err != nil {
+		t.Fatalf("read unverified: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var key, notes string
+		if err := rows.Scan(&key, &notes); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if strings.TrimSpace(notes) == "" {
+			t.Errorf("%s is unverified but carries no note saying so; a reader "+
+				"could mistake its value for a confirmed one", key)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate: %v", err)
 	}
 }
 
