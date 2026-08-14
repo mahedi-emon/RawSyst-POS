@@ -278,7 +278,11 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 	platformTables := map[string]bool{
 		"tenant": true, "tenant_limit": true, "company": true,
 		"store": true, "device": true, "app_user": true,
-		"user_session": true, "audit_log": true,
+		// Sessions and their refresh-token chain: revoking a session is a
+		// security-incident capability (blueprint H1), and Super Admin must be
+		// able to end one without the tenant's cooperation.
+		"user_session": true, "session_refresh_token": true,
+		"audit_log": true,
 	}
 
 	var offenders []string
