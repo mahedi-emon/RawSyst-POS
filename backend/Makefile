@@ -13,17 +13,22 @@ help: ## Show this help
 build: ## Build all binaries into ./bin
 	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
 
+# The race detector needs cgo and a 64-bit C toolchain. That is reliably
+# present on the Linux CI runner but often not on a Windows dev machine, so it
+# is opt-in locally and always on in CI.
+RACE ?= -race
+
 .PHONY: test
-test: ## Run unit tests
-	go test -race -count=1 ./...
+test: ## Run unit tests (RACE= to disable the race detector)
+	go test $(RACE) -count=1 ./...
 
 .PHONY: test-db
-test-db: ## Run tests that need PostgreSQL (set RAWSYST_TEST_DB_DSN)
-	go test -race -count=1 -tags=integration ./...
+test-db: ## Run tests needing PostgreSQL (set RAWSYST_DB_DSN)
+	go test $(RACE) -count=1 -tags=integration ./...
 
 .PHONY: cover
 cover: ## Run tests with a coverage report
-	go test -race -count=1 -coverprofile=coverage.out ./...
+	go test $(RACE) -count=1 -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -1
 
 .PHONY: vet

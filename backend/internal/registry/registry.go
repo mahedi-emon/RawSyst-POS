@@ -32,7 +32,7 @@ import (
 // Well-known rule keys. Declaring them as constants keeps typos out of call
 // sites; the VALUES behind them still live entirely in the database.
 const (
-	KeyVATStandardRate      = "SA.VAT.STANDARD_RATE"
+	KeyVATStandardRate       = "SA.VAT.STANDARD_RATE"
 	KeyVATMandatoryThreshold = "SA.VAT.MANDATORY_REGISTRATION_THRESHOLD"
 	KeyVATVoluntaryThreshold = "SA.VAT.VOLUNTARY_REGISTRATION_THRESHOLD"
 	KeyVATMonthlyThreshold   = "SA.VAT.MONTHLY_FILING_THRESHOLD"
@@ -46,11 +46,11 @@ const (
 	KeyZATCAOfflineTolerance = "SA.ZATCA.STANDARD_OFFLINE_TOLERANCE"
 	KeyZATCACSIDRenewal      = "SA.ZATCA.CSID_RENEWAL_DAYS"
 
-	KeyPDPLDSRResponseDays   = "SA.PDPL.DSR_RESPONSE_DAYS"
-	KeyPDPLBreachHours       = "SA.PDPL.BREACH_NOTIFICATION_HOURS"
+	KeyPDPLDSRResponseDays = "SA.PDPL.DSR_RESPONSE_DAYS"
+	KeyPDPLBreachHours     = "SA.PDPL.BREACH_NOTIFICATION_HOURS"
 
-	KeyGOSIRates             = "SA.GOSI.RATES"
-	KeyWPSWageFileFormat     = "SA.WPS.WAGE_FILE_FORMAT"
+	KeyGOSIRates         = "SA.GOSI.RATES"
+	KeyWPSWageFileFormat = "SA.WPS.WAGE_FILE_FORMAT"
 )
 
 // Placeholder marks a value that has never been verified against its official
@@ -295,9 +295,9 @@ func (s *Service) VATRate(ctx context.Context, country string, asOf time.Time, t
 type HealthReport struct {
 	Verified        int      `json:"verified"`
 	NeverVerified   int      `json:"never_verified"`
-	StaleTaxPayroll int      `json:"stale_tax_payroll"`  // > 6 months
-	StaleOther      int      `json:"stale_other"`        // > 12 months
-	BlockingRelease []string `json:"blocking_release"`   // release_blocker AND unverified
+	StaleTaxPayroll int      `json:"stale_tax_payroll"` // > 6 months
+	StaleOther      int      `json:"stale_other"`       // > 12 months
+	BlockingRelease []string `json:"blocking_release"`  // release_blocker AND unverified
 }
 
 // Health computes the registry health report.

@@ -86,10 +86,35 @@ func (p *Pool) Tx(ctx context.Context, fn func(pgx.Tx) error) error {
 	if !a.IsAuthenticated() {
 		return errs.New(errs.CodeUnauthenticated, "You are not signed in.")
 	}
-	// A Super Admin operates on the platform control plane, which is not
-	// tenant-scoped. Business tables remain unreachable to them because their
-	// tenant id is nil and no row carries a nil tenant.
+	if a.IsSuperAdmin {
+		// The platform control plane. Migration 0006 grants this predicate only
+		// on the tables blueprint A4 puts under Super Admin — tenant lifecycle,
+		// subscriptions, provisioning, device health, platform audit. Business
+		// data carries no such clause, so a Super Admin remains as blind to a
+		// tenant's invoices and journals as any outsider.
+		return p.txAsPlatform(ctx, fn)
+	}
 	return p.txWithTenant(ctx, a.TenantID, fn)
+}
+
+// TxAsPlatform runs fn on the platform control plane without a tenant scope.
+//
+// Reserved for tenant provisioning and platform maintenance. It must never be
+// reachable from a tenant-facing handler: authorization for it is the
+// IsSuperAdmin claim on a verified token, checked in Tx above.
+func (p *Pool) TxAsPlatform(ctx context.Context, fn func(pgx.Tx) error) error {
+	return p.txAsPlatform(ctx, fn)
+}
+
+func (p *Pool) txAsPlatform(ctx context.Context, fn func(pgx.Tx) error) error {
+	return p.inTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`SELECT set_config('app.platform_admin', 'on', true)`); err != nil {
+			return errs.Wrap(err, errs.CodeInternal,
+				"Could not establish the platform context.")
+		}
+		return fn(tx)
+	})
 }
 
 // TxAsTenant runs fn scoped to an explicit tenant. It exists for background
@@ -105,6 +130,19 @@ func (p *Pool) TxAsTenant(ctx context.Context, tenantID uuid.UUID, fn func(pgx.T
 }
 
 func (p *Pool) txWithTenant(ctx context.Context, tenantID uuid.UUID, fn func(pgx.Tx) error) error {
+	return p.inTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		// Transaction-scoped (set_config's third argument is true), so the
+		// setting is discarded at commit or rollback and cannot leak to the
+		// next borrower of this pooled connection.
+		if _, err := tx.Exec(ctx,
+			`SELECT set_config('app.tenant_id', $1, true)`, tenantID.String()); err != nil {
+			return errs.Wrap(err, errs.CodeInternal, "Could not establish the tenant context.")
+		}
+		return fn(tx)
+	})
+}
+
+func (p *Pool) inTx(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return errs.Wrap(err, errs.CodeUnavailable, "The database is not reachable right now.")
@@ -115,12 +153,7 @@ func (p *Pool) txWithTenant(ctx context.Context, tenantID uuid.UUID, fn func(pgx
 		_ = tx.Rollback(context.WithoutCancel(ctx))
 	}()
 
-	if _, err := tx.Exec(ctx,
-		`SELECT set_config('app.tenant_id', $1, true)`, tenantID.String()); err != nil {
-		return errs.Wrap(err, errs.CodeInternal, "Could not establish the tenant context.")
-	}
-
-	if err := fn(tx); err != nil {
+	if err := fn(ctx, tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -137,9 +137,9 @@ func ValidatePasswordStrength(plain string) error {
 // breach-corpus check; the point of keeping a small inline list is that the
 // obvious cases are refused even if that service is unavailable.
 var commonPasswords = map[string]struct{}{
-	"password":     {}, "password123": {}, "123456789012": {},
-	"qwertyuiop":   {}, "administrator": {}, "letmein12345": {},
-	"welcome12345": {}, "changeme1234": {}, "rawsystpos":  {},
+	"password": {}, "password123": {}, "123456789012": {},
+	"qwertyuiop": {}, "administrator": {}, "letmein12345": {},
+	"welcome12345": {}, "changeme1234": {}, "rawsystpos": {},
 }
 
 func isCommonPassword(p string) bool {

@@ -19,14 +19,14 @@ import (
 type Code string
 
 const (
-	CodeInvalidInput     Code = "invalid_input"
-	CodeUnauthenticated  Code = "unauthenticated"
-	CodeForbidden        Code = "forbidden"
-	CodeNotFound         Code = "not_found"
-	CodeConflict         Code = "conflict"
-	CodeRateLimited      Code = "rate_limited"
-	CodeInternal         Code = "internal"
-	CodeUnavailable      Code = "unavailable"
+	CodeInvalidInput    Code = "invalid_input"
+	CodeUnauthenticated Code = "unauthenticated"
+	CodeForbidden       Code = "forbidden"
+	CodeNotFound        Code = "not_found"
+	CodeConflict        Code = "conflict"
+	CodeRateLimited     Code = "rate_limited"
+	CodeInternal        Code = "internal"
+	CodeUnavailable     Code = "unavailable"
 
 	// Domain-specific codes. These exist because the client must be able to
 	// react differently, not merely display a different string.
@@ -62,9 +62,9 @@ const (
 // Error is the application error type.
 type Error struct {
 	Code    Code
-	Message string         // safe to show a user
+	Message string            // safe to show a user
 	Fields  map[string]string // per-field validation messages, optional
-	cause   error          // internal detail, logged but never serialised
+	cause   error             // internal detail, logged but never serialised
 }
 
 func (e *Error) Error() string {
