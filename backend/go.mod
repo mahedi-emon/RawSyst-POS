@@ -2,20 +2,26 @@ module github.com/mahedi-emon/rawsyst-pos/backend
 
 go 1.26
 
+// The four stdlib advisories govulncheck reports (crypto/tls, net/http,
+// encoding/xml, encoding/asn1) are fixed in 1.26.6. Pinning the toolchain here
+// keeps a local build and CI on the same patched compiler rather than relying
+// on whatever each machine happens to have.
+toolchain go1.26.6
+
 require (
-	github.com/go-chi/chi/v5 v5.2.1
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/go-chi/chi/v5 v5.2.2
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/shopspring/decimal v1.4.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.55.0
 )
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
