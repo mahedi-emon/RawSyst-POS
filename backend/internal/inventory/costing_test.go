@@ -417,3 +417,43 @@ func TestMethodsDisagreeButEachReconciles(t *testing.T) {
 		t.Errorf("wac: the pool gave up %s but %s was charged", released, wac.TotalCost)
 	}
 }
+
+// A layer is valued as quantity times unit cost, so restoring stock at
+// value/qty is only exact when that division comes out even. When it does not,
+// the parts must still sum to the whole — the same rule as everywhere else.
+func TestRestoredLayersSumToTheValueExactly(t *testing.T) {
+	for _, tc := range []struct{ name, qty, value string }{
+		{"divides evenly", "3", "180.00"},
+		{"recurring", "3", "199.99"},
+		{"single unit", "1", "66.6667"},
+		{"fractional", "2.5", "100.01"},
+		{"large awkward", "7", "1000.00"},
+		{"zero value", "4", "0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			qty, value := dec(tc.qty), dec(tc.value)
+
+			parts := splitIntoLayers(qty, value)
+
+			sumQty, sumValue := decimal.Zero, decimal.Zero
+			for _, p := range parts {
+				sumQty = sumQty.Add(p.qty)
+				sumValue = sumValue.Add(p.qty.Mul(p.unitCost))
+			}
+
+			if !sumQty.Equal(qty) {
+				t.Errorf("the layers hold %s units, want %s", sumQty, qty)
+			}
+			if !sumValue.Equal(value) {
+				t.Errorf("the layers are worth %s but %s came back; the valuation "+
+					"and the ledger would part company by %s",
+					sumValue, value, sumValue.Sub(value))
+			}
+			for _, p := range parts {
+				if p.unitCost.IsNegative() {
+					t.Errorf("a restored layer has a negative unit cost of %s", p.unitCost)
+				}
+			}
+		})
+	}
+}
