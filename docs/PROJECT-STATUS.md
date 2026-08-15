@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Last updated** | 2026-08-15 |
-| **Branch** | `main` @ `0ce599d` |
-| **Backend** | 46 Go files, ~19,300 lines, 239 tests, 25 migrations |
-| **HTTP routes live** | 22 — auth, onboarding, platform, POS, statements **and the VAT return** |
+| **Branch** | `main` @ `8e5559f` |
+| **Backend** | 49 Go files, ~20,500 lines, 251 tests, 25 migrations |
+| **HTTP routes live** | 28 — auth, onboarding, platform, POS, statements, VAT return **and the catalogue** |
 | **Front ends** | none started |
 
 > Percentages below are estimates of **remaining engineering effort**, not of files
@@ -20,9 +20,9 @@
 | Layer | Complete | Note |
 |---|---:|---|
 | **System design + UI/UX specification** | **100%** | 15 documents, design system, clickable prototype |
-| **Phase 1 backend** | **~90%** | Engines, POS surface, shift, statements, VAT return and posting rules as data all done; catalog CRUD and the small correctness gaps remain |
+| **Phase 1 backend** | **~95%** | Everything but the small correctness gaps (P8, P9, P12, P14). The ZATCA document format (P1) is blocked on verification, not on code. |
 | **Phase 1 front ends** (Tauri POS, Next.js back-office, PWA) | **0%** | Not started, but no longer blocked |
-| **Phase 1 overall** | **~50%** | Backend is roughly 55% of Phase 1 effort |
+| **Phase 1 overall** | **~52%** | Backend is roughly 55% of Phase 1 effort |
 | **Whole product (Phases 1–5)** | **~15%** | Phase 1 is roughly 35% of the total |
 
 **Phase 1's definition of done:** a Saudi shop can legally trade on it.
@@ -52,6 +52,9 @@ Each of these has integration tests that fail loudly if the guarantee breaks.
 | **POS HTTP surface** | `api/pos_handlers.go` | A till cannot name its own company, store or EGS unit |
 | **Cash sessions + X/Z** | `shift`, `0024` | Expected cash derived; blind close real; a Z happens once |
 | **Financial statements** | `reports` | Balance sheet balances **including** current earnings |
+| **VAT return** | `vat` | Reconciles to the Output VAT account; declares what it omits |
+| **Posting rules as data** | `accounting/rules.go`, `0025` | All twelve C9.2 rules; resolved at the transaction date |
+| **Catalogue + variant matrix** | `catalog` | Regeneration adds only what is missing |
 
 ### The rounding-remainder rule
 
@@ -124,8 +127,7 @@ The order matters: each item is easier once the one above it exists.
 8. **P8**, **P9**, **P11**, **P12** — the correctness gaps, each small on its own
 9. **P19** — PDPL, gated on legal review
 
-Catalog CRUD and the variant matrix (size × colour grid) sit alongside step 1 —
-the schema is done, the service is not.
+Catalog CRUD and the variant matrix are **done**.
 
 ---
 

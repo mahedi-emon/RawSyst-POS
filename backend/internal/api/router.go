@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
@@ -69,6 +70,7 @@ type Server struct {
 	sales        *sales.Service
 	reports      *reports.Service
 	vat          *vat.Service
+	catalog      *catalog.Service
 	health       func() error
 	version      string
 }
@@ -81,6 +83,7 @@ func NewServer(
 	salesSvc *sales.Service,
 	reportSvc *reports.Service,
 	vatSvc *vat.Service,
+	catalogSvc *catalog.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -92,6 +95,7 @@ func NewServer(
 		sales:        salesSvc,
 		reports:      reportSvc,
 		vat:          vatSvc,
+		catalog:      catalogSvc,
 		health:       health,
 		version:      version,
 	}
@@ -135,6 +139,28 @@ func (s *Server) Routes() []Route {
 			s.handleOnboardingCompleteStep, ""},
 		{http.MethodPost, "/api/v1/onboarding/company", AccessPermission, "identity.edit",
 			s.handleOnboardingCommitCompany, ""},
+
+		// --- catalogue ---
+		//
+		// Cost price and margin never cross this boundary. A Cashier holds
+		// catalog.view and is deliberately denied catalog.view_cost_price, so a
+		// payload carrying cost would defeat the masking the permission exists
+		// for — correctly gated, and leaking anyway.
+		{http.MethodPost, "/api/v1/catalog/products", AccessPermission, "catalog.create",
+			s.handleCreateProduct, ""},
+		{http.MethodGet, "/api/v1/catalog/products", AccessPermission, "catalog.view",
+			s.handleListProducts, ""},
+		{http.MethodPost, "/api/v1/catalog/products/{productID}/matrix", AccessPermission, "catalog.create",
+			s.handleGenerateMatrix, ""},
+		{http.MethodGet, "/api/v1/catalog/products/{productID}/matrix", AccessPermission, "catalog.view",
+			s.handleReadMatrix, ""},
+		// Withdrawing needs catalog.delete even though nothing is deleted: it is
+		// the destructive-intent permission, and a variant off sale is as
+		// disruptive to a shop as one removed would be.
+		{http.MethodDelete, "/api/v1/catalog/variants/{variantID}", AccessPermission, "catalog.delete",
+			s.handleWithdrawVariant, ""},
+		{http.MethodGet, "/api/v1/catalog/scan", AccessPermission, "catalog.view",
+			s.handleScanBarcode, ""},
 
 		// --- point of sale ---
 		//
