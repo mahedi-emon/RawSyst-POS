@@ -24,6 +24,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 )
 
@@ -71,6 +72,7 @@ type Server struct {
 	reports      *reports.Service
 	vat          *vat.Service
 	catalog      *catalog.Service
+	sync         *sync.Engine
 	health       func() error
 	version      string
 }
@@ -84,6 +86,7 @@ func NewServer(
 	reportSvc *reports.Service,
 	vatSvc *vat.Service,
 	catalogSvc *catalog.Service,
+	syncEngine *sync.Engine,
 	health func() error,
 	version string,
 ) *Server {
@@ -96,6 +99,7 @@ func NewServer(
 		reports:      reportSvc,
 		vat:          vatSvc,
 		catalog:      catalogSvc,
+		sync:         syncEngine,
 		health:       health,
 		version:      version,
 	}
@@ -175,6 +179,17 @@ func (s *Server) Routes() []Route {
 			s.handleCreateReturn, ""},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}", AccessPermission, "sales.view",
 			s.handleGetSale, ""},
+
+		// --- sync ---
+		//
+		// The device comes from the token, never the body. A terminal that could
+		// name its own device id would push another till's sales onto another
+		// till's ZATCA chain, and both tills belong to the same tenant so
+		// row-level security would not notice.
+		{http.MethodPost, "/api/v1/sync/push", AccessPermission, "sales.create",
+			s.handleSyncPush, ""},
+		{http.MethodGet, "/api/v1/sync/health", AccessPermission, "sales.view",
+			s.handleSyncHealth, ""},
 
 		// --- financial statements ---
 		//

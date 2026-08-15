@@ -35,6 +35,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
@@ -90,7 +91,12 @@ func newHarness(t *testing.T) *harness {
 	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.DevelopmentHasher{})).
 		WithPool(pool).WithRegistry(rules)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules),
+	// The same registration production makes: replayed sales go through the
+	// sale service, not through a second implementation.
+	syncEngine := sync.NewEngine(pool)
+	syncEngine.Register("sales_invoice", sales.NewSaleApplier(salesSvc))
+
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine,
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 

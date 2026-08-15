@@ -24,6 +24,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
@@ -88,7 +89,14 @@ func run() error {
 	chain := zatca.NewChain(pool, zatca.HasherFor(cfg.Env.IsProduction()))
 	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules)
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules),
+	// The sync engine replays a terminal's offline queue through the SAME sale
+	// path an online sale takes. Registering the applier here rather than
+	// letting the engine construct one keeps the dependency pointing one way:
+	// sales knows about sync, sync knows nothing about sales.
+	syncEngine := sync.NewEngine(pool)
+	syncEngine.Register("sales_invoice", sales.NewSaleApplier(salesSvc))
+
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine,
 		func() error { return pool.Health(ctx) }, version)
 
 	handler := srv.Handler(

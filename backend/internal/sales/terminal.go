@@ -51,17 +51,38 @@ func (s *Service) RingUp(
 
 	var out Finalized
 	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
-		term, profile, e := resolveTerminal(ctx, tx, tenantID, deviceID, warehouseID)
-		if e != nil {
-			return e
-		}
-		if e = s.applyTaxProfile(ctx, &sale, profile, tenantID); e != nil {
-			return e
-		}
-		out, e = s.Finalize(ctx, tx, term, sale)
+		var e error
+		out, e = s.FinalizeInTx(ctx, tx, tenantID, deviceID, sale, warehouseID)
 		return e
 	})
 	return out, err
+}
+
+// FinalizeInTx is the one authoritative way a sale becomes an invoice.
+//
+// Both callers reach it: the HTTP handler, which wraps it in its own
+// transaction, and the sync engine, which replays an offline sale inside the
+// transaction it is already holding for the batch.
+//
+// That is deliberate and it is the whole point of this function existing. If
+// the sync worker built invoices, chain positions, stock movements and journal
+// entries itself, there would be two implementations of the most consequential
+// operation in the system — and the offline one, which handles the sales nobody
+// watched happen, would be the less exercised of the two. Every guarantee
+// proved for an online sale holds for a replayed one because it is the same
+// code, not because someone kept two copies in step.
+func (s *Service) FinalizeInTx(
+	ctx context.Context, tx pgx.Tx, tenantID, deviceID uuid.UUID,
+	sale Sale, warehouseID uuid.UUID,
+) (Finalized, error) {
+	term, profile, err := resolveTerminal(ctx, tx, tenantID, deviceID, warehouseID)
+	if err != nil {
+		return Finalized{}, err
+	}
+	if err := s.applyTaxProfile(ctx, &sale, profile, tenantID); err != nil {
+		return Finalized{}, err
+	}
+	return s.Finalize(ctx, tx, term, sale)
 }
 
 // companyProfile is what a sale needs to know about the legal entity behind the

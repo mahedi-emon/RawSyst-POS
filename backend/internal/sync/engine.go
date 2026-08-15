@@ -208,7 +208,7 @@ func (e *Engine) applyOne(
 		res.Error = fmt.Sprintf(
 			"This terminal sent a %q, which this server version does not understand. "+
 				"It may be running a newer app version than the server.", item.EntityType)
-		e.recordItem(ctx, tx, tenantID, batchID, deviceID, item, res)
+		recordOrFail(ctx, e, tx, tenantID, batchID, deviceID, item, &res)
 		return res
 	}
 
@@ -219,7 +219,7 @@ func (e *Engine) applyOne(
 		res.State = "blocked"
 		res.Error = "An earlier item of this type has not been applied. " +
 			"Applying this one would leave a gap in the sequence."
-		e.recordItem(ctx, tx, tenantID, batchID, deviceID, item, res)
+		recordOrFail(ctx, e, tx, tenantID, batchID, deviceID, item, &res)
 		return res
 	}
 
@@ -260,8 +260,24 @@ func (e *Engine) applyOne(
 		}
 	}
 
-	e.recordItem(ctx, tx, tenantID, batchID, deviceID, item, res)
+	recordOrFail(ctx, e, tx, tenantID, batchID, deviceID, item, &res)
 	return res
+}
+
+// recordOrFail writes an item's verdict and downgrades it if the write fails.
+//
+// A verdict the queue did not keep is worse than a plain failure: the device
+// would be told its sale landed while nothing recorded that it had, and the
+// cursor would move past an item the server cannot account for.
+func recordOrFail(
+	ctx context.Context, e *Engine, tx pgx.Tx,
+	tenantID, batchID, deviceID uuid.UUID, item Item, res *ItemResult,
+) {
+	if err := e.recordItem(ctx, tx, tenantID, batchID, deviceID, item, *res); err != nil {
+		res.State = "failed"
+		res.Error = "This item was processed but its outcome could not be " +
+			"recorded, so it has been left outstanding."
+	}
 }
 
 // recordItem writes the audit row for an item.
@@ -273,20 +289,38 @@ func (e *Engine) applyOne(
 func (e *Engine) recordItem(
 	ctx context.Context, tx pgx.Tx,
 	tenantID, batchID, deviceID uuid.UUID, item Item, res ItemResult,
-) {
-	tag, err := tx.Exec(ctx, `
+) error {
+	// A settled row is history and must never be rewritten: once an item is
+	// applied or recognised as a duplicate, that verdict is the idempotency
+	// record and a later batch cannot overturn it.
+	//
+	// An UNSETTLED row is a different matter. This used to be DO NOTHING, so an
+	// item that failed or was blocked kept that state forever — even after a
+	// corrected retry applied it successfully. The sale landed, the queue row
+	// still said failed, the cursor never advanced past it, and the terminal
+	// would have retried the same sale for the rest of its life while the
+	// server quietly recognised it as a duplicate every time.
+	_, err := tx.Exec(ctx, `
 		INSERT INTO sync_item
 		  (tenant_id, batch_id, device_id, seq, entity_uuid, entity_type,
 		   payload, state, error, applied_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
 		        CASE WHEN $8 = 'applied' THEN now() ELSE NULL END)
-		ON CONFLICT (device_id, seq) DO NOTHING`,
+		ON CONFLICT (device_id, seq) DO UPDATE SET
+		  batch_id   = EXCLUDED.batch_id,
+		  entity_uuid = EXCLUDED.entity_uuid,
+		  payload    = EXCLUDED.payload,
+		  state      = EXCLUDED.state,
+		  error      = EXCLUDED.error,
+		  applied_at = EXCLUDED.applied_at
+		WHERE sync_item.state IN ('pending', 'blocked', 'failed')`,
 		tenantID, batchID, deviceID, item.Seq, item.EntityUUID,
 		item.EntityType, item.Payload, res.State, nullIfEmpty(res.Error))
-	if err == nil && tag.RowsAffected() == 0 {
-		// Already recorded under an earlier batch.
-		return
-	}
+
+	// Returned rather than swallowed. A write that fails here leaves the
+	// engine's in-memory verdict disagreeing with what the queue records, and
+	// the device is told an outcome the server did not keep.
+	return err
 }
 
 // priorResult returns a previous batch's outcome if this key has been seen.
@@ -356,9 +390,14 @@ func advanceCursor(
 ) (int64, error) {
 	var contiguous, highest int64
 
+	// DISTINCT is load-bearing. A seq can settle more than once — a resent
+	// batch records the same sequence again as a duplicate — and without it the
+	// row numbering shifts against the sequence, so `seq = rn` stops matching
+	// and the cursor freezes at the first repeated number. The device would
+	// then never be told it may discard anything.
 	err := tx.QueryRow(ctx, `
 		WITH settled AS (
-		  SELECT seq FROM sync_item
+		  SELECT DISTINCT seq FROM sync_item
 		  WHERE device_id = $1 AND state IN ('applied', 'duplicate')
 		),
 		numbered AS (
@@ -376,14 +415,32 @@ func advanceCursor(
 		return 0, err
 	}
 
+	// The outstanding counts are computed HERE rather than left to the trigger
+	// on sync_item.
+	//
+	// That trigger updates the cursor row, and on a device's very first batch
+	// there is no cursor row to update: it is created below, after every item
+	// has already been recorded. So the first batch's counts were silently lost
+	// and a terminal was told it had nothing outstanding when its whole queue
+	// had failed — which is the one moment a cashier most needs the truth.
 	_, err = tx.Exec(ctx, `
 		INSERT INTO device_sync_cursor
-		  (device_id, tenant_id, last_applied_seq, highest_seen_seq, last_sync_at)
-		VALUES ($1,$2,$3,$4,now())
+		  (device_id, tenant_id, last_applied_seq, highest_seen_seq, last_sync_at,
+		   pending_count, blocked_count, failed_count, oldest_unsettled_at)
+		SELECT $1, $2, $3, $4, now(),
+		       coalesce(count(*) FILTER (WHERE state = 'pending'), 0),
+		       coalesce(count(*) FILTER (WHERE state = 'blocked'), 0),
+		       coalesce(count(*) FILTER (WHERE state = 'failed'), 0),
+		       min(created_at) FILTER (WHERE state IN ('pending','blocked','failed'))
+		FROM sync_item WHERE device_id = $1
 		ON CONFLICT (device_id) DO UPDATE SET
 		  last_applied_seq = GREATEST(device_sync_cursor.last_applied_seq, EXCLUDED.last_applied_seq),
 		  highest_seen_seq = GREATEST(device_sync_cursor.highest_seen_seq, EXCLUDED.highest_seen_seq),
-		  last_sync_at = now()`,
+		  last_sync_at = now(),
+		  pending_count = EXCLUDED.pending_count,
+		  blocked_count = EXCLUDED.blocked_count,
+		  failed_count  = EXCLUDED.failed_count,
+		  oldest_unsettled_at = EXCLUDED.oldest_unsettled_at`,
 		deviceID, tenantID, contiguous, highest)
 	if err != nil {
 		return 0, err
