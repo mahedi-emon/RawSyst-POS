@@ -58,6 +58,10 @@ type Terminal struct {
 
 	DeviceID *uuid.UUID
 
+	// Country decides which posting rule applies. A market can have its own
+	// entry shape without every other market needing a copy of it.
+	Country string
+
 	// CashSessionID ties takings to the shift that took them.
 	//
 	// A foreign key rather than a time window. Matching sales to a shift by
@@ -376,35 +380,39 @@ func (s *Service) post(
 		TenantID: term.TenantID, CompanyID: term.CompanyID,
 		Date: sale.IssuedAt, SourceType: "sales_invoice", SourceID: invoiceID,
 		Currency: sale.Currency, FXRate: sale.FXRate, PostedBy: sale.CashierID,
+		StoreID: &term.StoreID,
 	}
 
-	// Rule 1 — what the customer paid, against revenue and the VAT owed on it.
-	lines := make([]accounting.Line, 0, len(sale.Tenders)+2)
+	// The shape of both entries lives in posting_rule, not here. This supplies
+	// the numbers and the tender split; which accounts they land in is the
+	// rule's business and the company's role mapping.
+	tenders := make(accounting.Group, 0, len(sale.Tenders))
 	for _, td := range sale.Tenders {
-		lines = append(lines, accounting.Line{
-			Role: tenderRole(td.Method), Side: accounting.Debit, Amount: td.Amount,
-			StoreID: &term.StoreID, Memo: td.Method,
+		tenders = append(tenders, accounting.GroupMember{
+			Role: tenderRole(td.Method), Amount: td.Amount, Memo: td.Method,
 		})
 	}
-	lines = append(lines,
-		accounting.Line{Role: "sales_revenue", Side: accounting.Credit,
-			Amount: computed.SubtotalNet, StoreID: &term.StoreID},
-		accounting.Line{Role: "output_vat", Side: accounting.Credit,
-			Amount: computed.TaxTotal, StoreID: &term.StoreID},
-	)
 
 	revenueEntry := base
 	revenueEntry.RuleKey = "sale.revenue"
 	revenueEntry.Memo = "Sale"
-	revenueEntry.Lines = lines
 
-	revenue, err = accounting.Post(ctx, tx, revenueEntry)
+	revenue, err = accounting.PostByRule(ctx, tx, revenueEntry, term.Country,
+		accounting.Transaction{
+			Amounts: accounting.Amounts{
+				"subtotal_net":    computed.SubtotalNet,
+				"tax_total":       computed.TaxTotal,
+				"total_inclusive": computed.TotalInclusive,
+			},
+			Groups: map[string]accounting.Group{"tenders": tenders},
+		})
 	if err != nil {
 		return revenue, cogs, err
 	}
 
 	// Rule 2 — cost of sale, which C13 requires to post WITH the sale so gross
-	// profit is a measurement rather than a month-end reconstruction.
+	// profit is a measurement rather than a month-end reconstruction. A company
+	// selling services has nothing to cost and simply gets no second entry.
 	if !computed.COGSTotal.IsPositive() {
 		return revenue, cogs, nil
 	}
@@ -412,14 +420,11 @@ func (s *Service) post(
 	cogsEntry := base
 	cogsEntry.RuleKey = "sale.cogs"
 	cogsEntry.Memo = "Cost of sale"
-	cogsEntry.Lines = []accounting.Line{
-		{Role: "cogs", Side: accounting.Debit, Amount: computed.COGSTotal,
-			StoreID: &term.StoreID},
-		{Role: "inventory", Side: accounting.Credit, Amount: computed.COGSTotal,
-			StoreID: &term.StoreID},
-	}
 
-	cogs, err = accounting.Post(ctx, tx, cogsEntry)
+	cogs, err = accounting.PostByRule(ctx, tx, cogsEntry, term.Country,
+		accounting.Transaction{
+			Amounts: accounting.Amounts{"cogs_total": computed.COGSTotal},
+		})
 	return revenue, cogs, err
 }
 

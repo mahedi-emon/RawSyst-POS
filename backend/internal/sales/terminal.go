@@ -176,6 +176,7 @@ func resolveTerminal(
 				"E-invoicing.")
 	}
 	term.EGSUnitID = *egsUnitID
+	term.Country = profile.country
 
 	term.WarehouseID, err = resolveWarehouse(ctx, tx, term.StoreID, warehouseID)
 	if err != nil {

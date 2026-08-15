@@ -56,6 +56,12 @@ type Entry struct {
 	SourceID   uuid.UUID
 	RuleKey    string
 
+	// RuleVersion records WHICH version of RuleKey produced this entry. Rules
+	// are versioned and never edited, so an entry posted last March must stay
+	// explainable by the rule that actually made it — today's rule may not be
+	// the one that ran. Set by PostByRule; zero when lines were built by hand.
+	RuleVersion int
+
 	// Currency is the transaction currency; BaseCurrency is the company's.
 	// One entry carries one rate: a single transaction settled at two different
 	// rates is not a rate difference, it is two transactions.
@@ -65,6 +71,15 @@ type Entry struct {
 
 	Memo     string
 	PostedBy *uuid.UUID
+
+	// StoreID is the dimension the whole entry belongs to. Applied to every
+	// line that does not name its own, because a dimension describes WHERE the
+	// transaction happened rather than a property of one leg — and a rule,
+	// which knows nothing about branches, cannot supply it.
+	//
+	// Losing this silently is how branch reporting stops working while every
+	// total still adds up.
+	StoreID *uuid.UUID
 
 	Lines []Line
 }
@@ -91,6 +106,13 @@ func Post(ctx context.Context, tx pgx.Tx, e Entry) (Result, error) {
 	lines, err := usableLines(e.Lines)
 	if err != nil {
 		return Result{}, err
+	}
+	if e.StoreID != nil {
+		for i := range lines {
+			if lines[i].StoreID == nil {
+				lines[i].StoreID = e.StoreID
+			}
+		}
 	}
 
 	debits, credits := sideTotals(lines)
@@ -322,12 +344,12 @@ func insertEntry(
 	err = tx.QueryRow(ctx, `
 		INSERT INTO journal_entry
 		  (tenant_id, company_id, period_id, entry_no, entry_date,
-		   source_type, source_id, rule_key, memo, posted_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		   source_type, source_id, rule_key, rule_version, memo, posted_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING id`,
 		e.TenantID, e.CompanyID, periodID, no, e.Date,
-		e.SourceType, e.SourceID, nullText(e.RuleKey), nullText(e.Memo),
-		e.PostedBy).Scan(&id)
+		e.SourceType, e.SourceID, nullText(e.RuleKey), nullInt(e.RuleVersion),
+		nullText(e.Memo), e.PostedBy).Scan(&id)
 	if err != nil {
 		return uuid.Nil, 0, false, db.Translate(err,
 			"That accounting entry could not be posted.")
@@ -385,6 +407,15 @@ func resolveRoles(
 		}
 	}
 	return out, nil
+}
+
+// nullInt keeps an unset version out of the database as NULL, so "built by
+// hand" and "version zero" stay distinguishable.
+func nullInt(i int) any {
+	if i == 0 {
+		return nil
+	}
+	return i
 }
 
 func nullText(s string) any {

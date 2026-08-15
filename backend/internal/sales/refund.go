@@ -376,31 +376,32 @@ func (s *Service) postReturn(
 	base := accounting.Entry{
 		TenantID: term.TenantID, CompanyID: term.CompanyID,
 		Date: ret.IssuedAt, SourceType: "credit_note", SourceID: creditNoteID,
-		PostedBy: ret.CashierID,
+		PostedBy: ret.CashierID, StoreID: &term.StoreID,
 	}
 
 	// 2 and 3 — revenue and the output tax on it go back, against whatever the
-	// money was refunded through.
-	lines := make([]accounting.Line, 0, len(ret.Refunds)+2)
-	lines = append(lines,
-		accounting.Line{Role: "sales_revenue", Side: accounting.Debit,
-			Amount: computed.SubtotalNet, StoreID: &term.StoreID},
-		accounting.Line{Role: "output_vat", Side: accounting.Debit,
-			Amount: computed.TaxTotal, StoreID: &term.StoreID},
-	)
+	// money was refunded through. The shape is in posting_rule; this supplies
+	// the figures and the split across refund methods.
+	refunds := make(accounting.Group, 0, len(ret.Refunds))
 	for _, r := range ret.Refunds {
-		lines = append(lines, accounting.Line{
-			Role: tenderRole(r.Method), Side: accounting.Credit, Amount: r.Amount,
-			StoreID: &term.StoreID, Memo: r.Method,
+		refunds = append(refunds, accounting.GroupMember{
+			Role: tenderRole(r.Method), Amount: r.Amount, Memo: r.Method,
 		})
 	}
 
 	reversalEntry := base
 	reversalEntry.RuleKey = "return.reversal"
 	reversalEntry.Memo = "Return: " + ret.Reason
-	reversalEntry.Lines = lines
 
-	reversal, err = accounting.Post(ctx, tx, reversalEntry)
+	reversal, err = accounting.PostByRule(ctx, tx, reversalEntry, term.Country,
+		accounting.Transaction{
+			Amounts: accounting.Amounts{
+				"subtotal_net":    computed.SubtotalNet,
+				"tax_total":       computed.TaxTotal,
+				"total_inclusive": computed.TotalInclusive,
+			},
+			Groups: map[string]accounting.Group{"refunds": refunds},
+		})
 	if err != nil {
 		return reversal, cogs, err
 	}
@@ -413,13 +414,10 @@ func (s *Service) postReturn(
 	cogsEntry := base
 	cogsEntry.RuleKey = "return.cogs"
 	cogsEntry.Memo = "Cost of goods returned"
-	cogsEntry.Lines = []accounting.Line{
-		{Role: "inventory", Side: accounting.Debit, Amount: computed.COGSTotal,
-			StoreID: &term.StoreID},
-		{Role: "cogs", Side: accounting.Credit, Amount: computed.COGSTotal,
-			StoreID: &term.StoreID},
-	}
 
-	cogs, err = accounting.Post(ctx, tx, cogsEntry)
+	cogs, err = accounting.PostByRule(ctx, tx, cogsEntry, term.Country,
+		accounting.Transaction{
+			Amounts: accounting.Amounts{"cogs_total": computed.COGSTotal},
+		})
 	return reversal, cogs, err
 }

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-08-15 |
-| **Branch** | `main` @ `69371d8` |
-| **Backend** | 44 Go files, ~18,400 lines, 231 tests, 24 migrations |
+| **Branch** | `main` @ `0ce599d` |
+| **Backend** | 46 Go files, ~19,300 lines, 239 tests, 25 migrations |
 | **HTTP routes live** | 22 — auth, onboarding, platform, POS, statements **and the VAT return** |
 | **Front ends** | none started |
 
@@ -20,9 +20,9 @@
 | Layer | Complete | Note |
 |---|---:|---|
 | **System design + UI/UX specification** | **100%** | 15 documents, design system, clickable prototype |
-| **Phase 1 backend** | **~85%** | Engines, POS surface, shift management, statements and the VAT return done; posting rules as data and catalog CRUD remain |
+| **Phase 1 backend** | **~90%** | Engines, POS surface, shift, statements, VAT return and posting rules as data all done; catalog CRUD and the small correctness gaps remain |
 | **Phase 1 front ends** (Tauri POS, Next.js back-office, PWA) | **0%** | Not started, but no longer blocked |
-| **Phase 1 overall** | **~47%** | Backend is roughly 55% of Phase 1 effort |
+| **Phase 1 overall** | **~50%** | Backend is roughly 55% of Phase 1 effort |
 | **Whole product (Phases 1–5)** | **~15%** | Phase 1 is roughly 35% of the total |
 
 **Phase 1's definition of done:** a Saudi shop can legally trade on it.
@@ -89,7 +89,7 @@ fixing it involves.
 
 | # | Problem | Why it matters | Fix |
 |---|---|---|---|
-| **P7** | **Posting rules are hard-coded in Go, not read from `posting_rule`.** The table exists, is versioned and immutable — and nothing queries it. `sale.revenue`, `sale.cogs`, `return.reversal`, `return.cogs` are written as Go literals. | Directly contradicts blueprint C9.2 ("each needs its own defined, **configurable** posting rule"). Every new transaction type becomes a code release, and no tenant can vary its mapping. Only 4 of the 12 named rules exist. | Build the rule evaluator: read `lines` JSONB, resolve roles, evaluate `amount` expressions against the event. The account-role indirection is already in place, which is the hard half. |
+| ~~P7~~ | ~~**Posting rules are hard-coded in Go.**~~ **DONE**. All twelve C9.2 rules seeded as data; sale and return post through the engine. Rules resolve at the transaction date and `journal_entry.rule_version` records which version produced each entry. A rule wanting a figure nobody supplied fails and names it. | — | — |
 | **P8** | **Stock movements from a sale carry no `source_id`.** `SourceType` is set to `sales_invoice` but the id is left null, because costing happens before the invoice row exists — deliberately, so a sale that cannot be costed fails before consuming an ICV. | A stock movement cannot be traced back to the sale that caused it. Stock-card drill-down and shrinkage investigation both need this. | Either write the movement after the invoice (giving up the early-failure property), or update the movement's `source_id` in the same transaction. The second is better and cheap — but `stock_movement` has an immutability trigger, so it needs the invoice id passed in from the start via a pre-allocated UUID. |
 | **P9** | **Standard-costing variance is computed and then discarded.** `ConsumeStandard` returns `Variance`; nothing posts it. | The whole point of standard costing is that an unexpected purchase price becomes visible. Right now it is silently absorbed into margin — exactly what the design says must not happen. | Post the variance to a `cost_variance` account role as part of the COGS entry. |
 | **P10** | **The offline costing reconciliation is not built.** Design §6.4 specifies: the POS records a provisional cost, and on sync the server recomputes COGS against the real layers and posts the difference to a variance account. | Without it, an offline sale's cost is whatever the device's cached snapshot said, permanently. | Needs the sync path to re-cost and post a `cost_variance` adjustment. Depends on P7 being done first, ideally. |
@@ -116,7 +116,7 @@ The order matters: each item is easier once the one above it exists.
 
 1. ~~**P2** — POS HTTP endpoints~~ **done**; front-end work is unblocked
 2. ~~**P3** — shift management + X/Z reports~~ **done**
-3. **P7** — posting rules as data, and the remaining 8 of 12 rules
+3. ~~**P7** — posting rules as data~~ **done**, and the remaining 8 of 12 rules
 4. ~~**P4**, **P5**~~ **done**
 5. **P14** — invoice numbering engine + receipt templates
 6. **P1** — ZATCA XML/QR *(needs the verification pass first — start that now, it has a lead time)*
