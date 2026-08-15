@@ -87,7 +87,8 @@ func run() error {
 	// Signing never happens here in any environment — the key lives in the
 	// terminal's OS keystore and never reaches this process.
 	chain := zatca.NewChain(pool, zatca.HasherFor(cfg.Env.IsProduction()))
-	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules)
+	submitter := zatca.SubmitterFor(cfg.Env.IsProduction())
+	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules).WithSubmitter(submitter)
 
 	// The sync engine replays a terminal's offline queue through the SAME sale
 	// path an online sale takes. Registering the applier here rather than

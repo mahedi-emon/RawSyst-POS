@@ -77,8 +77,19 @@ type invoiceForSubmission struct {
 	state     string
 	companyID uuid.UUID
 	icv       int64
-	stamp     string
-	attempts  int
+
+	// The three the TERMINAL produced, kept distinct because they are three
+	// different things and only one of them is the document.
+	//
+	// An earlier cut sent the stamp as the payload, which would have posted a
+	// signature with no document attached to it. ZATCA receives the signed
+	// UBL; the stamp is the signature ON that document and the QR is derived
+	// from it for the receipt.
+	xml   string
+	stamp string
+	qrTLV string
+
+	attempts int
 }
 
 // Run submits one invoice.
@@ -121,18 +132,29 @@ func (z *ZATCASubmitter) Run(ctx context.Context, j Job) error {
 				"This invoice remains queued and has NOT been reported.")
 	}
 
-	// A document with no stamp cannot be submitted. The stamp is made on the
-	// terminal; its absence means the terminal has not finished with this
-	// invoice, not that the server should invent one.
-	if len(inv.stamp) == 0 {
+	// No document, nothing to submit. The terminal builds and signs it locally,
+	// so its absence means the device has not finished with this invoice — not
+	// that the server should produce one. Retryable rather than permanent: the
+	// upload may still be on its way.
+	if inv.xml == "" {
 		return errs.New(errs.CodeComplianceBlocked,
 			"This invoice has not been signed by its terminal yet, so there is "+
 				"nothing to submit.")
 	}
+	if inv.stamp == "" {
+		return errs.New(errs.CodeComplianceBlocked,
+			"This invoice has a document but no stamp, so it is not yet a "+
+				"signed document.")
+	}
 
 	route := zatca.RouteFor(inv.docType)
 	resp, submitErr := z.client.Submit(ctx, zatca.Submission{
-		InvoiceUUID: inv.uuid, ICV: inv.icv, Route: route, SignedXML: []byte(inv.stamp),
+		InvoiceUUID: inv.uuid, ICV: inv.icv, Route: route,
+		// The DOCUMENT, not the signature over it. Sending the stamp here
+		// would post a signature with nothing attached to it.
+		SignedXML: []byte(inv.xml),
+		Stamp:     inv.stamp,
+		QRTLV:     inv.qrTLV,
 	})
 
 	if err := z.record(ctx, tenantID, inv, p.InvoiceID, resp); err != nil {
@@ -173,14 +195,15 @@ func (z *ZATCASubmitter) read(
 	err := z.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
 		e := tx.QueryRow(ctx, `
 			SELECT i.uuid, i.doc_type, i.state, i.company_id,
-			       z.icv, coalesce(z.stamp, ''),
+			       z.icv, coalesce(z.xml, ''), coalesce(z.stamp, ''),
+			       coalesce(z.qr_tlv, ''),
 			       (SELECT count(*) FROM zatca_submission_attempt a
 			        WHERE a.invoice_id = i.id)
 			FROM sales_invoice i
 			JOIN zatca_invoice z ON z.invoice_id = i.id
 			WHERE i.id = $1`, invoiceID).
 			Scan(&inv.uuid, &inv.docType, &inv.state, &inv.companyID,
-				&inv.icv, &inv.stamp, &inv.attempts)
+				&inv.icv, &inv.xml, &inv.stamp, &inv.qrTLV, &inv.attempts)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return Permanent{errs.New(errs.CodeNotFound,
 				"That invoice no longer exists, so there is nothing to submit.")}

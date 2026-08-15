@@ -179,6 +179,11 @@ func (s *Server) Routes() []Route {
 			s.handleCreateReturn, ""},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}", AccessPermission, "sales.view",
 			s.handleGetSale, ""},
+		// The terminal hands back what it signed locally. Gated on sales.create
+		// because it completes a sale rather than reading one, and refused
+		// outright for a session with no terminal behind it.
+		{http.MethodPut, "/api/v1/pos/sales/{invoiceID}/signed-document",
+			AccessPermission, "sales.create", s.handleUploadSignedDocument, ""},
 
 		// --- sync ---
 		//

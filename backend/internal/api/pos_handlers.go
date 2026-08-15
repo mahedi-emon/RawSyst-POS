@@ -12,6 +12,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
 // The POS surface.
@@ -480,4 +481,60 @@ func parseIssuedAt(s string) (time.Time, error) {
 				"2026-08-15T10:30:00Z.")
 	}
 	return t.UTC(), nil
+}
+
+// --- POST /api/v1/pos/sales/{invoiceID}/signed-document -----------------
+
+type signedDocumentRequest struct {
+	// XML is the canonical signed UBL 2.1 document the terminal built and
+	// signed locally. This is what ZATCA receives.
+	XML string `json:"xml"`
+
+	// Stamp is the ECDSA signature over that document; QRTLV is the payload
+	// derived from it for the receipt. Three distinct things, carried
+	// distinctly.
+	Stamp string `json:"stamp"`
+	QRTLV string `json:"qr_tlv"`
+}
+
+// handleUploadSignedDocument stores what the terminal signed.
+//
+// The step that closes the loop on local signing. The server allocates the ICV
+// and the PIH because they are a per-terminal sequence only one authority can
+// arbitrate; the TERMINAL then builds the UBL, signs it with a CSID key this
+// process has never held, and sends the result back here (E1.3 RULE 1).
+//
+// Nothing is validated against ZATCA's standard, because the standard is not
+// yet verified. The document is stored as received and submission stays gated.
+func (s *Server) handleUploadSignedDocument(w http.ResponseWriter, r *http.Request) {
+	invoiceID, err := parseUUID(chi.URLParam(r, "invoiceID"), "invoiceID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var req signedDocumentRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	if a.DeviceID == uuid.Nil {
+		// Only a registered terminal signs. A browser session has no CSID and
+		// nothing it produced could be a signed document.
+		httpx.Error(w, r, errs.New(errs.CodeForbidden,
+			"Only a registered terminal can upload a signed document."))
+		return
+	}
+
+	out, err := s.sales.AttachSignedDocument(r.Context(), a.TenantID, a.DeviceID,
+		invoiceID, zatca.SignedDocument{
+			XML: req.XML, Stamp: req.Stamp, QRTLV: req.QRTLV,
+		})
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }

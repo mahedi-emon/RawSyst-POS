@@ -4,8 +4,8 @@
 |---|---|
 | **Last updated** | 2026-08-15 |
 | **Branch** | `main` @ `7fb0689` |
-| **Backend** | 60 Go files, ~24,000 lines, 302 tests, 28 migrations |
-| **HTTP routes live** | 30 — auth, onboarding, platform, POS, sync, statements, VAT return, catalogue |
+| **Backend** | 63 Go files, ~24,800 lines, 311 tests, 29 migrations |
+| **HTTP routes live** | 31 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
 | **Front ends** | none started |
 

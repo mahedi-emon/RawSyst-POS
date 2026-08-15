@@ -73,10 +73,20 @@ type Submission struct {
 	ICV         int64
 	Route       Route
 
-	// SignedXML is the document as the TERMINAL signed it. The server relays
-	// bytes it cannot produce: the stamp was made on the device with a key this
-	// process has never held and never will (E1.3, H1).
+	// SignedXML is the canonical signed UBL 2.1 DOCUMENT, as built and signed
+	// on the terminal. This is what ZATCA receives.
+	//
+	// The server relays bytes it cannot produce: the document was signed on the
+	// device with a key this process has never held and never will (E1.3, H1).
 	SignedXML []byte
+
+	// Stamp is the ECDSA signature over that document, and QRTLV the payload
+	// derived from it for the receipt. Carried alongside rather than in place
+	// of the document — they are three different things, and sending a
+	// signature where a document belongs would post a stamp attached to
+	// nothing.
+	Stamp string
+	QRTLV string
 }
 
 // Response is what came back.

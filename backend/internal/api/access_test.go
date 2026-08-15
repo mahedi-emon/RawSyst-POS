@@ -88,8 +88,9 @@ func newHarness(t *testing.T) *harness {
 	// rather than ZATCA's document format. The production hasher refuses
 	// outright until the format is verified — see zatca.HasherFor.
 	rules := registry.New(pool, false)
+	submitter := zatca.SubmitterFor(false)
 	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.DevelopmentHasher{})).
-		WithPool(pool).WithRegistry(rules)
+		WithPool(pool).WithRegistry(rules).WithSubmitter(submitter)
 
 	// The same registration production makes: replayed sales go through the
 	// sale service, not through a second implementation.

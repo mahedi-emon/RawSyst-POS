@@ -656,18 +656,27 @@ func TestAnInvoiceIsQueuedForSubmissionOnce(t *testing.T) {
 
 // stampInvoice stands in for the TERMINAL having signed the document.
 //
-// A placeholder byte string, never a real or plausible stamp: the submitter
-// only checks that a stamp is present before relaying it, and inventing
-// cryptography here would be exactly what the P1 gate exists to prevent.
+// All three artefacts, because they are three different things: the signed
+// document, the stamp over it, and the QR derived from that. The submitter
+// needs the document; earlier it was handed the stamp, which would have posted
+// a signature with nothing attached.
+//
+// Obvious placeholders, never plausible cryptography — inventing that is
+// exactly what the P1 gate exists to prevent.
 func stampInvoice(t *testing.T, h *harness, f *shopFixture, invoiceID string) {
 	t.Helper()
 	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
-		_, e := tx.Exec(t.Context(),
-			`UPDATE zatca_invoice SET stamp = $2 WHERE invoice_id = $1`,
-			invoiceID, "terminal-signed-placeholder")
+		_, e := tx.Exec(t.Context(), `
+			UPDATE zatca_invoice
+			SET xml = $2, stamp = $3, qr_tlv = $4
+			WHERE invoice_id = $1`,
+			invoiceID,
+			"<placeholder-signed-document/>",
+			"terminal-signed-placeholder",
+			"placeholder-qr-tlv")
 		return e
 	}); err != nil {
-		t.Fatalf("record a terminal stamp: %v", err)
+		t.Fatalf("record a terminal signed document: %v", err)
 	}
 }
 

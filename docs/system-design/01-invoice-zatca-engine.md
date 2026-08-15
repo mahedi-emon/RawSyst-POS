@@ -7,6 +7,43 @@
 
 ---
 
+## 0. The terminal hands its document back
+
+> **Implemented 2026-08-16.** `PUT /api/v1/pos/sales/{invoiceID}/signed-document`
+
+Signing is local, but the server allocates the ICV and the PIH — those are a
+per-terminal sequence only one authority can arbitrate. So the order is
+necessarily:
+
+```
+server    allocates ICV + PIH             POST /api/v1/pos/sales
+terminal  builds UBL, signs, derives QR   LOCAL; key never leaves the device
+terminal  uploads document + stamp + QR   PUT  …/signed-document
+worker    submits to ZATCA                gated until the format is verified
+```
+
+Three artefacts, three columns, kept distinct because they are three different
+things: `xml` is the canonical signed document ZATCA receives, `stamp` is the
+ECDSA signature over it, and `qr_tlv` is the payload derived from that
+signature for the receipt. Sending a signature where a document belongs posts a
+stamp attached to nothing.
+
+All three are **write-once** (migration `0029`). A document that could be
+replaced after signing is exactly the substitution a tamper-evident chain
+exists to catch — the stamp would still verify against a document nobody kept.
+
+The upload validates nothing against ZATCA's standard, because the standard is
+not yet verified. It stores what the terminal produced and reports plainly
+whether submission is available.
+
+**Still open (P1).** The chain hash. §3 defines it as SHA-256 over the
+canonical signed XML, and the canonicalisation is one of the values still
+marked `__VERIFY__` in the registry. The server allocates a hash through the
+stubbed `DocumentHasher`; reconciling that with the terminal's belongs to the
+verification pass and must not be improvised.
+
+---
+
 ## 1. The decision that shapes everything: signing is local
 
 The blueprint contradicts itself. Resolving it wrong means rebuilding the POS.

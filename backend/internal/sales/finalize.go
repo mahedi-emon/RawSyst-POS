@@ -151,6 +151,12 @@ type Service struct {
 	// same reason: a caller that has already resolved them can drive Finalize
 	// directly.
 	rules *registry.Service
+
+	// submitter is read only to report whether submission is available. The
+	// service never submits — that is the worker's job — but a terminal
+	// uploading a signed document deserves a truthful answer about whether
+	// anything can be sent.
+	submitter zatca.Submitter
 }
 
 func NewService(chain *zatca.Chain) *Service {
