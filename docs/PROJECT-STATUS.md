@@ -4,8 +4,9 @@
 |---|---|
 | **Last updated** | 2026-08-15 |
 | **Branch** | `main` @ `7fb0689` |
-| **Backend** | 51 Go files, ~21,200 lines, 257 tests, 26 migrations |
-| **HTTP routes live** | 28 — auth, onboarding, platform, POS, statements, VAT return **and the catalogue** |
+| **Backend** | 60 Go files, ~24,000 lines, 302 tests, 28 migrations |
+| **HTTP routes live** | 30 — auth, onboarding, platform, POS, sync, statements, VAT return, catalogue |
+| **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
 | **Front ends** | none started |
 
 > Percentages below are estimates of **remaining engineering effort**, not of files
@@ -20,7 +21,7 @@
 | Layer | Complete | Note |
 |---|---:|---|
 | **System design + UI/UX specification** | **100%** | 15 documents, design system, clickable prototype |
-| **Phase 1 backend** | **~98%** | Every gap I can close is closed. The ZATCA document format (P1) is blocked on verification, not on code. |
+| **Phase 1 backend** | **~100%** | Sync replay and background jobs done. Everything that remains is blocked on P1 verification or belongs to Phase 2. |
 | **Phase 1 front ends** (Tauri POS, Next.js back-office, PWA) | **0%** | Not started, but no longer blocked |
 | **Phase 1 overall** | **~52%** | Backend is roughly 55% of Phase 1 effort |
 | **Whole product (Phases 1–5)** | **~15%** | Phase 1 is roughly 35% of the total |
@@ -52,6 +53,8 @@ Each of these has integration tests that fail loudly if the guarantee breaks.
 | **POS HTTP surface** | `api/pos_handlers.go` | A till cannot name its own company, store or EGS unit |
 | **Cash sessions + X/Z** | `shift`, `0024` | Expected cash derived; blind close real; a Z happens once |
 | **Financial statements** | `reports` | Balance sheet balances **including** current earnings |
+| **Sync replay** | `sales/replay.go` | Offline sales go through the SAME finalizer as online ones |
+| **Background jobs** | `jobs`, `cmd/worker`, `0027`–`0028` | Retry, per-terminal ordering, 12/24/72h escalation |
 | **VAT return** | `vat` | Reconciles to the Output VAT account; declares what it omits |
 | **Posting rules as data** | `accounting/rules.go`, `0025` | All twelve C9.2 rules; resolved at the transaction date |
 | **Catalogue + variant matrix** | `catalog` | Regeneration adds only what is missing |

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
@@ -228,6 +229,18 @@ func (s *Service) Finalize(
 	revenue, cogs, err := s.post(ctx, tx, term, sale, computed, invoiceID, costed.Variance)
 	if err != nil {
 		return Finalized{}, err
+	}
+
+	// The obligation to report is written in the SAME transaction as the
+	// invoice. A crash between the two would leave an invoice nobody knew to
+	// submit — an unreported document that no queue, no alert and no dashboard
+	// would ever mention, which is exactly the silent exposure E1.2 exists to
+	// prevent.
+	if term.DeviceID != nil {
+		if err := jobs.QueueSubmission(
+			ctx, tx, term.TenantID, invoiceID, *term.DeviceID); err != nil {
+			return Finalized{}, err
+		}
 	}
 
 	return Finalized{

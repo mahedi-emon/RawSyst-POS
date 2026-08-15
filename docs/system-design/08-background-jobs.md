@@ -1,5 +1,18 @@
 # 08 — Background Jobs
 
+> **Implementation status (2026-08-16).** The queue, the worker binary, the
+> retry/backoff schedule, the 12/24/72-hour escalation and the ZATCA client
+> seam are **built** — migrations `0027`–`0028`, package `internal/jobs`,
+> `cmd/worker`. Of the job kinds in §3 only `zatca.submit` and the staleness
+> sweep are implemented; the rest are registered as they are built.
+>
+> **The ZATCA transport is deliberately not implemented.** `zatca.Submitter`
+> refuses in every environment until the document format is verified against
+> the published standard (the P1 gate). Invoices queue, attempts are recorded
+> as `not_attempted`, and the escalation fires — so a growing backlog is
+> visible and truthful. Nothing is ever marked reported or cleared without a
+> verified integration.
+
 Blueprint H9 states the purpose plainly: background workers exist "so none of
 these ever block a cashier's checkout screen." Blueprint A2 #8 makes it a
 principle — heavy reports run asynchronously and the POS never freezes.
