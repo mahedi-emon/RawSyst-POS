@@ -161,3 +161,25 @@ func (s *Server) handleCashFlow(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// --- GET /api/v1/reports/vat-return -------------------------------------
+
+func (s *Server) handleVATReturn(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	from, to, err := reportPeriod(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.vat.Prepare(r.Context(), scope.TenantID, scope.CompanyID, from, to)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}

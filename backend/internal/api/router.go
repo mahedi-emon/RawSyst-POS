@@ -23,6 +23,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 )
 
 // Access says who may reach a route.
@@ -67,6 +68,7 @@ type Server struct {
 	provisioning *provisioning.Service
 	sales        *sales.Service
 	reports      *reports.Service
+	vat          *vat.Service
 	health       func() error
 	version      string
 }
@@ -78,6 +80,7 @@ func NewServer(
 	prov *provisioning.Service,
 	salesSvc *sales.Service,
 	reportSvc *reports.Service,
+	vatSvc *vat.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -88,6 +91,7 @@ func NewServer(
 		provisioning: prov,
 		sales:        salesSvc,
 		reports:      reportSvc,
+		vat:          vatSvc,
 		health:       health,
 		version:      version,
 	}
@@ -159,6 +163,12 @@ func (s *Server) Routes() []Route {
 			s.handleBalanceSheet, ""},
 		{http.MethodGet, "/api/v1/reports/cash-flow", AccessPermission, "accounting.view",
 			s.handleCashFlow, ""},
+
+		// Preparation, never filing. The official form layout is a regulatory
+		// value and no verified rule for it exists, so these totals are not
+		// mapped onto numbered boxes.
+		{http.MethodGet, "/api/v1/reports/vat-return", AccessPermission, "accounting.view",
+			s.handleVATReturn, ""},
 
 		// --- platform control plane ---
 		{http.MethodPost, "/api/v1/platform/tenants", AccessSuperAdmin, "",

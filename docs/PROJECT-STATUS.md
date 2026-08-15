@@ -4,8 +4,8 @@
 |---|---|
 | **Last updated** | 2026-08-15 |
 | **Branch** | `main` @ `69371d8` |
-| **Backend** | 42 Go files, ~17,600 lines, 225 tests, 24 migrations |
-| **HTTP routes live** | 21 — auth, onboarding, platform, POS, **and the financial statements** |
+| **Backend** | 44 Go files, ~18,400 lines, 231 tests, 24 migrations |
+| **HTTP routes live** | 22 — auth, onboarding, platform, POS, statements **and the VAT return** |
 | **Front ends** | none started |
 
 > Percentages below are estimates of **remaining engineering effort**, not of files
@@ -20,9 +20,9 @@
 | Layer | Complete | Note |
 |---|---:|---|
 | **System design + UI/UX specification** | **100%** | 15 documents, design system, clickable prototype |
-| **Phase 1 backend** | **~80%** | Engines, POS surface, shift management and the four statements done; VAT return, posting rules as data and catalog CRUD remain |
+| **Phase 1 backend** | **~85%** | Engines, POS surface, shift management, statements and the VAT return done; posting rules as data and catalog CRUD remain |
 | **Phase 1 front ends** (Tauri POS, Next.js back-office, PWA) | **0%** | Not started, but no longer blocked |
-| **Phase 1 overall** | **~44%** | Backend is roughly 55% of Phase 1 effort |
+| **Phase 1 overall** | **~47%** | Backend is roughly 55% of Phase 1 effort |
 | **Whole product (Phases 1–5)** | **~15%** | Phase 1 is roughly 35% of the total |
 
 **Phase 1's definition of done:** a Saudi shop can legally trade on it.
@@ -82,7 +82,7 @@ fixing it involves.
 | ~~P2~~ | ~~**No HTTP endpoints for POS.**~~ **DONE** (`0c63d14`). Three routes: `POST /api/v1/pos/sales`, `POST /api/v1/pos/returns`, `GET /api/v1/pos/sales/{id}`. A till never names its company, store or EGS unit — all resolved from the registered device — and the VAT rate and currency are resolved server-side from the registry at the transaction date. | — | — |
 | ~~P3~~ | ~~**No shift / cash session management.**~~ **DONE** (`98b26d3`). Cash sessions, X/Z reports, blind close, cash movements. Sales belong to a session by foreign key, not a time window; a till with no open session cannot sell. | — | — |
 | ~~P4~~ | ~~**No financial reports.**~~ **DONE** (`69371d8`). Trial Balance, P&L, Balance Sheet and Cash Flow over four routes, gated on `accounting.view`. Balance sheet includes current earnings; cash flow is direct-method and says so. | — | — |
-| **P5** | **No VAT return preparation.** | The single most important thing a Saudi shop needs monthly. | Aggregate output/input tax by treatment over a period, resolved at transaction date through the registry. |
+| ~~P5~~ | ~~**No VAT return preparation.**~~ **DONE**. Totals by treatment over a period, reconciled against the Output VAT account. Preparation only: the official form layout is unverified, so nothing is mapped to numbered boxes, and input tax is reported as absent rather than zero. | — | — |
 | **P6** | **No front ends at all.** No Tauri POS, no Next.js back-office, no PWA. | There is no product a user can see. | The largest single remaining piece. Tauri POS first — it is the compliance-critical surface. |
 
 ### 🟠 Correctness gaps — real defects, currently latent
@@ -117,7 +117,7 @@ The order matters: each item is easier once the one above it exists.
 1. ~~**P2** — POS HTTP endpoints~~ **done**; front-end work is unblocked
 2. ~~**P3** — shift management + X/Z reports~~ **done**
 3. **P7** — posting rules as data, and the remaining 8 of 12 rules
-4. ~~**P4**~~ **done**; **P5** — VAT return preparation
+4. ~~**P4**, **P5**~~ **done**
 5. **P14** — invoice numbering engine + receipt templates
 6. **P1** — ZATCA XML/QR *(needs the verification pass first — start that now, it has a lead time)*
 7. **P6** — Tauri POS, then Next.js back-office, then PWA

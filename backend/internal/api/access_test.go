@@ -34,6 +34,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -88,7 +89,7 @@ func newHarness(t *testing.T) *harness {
 	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.DevelopmentHasher{})).
 		WithPool(pool).WithRegistry(rules)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool),
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules),
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
