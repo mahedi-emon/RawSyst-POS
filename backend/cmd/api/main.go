@@ -21,6 +21,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
@@ -85,7 +86,7 @@ func run() error {
 	chain := zatca.NewChain(pool, zatca.HasherFor(cfg.Env.IsProduction()))
 	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules)
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc,
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool),
 		func() error { return pool.Health(ctx) }, version)
 
 	handler := srv.Handler(

@@ -21,6 +21,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 )
 
@@ -65,6 +66,7 @@ type Server struct {
 	authz        *identity.Authorizer
 	provisioning *provisioning.Service
 	sales        *sales.Service
+	reports      *reports.Service
 	health       func() error
 	version      string
 }
@@ -75,6 +77,7 @@ func NewServer(
 	authz *identity.Authorizer,
 	prov *provisioning.Service,
 	salesSvc *sales.Service,
+	reportSvc *reports.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -84,6 +87,7 @@ func NewServer(
 		authz:        authz,
 		provisioning: prov,
 		sales:        salesSvc,
+		reports:      reportSvc,
 		health:       health,
 		version:      version,
 	}
@@ -141,6 +145,20 @@ func (s *Server) Routes() []Route {
 			s.handleCreateReturn, ""},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}", AccessPermission, "sales.view",
 			s.handleGetSale, ""},
+
+		// --- financial statements ---
+		//
+		// Gated on accounting.view, not sales.view. A statement exposes the whole
+		// company position — margin, cash, what is owed — which is precisely the
+		// information a cashier is deliberately kept away from.
+		{http.MethodGet, "/api/v1/reports/trial-balance", AccessPermission, "accounting.view",
+			s.handleTrialBalance, ""},
+		{http.MethodGet, "/api/v1/reports/profit-and-loss", AccessPermission, "accounting.view",
+			s.handleProfitAndLoss, ""},
+		{http.MethodGet, "/api/v1/reports/balance-sheet", AccessPermission, "accounting.view",
+			s.handleBalanceSheet, ""},
+		{http.MethodGet, "/api/v1/reports/cash-flow", AccessPermission, "accounting.view",
+			s.handleCashFlow, ""},
 
 		// --- platform control plane ---
 		{http.MethodPost, "/api/v1/platform/tenants", AccessSuperAdmin, "",
