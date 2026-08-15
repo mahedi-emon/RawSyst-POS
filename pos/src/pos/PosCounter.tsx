@@ -24,7 +24,8 @@ import { useMemo, useState } from 'react';
 import { scan } from '../api/pos';
 import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
-import { useQueue } from '../offline/useQueue';
+import { useTerminal } from '../offline/useTerminal';
+import { describeVariant, type CachedVariant } from '../offline/catalogue';
 import { QueueStatus } from '../ui/QueueStatus';
 import {
   emptyLine,
@@ -48,7 +49,7 @@ const DISPLAY_RATE = '0.15';
 
 export function PosCounter() {
   const { can, me, client } = useAuth();
-  const queue = useQueue();
+  const terminal = useTerminal();
 
   const [lines, setLines] = useState<CartLine[]>([]);
   const [tenders, setTenders] = useState<CartTender[]>([]);
@@ -61,37 +62,52 @@ export function PosCounter() {
   const canFinish =
     lines.length > 0 && settled(totals.totalInclusive, tenders) && !busy;
 
+  // The scan path. Local cache FIRST, network only as a fallback.
+  //
+  // Not "local if offline". Asking the server first would make every scan wait
+  // out a timeout whenever the connection is merely slow, which is the common
+  // case in a shop with poor signal and far worse for a queue of customers
+  // than a price that is a day old. The cache is a cache: the server reprices
+  // every line on replay, so a stale row costs a corrected receipt, never a
+  // wrong invoice or a wrong journal.
+  //
+  // The network is still tried when the cache misses, because that covers a
+  // product added since the last catalogue pull.
   async function addByScan(code: string) {
     const barcode = code.trim();
     if (!barcode) return;
     setNotice(null);
     setScanInput('');
 
+    const cached = await terminal.catalogue?.lookup(barcode);
+    if (cached) {
+      addVariant(cached);
+      return;
+    }
+
     try {
       const variant = await scan(client, barcode);
-      if (!variant.is_active) {
-        setNotice('That item has been withdrawn from sale.');
-        return;
-      }
-      setLines((prev) => [
-        ...prev,
-        emptyLine({
-          variantId: variant.id,
-          sku: variant.sku,
-          description: describe(variant.sku, variant.attributes),
-          unitPrice: variant.price,
-          // Treatment comes from the product; the server validates it against
-          // the country's registry list on every sale regardless.
-          taxTreatment: 'standard',
-        }),
-      ]);
+      addVariant({
+        id: variant.id,
+        productId: '',
+        sku: variant.sku,
+        barcode,
+        name: '',
+        nameAr: '',
+        attributes: variant.attributes,
+        price: variant.price,
+        taxTreatment: 'standard',
+        isActive: variant.is_active,
+        updatedAt: '',
+      });
     } catch (err) {
       if (err instanceof Offline) {
-        // A real limitation, said plainly. Looking a barcode up needs the
-        // catalogue, and the catalogue is not cached locally yet.
+        // Offline AND not cached. Says which, because the two have different
+        // answers: one waits for the network, the other is a product this
+        // terminal has genuinely never been told about.
         setNotice(
-          'This till cannot reach the catalogue right now, so barcodes cannot ' +
-            'be looked up. Sales already in the cart are safe.',
+          `${barcode} is not in this terminal's catalogue, and the server ` +
+            'cannot be reached to look it up. Sales already in the cart are safe.',
         );
       } else if (err instanceof RequestFailed && err.status === 404) {
         setNotice(`Nothing in this catalogue carries the barcode ${barcode}.`);
@@ -101,12 +117,33 @@ export function PosCounter() {
     }
   }
 
+  function addVariant(v: CachedVariant) {
+    if (!v.isActive) {
+      // Distinct from "not found". A withdrawn item is one the cashier is
+      // holding and cannot sell; an unknown barcode is one they have probably
+      // scanned by mistake.
+      setNotice('That item has been withdrawn from sale.');
+      return;
+    }
+    setLines((prev) => [
+      ...prev,
+      emptyLine({
+        variantId: v.id,
+        sku: v.sku,
+        description: describeVariant(v),
+        unitPrice: v.price,
+        // The server validates the treatment against the country's registry
+        // list on every sale regardless of what the cache says.
+        taxTreatment: v.taxTreatment || 'standard',
+      }),
+    ]);
+  }
   async function finishSale() {
     if (!canFinish || !me) return;
     setBusy(true);
     setNotice(null);
     try {
-      await queue.record(buildPayload(lines, tenders, me.user_id));
+      await terminal.record(buildPayload(lines, tenders, me.user_id));
       // The sale is durable at this point. Whether it has reached the server
       // is a separate question the queue answers on its own.
       setLines([]);
@@ -208,7 +245,7 @@ export function PosCounter() {
       </section>
 
       <aside className="counter__totals" aria-label="Totals and payment">
-        <QueueStatus queue={queue} />
+        <QueueStatus terminal={terminal} />
 
         <dl className="totals">
           <div>
@@ -280,11 +317,6 @@ export function PosCounter() {
   );
 }
 
-/** A readable name from the SKU and its attributes. */
-function describe(sku: string, attributes: Record<string, string>): string {
-  const parts = Object.values(attributes ?? {});
-  return parts.length > 0 ? parts.join(' · ') : sku;
-}
 
 /** Builds exactly what POST /api/v1/sync/push expects.
  *

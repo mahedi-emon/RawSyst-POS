@@ -241,40 +241,13 @@ func (s *Server) handleWithdrawVariant(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleScanBarcode(w http.ResponseWriter, r *http.Request) {
 	a := actor.From(r.Context())
 
-	// company_id is OPTIONAL here, unlike on the reporting routes.
-	//
-	// A till knows its barcode and nothing else. Everything about where it is
-	// trading — company, store, EGS unit, warehouse — is resolved from the
-	// registered device, because a terminal that could name its own company
-	// could read another company's catalogue. Requiring the till to supply it
-	// would mean either teaching it a fact it has no way to learn, or letting
-	// it assert one.
-	//
-	// A back-office caller has no device and names the company explicitly.
-	var companyID uuid.UUID
-	if raw := r.URL.Query().Get("company_id"); raw != "" {
-		id, err := parseUUID(raw, "company_id")
-		if err != nil {
-			httpx.Error(w, r, err)
-			return
-		}
-		if !a.CanAccessCompany(id) {
-			httpx.Error(w, r, errs.New(errs.CodeNotFound, "That company was not found."))
-			return
-		}
-		companyID = id
-	} else {
-		if a.DeviceID == uuid.Nil {
-			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
-				"Say which company to search, or scan from a registered terminal."))
-			return
-		}
-		id, err := s.catalog.CompanyForDevice(r.Context(), a.TenantID, a.DeviceID)
-		if err != nil {
-			httpx.Error(w, r, err)
-			return
-		}
-		companyID = id
+	// company_id is OPTIONAL here, unlike on the reporting routes: a till knows
+	// its barcode and nothing else, so where it is trading comes from the
+	// registered device. See companyFromRequestOrDevice.
+	companyID, err := s.companyFromRequestOrDevice(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
 	}
 
 	barcode := r.URL.Query().Get("barcode")
@@ -290,4 +263,88 @@ func (s *Server) handleScanBarcode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+// --- GET /api/v1/catalog/snapshot ---------------------------------------
+
+// handleCatalogSnapshot serves the catalogue a till caches to scan offline.
+//
+// This exists so that a cashier can start a brand new sale with the network
+// down. Without a local catalogue the terminal can finish a sale it already
+// has, but cannot look a barcode up, which means it cannot begin one — and a
+// till that can only continue is not offline-capable in any way a shop cares
+// about.
+//
+// Cursored on (since, since_id) rather than an offset. The till stores the
+// last pair it saw and passes it back, so the same route serves the first full
+// download and every later delta. Paging by offset would silently skip or
+// repeat rows when the catalogue changes between pages, which on a till means
+// a product that cannot be scanned.
+func (s *Server) handleCatalogSnapshot(w http.ResponseWriter, r *http.Request) {
+	a := actor.From(r.Context())
+
+	companyID, err := s.companyFromRequestOrDevice(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var sinceID *uuid.UUID
+	if raw := r.URL.Query().Get("since_id"); raw != "" {
+		id, e := parseUUID(raw, "since_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		sinceID = &id
+	}
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, _ = strconv.Atoi(raw)
+	}
+
+	items, err := s.catalog.Snapshot(
+		r.Context(), a.TenantID, companyID,
+		r.URL.Query().Get("since"), sinceID, limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// The cursor to send back next time. Absent when nothing came back, so a
+	// caught-up till keeps the cursor it already has rather than resetting.
+	out := map[string]any{"items": items}
+	if n := len(items); n > 0 {
+		out["next_since"] = items[n-1].UpdatedAt
+		out["next_since_id"] = items[n-1].ID
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// companyFromRequestOrDevice resolves which company a catalogue call is about.
+//
+// Named explicitly by a back-office caller, resolved from the registered
+// device for a till. A terminal is never allowed to assert one: it and another
+// company's terminal share a tenant, so row-level security would not catch the
+// substitution.
+func (s *Server) companyFromRequestOrDevice(r *http.Request) (uuid.UUID, error) {
+	a := actor.From(r.Context())
+
+	if raw := r.URL.Query().Get("company_id"); raw != "" {
+		id, err := parseUUID(raw, "company_id")
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if !a.CanAccessCompany(id) {
+			return uuid.Nil, errs.New(errs.CodeNotFound, "That company was not found.")
+		}
+		return id, nil
+	}
+
+	if a.DeviceID == uuid.Nil {
+		return uuid.Nil, errs.New(errs.CodeInvalidInput,
+			"Say which company to search, or scan from a registered terminal.")
+	}
+	return s.catalog.CompanyForDevice(r.Context(), a.TenantID, a.DeviceID)
 }

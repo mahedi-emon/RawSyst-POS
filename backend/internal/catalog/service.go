@@ -240,3 +240,81 @@ func (s *Service) CompanyForDevice(
 	})
 	return companyID, err
 }
+
+// SellableVariant is one line of the catalogue a till caches locally.
+//
+// Only what a terminal needs to ring up a sale: what it is called, what it
+// scans as, what it costs the customer, and how it is taxed. Cost price and
+// margin are absent — a Cashier is deliberately denied catalog.view_cost_price,
+// and a cache that carried cost would put it on every till in the shop.
+type SellableVariant struct {
+	ID           string `json:"id"`
+	ProductID    string `json:"product_id"`
+	SKU          string `json:"sku"`
+	Barcode      string `json:"barcode,omitempty"`
+	Name         string `json:"name"`
+	NameAr       string `json:"name_ar,omitempty"`
+	Attributes   string `json:"attributes"`
+	Price        string `json:"price"`
+	PriceFloor   string `json:"price_floor,omitempty"`
+	TaxTreatment string `json:"tax_treatment"`
+	IsActive     bool   `json:"is_active"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
+// Snapshot returns the sellable catalogue for a company, cursored.
+//
+// Ordered by updated_at then id, and the caller passes back the last pair it
+// saw. That makes the same call serve two jobs: a first full download, and a
+// later delta of only what has changed since. A till that has been off for a
+// week pulls the difference rather than the whole catalogue.
+//
+// WITHDRAWN variants are included, not filtered out. A till holding a stale
+// cache must be told that something it can still see has been taken off sale —
+// omitting it would leave the row on the terminal forever, and a cashier would
+// keep selling it.
+func (s *Service) Snapshot(
+	ctx context.Context, tenantID, companyID uuid.UUID,
+	since string, sinceID *uuid.UUID, limit int,
+) ([]SellableVariant, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+
+	out := []SellableVariant{}
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT v.id, v.product_id, v.sku, coalesce(v.barcode, ''),
+			       p.name, coalesce(p.translations->>'ar', ''),
+			       v.attributes::text,
+			       v.price_retail::text, coalesce(v.price_floor::text, ''),
+			       p.tax_treatment, v.is_active,
+			       to_char(v.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.USOF:00')
+			FROM variant v
+			JOIN product p ON p.id = v.product_id
+			WHERE v.company_id = $1
+			  AND p.lifecycle <> 'archived'
+			  AND ($2::timestamptz IS NULL
+			       OR v.updated_at > $2::timestamptz
+			       OR (v.updated_at = $2::timestamptz AND v.id > $3::uuid))
+			ORDER BY v.updated_at, v.id
+			LIMIT $4`,
+			companyID, nullText(since), sinceID, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var v SellableVariant
+			if e := rows.Scan(&v.ID, &v.ProductID, &v.SKU, &v.Barcode,
+				&v.Name, &v.NameAr, &v.Attributes, &v.Price, &v.PriceFloor,
+				&v.TaxTreatment, &v.IsActive, &v.UpdatedAt); e != nil {
+				return e
+			}
+			out = append(out, v)
+		}
+		return rows.Err()
+	})
+	return out, err
+}

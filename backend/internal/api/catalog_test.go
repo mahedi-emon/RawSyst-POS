@@ -10,6 +10,8 @@
 package api
 
 import (
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -426,5 +428,126 @@ func TestATillCannotScanAnotherCompanysCatalogue(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+// The catalogue a till caches so it can scan with the network down.
+//
+// This is the difference between a terminal that can finish a sale already in
+// the cart and one that can start a new one, which is the only definition of
+// offline-capable a shop would accept.
+func TestSnapshotServesTheTillTheCatalogue(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	ctx := t.Context()
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx,
+			`UPDATE variant SET barcode = '6281000000017' WHERE id = $1`, f.variantID)
+		return e
+	}); err != nil {
+		t.Fatalf("give the variant a barcode: %v", err)
+	}
+
+	resp := h.do(t, "GET", "/api/v1/catalog/snapshot", f.token, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("snapshot: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	body := decodeJSON(t, resp)
+
+	items, _ := body["items"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("snapshot returned nothing; the till would have an empty catalogue")
+	}
+
+	var found map[string]any
+	for _, raw := range items {
+		row, _ := raw.(map[string]any)
+		if row["id"] == f.variantID.String() {
+			found = row
+		}
+	}
+	if found == nil {
+		t.Fatalf("the seeded variant was not in the snapshot")
+	}
+
+	if found["barcode"] != "6281000000017" {
+		t.Errorf("barcode came back as %v; a till cannot scan without it", found["barcode"])
+	}
+	// Money crosses as a string here exactly as it does everywhere else.
+	if _, ok := found["price"].(string); !ok {
+		t.Errorf("price came back as %T, not a string", found["price"])
+	}
+
+	// The cursor the till stores so its next pull is a delta.
+	if body["next_since"] == nil || body["next_since_id"] == nil {
+		t.Errorf("no cursor returned; every pull would download the whole catalogue")
+	}
+}
+
+// A Cashier holds catalog.view and is denied catalog.view_cost_price. A cache
+// that carried cost would put it on every till in the shop and defeat the
+// masking the permission exists to provide.
+func TestSnapshotNeverCarriesCostPrice(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	resp := h.do(t, "GET", "/api/v1/catalog/snapshot", f.token, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("snapshot: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+
+	body := strings.ToLower(readBody(t, resp))
+	for _, leak := range []string{"cost", "margin"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("the snapshot mentions %q; a till must never hold it", leak)
+		}
+	}
+}
+
+// The cursor is what makes a later pull a delta rather than a full download.
+func TestSnapshotCursorReturnsOnlyWhatChanged(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	first := decodeJSON(t, h.do(t, "GET", "/api/v1/catalog/snapshot", f.token, nil))
+	since, _ := first["next_since"].(string)
+	sinceID, _ := first["next_since_id"].(string)
+	if since == "" || sinceID == "" {
+		t.Fatalf("no cursor to follow")
+	}
+
+	path := "/api/v1/catalog/snapshot?since=" + url.QueryEscape(since) +
+		"&since_id=" + url.QueryEscape(sinceID)
+	second := decodeJSON(t, h.do(t, "GET", path, f.token, nil))
+
+	items, _ := second["items"].([]any)
+	if len(items) != 0 {
+		t.Errorf("a caught-up till was sent %d rows again", len(items))
+	}
+}
+
+// The probe a terminal uses to decide whether it can sync.
+//
+// Authenticated deliberately: what a till needs to know before draining a day
+// of takings is not "is there a network" but "can I sync right now".
+func TestPingAnswersOnlyASignedInTerminal(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	resp := h.do(t, "GET", "/api/v1/meta/ping", f.token, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("ping returned %d, want 204 — the terminal treats anything "+
+			"else as unreachable", resp.StatusCode)
+	}
+	// An empty body is the point: a captive portal returning 200 with a login
+	// page must not be mistaken for us.
+	if body := readBody(t, resp); body != "" {
+		t.Errorf("ping returned a body %q; it should be empty", body)
+	}
+
+	unauth := h.do(t, "GET", "/api/v1/meta/ping", "", nil)
+	if unauth.StatusCode != http.StatusUnauthorized {
+		t.Errorf("ping without a token returned %d, want 401", unauth.StatusCode)
 	}
 }

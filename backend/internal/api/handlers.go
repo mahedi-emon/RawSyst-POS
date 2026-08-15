@@ -267,3 +267,22 @@ func trimSpace(s string) string {
 	}
 	return s[start:end]
 }
+
+// --- GET /api/v1/meta/ping ----------------------------------------------
+
+// handlePing answers a terminal asking whether it can reach us.
+//
+// Authenticated on purpose, and 204 with no body on purpose.
+//
+// A reachability check that only opened a socket would report "online" while
+// holding an expired token, and the till would then discover the truth by
+// failing to sync a day of takings. Verifying the session IS the useful part:
+// what a POS needs to know is not "is there a network" but "can I sync right
+// now", and those differ exactly when it matters.
+//
+// No body, no business data, no work beyond the auth the middleware already
+// did. A terminal polling this every half-minute costs less than one product
+// search.
+func (s *Server) handlePing(w http.ResponseWriter, _ *http.Request) {
+	httpx.NoContent(w)
+}

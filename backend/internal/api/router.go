@@ -128,6 +128,10 @@ func (s *Server) Routes() []Route {
 			"returns the caller's own identity and permissions, so the client can shape its UI"},
 		{http.MethodPost, "/api/v1/auth/change-password", AccessAuthenticated, "", s.handleChangePassword,
 			"changes the caller's own password; the current password is re-verified"},
+		{http.MethodGet, "/api/v1/catalog/snapshot", AccessPermission, "catalog.view", s.handleCatalogSnapshot,
+			"the sellable catalogue a till caches to scan offline; cursored so later pulls are deltas"},
+		{http.MethodGet, "/api/v1/meta/ping", AccessAuthenticated, "", s.handlePing,
+			"a terminal asking whether it can sync; the token IS the answer, so no permission applies"},
 
 		// --- onboarding (blueprint A5) ---
 		//
