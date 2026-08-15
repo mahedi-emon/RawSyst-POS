@@ -1,20 +1,31 @@
 // The billing counter.
 //
 // The one screen a shop cannot trade without, so it is built for the counter
-// rather than for a demo: the search box holds focus because a barcode scanner
+// rather than for a demo: the scan box holds focus because a barcode scanner
 // is a keyboard, the cart is legible across a metre of floor, and the total is
-// the largest thing on the screen because it is what the customer looks at.
+// the largest thing on screen because it is what the customer leans over to
+// read.
+//
+// # Finishing a sale never waits on the network
+//
+// Finish writes the sale to local storage and returns. The push happens after,
+// and its success or failure changes nothing about whether the sale happened.
+// That ordering is the offline-first design: a cashier presses Finish, the
+// sale is durable, the customer leaves.
 //
 // # Permissions shape it, but do not secure it
 //
 // A cashier without `sales.discount` is not shown the discount control. That
-// is a courtesy — the server refuses the discount whatever the screen offered,
-// and QA gate M7 proves it. Blueprint A6.2: a hidden button is never treated
-// as real security.
+// is a courtesy — the server refuses whatever the screen offered, and QA gate
+// M7 proves it. Blueprint A6.2: a hidden button is never real security.
 
 import { useMemo, useState } from 'react';
 
+import { scan } from '../api/pos';
+import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
+import { useQueue } from '../offline/useQueue';
+import { QueueStatus } from '../ui/QueueStatus';
 import {
   emptyLine,
   outstanding,
@@ -23,57 +34,93 @@ import {
   type CartLine,
   type CartTender,
 } from './cart';
+import type { OfflineSalePayload } from '../offline/queue';
 
 /** The VAT rate shown while ringing up.
  *
  * For DISPLAY only. The server resolves the real rate from the Regulatory Rule
  * Registry at the transaction date and recomputes every figure — a till does
  * not get to be the authority on a legal value, and a terminal running an old
- * build must not quietly charge last year's rate.
+ * build must not quietly charge last year's rate. Where the two differ, the
+ * server is right.
  */
 const DISPLAY_RATE = '0.15';
 
 export function PosCounter() {
-  const { can } = useAuth();
+  const { can, me, client } = useAuth();
+  const queue = useQueue();
 
   const [lines, setLines] = useState<CartLine[]>([]);
   const [tenders, setTenders] = useState<CartTender[]>([]);
-  const [scan, setScan] = useState('');
+  const [scanInput, setScanInput] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const totals = useMemo(() => totalCart(lines, DISPLAY_RATE), [lines]);
   const owed = outstanding(totals.totalInclusive, tenders);
-  const canFinish = lines.length > 0 && settled(totals.totalInclusive, tenders);
+  const canFinish =
+    lines.length > 0 && settled(totals.totalInclusive, tenders) && !busy;
 
-  function addByScan(code: string) {
-    if (!code.trim()) return;
-    // Placeholder until the catalogue lookup is wired: the scan endpoint
-    // (GET /api/v1/catalog/scan) already exists server-side.
-    setLines((prev) => [
-      ...prev,
-      emptyLine({
-        variantId: code,
-        sku: code,
-        description: 'Scanned item',
-        unitPrice: '115.00',
-        taxTreatment: 'standard',
-      }),
-    ]);
-    setScan('');
+  async function addByScan(code: string) {
+    const barcode = code.trim();
+    if (!barcode) return;
+    setNotice(null);
+    setScanInput('');
+
+    try {
+      const variant = await scan(client, barcode);
+      if (!variant.is_active) {
+        setNotice('That item has been withdrawn from sale.');
+        return;
+      }
+      setLines((prev) => [
+        ...prev,
+        emptyLine({
+          variantId: variant.id,
+          sku: variant.sku,
+          description: describe(variant.sku, variant.attributes),
+          unitPrice: variant.price,
+          // Treatment comes from the product; the server validates it against
+          // the country's registry list on every sale regardless.
+          taxTreatment: 'standard',
+        }),
+      ]);
+    } catch (err) {
+      if (err instanceof Offline) {
+        // A real limitation, said plainly. Looking a barcode up needs the
+        // catalogue, and the catalogue is not cached locally yet.
+        setNotice(
+          'This till cannot reach the catalogue right now, so barcodes cannot ' +
+            'be looked up. Sales already in the cart are safe.',
+        );
+      } else if (err instanceof RequestFailed && err.status === 404) {
+        setNotice(`Nothing in this catalogue carries the barcode ${barcode}.`);
+      } else {
+        setNotice(err instanceof Error ? err.message : 'That scan did not work.');
+      }
+    }
   }
 
-  function changeQty(index: number, qty: string) {
-    setLines((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, qty } : l)),
-    );
-  }
-
-  function removeLine(index: number) {
-    setLines((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function clearSale() {
-    setLines([]);
-    setTenders([]);
+  async function finishSale() {
+    if (!canFinish || !me) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await queue.record(buildPayload(lines, tenders, me.user_id));
+      // The sale is durable at this point. Whether it has reached the server
+      // is a separate question the queue answers on its own.
+      setLines([]);
+      setTenders([]);
+      setNotice('Sale complete.');
+    } catch (err) {
+      setNotice(
+        err instanceof Error
+          ? err.message
+          : 'That sale could not be recorded on this terminal.',
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -83,21 +130,27 @@ export function PosCounter() {
           className="scan"
           onSubmit={(e) => {
             e.preventDefault();
-            addByScan(scan);
+            void addByScan(scanInput);
           }}
         >
           <input
             className="scan__input"
-            // A barcode scanner types and presses Enter, so this must hold
-            // focus for the whole sale. A cashier should never have to click
-            // the box between items.
+            // A barcode scanner types and presses Enter, so this holds focus
+            // for the whole sale. A cashier should never have to click the box
+            // between items.
             autoFocus
             placeholder="Scan or type a barcode"
-            value={scan}
-            onChange={(e) => setScan(e.target.value)}
+            value={scanInput}
+            onChange={(e) => setScanInput(e.target.value)}
             aria-label="Scan a barcode"
           />
         </form>
+
+        {notice && (
+          <p className="counter__notice" role="status" aria-live="polite">
+            {notice}
+          </p>
+        )}
 
         {lines.length === 0 ? (
           <p className="counter__empty">Scan an item to begin.</p>
@@ -123,17 +176,25 @@ export function PosCounter() {
                       className="cart__qty"
                       inputMode="decimal"
                       value={l.qty}
-                      onChange={(e) => changeQty(i, e.target.value)}
+                      onChange={(e) =>
+                        setLines((prev) =>
+                          prev.map((line, j) =>
+                            j === i ? { ...line, qty: e.target.value } : line,
+                          ),
+                        )
+                      }
                       aria-label={`Quantity of ${l.description}`}
                     />
                   </td>
-                  {/* Rendered as the string it is. Never parsed into a number
-                      on the way to the screen. */}
+                  {/* The string as it came from the server. Never parsed into
+                      a number on the way to the screen. */}
                   <td className="num">{l.unitPrice}</td>
                   <td>
                     <button
                       className="button button--quiet"
-                      onClick={() => removeLine(i)}
+                      onClick={() =>
+                        setLines((prev) => prev.filter((_, j) => j !== i))
+                      }
                       aria-label={`Remove ${l.description}`}
                     >
                       Remove
@@ -147,6 +208,8 @@ export function PosCounter() {
       </section>
 
       <aside className="counter__totals" aria-label="Totals and payment">
+        <QueueStatus queue={queue} />
+
         <dl className="totals">
           <div>
             <dt>Subtotal</dt>
@@ -161,7 +224,7 @@ export function PosCounter() {
             <dd className="num">{totals.totalInclusive}</dd>
           </div>
           {tenders.length > 0 && (
-            <div className={Number(owed) === 0 ? '' : 'totals__owed'}>
+            <div className={owed === '0.00' ? '' : 'totals__owed'}>
               <dt>Outstanding</dt>
               <dd className="num">{owed}</dd>
             </div>
@@ -169,30 +232,18 @@ export function PosCounter() {
         </dl>
 
         <div className="tenders">
-          <button
-            className="button button--large"
-            disabled={lines.length === 0}
-            onClick={() =>
-              setTenders((prev) => [
-                ...prev,
-                { method: 'cash', amount: owed },
-              ])
-            }
-          >
-            Cash
-          </button>
-          <button
-            className="button button--large"
-            disabled={lines.length === 0}
-            onClick={() =>
-              setTenders((prev) => [
-                ...prev,
-                { method: 'mada', amount: owed },
-              ])
-            }
-          >
-            Mada
-          </button>
+          {(['cash', 'mada'] as const).map((method) => (
+            <button
+              key={method}
+              className="button button--large"
+              disabled={lines.length === 0 || owed === '0.00'}
+              onClick={() =>
+                setTenders((prev) => [...prev, { method, amount: owed }])
+              }
+            >
+              {method === 'cash' ? 'Cash' : 'Mada'}
+            </button>
+          ))}
         </div>
 
         {/* Shown only to a cashier who holds the permission. The server
@@ -206,17 +257,61 @@ export function PosCounter() {
         <button
           className="button button--primary button--large"
           disabled={!canFinish}
+          onClick={() => void finishSale()}
           title={
             canFinish ? undefined : 'The payments must settle the sale exactly.'
           }
         >
-          Finish sale
+          {busy ? 'Recording…' : 'Finish sale'}
         </button>
 
-        <button className="button button--quiet" onClick={clearSale}>
+        <button
+          className="button button--quiet"
+          onClick={() => {
+            setLines([]);
+            setTenders([]);
+            setNotice(null);
+          }}
+        >
           Clear
         </button>
       </aside>
     </main>
   );
+}
+
+/** A readable name from the SKU and its attributes. */
+function describe(sku: string, attributes: Record<string, string>): string {
+  const parts = Object.values(attributes ?? {});
+  return parts.length > 0 ? parts.join(' · ') : sku;
+}
+
+/** Builds exactly what POST /api/v1/sync/push expects.
+ *
+ * Note what is absent: no company, no store, no warehouse, no VAT rate, no
+ * currency, no totals. The server resolves every one of those from the device
+ * and the registry. The terminal states only what it alone knows — which
+ * items, at what prices, paid how, and when.
+ */
+function buildPayload(
+  lines: CartLine[],
+  tenders: CartTender[],
+  cashierId: string,
+): OfflineSalePayload {
+  return {
+    invoice_uuid: crypto.randomUUID(),
+    doc_type: 'simplified',
+    issued_at: new Date().toISOString(),
+    cashier_id: cashierId,
+    prices_include_tax: true,
+    lines: lines.map((l) => ({
+      variant_id: l.variantId,
+      description: l.description,
+      qty: l.qty,
+      unit_price: l.unitPrice,
+      line_discount: l.lineDiscount,
+      tax_treatment: l.taxTreatment,
+    })),
+    tenders: tenders.map((t) => ({ method: t.method, amount: t.amount })),
+  };
 }

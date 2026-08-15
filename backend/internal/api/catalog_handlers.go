@@ -241,14 +241,40 @@ func (s *Server) handleWithdrawVariant(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleScanBarcode(w http.ResponseWriter, r *http.Request) {
 	a := actor.From(r.Context())
 
-	companyID, err := parseUUID(r.URL.Query().Get("company_id"), "company_id")
-	if err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	if !a.CanAccessCompany(companyID) {
-		httpx.Error(w, r, errs.New(errs.CodeNotFound, "That company was not found."))
-		return
+	// company_id is OPTIONAL here, unlike on the reporting routes.
+	//
+	// A till knows its barcode and nothing else. Everything about where it is
+	// trading — company, store, EGS unit, warehouse — is resolved from the
+	// registered device, because a terminal that could name its own company
+	// could read another company's catalogue. Requiring the till to supply it
+	// would mean either teaching it a fact it has no way to learn, or letting
+	// it assert one.
+	//
+	// A back-office caller has no device and names the company explicitly.
+	var companyID uuid.UUID
+	if raw := r.URL.Query().Get("company_id"); raw != "" {
+		id, err := parseUUID(raw, "company_id")
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		if !a.CanAccessCompany(id) {
+			httpx.Error(w, r, errs.New(errs.CodeNotFound, "That company was not found."))
+			return
+		}
+		companyID = id
+	} else {
+		if a.DeviceID == uuid.Nil {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"Say which company to search, or scan from a registered terminal."))
+			return
+		}
+		id, err := s.catalog.CompanyForDevice(r.Context(), a.TenantID, a.DeviceID)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		companyID = id
 	}
 
 	barcode := r.URL.Query().Get("barcode")

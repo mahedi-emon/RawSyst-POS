@@ -204,3 +204,25 @@ body {
   text-align: center;
   padding: 24px;
 }
+
+/* --- queue status --- */
+
+.queue {
+  margin: 0 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-inline-start: 3px solid var(--line);
+  background: var(--bg);
+  font-size: 14px;
+}
+.queue--ok   { border-inline-start-color: var(--accent); }
+.queue--warn { border-inline-start-color: var(--warn-line); background: var(--warn-bg); }
+.queue--bad  { border-inline-start-color: var(--danger); }
+
+.counter__notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-inline-start: 3px solid var(--accent);
+  background: var(--bg);
+  border-radius: 8px;
+}

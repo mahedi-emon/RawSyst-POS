@@ -361,3 +361,70 @@ func TestProductSearch(t *testing.T) {
 		t.Errorf("searching by code returned %d products, want 1", len(byCode))
 	}
 }
+
+// A till scans without knowing its company.
+//
+// Everything about where a terminal trades is resolved from the registered
+// device. Requiring the till to supply a company id would mean either teaching
+// it a fact it has no way to learn, or letting it assert one — and a terminal
+// that could name its own company could read another company's catalogue,
+// which row-level security would not catch because both belong to one tenant.
+func TestATillScansWithoutNamingItsCompany(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+	ctx := t.Context()
+
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx,
+			`UPDATE variant SET barcode = '6281000000017' WHERE id = $1`, f.variantID)
+		return e
+	}); err != nil {
+		t.Fatalf("give the variant a barcode: %v", err)
+	}
+
+	resp := h.do(t, "GET", "/api/v1/catalog/scan?barcode=6281000000017", f.token, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("scan: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	body := decodeJSON(t, resp)
+
+	if body["id"] != f.variantID.String() {
+		t.Errorf("scan returned %v, want the seeded variant", body["id"])
+	}
+	// Money crosses as a string, and stays one all the way to the till.
+	if _, ok := body["price"].(string); !ok {
+		t.Errorf("price came back as %T, not a string", body["price"])
+	}
+}
+
+// A caller with no terminal must say which company, because nothing else can.
+func TestScanningWithoutATerminalNeedsACompany(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	token, _, err := h.tokens.IssueAccess(actorWithoutDevice(f))
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	resp := h.do(t, "GET", "/api/v1/catalog/scan?barcode=123", token, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+// One tenant cannot scan another tenant's catalogue, even naming the company.
+func TestATillCannotScanAnotherCompanysCatalogue(t *testing.T) {
+	h := newHarness(t)
+	mine := h.seedShop(t, "cashier")
+	theirs := h.seedShop(t, "cashier")
+
+	resp := h.do(t, "GET",
+		"/api/v1/catalog/scan?barcode=123&company_id="+theirs.companyID.String(),
+		mine.token, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}

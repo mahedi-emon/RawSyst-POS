@@ -218,3 +218,25 @@ func nullText(s string) any {
 	}
 	return s
 }
+
+// CompanyForDevice resolves which company a terminal trades for.
+//
+// A till knows its barcode and nothing else. Everything about where it is
+// trading is a property of the registered device, not something the terminal
+// may assert — a device that could name its own company could read another
+// company's catalogue, and both belong to the same tenant so row-level
+// security would not notice.
+func (s *Service) CompanyForDevice(
+	ctx context.Context, tenantID, deviceID uuid.UUID,
+) (uuid.UUID, error) {
+	var companyID uuid.UUID
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		e := tx.QueryRow(ctx,
+			`SELECT company_id FROM device WHERE id = $1`, deviceID).Scan(&companyID)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That terminal is not registered.")
+		}
+		return e
+	})
+	return companyID, err
+}

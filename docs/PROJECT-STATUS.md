@@ -7,7 +7,7 @@
 | **Backend** | 63 Go files, ~24,800 lines, 311 tests, 29 migrations |
 | **HTTP routes live** | 31 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
-| **Front ends** | none started |
+| **Front ends** | Tauri POS: login, RBAC gating, counter, offline queue (24 tests) |
 
 > Percentages below are estimates of **remaining engineering effort**, not of files
 > written. They are deliberately conservative: the parts still missing (front ends,
@@ -89,7 +89,7 @@ fixing it involves.
 | ~~P3~~ | ~~**No shift / cash session management.**~~ **DONE** (`98b26d3`). Cash sessions, X/Z reports, blind close, cash movements. Sales belong to a session by foreign key, not a time window; a till with no open session cannot sell. | — | — |
 | ~~P4~~ | ~~**No financial reports.**~~ **DONE** (`69371d8`). Trial Balance, P&L, Balance Sheet and Cash Flow over four routes, gated on `accounting.view`. Balance sheet includes current earnings; cash flow is direct-method and says so. | — | — |
 | ~~P5~~ | ~~**No VAT return preparation.**~~ **DONE**. Totals by treatment over a period, reconciled against the Output VAT account. Preparation only: the official form layout is unverified, so nothing is mapped to numbered boxes, and input tax is reported as absent rather than zero. | — | — |
-| **P6** | **No front ends at all.** No Tauri POS, no Next.js back-office, no PWA. | There is no product a user can see. | The largest single remaining piece. Tauri POS first — it is the compliance-critical surface. |
+| **P6** | **Front ends.** Tauri POS now trades offline-first: login, permission gating, scan, cart, tenders, durable local queue, sync push. Local catalogue cache, returns and the receipt remain; Next.js back-office and PWA not started. | A shop can ring up sales on it; it still needs the network to look a barcode up. | Cache the catalogue locally, then returns and receipts. |
 
 ### 🟠 Correctness gaps — real defects, currently latent
 
