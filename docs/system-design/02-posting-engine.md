@@ -280,7 +280,31 @@ Per **C13**, which is authoritative over B4 and D1 (both of which list only FIFO
 
 Configured per tenant. Changing method mid-life requires a revaluation entry with reason and approval — it is not a silent setting flip.
 
-### 6.2 FIFO layers
+### 6.2 Two storage models, because there are two ideas
+
+FIFO and standard costing consume **identifiable receipts**, so they read cost layers. Weighted average does not: the moment costs are averaged, which physical unit came from which receipt stops being knowable. It reads a single **pool** per item per warehouse.
+
+Forcing both onto layers is a correctness bug, not a tidiness question, and the tie-out test in §6.5 catches it immediately. Layers of 10 at 50 and 10 at 60 hold 1,100 across 20 units. Selling 15 under weighted average charges COGS of 15 × 55 = **825**, leaving the ledger at 275 — but draining the layers oldest-first leaves 5 units of the 60 layer, valued at **300**. The balance sheet and the stock report disagree by 25 on the very first sale, and both are internally consistent, so neither looks wrong on its own.
+
+```sql
+CREATE TABLE stock_valuation (          -- the weighted-average pool
+  tenant_id    UUID NOT NULL,
+  company_id   UUID NOT NULL,
+  variant_id   UUID NOT NULL,
+  warehouse_id UUID NOT NULL,
+  qty_on_hand  NUMERIC(18,4) NOT NULL DEFAULT 0,
+  total_value  NUMERIC(18,4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (variant_id, warehouse_id)
+);
+```
+
+**Total value is authoritative; the average is derived from it.** Storing the average instead rounds twice — once on the way in, once on use — and the second rounding is what breaks the tie-out. For the same reason the costing engine returns the pool's new quantity and value rather than letting the caller subtract: a caller doing its own arithmetic rounds a second time.
+
+Both stores are written on **every** receipt regardless of the method in force. A company switching method must not find its new valuation empty, and one cannot be back-filled from the other after the fact — layers no longer hold the costs a pool would need.
+
+Emptying stock must land on exactly zero. A consumption that takes everything charges out precisely what was held rather than `qty × average`, because a residue left behind is **permanent**: there is no stock left to sell that would ever clear it.
+
+### 6.3 FIFO layers
 
 ```sql
 CREATE TABLE cost_layer (
@@ -300,7 +324,7 @@ CREATE INDEX ON cost_layer (item_id, warehouse_id, received_at)
 
 Consumption walks layers oldest-first, decrementing `qty_remaining`, emitting one COGS component per layer touched.
 
-### 6.3 The offline costing problem
+### 6.4 The offline costing problem
 
 **The problem:** the terminal sells offline and must decrement stock locally, but the authoritative cost layers live in the cloud. The POS cannot compute exact FIFO cost while disconnected.
 
@@ -308,21 +332,27 @@ Consumption walks layers oldest-first, decrementing `qty_remaining`, emitting on
 
 This is a deliberate trade-off. The alternative — blocking offline sales until cost is known — violates the hard offline-first requirement (A2 #3). Provisional-then-reconciled keeps the till running and the books exact, at the cost of a variance line that is itself auditable.
 
-### 6.4 Negative stock
+### 6.5 Negative stock
 
 `Company.negative_stock_policy ∈ {BLOCK, ALLOW_WARN}` (C13):
 
 - **BLOCK** — the sale is refused when stock is insufficient.
 - **ALLOW_WARN** — the sale proceeds with a warning; cost is provisional and **auto-corrected on the next receipt** of that item.
 
-### 6.5 The tie-out invariant
+### 6.6 The tie-out invariant
 
 **C13:** *"Inventory valuation report must always tie exactly to the Inventory account balance in the General Ledger — any divergence is flagged as an exception."*
 
-A nightly job asserts, per company per warehouse:
+The valuation is read by **whichever method the company is configured for** — layers under FIFO and standard, the pool under weighted average — so the two sides cannot be computed on different bases:
 
 ```
-SUM(cost_layer.qty_remaining × unit_cost)  ==  Inventory control account balance
+inventory_valuation(company)  ==  Inventory control account balance
+```
+
+One SQL function answers it, so the nightly job, the acceptance test and a support engineer looking at a live tenant all ask the same question and get the same number:
+
+```sql
+SELECT inventory_gl_difference(:company_id);   -- 0, or the exception to raise
 ```
 
 Same job asserts the other two control-account ties required by C9.3:
