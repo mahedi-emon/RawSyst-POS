@@ -54,3 +54,8 @@ build/
 # Serena runtime output (config and memories ARE committed)
 .serena/cache/
 .serena/logs/
+
+# Tauri POS
+pos/node_modules/
+pos/dist/
+pos/src-tauri/target/
