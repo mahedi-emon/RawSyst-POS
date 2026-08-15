@@ -46,7 +46,6 @@ type LineInput struct {
 	LineDiscount decimal.Decimal
 
 	TaxTreatment string
-	CostPerUnit  decimal.Decimal // for COGS at the moment of sale
 }
 
 // SaleInput is a complete sale awaiting computation.
@@ -73,7 +72,12 @@ type ComputedLine struct {
 	TaxAmount            decimal.Decimal
 	NetAmount            decimal.Decimal
 	GrossAmount          decimal.Decimal
-	COGSAmount           decimal.Decimal
+
+	// COGSAmount is zero until ApplyCosts fills it from the costing engine.
+	// Pricing cannot know it: what a sale costs is what actually left the
+	// stock, valued by the company's costing method, not a figure the till
+	// asserted.
+	COGSAmount decimal.Decimal
 }
 
 // ComputedSale is the finished arithmetic.
@@ -84,7 +88,44 @@ type ComputedSale struct {
 	DiscountTotal  decimal.Decimal
 	TaxTotal       decimal.Decimal
 	TotalInclusive decimal.Decimal
-	COGSTotal      decimal.Decimal
+
+	// COGSTotal is zero until ApplyCosts fills it. See ComputedLine.COGSAmount.
+	COGSTotal decimal.Decimal
+}
+
+// ApplyCosts records what each line actually cost, one figure per line in the
+// order Compute produced them.
+//
+// Cost is deliberately a second step rather than an input to pricing. A till
+// cannot know what a sale costs: the answer depends on which stock the costing
+// engine drew down and on the company's method, and under weighted average it
+// depends on every receipt since the last sale. Letting the caller supply a
+// cost makes gross profit an assertion rather than a measurement, and C13
+// requires it to be a measurement — posted with the sale, not reconstructed at
+// month end.
+//
+// The count must match exactly. A mismatch means the caller costed a different
+// set of lines from the ones it priced, and a sale that books the cost of the
+// wrong item is worse than one that fails.
+func (s *ComputedSale) ApplyCosts(costs []decimal.Decimal) error {
+	if len(costs) != len(s.Lines) {
+		return errs.Newf(errs.CodeInternal,
+			"This sale priced %d lines but %d were costed.",
+			len(s.Lines), len(costs))
+	}
+
+	total := decimal.Zero
+	for i, c := range costs {
+		if c.IsNegative() {
+			return errs.Newf(errs.CodeInternal,
+				"Line %d was costed at %s. A negative cost of sale would "+
+					"overstate profit.", i+1, c)
+		}
+		s.Lines[i].COGSAmount = c
+		total = total.Add(c)
+	}
+	s.COGSTotal = total
+	return nil
 }
 
 // Compute turns a rung-up sale into the figures that will be signed.
@@ -170,11 +211,6 @@ func Compute(in SaleInput) (ComputedSale, error) {
 
 		gross := net.Add(tax)
 
-		cogs := decimal.Zero
-		if !l.CostPerUnit.IsZero() {
-			cogs = l.CostPerUnit.Mul(l.Qty.Abs()).Round(moneyScale)
-		}
-
 		out.Lines = append(out.Lines, ComputedLine{
 			LineInput:            l,
 			LineNo:               i + 1,
@@ -183,13 +219,11 @@ func Compute(in SaleInput) (ComputedSale, error) {
 			TaxAmount:            tax,
 			NetAmount:            net,
 			GrossAmount:          gross,
-			COGSAmount:           cogs,
 		})
 
 		out.SubtotalNet = out.SubtotalNet.Add(net)
 		out.TaxTotal = out.TaxTotal.Add(tax)
 		out.TotalInclusive = out.TotalInclusive.Add(gross)
-		out.COGSTotal = out.COGSTotal.Add(cogs)
 		out.DiscountTotal = out.DiscountTotal.Add(l.LineDiscount).Add(share)
 	}
 

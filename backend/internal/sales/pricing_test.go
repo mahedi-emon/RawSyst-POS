@@ -219,24 +219,62 @@ func TestUnitedStatesTreatmentNames(t *testing.T) {
 }
 
 // COGS is captured at the moment of sale so gross profit is real-time rather
-// than a month-end reconstruction (blueprint C13).
-func TestCOGSIsCapturedPerLine(t *testing.T) {
+// than a month-end reconstruction (blueprint C13) — but it comes from the
+// costing engine, not from pricing. What a sale costs depends on which stock
+// was drawn down and on the company's method, neither of which a price knows.
+func TestCOGSIsAppliedFromTheCostingEngine(t *testing.T) {
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
 		Lines: []LineInput{
 			{Description: "A", Qty: dec("3"), UnitPrice: dec("115.00"),
-				TaxTreatment: "standard", CostPerUnit: dec("60.00")},
+				TaxTreatment: "standard"},
 		},
 	})
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
+
+	// Pricing alone knows nothing about cost, so profit is not yet knowable.
+	if !got.COGSTotal.IsZero() {
+		t.Fatalf("pricing produced a cost of %s from nothing", got.COGSTotal)
+	}
+
+	// The engine says these three units cost 180 in total.
+	if err := got.ApplyCosts([]decimal.Decimal{dec("180")}); err != nil {
+		t.Fatalf("ApplyCosts: %v", err)
+	}
 	if !got.COGSTotal.Equal(dec("180")) {
-		t.Fatalf("COGS = %s, want 180 (3 x 60)", got.COGSTotal)
+		t.Fatalf("COGS = %s, want 180", got.COGSTotal)
+	}
+	if !got.Lines[0].COGSAmount.Equal(dec("180")) {
+		t.Fatalf("line COGS = %s, want 180", got.Lines[0].COGSAmount)
 	}
 	// Gross profit is knowable immediately.
 	if profit := got.SubtotalNet.Sub(got.COGSTotal); !profit.Equal(dec("120")) {
 		t.Fatalf("gross profit = %s, want 120", profit)
+	}
+}
+
+// Costing a different number of lines from the ones priced means the caller has
+// paired them up wrongly, and a sale that books the cost of the wrong item is
+// worse than one that fails.
+func TestCostsMustMatchTheLinesPriced(t *testing.T) {
+	got, err := Compute(SaleInput{
+		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
+		Lines: []LineInput{
+			{Description: "A", Qty: dec("1"), UnitPrice: dec("115.00"), TaxTreatment: "standard"},
+			{Description: "B", Qty: dec("1"), UnitPrice: dec("230.00"), TaxTreatment: "standard"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+
+	if err := got.ApplyCosts([]decimal.Decimal{dec("50")}); err == nil {
+		t.Error("two priced lines were costed with one figure")
+	}
+	if err := got.ApplyCosts([]decimal.Decimal{dec("50"), dec("-10")}); err == nil {
+		t.Error("a negative cost of sale was accepted; it would overstate profit")
 	}
 }
 

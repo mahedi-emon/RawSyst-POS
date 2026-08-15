@@ -271,11 +271,16 @@ func TestSaleWritesInvoiceChainAndJournalAtomically(t *testing.T) {
 		Lines: []LineInput{{
 			Description: "Executive Abaya", Qty: dec("1"),
 			UnitPrice: dec("1150.00"), TaxTreatment: "standard",
-			CostPerUnit: dec("600.00"),
 		}},
 	})
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
+	}
+
+	// Cost arrives from the costing engine, not from the till. Here it stands
+	// in for what inventory.Consume would return.
+	if err := computed.ApplyCosts([]decimal.Decimal{dec("600.00")}); err != nil {
+		t.Fatalf("ApplyCosts: %v", err)
 	}
 
 	invoiceID, link, err := s.ring(ctx, computed, []struct {
