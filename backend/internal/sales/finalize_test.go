@@ -20,22 +20,27 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
 type shop struct {
-	pool      *db.Pool
-	chain     *zatca.Chain
-	tenantID  uuid.UUID
-	companyID uuid.UUID
-	storeID   uuid.UUID
-	unitID    uuid.UUID
-	periodID  uuid.UUID
-	variantID uuid.UUID
+	pool        *db.Pool
+	chain       *zatca.Chain
+	svc         *Service
+	tenantID    uuid.UUID
+	companyID   uuid.UUID
+	storeID     uuid.UUID
+	unitID      uuid.UUID
+	periodID    uuid.UUID
+	variantID   uuid.UUID
+	warehouseID uuid.UUID
 
 	cash, revenue, outputVAT, cogs, inventory uuid.UUID
+	cardClearing                              uuid.UUID
 	entryNo                                   int64
 }
 
@@ -64,7 +69,8 @@ func newShop(t *testing.T) *shop {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	s := &shop{pool: pool, chain: zatca.NewChain(pool, stubHasher{}), entryNo: 1}
+	chain := zatca.NewChain(pool, stubHasher{})
+	s := &shop{pool: pool, chain: chain, svc: NewService(chain), entryNo: 1}
 
 	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx,
@@ -123,11 +129,44 @@ func newShop(t *testing.T) *shop {
 			{"4100", "Sales Revenue", "revenue", &s.revenue},
 			{"2200", "Output VAT Payable", "liability", &s.outputVAT},
 			{"5100", "Cost of Goods Sold", "expense", &s.cogs},
-			{"1400", "Inventory", "asset", &s.inventory},
+			// Money taken by card is owed by the acquirer until it settles, so
+			// it is a receivable rather than cash in the till.
+			{"1150", "Card Settlement Clearing", "asset", &s.cardClearing},
 		} {
 			if err := mk(a.code, a.name, a.kind, a.dst); err != nil {
 				return err
 			}
+		}
+
+		// Inventory must be a CONTROL account or the tie-out has nothing to
+		// compare the stock valuation against — inventory_gl_difference finds no
+		// balance and reports the whole valuation as a divergence.
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO account
+			  (tenant_id, company_id, code, name, type, is_control, control_of)
+			VALUES ($1,$2,'1400','Inventory','asset',true,'inventory') RETURNING id`,
+			s.tenantID, s.companyID).Scan(&s.inventory); err != nil {
+			return err
+		}
+
+		// The posting service names accounts by role, so a company that has not
+		// mapped its chart of accounts cannot trade.
+		for role, id := range map[string]uuid.UUID{
+			"cash": s.cash, "sales_revenue": s.revenue, "output_vat": s.outputVAT,
+			"cogs": s.cogs, "inventory": s.inventory, "card_clearing": s.cardClearing,
+		} {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO account_role_map (tenant_id, company_id, role, account_id)
+				VALUES ($1,$2,$3,$4)`, s.tenantID, s.companyID, role, id); err != nil {
+				return err
+			}
+		}
+
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO warehouse (tenant_id, company_id, store_id, code, name)
+			VALUES ($1,$2,$3,'WH1','Shop Floor') RETURNING id`,
+			s.tenantID, s.companyID, s.storeID).Scan(&s.warehouseID); err != nil {
+			return err
 		}
 
 		// A product with a floor price, so the guard can be exercised.
@@ -153,110 +192,75 @@ func newShop(t *testing.T) *shop {
 	return s
 }
 
-// ring finalises a sale through all three pillars in one transaction.
-func (s *shop) ring(
-	ctx context.Context, computed ComputedSale, tenders []struct {
-		method string
-		amount decimal.Decimal
-	},
-) (invoiceID uuid.UUID, link zatca.Link, err error) {
-	entryNo := s.entryNo
-	s.entryNo++
-	invoiceUUID := uuid.New()
+// stock puts goods on the shelf, so a sale has something to cost against.
+func (s *shop) stock(t *testing.T, qty, unitCost string) {
+	t.Helper()
+	ctx := context.Background()
 
-	err = s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
-		// 1. the invoice header
-		if e := tx.QueryRow(ctx, `
-			INSERT INTO sales_invoice
-			  (tenant_id, company_id, store_id, uuid, doc_type, issue_date, issued_at,
-			   currency, subtotal_net, discount_total, tax_total, total_inclusive, state)
-			VALUES ($1,$2,$3,$4,'simplified','2026-08-15',now(),'SAR',$5,$6,$7,$8,
-			        'signed_pending_report')
-			RETURNING id`,
-			s.tenantID, s.companyID, s.storeID, invoiceUUID,
-			computed.SubtotalNet, computed.DiscountTotal,
-			computed.TaxTotal, computed.TotalInclusive).Scan(&invoiceID); e != nil {
+	err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		if e := inventory.Receive(ctx, tx, inventory.Receipt{
+			TenantID: s.tenantID, CompanyID: s.companyID,
+			VariantID: s.variantID, WarehouseID: s.warehouseID,
+			Qty: dec(qty), UnitCost: dec(unitCost), Reason: "opening",
+		}); e != nil {
 			return e
 		}
-
-		// 2. lines
-		for _, l := range computed.Lines {
-			if _, e := tx.Exec(ctx, `
-				INSERT INTO sales_invoice_line
-				  (tenant_id, invoice_id, line_no, variant_id, description, qty,
-				   unit_price, line_discount, invoice_discount_alloc, tax_treatment,
-				   tax_rate, tax_amount, net_amount, gross_amount, cogs_amount)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-				s.tenantID, invoiceID, l.LineNo, s.variantID, l.Description,
-				l.Qty, l.UnitPrice, l.LineDiscount, l.InvoiceDiscountAlloc,
-				l.TaxTreatment, l.TaxRate, l.TaxAmount,
-				l.NetAmount, l.GrossAmount, l.COGSAmount); e != nil {
-				return e
-			}
-		}
-
-		// 3. tenders
-		for i, td := range tenders {
-			if _, e := tx.Exec(ctx, `
-				INSERT INTO sales_tender (tenant_id, invoice_id, tender_no, method, amount)
-				VALUES ($1,$2,$3,$4,$5)`,
-				s.tenantID, invoiceID, i+1, td.method, td.amount); e != nil {
-				return e
-			}
-		}
-
-		// 4. the ZATCA chain
-		var e error
-		link, e = s.chain.Allocate(ctx, tx, s.unitID, zatca.Document{InvoiceUUID: invoiceUUID})
-		if e != nil {
-			return e
-		}
-		if e := s.chain.Record(ctx, tx, invoiceID, s.tenantID, link); e != nil {
-			return e
-		}
-
-		// 5. the journal — Rule 1 (revenue and VAT) and Rule 2 (COGS), which
-		//    C9.2 requires to post simultaneously with the sale.
-		var entryID uuid.UUID
-		if e := tx.QueryRow(ctx, `
-			INSERT INTO journal_entry
-			  (tenant_id, company_id, period_id, entry_no, entry_date,
-			   source_type, source_id, rule_key)
-			VALUES ($1,$2,$3,$4,'2026-08-15','sale',$5,'sale.cash') RETURNING id`,
-			s.tenantID, s.companyID, s.periodID, entryNo, invoiceID).Scan(&entryID); e != nil {
-			return e
-		}
-
-		type jl struct {
-			account       uuid.UUID
-			debit, credit decimal.Decimal
-		}
-		lines := []jl{
-			{s.cash, computed.TotalInclusive, decimal.Zero},
-			{s.revenue, decimal.Zero, computed.SubtotalNet},
-		}
-		if computed.TaxTotal.IsPositive() {
-			lines = append(lines, jl{s.outputVAT, decimal.Zero, computed.TaxTotal})
-		}
-		if computed.COGSTotal.IsPositive() {
-			lines = append(lines,
-				jl{s.cogs, computed.COGSTotal, decimal.Zero},
-				jl{s.inventory, decimal.Zero, computed.COGSTotal})
-		}
-
-		for i, l := range lines {
-			if _, e := tx.Exec(ctx, `
-				INSERT INTO journal_line
-				  (tenant_id, entry_id, line_no, account_id, currency,
-				   debit, credit, base_debit, base_credit)
-				VALUES ($1,$2,$3,$4,'SAR',$5,$6,$5,$6)`,
-				s.tenantID, entryID, i+1, l.account, l.debit, l.credit); e != nil {
-				return e
-			}
-		}
-		return nil
+		// The other half of the receipt, so the ledger knows about the stock the
+		// valuation now holds.
+		_, e := accounting.Post(ctx, tx, accounting.Entry{
+			TenantID: s.tenantID, CompanyID: s.companyID, Date: aug15(),
+			SourceType: "opening_stock", SourceID: uuid.New(), RuleKey: "stock.opening",
+			Currency: "SAR", BaseCurrency: "SAR",
+			Lines: []accounting.Line{
+				{Role: "inventory", Side: accounting.Debit, Amount: dec(qty).Mul(dec(unitCost))},
+				{Role: "cash", Side: accounting.Credit, Amount: dec(qty).Mul(dec(unitCost))},
+			},
+		})
+		return e
 	})
-	return invoiceID, link, err
+	if err != nil {
+		t.Fatalf("stock the shelf: %v", err)
+	}
+}
+
+func aug15() time.Time { return time.Date(2026, 8, 15, 10, 30, 0, 0, time.UTC) }
+
+func (s *shop) terminal() Terminal {
+	return Terminal{
+		TenantID: s.tenantID, CompanyID: s.companyID, StoreID: s.storeID,
+		EGSUnitID: s.unitID, WarehouseID: s.warehouseID,
+	}
+}
+
+// sale builds a one-item sale paid by the given tenders.
+func (s *shop) sale(qty, unitPrice string, tenders ...Tender) Sale {
+	return Sale{
+		InvoiceUUID: uuid.New(), DocType: "simplified",
+		IssuedAt: aug15(), Currency: "SAR",
+		Input: SaleInput{
+			PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
+			Lines: []LineInput{{
+				Description: "Executive Abaya", Qty: dec(qty),
+				UnitPrice: dec(unitPrice), TaxTreatment: "standard",
+			}},
+		},
+		Lines:       []SaleLineRef{{VariantID: s.variantID}},
+		Tenders:     tenders,
+		StockPolicy: inventory.PolicyAllowWarn,
+	}
+}
+
+// ring finalises a sale through the production service — the same call the HTTP
+// layer will make. A harness that reimplemented the flow would prove only that
+// the harness works.
+func (s *shop) ring(ctx context.Context, sale Sale) (Finalized, error) {
+	var out Finalized
+	err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		var e error
+		out, e = s.svc.Finalize(ctx, tx, s.terminal(), sale)
+		return e
+	})
+	return out, err
 }
 
 func saudiRules() (rate decimal.Decimal) { return dec("0.15") }
@@ -266,33 +270,23 @@ func TestSaleWritesInvoiceChainAndJournalAtomically(t *testing.T) {
 	s := newShop(t)
 	ctx := context.Background()
 
-	computed, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
-		Lines: []LineInput{{
-			Description: "Executive Abaya", Qty: dec("1"),
-			UnitPrice: dec("1150.00"), TaxTreatment: "standard",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("Compute: %v", err)
-	}
+	s.stock(t, "5", "600.00")
 
-	// Cost arrives from the costing engine, not from the till. Here it stands
-	// in for what inventory.Consume would return.
-	if err := computed.ApplyCosts([]decimal.Decimal{dec("600.00")}); err != nil {
-		t.Fatalf("ApplyCosts: %v", err)
-	}
-
-	invoiceID, link, err := s.ring(ctx, computed, []struct {
-		method string
-		amount decimal.Decimal
-	}{{"cash", dec("1150.00")}})
+	got, err := s.ring(ctx, s.sale("1", "1150.00",
+		Tender{Method: "cash", Amount: dec("1150.00")}))
 	if err != nil {
 		t.Fatalf("ring sale: %v", err)
 	}
+	invoiceID := got.InvoiceID
 
-	if link.ICV != 1 {
-		t.Fatalf("first sale took counter %d, want 1", link.ICV)
+	if got.Link.ICV != 1 {
+		t.Fatalf("first sale took counter %d, want 1", got.Link.ICV)
+	}
+	// The cost came from the costing engine drawing down real stock, not from
+	// anything the till asserted.
+	if !got.Computed.COGSTotal.Equal(dec("600")) {
+		t.Fatalf("COGS = %s, want 600 from the stock actually drawn down",
+			got.Computed.COGSTotal)
 	}
 
 	// The books balance, and gross profit is knowable now rather than at
@@ -357,9 +351,42 @@ func TestSaleWritesInvoiceChainAndJournalAtomically(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if lineCount != 1 || tenderCount != 1 || chainCount != 1 || journalCount != 1 {
-		t.Fatalf("lines=%d tenders=%d chain=%d journal=%d; all must be 1",
-			lineCount, tenderCount, chainCount, journalCount)
+	if lineCount != 1 || tenderCount != 1 || chainCount != 1 {
+		t.Fatalf("lines=%d tenders=%d chain=%d; all must be 1",
+			lineCount, tenderCount, chainCount)
+	}
+	// Two entries: revenue and cost of sale. They are separate posting rules, so
+	// each carries its own idempotency key and can be replayed on its own.
+	if journalCount != 2 {
+		t.Fatalf("%d journal entries for the sale, want 2 (revenue and COGS)",
+			journalCount)
+	}
+
+	// The stock actually moved, which is what makes the COGS a measurement.
+	var onHand decimal.Decimal
+	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		var e error
+		onHand, e = inventory.OnHandAt(ctx, tx, s.variantID, s.warehouseID)
+		return e
+	}); err != nil {
+		t.Fatalf("read stock: %v", err)
+	}
+	if !onHand.Equal(dec("4")) {
+		t.Fatalf("stock on hand = %s after selling 1 of 5, want 4", onHand)
+	}
+
+	// C13's hard invariant, at the end of a real sale.
+	var diff decimal.Decimal
+	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		var e error
+		diff, e = inventory.GLDifference(ctx, tx, s.companyID)
+		return e
+	}); err != nil {
+		t.Fatalf("tie-out: %v", err)
+	}
+	if !diff.IsZero() {
+		t.Fatalf("the stock valuation and the Inventory account are out by %s "+
+			"after one sale", diff)
 	}
 }
 
@@ -370,27 +397,16 @@ func TestUnderpaidSaleConsumesNoCounter(t *testing.T) {
 	s := newShop(t)
 	ctx := context.Background()
 
-	computed, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
-		Lines: []LineInput{{
-			Description: "Executive Abaya", Qty: dec("1"),
-			UnitPrice: dec("1150.00"), TaxTreatment: "standard",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("Compute: %v", err)
-	}
+	s.stock(t, "5", "600.00")
 
 	// One hallala short.
-	_, _, err = s.ring(ctx, computed, []struct {
-		method string
-		amount decimal.Decimal
-	}{{"cash", dec("1149.99")}})
+	_, err := s.ring(ctx, s.sale("1", "1150.00",
+		Tender{Method: "cash", Amount: dec("1149.99")}))
 	if err == nil {
 		t.Fatal("a sale was issued without being paid in full")
 	}
-	if !strings.Contains(strings.ToLower(err.Error()), "paid in full") {
-		t.Fatalf("unhelpful refusal: %v", err)
+	if !strings.Contains(err.Error(), "0.01") {
+		t.Fatalf("the refusal does not say how far short: %v", err)
 	}
 
 	var counter int64
@@ -412,28 +428,17 @@ func TestSplitTenderAcrossThreeMethods(t *testing.T) {
 	s := newShop(t)
 	ctx := context.Background()
 
-	computed, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
-		Lines: []LineInput{{
-			Description: "Executive Abaya", Qty: dec("1"),
-			UnitPrice: dec("1000.00"), TaxTreatment: "standard",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("Compute: %v", err)
-	}
+	s.stock(t, "5", "600.00")
 
-	invoiceID, _, err := s.ring(ctx, computed, []struct {
-		method string
-		amount decimal.Decimal
-	}{
-		{"cash", dec("200.00")},
-		{"mada", dec("300.00")},
-		{"tabby", dec("500.00")},
-	})
+	got, err := s.ring(ctx, s.sale("1", "1000.00",
+		Tender{Method: "cash", Amount: dec("200.00")},
+		Tender{Method: "mada", Amount: dec("300.00")},
+		Tender{Method: "tabby", Amount: dec("500.00")},
+	))
 	if err != nil {
 		t.Fatalf("split payment: %v", err)
 	}
+	invoiceID := got.InvoiceID
 
 	var methods []string
 	if e := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
@@ -551,20 +556,14 @@ func TestInvoiceLinesAreImmutable(t *testing.T) {
 	s := newShop(t)
 	ctx := context.Background()
 
-	computed, _ := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
-		Lines: []LineInput{{
-			Description: "Executive Abaya", Qty: dec("1"),
-			UnitPrice: dec("1150.00"), TaxTreatment: "standard",
-		}},
-	})
-	invoiceID, _, err := s.ring(ctx, computed, []struct {
-		method string
-		amount decimal.Decimal
-	}{{"cash", dec("1150.00")}})
+	s.stock(t, "5", "600.00")
+
+	got, err := s.ring(ctx, s.sale("1", "1150.00",
+		Tender{Method: "cash", Amount: dec("1150.00")}))
 	if err != nil {
 		t.Fatalf("ring: %v", err)
 	}
+	invoiceID := got.InvoiceID
 
 	for _, stmt := range []string{
 		`UPDATE sales_invoice_line SET net_amount = 1 WHERE invoice_id = $1`,
@@ -586,6 +585,8 @@ func TestSaleIntoAClosedPeriodIsRefused(t *testing.T) {
 	s := newShop(t)
 	ctx := context.Background()
 
+	s.stock(t, "5", "600.00") // while the month is still open
+
 	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx,
 			`UPDATE fiscal_period SET state='closed', closed_at=now() WHERE id=$1`,
@@ -595,17 +596,8 @@ func TestSaleIntoAClosedPeriodIsRefused(t *testing.T) {
 		t.Fatalf("close period: %v", err)
 	}
 
-	computed, _ := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
-		Lines: []LineInput{{
-			Description: "Executive Abaya", Qty: dec("1"),
-			UnitPrice: dec("1150.00"), TaxTreatment: "standard",
-		}},
-	})
-	_, _, err := s.ring(ctx, computed, []struct {
-		method string
-		amount decimal.Decimal
-	}{{"cash", dec("1150.00")}})
+	_, err := s.ring(ctx, s.sale("1", "1150.00",
+		Tender{Method: "cash", Amount: dec("1150.00")}))
 	if err == nil {
 		t.Fatal("a sale posted into a closed period")
 	}
@@ -619,5 +611,211 @@ func TestSaleIntoAClosedPeriodIsRefused(t *testing.T) {
 	}
 	if counter != 0 {
 		t.Fatalf("the counter advanced to %d although the sale failed", counter)
+	}
+}
+
+// Pillar 3 at the sale boundary. Sync delivers at least once, so the same sale
+// arrives more than once as a matter of course. Recognising it is the
+// difference between a shop's takings being right and being doubled.
+func TestTheSameSaleArrivingTwiceIsRungOnce(t *testing.T) {
+	s := newShop(t)
+	ctx := context.Background()
+	s.stock(t, "5", "600.00")
+
+	sale := s.sale("1", "1150.00", Tender{Method: "cash", Amount: dec("1150.00")})
+
+	first, err := s.ring(ctx, sale)
+	if err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+	second, err := s.ring(ctx, sale) // same InvoiceUUID, as a retry carries
+	if err != nil {
+		t.Fatalf("the retry was rejected instead of recognised: %v", err)
+	}
+
+	if !second.AlreadyRung {
+		t.Error("a replayed sale was not recognised")
+	}
+	if second.InvoiceID != first.InvoiceID {
+		t.Errorf("the retry created a second invoice: %s then %s",
+			first.InvoiceID, second.InvoiceID)
+	}
+	if second.Link.ICV != first.Link.ICV {
+		t.Errorf("the retry took counter %d after the original took %d",
+			second.Link.ICV, first.Link.ICV)
+	}
+
+	var invoices, counter int64
+	var onHand, revenue decimal.Decimal
+	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*) FROM sales_invoice WHERE company_id=$1`,
+			s.companyID).Scan(&invoices); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT last_icv FROM egs_unit WHERE id=$1`, s.unitID).Scan(&counter); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT coalesce(sum(base_credit),0) FROM journal_line WHERE account_id=$1`,
+			s.revenue).Scan(&revenue); e != nil {
+			return e
+		}
+		var e error
+		onHand, e = inventory.OnHandAt(ctx, tx, s.variantID, s.warehouseID)
+		return e
+	}); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if invoices != 1 {
+		t.Errorf("%d invoices for one sale", invoices)
+	}
+	if counter != 1 {
+		t.Errorf("the counter reached %d for one sale; a replay consumed a "+
+			"position on the chain", counter)
+	}
+	if !revenue.Equal(dec("1000")) {
+		t.Errorf("revenue = %s, want 1000; the replay was counted twice", revenue)
+	}
+	if !onHand.Equal(dec("4")) {
+		t.Errorf("stock on hand = %s, want 4; the replay moved stock again", onHand)
+	}
+}
+
+// Card money is not cash. It is owed by the acquirer and arrives days later
+// minus a fee, so debiting Cash would show a shop holding money it does not
+// have and leave nothing for the settlement reconciliation to match.
+func TestCardMoneyLandsInClearingNotCash(t *testing.T) {
+	s := newShop(t)
+	ctx := context.Background()
+	s.stock(t, "5", "600.00")
+
+	if _, err := s.ring(ctx, s.sale("1", "1150.00",
+		Tender{Method: "cash", Amount: dec("150.00")},
+		Tender{Method: "mada", Amount: dec("1000.00")},
+	)); err != nil {
+		t.Fatalf("ring: %v", err)
+	}
+
+	var cash, clearing decimal.Decimal
+	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx, `
+			SELECT coalesce(sum(base_debit),0) FROM journal_line
+			WHERE account_id=$1 AND entry_id IN (
+			  SELECT id FROM journal_entry WHERE source_type='sales_invoice')`,
+			s.cash).Scan(&cash); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT coalesce(sum(base_debit),0) FROM journal_line WHERE account_id=$1`,
+			s.cardClearing).Scan(&clearing)
+	}); err != nil {
+		t.Fatalf("read books: %v", err)
+	}
+
+	if !cash.Equal(dec("150")) {
+		t.Errorf("cash debited %s, want only the 150 actually in the till", cash)
+	}
+	if !clearing.Equal(dec("1000")) {
+		t.Errorf("card clearing debited %s, want 1000", clearing)
+	}
+}
+
+// Whatever fails, nothing survives. Stock is consumed early and the counter is
+// claimed late, so a failure in the journal has to unwind both — otherwise the
+// shop loses stock to a sale that never happened, or the chain gains a gap.
+func TestAFailedSaleLeavesNoTraceAnywhere(t *testing.T) {
+	s := newShop(t)
+	ctx := context.Background()
+	s.stock(t, "5", "600.00")
+
+	// Remove the COGS mapping, so the sale fails at the very last step — after
+	// stock has moved, the invoice is written and the counter is claimed.
+	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx,
+			`DELETE FROM account_role_map WHERE company_id=$1 AND role='cogs'`,
+			s.companyID)
+		return e
+	}); err != nil {
+		t.Fatalf("unmap cogs: %v", err)
+	}
+
+	if _, err := s.ring(ctx, s.sale("1", "1150.00",
+		Tender{Method: "cash", Amount: dec("1150.00")})); err == nil {
+		t.Fatal("a sale completed with no account to post its cost to")
+	}
+
+	var invoices, counter int64
+	var onHand decimal.Decimal
+	var movements int
+	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*) FROM sales_invoice WHERE company_id=$1`,
+			s.companyID).Scan(&invoices); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT last_icv FROM egs_unit WHERE id=$1`, s.unitID).Scan(&counter); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*) FROM stock_movement WHERE company_id=$1 AND reason='sale'`,
+			s.companyID).Scan(&movements); e != nil {
+			return e
+		}
+		var e error
+		onHand, e = inventory.OnHandAt(ctx, tx, s.variantID, s.warehouseID)
+		return e
+	}); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if invoices != 0 {
+		t.Errorf("%d invoices survived a failed sale", invoices)
+	}
+	if counter != 0 {
+		t.Errorf("the counter advanced to %d on a failed sale, leaving a gap in "+
+			"the chain that cannot be repaired", counter)
+	}
+	if movements != 0 {
+		t.Errorf("%d stock movements survived; the shop lost stock to a sale "+
+			"that never happened", movements)
+	}
+	if !onHand.Equal(dec("5")) {
+		t.Errorf("stock on hand = %s, want the 5 it started with", onHand)
+	}
+}
+
+// A sale of goods the shop does not have is the shop's decision, not the
+// engine's. Under block it is refused; under allow_warn it completes and is
+// reported, because refusing a customer standing at the till is worse than a
+// correction later (C13).
+func TestSellingBeyondStockFollowsTheCompanyPolicy(t *testing.T) {
+	s := newShop(t)
+	ctx := context.Background()
+	s.stock(t, "1", "600.00")
+
+	blocked := s.sale("2", "1150.00", Tender{Method: "cash", Amount: dec("2300.00")})
+	blocked.StockPolicy = inventory.PolicyBlock
+
+	if _, err := s.ring(ctx, blocked); err == nil {
+		t.Fatal("a block-policy shop sold two of something it had one of")
+	}
+
+	allowed := s.sale("2", "1150.00", Tender{Method: "cash", Amount: dec("2300.00")})
+	allowed.StockPolicy = inventory.PolicyAllowWarn
+
+	got, err := s.ring(ctx, allowed)
+	if err != nil {
+		t.Fatalf("an allow_warn shop was blocked: %v", err)
+	}
+	if len(got.Shortfalls) != 1 {
+		t.Fatalf("%d shortfalls reported, want 1 for the exception report",
+			len(got.Shortfalls))
+	}
+	if !got.Shortfalls[0].ShortBy.Equal(dec("1")) {
+		t.Errorf("short by %s, want 1", got.Shortfalls[0].ShortBy)
 	}
 }
