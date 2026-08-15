@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 )
@@ -32,6 +33,7 @@ type shopFixture struct {
 	deviceID    uuid.UUID
 	variantID   uuid.UUID
 	userID      uuid.UUID
+	sessionID   uuid.UUID
 	token       string
 }
 
@@ -220,6 +222,17 @@ func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
 	}
 
 	f.token = h.tokenForDevice(t, f)
+
+	// A till cannot sell without an open session: there would be no drawer
+	// anyone had counted into, and a cash difference found later could not be
+	// attributed to anybody.
+	session, err := h.shift.Open(ctx, f.tenantID, f.deviceID, f.userID,
+		decimal.RequireFromString("200.00"), true)
+	if err != nil {
+		t.Fatalf("open till session: %v", err)
+	}
+	f.sessionID = session.ID
+
 	return f
 }
 
@@ -568,3 +581,6 @@ func TestOneTenantCannotReadAnothersInvoice(t *testing.T) {
 			resp.StatusCode, readBody(t, resp))
 	}
 }
+
+// newUUID names what it is at the call site: a device-assigned document id.
+func newUUID() uuid.UUID { return uuid.New() }

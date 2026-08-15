@@ -1,0 +1,386 @@
+// Package shift owns the cash session: opening a till, recording what moves
+// through the drawer, and reconciling it at the end of a shift.
+//
+// # Why this is not a reporting feature
+//
+// Cash is the only tender that leaves no independent trace. A card sale is
+// corroborated by the acquirer, a transfer by the bank; a banknote that never
+// reaches the drawer is invisible unless the drawer is counted against what the
+// system expected. That single comparison is what makes cash handling
+// accountable, and it is why an X/Z report is part of trading rather than part
+// of month end.
+//
+// # Expected cash is derived
+//
+// Nothing here stores a running drawer balance. It is computed from the
+// session's own movements every time it is asked for. A stored total would
+// drift the moment a contributing row was written outside the code maintaining
+// it, and a drift is indistinguishable from theft — which is the one thing this
+// package exists to tell apart.
+package shift
+
+import (
+	"context"
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
+
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+)
+
+// Service manages cash sessions.
+type Service struct {
+	pool *db.Pool
+}
+
+func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// Session is a till's shift.
+type Session struct {
+	ID        uuid.UUID `json:"id"`
+	SessionNo int64     `json:"session_no"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	StoreID   uuid.UUID `json:"store_id"`
+	State     string    `json:"state"`
+
+	OpenedAt     string `json:"opened_at"`
+	OpeningFloat string `json:"opening_float"`
+	BlindClose   bool   `json:"blind_close"`
+}
+
+// Report is the X or Z reckoning of a session.
+//
+// The same shape serves both. An X report is this taken mid-shift and changes
+// nothing; a Z report is this taken at close, with the counted figure and the
+// variance filled in. Two shapes would let the two drift apart, and a
+// supervisor comparing an X against the later Z needs them to be the same
+// arithmetic.
+type Report struct {
+	SessionNo int64  `json:"session_no"`
+	State     string `json:"state"`
+	OpenedAt  string `json:"opened_at"`
+	ClosedAt  string `json:"closed_at,omitempty"`
+
+	OpeningFloat string `json:"opening_float"`
+	InvoiceCount int64  `json:"invoice_count"`
+
+	GrossSales  string `json:"gross_sales"`
+	NetSales    string `json:"net_sales"`
+	TaxTotal    string `json:"tax_total"`
+	RefundTotal string `json:"refund_total"`
+
+	CashTakings    string `json:"cash_takings"`
+	NonCashTakings string `json:"non_cash_takings"`
+	CashMovements  string `json:"cash_movements"`
+
+	// ExpectedCash is omitted on a blind close until the count is committed, so
+	// a cashier cannot make the drawer agree with the screen.
+	ExpectedCash string `json:"expected_cash,omitempty"`
+	CountedCash  string `json:"counted_cash,omitempty"`
+	Variance     string `json:"variance,omitempty"`
+}
+
+// Open starts a session on a till.
+func (s *Service) Open(
+	ctx context.Context, tenantID, deviceID, userID uuid.UUID,
+	openingFloat decimal.Decimal, blindClose bool,
+) (Session, error) {
+	if openingFloat.IsNegative() {
+		return Session{}, errs.New(errs.CodeInvalidInput,
+			"An opening float cannot be negative.")
+	}
+
+	var out Session
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		var companyID, storeID uuid.UUID
+		var status string
+		e := tx.QueryRow(ctx, `
+			SELECT company_id, store_id, status::text FROM device WHERE id = $1`,
+			deviceID).Scan(&companyID, &storeID, &status)
+
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That terminal is not registered.")
+		}
+		if e != nil {
+			return e
+		}
+		if status != "active" {
+			return errs.Newf(errs.CodeForbidden,
+				"This terminal is %s, so a till session cannot be opened on it.",
+				status)
+		}
+
+		// Checked here so the refusal says what to do. The partial unique index
+		// is still the guarantee — it catches two tills opening at the same
+		// instant, which this check cannot — but an index violation surfaces as
+		// "that record already exists", which tells a cashier nothing.
+		var openNo int64
+		e = tx.QueryRow(ctx,
+			`SELECT session_no FROM cash_session
+			 WHERE device_id = $1 AND state = 'open'`, deviceID).Scan(&openNo)
+		if e == nil {
+			return errs.Newf(errs.CodeConflict,
+				"This till already has an open session (number %d). Close it with "+
+					"a Z report before starting another.", openNo)
+		}
+		if !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
+
+		var sessionNo int64
+		if e := tx.QueryRow(ctx,
+			`SELECT claim_session_no($1)`, deviceID).Scan(&sessionNo); e != nil {
+			return e
+		}
+
+		e = tx.QueryRow(ctx, `
+			INSERT INTO cash_session
+			  (tenant_id, company_id, store_id, device_id, session_no,
+			   opened_by, opening_float, blind_close)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			RETURNING id, session_no, device_id, store_id, state,
+			          to_char(opened_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'),
+			          opening_float, blind_close`,
+			tenantID, companyID, storeID, deviceID, sessionNo,
+			userID, openingFloat, blindClose).
+			Scan(&out.ID, &out.SessionNo, &out.DeviceID, &out.StoreID, &out.State,
+				&out.OpenedAt, &out.OpeningFloat, &out.BlindClose)
+
+		if e != nil {
+			// The partial unique index is what makes two open sessions on one
+			// till impossible. Saying so plainly beats surfacing an index name.
+			return db.Translate(e,
+				"This till already has an open session. Close it with a Z report "+
+					"before starting another.")
+		}
+		return nil
+	})
+	return out, err
+}
+
+// Current returns the open session on a till, if there is one.
+func (s *Service) Current(
+	ctx context.Context, tenantID, deviceID uuid.UUID,
+) (Session, error) {
+	var out Session
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		e := tx.QueryRow(ctx, `
+			SELECT id, session_no, device_id, store_id, state,
+			       to_char(opened_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'),
+			       opening_float, blind_close
+			FROM cash_session WHERE device_id = $1 AND state = 'open'`, deviceID).
+			Scan(&out.ID, &out.SessionNo, &out.DeviceID, &out.StoreID, &out.State,
+				&out.OpenedAt, &out.OpeningFloat, &out.BlindClose)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound,
+				"This till has no open session. Open one before ringing up sales.")
+		}
+		return e
+	})
+	return out, err
+}
+
+// XReport is a mid-shift snapshot. It changes nothing and may be taken as often
+// as a supervisor likes.
+//
+// The expected figure is shown even on a blind-close till, because an X report
+// is for the supervisor rather than the cashier and the permission gating it
+// says so.
+func (s *Service) XReport(
+	ctx context.Context, tenantID, sessionID uuid.UUID,
+) (Report, error) {
+	return s.report(ctx, tenantID, sessionID, true)
+}
+
+// Peek is what the CASHIER sees before counting.
+//
+// On a blind-close till the expected figure is withheld. Blueprint B7 requires
+// this: a cashier who can see the target can make the drawer agree with it, and
+// then the variance — the only signal there is — reads zero on every shift.
+func (s *Service) Peek(
+	ctx context.Context, tenantID, sessionID uuid.UUID,
+) (Report, error) {
+	return s.report(ctx, tenantID, sessionID, false)
+}
+
+func (s *Service) report(
+	ctx context.Context, tenantID, sessionID uuid.UUID, mayRevealExpected bool,
+) (Report, error) {
+	var out Report
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		var blind bool
+		if e := tx.QueryRow(ctx,
+			`SELECT blind_close FROM cash_session WHERE id = $1`, sessionID).
+			Scan(&blind); errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That till session was not found.")
+		} else if e != nil {
+			return e
+		}
+
+		r, e := readReport(ctx, tx, sessionID)
+		if e != nil {
+			return e
+		}
+		if blind && !mayRevealExpected && r.State == "open" {
+			// Withheld only while the session is open. Once closed, the count is
+			// committed and hiding the figure would stop anyone reconciling it.
+			r.ExpectedCash = ""
+		}
+		out = r
+		return nil
+	})
+	return out, err
+}
+
+func readReport(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) (Report, error) {
+	var r Report
+	var closedAt *string
+	var opening, gross, net, tax, refunds, cash, nonCash, movements, expected decimal.Decimal
+	var counted, variance *decimal.Decimal
+
+	err := tx.QueryRow(ctx, `
+		SELECT session_no, state,
+		       to_char(opened_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'),
+		       to_char(closed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'),
+		       opening_float, invoice_count, gross_sales, net_sales, tax_total,
+		       refund_total, cash_takings, non_cash_takings, cash_movements,
+		       expected_cash, counted_cash, variance
+		FROM cash_session_report($1)`, sessionID).
+		Scan(&r.SessionNo, &r.State, &r.OpenedAt, &closedAt,
+			&opening, &r.InvoiceCount, &gross, &net, &tax,
+			&refunds, &cash, &nonCash, &movements,
+			&expected, &counted, &variance)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Report{}, errs.New(errs.CodeNotFound, "That till session was not found.")
+	}
+	if err != nil {
+		return Report{}, err
+	}
+
+	if closedAt != nil {
+		r.ClosedAt = *closedAt
+	}
+	r.OpeningFloat = opening.String()
+	r.GrossSales, r.NetSales, r.TaxTotal = gross.String(), net.String(), tax.String()
+	r.RefundTotal = refunds.String()
+	r.CashTakings, r.NonCashTakings = cash.String(), nonCash.String()
+	r.CashMovements = movements.String()
+	r.ExpectedCash = expected.String()
+	if counted != nil {
+		r.CountedCash = counted.String()
+	}
+	if variance != nil {
+		r.Variance = variance.String()
+	}
+	return r, nil
+}
+
+// Close performs the Z report: it records the count, freezes the expected
+// figure, and shuts the session.
+//
+// Exactly once. A second Z would either double-count the takings or overwrite
+// the count someone signed for, and the database refuses it — a closed session
+// is final by trigger, not by convention.
+func (s *Service) Close(
+	ctx context.Context, tenantID, sessionID, userID uuid.UUID,
+	countedCash decimal.Decimal, note string,
+) (Report, error) {
+	if countedCash.IsNegative() {
+		return Report{}, errs.New(errs.CodeInvalidInput,
+			"A drawer cannot hold less than nothing. Enter what was counted.")
+	}
+
+	var out Report
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		// Lock the session first, so two cashiers closing the same till at once
+		// cannot both read 'open' and both proceed.
+		var state string
+		e := tx.QueryRow(ctx,
+			`SELECT state FROM cash_session WHERE id = $1 FOR UPDATE`, sessionID).
+			Scan(&state)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That till session was not found.")
+		}
+		if e != nil {
+			return e
+		}
+		if state == "closed" {
+			return errs.New(errs.CodeConflict,
+				"This till session has already been closed. Its Z report stands; "+
+					"record a cash adjustment against the next session instead.")
+		}
+
+		// The expected figure is computed and frozen in the same statement that
+		// closes the session, so nothing can land in between and change what the
+		// variance was measured against.
+		var expected decimal.Decimal
+		if e := tx.QueryRow(ctx,
+			`SELECT cash_session_expected($1)`, sessionID).Scan(&expected); e != nil {
+			return e
+		}
+
+		// The casts are load-bearing: without them Postgres cannot infer a type
+		// for `$3 - $4` and refuses the statement outright.
+		if _, e := tx.Exec(ctx, `
+			UPDATE cash_session
+			SET state = 'closed', closed_at = now(), closed_by = $2,
+			    counted_cash = $3::numeric, expected_cash = $4::numeric,
+			    variance = $3::numeric - $4::numeric,
+			    note = nullif(btrim($5::text), '')
+			WHERE id = $1`,
+			sessionID, userID, countedCash, expected, note); e != nil {
+			return db.Translate(e, "That till session could not be closed.")
+		}
+
+		r, e := readReport(ctx, tx, sessionID)
+		if e != nil {
+			return e
+		}
+		out = r
+		return nil
+	})
+	return out, err
+}
+
+// RecordMovement notes cash in or out of the drawer other than a sale.
+func (s *Service) RecordMovement(
+	ctx context.Context, tenantID, sessionID, userID uuid.UUID,
+	amount decimal.Decimal, reason, note string,
+) error {
+	if amount.IsZero() {
+		return errs.New(errs.CodeInvalidInput,
+			"A cash movement of nothing is not a movement.")
+	}
+	if len(note) < 3 {
+		return errs.New(errs.CodeInvalidInput,
+			"Every cash movement needs an explanation. An unexplained hand in "+
+				"the till is exactly what this record exists to make visible.")
+	}
+
+	return s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		var state string
+		e := tx.QueryRow(ctx,
+			`SELECT state FROM cash_session WHERE id = $1`, sessionID).Scan(&state)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That till session was not found.")
+		}
+		if e != nil {
+			return e
+		}
+		if state == "closed" {
+			return errs.New(errs.CodeConflict,
+				"That till session is closed. Record this against the open session.")
+		}
+
+		_, e = tx.Exec(ctx, `
+			INSERT INTO cash_movement
+			  (tenant_id, session_id, amount, reason, note, recorded_by)
+			VALUES ($1,$2,$3,$4,$5,$6)`,
+			tenantID, sessionID, amount, reason, note, userID)
+		return db.Translate(e, "That cash movement could not be recorded.")
+	})
+}

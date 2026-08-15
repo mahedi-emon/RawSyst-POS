@@ -181,6 +181,25 @@ func resolveTerminal(
 	if err != nil {
 		return Terminal{}, companyProfile{}, err
 	}
+
+	// Every sale belongs to a shift. A till with no open session has no drawer
+	// anyone has counted into, so its takings could never be reconciled — and a
+	// cash difference discovered later could not be attributed to anyone.
+	var sessionID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		SELECT id FROM cash_session WHERE device_id = $1 AND state = 'open'`,
+		deviceID).Scan(&sessionID)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Terminal{}, companyProfile{}, errs.New(errs.CodeConflict,
+			"This till has no open session. Count the drawer and open a session "+
+				"before ringing up sales.")
+	}
+	if err != nil {
+		return Terminal{}, companyProfile{}, err
+	}
+	term.CashSessionID = &sessionID
+
 	return term, profile, nil
 }
 

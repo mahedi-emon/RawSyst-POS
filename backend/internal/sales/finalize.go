@@ -57,6 +57,15 @@ type Terminal struct {
 	WarehouseID uuid.UUID
 
 	DeviceID *uuid.UUID
+
+	// CashSessionID ties takings to the shift that took them.
+	//
+	// A foreign key rather than a time window. Matching sales to a shift by
+	// timestamp looks equivalent and is not: a drifting terminal clock, a sale
+	// rung at 23:59:58 and committed at 00:00:01, or two shifts overlapping at
+	// a handover all put money in the wrong shift — and the cashier who comes
+	// up short has no way to prove it was not theirs.
+	CashSessionID *uuid.UUID
 }
 
 // Sale is a rung-up sale awaiting finalisation.
@@ -306,14 +315,16 @@ func (s *Service) writeInvoice(
 		INSERT INTO sales_invoice
 		  (tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   issue_date, issued_at, currency, fx_rate,
-		   subtotal_net, discount_total, tax_total, total_inclusive, state)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		   subtotal_net, discount_total, tax_total, total_inclusive, state,
+		   cash_session_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		RETURNING id`,
 		term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		sale.InvoiceUUID, sale.DocType,
 		sale.IssuedAt, sale.IssuedAt, sale.Currency, rate,
 		computed.SubtotalNet, computed.DiscountTotal,
-		computed.TaxTotal, computed.TotalInclusive, state).Scan(&invoiceID)
+		computed.TaxTotal, computed.TotalInclusive, state,
+		term.CashSessionID).Scan(&invoiceID)
 	if err != nil {
 		return uuid.Nil, db.Translate(err, "That sale could not be recorded.")
 	}

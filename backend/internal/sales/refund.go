@@ -328,15 +328,17 @@ func (s *Service) writeCreditNote(
 		INSERT INTO sales_invoice
 		  (tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   parent_invoice_id, issue_date, issued_at, currency, fx_rate,
-		   subtotal_net, discount_total, tax_total, total_inclusive, state)
+		   subtotal_net, discount_total, tax_total, total_inclusive, state,
+		   cash_session_id)
 		VALUES ($1,$2,$3,$4,$5,'credit_note',$6,$7,$8,$9,$10,$11,$12,$13,$14,
-		        'signed_pending_report')
+		        'signed_pending_report',$15)
 		RETURNING id`,
 		term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		ret.CreditNoteUUID, original.id, ret.IssuedAt, ret.IssuedAt,
 		original.currency, original.fxRate,
 		computed.SubtotalNet, computed.DiscountTotal,
-		computed.TaxTotal, computed.TotalInclusive).Scan(&creditNoteID)
+		computed.TaxTotal, computed.TotalInclusive,
+		term.CashSessionID).Scan(&creditNoteID)
 	if err != nil {
 		return uuid.Nil, db.Translate(err, "That credit note could not be issued.")
 	}

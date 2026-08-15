@@ -32,6 +32,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -46,6 +47,7 @@ type harness struct {
 	// a browser session does not, and the difference is what decides whether an
 	// invoice can be issued at all.
 	tokens *identity.TokenService
+	shift  *shift.Service
 }
 
 func newHarness(t *testing.T) *harness {
@@ -92,7 +94,8 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
-	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens}
+	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens,
+		shift: shift.NewService(pool)}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role
