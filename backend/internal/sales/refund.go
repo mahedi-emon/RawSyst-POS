@@ -323,22 +323,33 @@ func (s *Service) writeCreditNote(
 	ctx context.Context, tx pgx.Tx, term Terminal, ret Return,
 	original originalInvoice, computed ComputedReturn,
 ) (uuid.UUID, error) {
+	humanNumber, err := claimHumanNumber(ctx, tx, term.StoreID, ret.IssuedAt, "credit_note")
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	// A credit note follows the ROUTE OF THE INVOICE IT CORRECTS. A note
+	// against a B2B invoice must be cleared before issue like the invoice was,
+	// not merely reported — sending it down the B2C route would put it through
+	// a process ZATCA does not accept for that document type.
+	state := initialState(original.docType)
+
 	var creditNoteID uuid.UUID
-	err := tx.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO sales_invoice
 		  (tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   parent_invoice_id, issue_date, issued_at, currency, fx_rate,
 		   subtotal_net, discount_total, tax_total, total_inclusive, state,
-		   cash_session_id)
+		   cash_session_id, human_number)
 		VALUES ($1,$2,$3,$4,$5,'credit_note',$6,$7,$8,$9,$10,$11,$12,$13,$14,
-		        'signed_pending_report',$15)
+		        $15,$16,$17)
 		RETURNING id`,
 		term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		ret.CreditNoteUUID, original.id, ret.IssuedAt, ret.IssuedAt,
 		original.currency, original.fxRate,
 		computed.SubtotalNet, computed.DiscountTotal,
-		computed.TaxTotal, computed.TotalInclusive,
-		term.CashSessionID).Scan(&creditNoteID)
+		computed.TaxTotal, computed.TotalInclusive, state,
+		term.CashSessionID, humanNumber).Scan(&creditNoteID)
 	if err != nil {
 		return uuid.Nil, db.Translate(err, "That credit note could not be issued.")
 	}

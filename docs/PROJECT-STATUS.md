@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-08-15 |
-| **Branch** | `main` @ `8e5559f` |
-| **Backend** | 49 Go files, ~20,500 lines, 251 tests, 25 migrations |
+| **Branch** | `main` @ `7fb0689` |
+| **Backend** | 51 Go files, ~21,200 lines, 257 tests, 26 migrations |
 | **HTTP routes live** | 28 — auth, onboarding, platform, POS, statements, VAT return **and the catalogue** |
 | **Front ends** | none started |
 
@@ -20,7 +20,7 @@
 | Layer | Complete | Note |
 |---|---:|---|
 | **System design + UI/UX specification** | **100%** | 15 documents, design system, clickable prototype |
-| **Phase 1 backend** | **~95%** | Everything but the small correctness gaps (P8, P9, P12, P14). The ZATCA document format (P1) is blocked on verification, not on code. |
+| **Phase 1 backend** | **~98%** | Every gap I can close is closed. The ZATCA document format (P1) is blocked on verification, not on code. |
 | **Phase 1 front ends** (Tauri POS, Next.js back-office, PWA) | **0%** | Not started, but no longer blocked |
 | **Phase 1 overall** | **~52%** | Backend is roughly 55% of Phase 1 effort |
 | **Whole product (Phases 1–5)** | **~15%** | Phase 1 is roughly 35% of the total |
@@ -93,13 +93,13 @@ fixing it involves.
 | # | Problem | Why it matters | Fix |
 |---|---|---|---|
 | ~~P7~~ | ~~**Posting rules are hard-coded in Go.**~~ **DONE**. All twelve C9.2 rules seeded as data; sale and return post through the engine. Rules resolve at the transaction date and `journal_entry.rule_version` records which version produced each entry. A rule wanting a figure nobody supplied fails and names it. | — | — |
-| **P8** | **Stock movements from a sale carry no `source_id`.** `SourceType` is set to `sales_invoice` but the id is left null, because costing happens before the invoice row exists — deliberately, so a sale that cannot be costed fails before consuming an ICV. | A stock movement cannot be traced back to the sale that caused it. Stock-card drill-down and shrinkage investigation both need this. | Either write the movement after the invoice (giving up the early-failure property), or update the movement's `source_id` in the same transaction. The second is better and cheap — but `stock_movement` has an immutability trigger, so it needs the invoice id passed in from the start via a pre-allocated UUID. |
-| **P9** | **Standard-costing variance is computed and then discarded.** `ConsumeStandard` returns `Variance`; nothing posts it. | The whole point of standard costing is that an unexpected purchase price becomes visible. Right now it is silently absorbed into margin — exactly what the design says must not happen. | Post the variance to a `cost_variance` account role as part of the COGS entry. |
+| ~~P8~~ | ~~**Stock movements carry no `source_id`.**~~ **DONE**. The invoice id is generated in Go before costing runs, so movements point at their sale while a sale that cannot be costed still fails before consuming an ICV. | — | — |
+| ~~P9~~ | ~~**Standard-costing variance is discarded.**~~ **DONE**. Posted through rule 11, with a second rule for the favourable direction so the amount stays positive. | — | — |
 | **P10** | **The offline costing reconciliation is not built.** Design §6.4 specifies: the POS records a provisional cost, and on sync the server recomputes COGS against the real layers and posts the difference to a variance account. | Without it, an offline sale's cost is whatever the device's cached snapshot said, permanently. | Needs the sync path to re-cost and post a `cost_variance` adjustment. Depends on P7 being done first, ideally. |
 | **P11** | **Negative-stock cost does not self-correct.** C13 says an `allow_warn` shortfall's cost is provisional and auto-corrects on the next receipt. It does not. FIFO values the shortfall at the last known cost, weighted average at the pool's average, and neither is revisited. | A shop that regularly sells ahead of its paperwork carries a permanently wrong COGS. | Record the shortfall as a pending cost adjustment and settle it on the next receipt of that variant. |
-| **P12** | **Credit notes are always `signed_pending_report`.** A credit note against a B2B (`standard`) invoice should follow the clearance route, not reporting. | Wrong ZATCA route for B2B returns. | Mirror the sale's `doc_type` logic in `writeCreditNote`. Small fix, worth doing with P1. |
+| ~~P12~~ | ~~**Credit notes are always `signed_pending_report`.**~~ **DONE**. A note follows the route of the invoice it corrects. | — | — |
 | **P13** | **Loyalty and commission reversal (C14 effects 6 and 7) are not built.** | A customer keeps points for goods they returned; a salesperson keeps commission on a refunded sale. | Phase 2 modules. Currently reported honestly in `Refunded.Outstanding` rather than silently skipped — so this is *tracked*, not hidden. |
-| **P14** | **Invoice `human_number` is never populated.** The column and the design exist; the numbering engine does not. | Customers and staff refer to invoices by a friendly number, not a UUID. | Per-store, per-year sequence, deliberately separate from the ICV (blueprint I3 warns against letting one drive the other). |
+| ~~P14~~ | ~~**Invoice `human_number` is never populated.**~~ **DONE**. Per store, per year, own series for credit notes, deliberately separate from the ICV. | — | — |
 | **P15** | **Tender fees and settlement are not populated.** `fee_amount` and `settlement_status` default and stay there. | Card settlement reconciliation — matching the acquirer's payout against the day's card takings — cannot happen. The `card_clearing` account will grow forever with nothing clearing it. | Phase 2 settlement module. The clearing account is already correct, which is the part that would have been painful to retrofit. |
 
 ### 🟡 Environment and hygiene

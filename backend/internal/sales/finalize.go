@@ -192,18 +192,25 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 
-	// Cost the lines before writing anything. What a sale costs comes from the
-	// costing engine and the company's method, never from the till.
-	costs, shortfalls, err := s.costLines(ctx, tx, term, sale)
+	// The invoice id is generated HERE rather than by the database, so the
+	// stock movements written during costing can point at the sale that caused
+	// them. Costing has to run first — a sale that cannot be costed must fail
+	// before it consumes an ICV, because a counter cannot be given back and a
+	// gap in the chain is permanent — and without an id up front those
+	// movements would be untraceable.
+	invoiceID := uuid.New()
+
+	// What a sale costs comes from the costing engine and the company's method,
+	// never from the till.
+	costed, err := s.costLines(ctx, tx, term, sale, invoiceID)
 	if err != nil {
 		return Finalized{}, err
 	}
-	if err := computed.ApplyCosts(costs); err != nil {
+	if err := computed.ApplyCosts(costed.Costs); err != nil {
 		return Finalized{}, err
 	}
 
-	invoiceID, err := s.writeInvoice(ctx, tx, term, sale, computed)
-	if err != nil {
+	if err := s.writeInvoice(ctx, tx, term, sale, computed, invoiceID); err != nil {
 		return Finalized{}, err
 	}
 
@@ -218,14 +225,14 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 
-	revenue, cogs, err := s.post(ctx, tx, term, sale, computed, invoiceID)
+	revenue, cogs, err := s.post(ctx, tx, term, sale, computed, invoiceID, costed.Variance)
 	if err != nil {
 		return Finalized{}, err
 	}
 
 	return Finalized{
 		InvoiceID: invoiceID, Link: link, Computed: computed,
-		Revenue: revenue, COGS: cogs, Shortfalls: shortfalls,
+		Revenue: revenue, COGS: cogs, Shortfalls: costed.Shortfalls,
 	}, nil
 }
 
@@ -262,10 +269,9 @@ func (s *Service) alreadyRung(
 
 // costLines draws stock for every line and returns what each cost.
 func (s *Service) costLines(
-	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale,
-) ([]decimal.Decimal, []Shortfall, error) {
-	costs := make([]decimal.Decimal, len(sale.Lines))
-	var shortfalls []Shortfall
+	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale, invoiceID uuid.UUID,
+) (costing, error) {
+	out := costing{Costs: make([]decimal.Decimal, len(sale.Lines))}
 
 	for i, ref := range sale.Lines {
 		in := sale.Input.Lines[i]
@@ -274,11 +280,16 @@ func (s *Service) costLines(
 			TenantID: term.TenantID, CompanyID: term.CompanyID,
 			VariantID: ref.VariantID, WarehouseID: term.WarehouseID,
 			Qty: in.Qty.Abs(), Reason: "sale",
-			SourceType: "sales_invoice", DeviceID: term.DeviceID,
+			// The invoice id is known before the invoice row exists, because it
+			// is generated up front for exactly this reason. Without it a stock
+			// movement could not be traced back to the sale that caused it, and
+			// stock-card drill-down and shrinkage investigation both need that.
+			SourceType: "sales_invoice", SourceID: &invoiceID,
+			DeviceID:     term.DeviceID,
 			StandardCost: ref.StandardCost,
 		})
 		if err != nil {
-			return nil, nil, err
+			return costing{}, err
 		}
 
 		description := in.Description
@@ -286,51 +297,70 @@ func (s *Service) costLines(
 			description = "this item"
 		}
 		if err := inventory.CheckAvailability(sale.StockPolicy, result, description); err != nil {
-			return nil, nil, err
+			return costing{}, err
 		}
 
 		if result.ShortBy.IsPositive() {
-			shortfalls = append(shortfalls, Shortfall{
+			out.Shortfalls = append(out.Shortfalls, Shortfall{
 				LineNo: i + 1, VariantID: ref.VariantID, ShortBy: result.ShortBy,
 			})
 		}
-		costs[i] = result.TotalCost
+		out.Costs[i] = result.TotalCost
+
+		// Standard costing books a fixed cost and the difference is the whole
+		// point: an unexpected purchase price must become visible rather than
+		// being absorbed into margin. Accumulated here and posted with the sale.
+		out.Variance = out.Variance.Add(result.Variance)
 	}
 
-	return costs, shortfalls, nil
+	return out, nil
+}
+
+// costing is what the costing engine produced for a whole sale.
+type costing struct {
+	Costs      []decimal.Decimal
+	Shortfalls []Shortfall
+
+	// Variance is non-zero only under standard costing. Positive means the
+	// stock cost MORE than standard — an unfavourable variance, which is a
+	// further expense; negative means it cost less.
+	Variance decimal.Decimal
 }
 
 // writeInvoice records the header, the lines and the tenders.
 func (s *Service) writeInvoice(
-	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale, computed ComputedSale,
-) (uuid.UUID, error) {
-	state := "signed_pending_report" // B2C: receipt given now, reported within 24h
-	if sale.DocType == "standard" {
-		state = "signed_pending_clear" // B2B: cleared before it may be issued
-	}
-
+	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale,
+	computed ComputedSale, invoiceID uuid.UUID,
+) error {
 	rate := sale.FXRate
 	if rate.IsZero() {
 		rate = decimal.NewFromInt(1)
 	}
 
-	var invoiceID uuid.UUID
-	err := tx.QueryRow(ctx, `
+	// The friendly number a customer and a shop assistant refer to. Claimed
+	// separately from the ICV and never derived from it: blueprint I3 warns
+	// that letting a custom invoice number drive the tamper-evident counter is
+	// exactly the mistake to avoid, so the numbering engine has no access to
+	// ICV allocation and this one can be reformatted freely.
+	humanNumber, err := claimHumanNumber(ctx, tx, term.StoreID, sale.IssuedAt, sale.DocType)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO sales_invoice
-		  (tenant_id, company_id, store_id, device_id, uuid, doc_type,
+		  (id, tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   issue_date, issued_at, currency, fx_rate,
 		   subtotal_net, discount_total, tax_total, total_inclusive, state,
-		   cash_session_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-		RETURNING id`,
-		term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
+		   cash_session_id, human_number)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		invoiceID, term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		sale.InvoiceUUID, sale.DocType,
 		sale.IssuedAt, sale.IssuedAt, sale.Currency, rate,
 		computed.SubtotalNet, computed.DiscountTotal,
-		computed.TaxTotal, computed.TotalInclusive, state,
-		term.CashSessionID).Scan(&invoiceID)
-	if err != nil {
-		return uuid.Nil, db.Translate(err, "That sale could not be recorded.")
+		computed.TaxTotal, computed.TotalInclusive, initialState(sale.DocType),
+		term.CashSessionID, humanNumber); err != nil {
+		return db.Translate(err, "That sale could not be recorded.")
 	}
 
 	for i, l := range computed.Lines {
@@ -345,7 +375,7 @@ func (s *Service) writeInvoice(
 			l.Qty, l.UnitPrice, l.LineDiscount, l.InvoiceDiscountAlloc,
 			l.TaxTreatment, l.TaxRate, l.TaxAmount,
 			l.NetAmount, l.GrossAmount, l.COGSAmount); err != nil {
-			return uuid.Nil, db.Translate(err,
+			return db.Translate(err,
 				"A line on that sale could not be recorded.")
 		}
 	}
@@ -357,12 +387,25 @@ func (s *Service) writeInvoice(
 			VALUES ($1,$2,$3,$4,$5,$6)`,
 			term.TenantID, invoiceID, i+1, td.Method, td.Amount,
 			nullText(td.Reference)); err != nil {
-			return uuid.Nil, db.Translate(err,
+			return db.Translate(err,
 				"A payment on that sale could not be recorded.")
 		}
 	}
 
-	return invoiceID, nil
+	return nil
+}
+
+// initialState says which ZATCA route a document takes.
+//
+// B2C is reported within 24 hours, so the receipt is handed over immediately
+// and the report follows. B2B must be CLEARED before it may be issued at all.
+// Getting this backwards means either handing a customer an invoice that ZATCA
+// has not authorised, or making a shopper wait at a till for a round trip.
+func initialState(docType string) string {
+	if docType == "standard" {
+		return "signed_pending_clear"
+	}
+	return "signed_pending_report"
 }
 
 // post writes the two entries C9.2 requires of every sale.
@@ -374,7 +417,7 @@ func (s *Service) writeInvoice(
 // rather than an entry with two empty legs.
 func (s *Service) post(
 	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale,
-	computed ComputedSale, invoiceID uuid.UUID,
+	computed ComputedSale, invoiceID uuid.UUID, variance decimal.Decimal,
 ) (revenue, cogs accounting.Result, err error) {
 	base := accounting.Entry{
 		TenantID: term.TenantID, CompanyID: term.CompanyID,
@@ -383,9 +426,9 @@ func (s *Service) post(
 		StoreID: &term.StoreID,
 	}
 
-	// The shape of both entries lives in posting_rule, not here. This supplies
-	// the numbers and the tender split; which accounts they land in is the
-	// rule's business and the company's role mapping.
+	// The shape of every entry below lives in posting_rule, not here. This
+	// supplies the numbers and the tender split; which accounts they land in is
+	// the rule's business and the company's role mapping.
 	tenders := make(accounting.Group, 0, len(sale.Tenders))
 	for _, td := range sale.Tenders {
 		tenders = append(tenders, accounting.GroupMember{
@@ -412,20 +455,55 @@ func (s *Service) post(
 
 	// Rule 2 — cost of sale, which C13 requires to post WITH the sale so gross
 	// profit is a measurement rather than a month-end reconstruction. A company
-	// selling services has nothing to cost and simply gets no second entry.
-	if !computed.COGSTotal.IsPositive() {
+	// selling services has nothing to cost and simply gets no such entry.
+	if computed.COGSTotal.IsPositive() {
+		cogsEntry := base
+		cogsEntry.RuleKey = "sale.cogs"
+		cogsEntry.Memo = "Cost of sale"
+
+		cogs, err = accounting.PostByRule(ctx, tx, cogsEntry, term.Country,
+			accounting.Transaction{
+				Amounts: accounting.Amounts{"cogs_total": computed.COGSTotal},
+			})
+		if err != nil {
+			return revenue, cogs, err
+		}
+	}
+
+	// Rule 11 — the standard-costing variance, which is the entire reason a
+	// company chooses standard costing. Computing it and discarding it means an
+	// unexpected purchase price is absorbed silently into margin, which is the
+	// outcome the method exists to prevent.
+	//
+	// Checked INDEPENDENTLY of cost of sale, not after it. A standard cost of
+	// zero produces no COGS entry and a variance equal to the whole actual
+	// cost, so hanging this off the COGS branch would discard the variance in
+	// precisely the case where it is largest.
+	if variance.IsZero() {
 		return revenue, cogs, nil
 	}
 
-	cogsEntry := base
-	cogsEntry.RuleKey = "sale.cogs"
-	cogsEntry.Memo = "Cost of sale"
+	varianceEntry := base
+	varianceEntry.RuleKey = "inventory.variance"
+	varianceEntry.Memo = "Standard cost variance"
 
-	cogs, err = accounting.PostByRule(ctx, tx, cogsEntry, term.Country,
+	// The rule debits variance and credits inventory, which is right when stock
+	// cost MORE than standard. A favourable variance is the same entry the
+	// other way round, and posting a negative amount would make every report
+	// that sums a column wrong — so the sides swap and the amount stays
+	// positive.
+	if variance.IsNegative() {
+		varianceEntry.RuleKey = "inventory.variance_favourable"
+		variance = variance.Neg()
+	}
+
+	if _, err = accounting.PostByRule(ctx, tx, varianceEntry, term.Country,
 		accounting.Transaction{
-			Amounts: accounting.Amounts{"cogs_total": computed.COGSTotal},
-		})
-	return revenue, cogs, err
+			Amounts: accounting.Amounts{"variance": variance},
+		}); err != nil {
+		return revenue, cogs, err
+	}
+	return revenue, cogs, nil
 }
 
 // tenderRole says which account a payment method lands in.
