@@ -21,6 +21,8 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
 // version is set at build time via -ldflags.
@@ -72,7 +74,18 @@ func run() error {
 
 	provSvc := provisioning.NewService(pool)
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc,
+	// The hasher is the one part of ZATCA that is not yet implemented: the
+	// byte-level UBL 2.1 XML and the QR TLV encoding are still unverified
+	// against primary sources, so the seam is left explicit rather than filled
+	// in by guesswork. In production it refuses; elsewhere it produces a
+	// clearly-labelled placeholder so the rest of the system can be exercised.
+	//
+	// Signing never happens here in any environment — the key lives in the
+	// terminal's OS keystore and never reaches this process.
+	chain := zatca.NewChain(pool, zatca.HasherFor(cfg.Env.IsProduction()))
+	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules)
+
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc,
 		func() error { return pool.Health(ctx) }, version)
 
 	handler := srv.Handler(

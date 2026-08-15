@@ -178,8 +178,13 @@ is correctly implemented — by construction, not by convention.**
 set, and the refusal names the rule and its source document. Values carry
 `verified_on`, source document, version and section.
 `TestVerifiedRulesCarryTheirEvidence` prevents stamping `verified_on` without
-citing evidence. `make lint-wording` fails the build on "ZATCA-certified",
-"certified compliant" or "guaranteed compliant" — 110 files scanned, passing.
+citing evidence. `make lint-wording` fails the build on any claim of
+certification or guaranteed compliance — the exact prohibited phrases are
+listed in `cmd/lintwording`. 110 files scanned, passing.
+
+The guard proved itself during this audit: an earlier draft of this very
+document quoted those phrases while describing the rule, and the build refused
+it. A linter that exempts the document explaining the linter is not a linter.
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -125,10 +126,28 @@ type Shortfall struct {
 // Service finalises sales.
 type Service struct {
 	chain *zatca.Chain
+
+	// pool is set by WithPool. It is optional so the domain methods below can
+	// be driven directly inside a caller's own transaction — which is what the
+	// sync worker will need when it replays a batch of offline sales as one
+	// unit.
+	pool *db.Pool
+
+	// rules resolves legal values at the transaction date. Optional for the
+	// same reason: a caller that has already resolved them can drive Finalize
+	// directly.
+	rules *registry.Service
 }
 
 func NewService(chain *zatca.Chain) *Service {
 	return &Service{chain: chain}
+}
+
+// WithRegistry gives the service the Regulatory Rule Registry, so a sale's VAT
+// rate is looked up rather than supplied.
+func (s *Service) WithRegistry(rules *registry.Service) *Service {
+	s.rules = rules
+	return s
 }
 
 // Finalize turns a rung-up sale into an invoice, a chain position, stock

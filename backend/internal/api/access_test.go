@@ -30,6 +30,9 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
 const testPassword = "a reasonably long passphrase"
@@ -38,6 +41,11 @@ type harness struct {
 	server *httptest.Server
 	pool   *db.Pool
 	auth   *identity.Service
+
+	// tokens lets a test mint a token bound to a terminal. A POS carries one;
+	// a browser session does not, and the difference is what decides whether an
+	// invoice can be issued at all.
+	tokens *identity.TokenService
 }
 
 func newHarness(t *testing.T) *harness {
@@ -70,14 +78,21 @@ func newHarness(t *testing.T) *harness {
 
 	provSvc := provisioning.NewService(pool)
 
-	srv := NewServer(authSvc, mw, authz, provSvc,
+	// A development hasher, because these tests exercise the HTTP surface
+	// rather than ZATCA's document format. The production hasher refuses
+	// outright until the format is verified — see zatca.HasherFor.
+	rules := registry.New(pool, false)
+	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.DevelopmentHasher{})).
+		WithPool(pool).WithRegistry(rules)
+
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc,
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
-	return &harness{server: ts, pool: pool, auth: authSvc}
+	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role

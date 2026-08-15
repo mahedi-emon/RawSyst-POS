@@ -21,6 +21,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 )
 
 // Access says who may reach a route.
@@ -63,6 +64,7 @@ type Server struct {
 	mw           *identity.Middleware
 	authz        *identity.Authorizer
 	provisioning *provisioning.Service
+	sales        *sales.Service
 	health       func() error
 	version      string
 }
@@ -72,6 +74,7 @@ func NewServer(
 	mw *identity.Middleware,
 	authz *identity.Authorizer,
 	prov *provisioning.Service,
+	salesSvc *sales.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -80,6 +83,7 @@ func NewServer(
 		mw:           mw,
 		authz:        authz,
 		provisioning: prov,
+		sales:        salesSvc,
 		health:       health,
 		version:      version,
 	}
@@ -123,6 +127,20 @@ func (s *Server) Routes() []Route {
 			s.handleOnboardingCompleteStep, ""},
 		{http.MethodPost, "/api/v1/onboarding/company", AccessPermission, "identity.edit",
 			s.handleOnboardingCommitCompany, ""},
+
+		// --- point of sale ---
+		//
+		// Refunding is its own permission, not a consequence of being able to
+		// sell. The seeded Cashier happens to hold both, but a tenant can build
+		// a role that sells and cannot reverse — which matters because refund
+		// fraud is among the commonest forms of till theft, and C14 treats a
+		// return as its own act for exactly that reason.
+		{http.MethodPost, "/api/v1/pos/sales", AccessPermission, "sales.create",
+			s.handleCreateSale, ""},
+		{http.MethodPost, "/api/v1/pos/returns", AccessPermission, "sales.refund",
+			s.handleCreateReturn, ""},
+		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}", AccessPermission, "sales.view",
+			s.handleGetSale, ""},
 
 		// --- platform control plane ---
 		{http.MethodPost, "/api/v1/platform/tenants", AccessSuperAdmin, "",
