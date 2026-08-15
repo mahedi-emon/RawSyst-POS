@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -68,6 +69,13 @@ func (s *Service) RingUp(
 type companyProfile struct {
 	country      string
 	baseCurrency string
+
+	// stockPolicy decides whether a till may sell past what is on hand. It
+	// belongs to the COMPANY, not to the request: a till that named its own
+	// policy could sell below zero at a shop that had deliberately forbidden
+	// it, and the column defaults to block precisely because that is the safe
+	// answer for serialised or high-value goods.
+	stockPolicy inventory.NegativeStockPolicy
 }
 
 // applyTaxProfile fills in the values the till is not allowed to choose.
@@ -91,6 +99,11 @@ func (s *Service) applyTaxProfile(
 	sale.Input.Rules = rules
 	sale.Input.TaxRate = rate
 	sale.Currency = profile.baseCurrency
+
+	// Read from the company, never from the request. The handler cannot supply
+	// this and a till cannot ask for it: a terminal that named its own policy
+	// could sell below zero at a shop that had forbidden it.
+	sale.StockPolicy = profile.stockPolicy
 	return nil
 }
 
@@ -143,11 +156,11 @@ func resolveTerminal(
 	var profile companyProfile
 	err := tx.QueryRow(ctx, `
 		SELECT d.company_id, d.store_id, d.egs_unit_id, d.status::text,
-		       c.country, c.base_currency
+		       c.country, c.base_currency, c.negative_stock_policy::text
 		FROM device d JOIN company c ON c.id = d.company_id
 		WHERE d.id = $1`, deviceID).
 		Scan(&term.CompanyID, &term.StoreID, &egsUnitID, &status,
-			&profile.country, &profile.baseCurrency)
+			&profile.country, &profile.baseCurrency, &profile.stockPolicy)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Another tenant's device reads as absent under row-level security,

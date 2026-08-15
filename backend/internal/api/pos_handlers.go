@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -199,10 +198,11 @@ func (s *Server) buildSale(
 		Lines:     refs,
 		Tenders:   tenders,
 		CashierID: &userID,
-		// The company's own policy decides whether a till may sell below zero.
-		// Defaulting to block here would refuse customers at shops that have
-		// deliberately chosen otherwise; the service reads the real policy.
-		StockPolicy: inventory.PolicyAllowWarn,
+		// StockPolicy is deliberately left unset. Whether a till may sell past
+		// what is on hand belongs to the company (C13), and the service reads
+		// it from there — a handler that supplied a default would let a request
+		// decide, and the safe default the column already carries would never
+		// take effect.
 	}, nil
 }
 

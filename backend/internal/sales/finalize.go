@@ -273,6 +273,20 @@ func (s *Service) costLines(
 ) (costing, error) {
 	out := costing{Costs: make([]decimal.Decimal, len(sale.Lines))}
 
+	// Every item this sale touches is locked up front, in a deterministic
+	// order. Locking as each line is costed would let two sales that share two
+	// items in opposite orders deadlock — one holding the Abaya and wanting the
+	// Thobe while the other holds the Thobe and wants the Abaya. Postgres would
+	// abort one, which is safe, but a cashier sees a sale fail for no reason
+	// they can act on.
+	variantIDs := make([]uuid.UUID, 0, len(sale.Lines))
+	for _, ref := range sale.Lines {
+		variantIDs = append(variantIDs, ref.VariantID)
+	}
+	if err := inventory.LockStock(ctx, tx, term.WarehouseID, variantIDs); err != nil {
+		return costing{}, err
+	}
+
 	for i, ref := range sale.Lines {
 		in := sale.Input.Lines[i]
 

@@ -176,11 +176,21 @@ func TestTreatmentsAreReportedSeparately(t *testing.T) {
 			f.tenantID, f.companyID, zeroVariant, f.warehouseID); e != nil {
 			return e
 		}
-		_, e := tx.Exec(ctx, `
+		if _, e := tx.Exec(ctx, `
 			INSERT INTO cost_layer
 			  (tenant_id, company_id, variant_id, warehouse_id,
 			   qty_received, qty_remaining, unit_cost)
 			VALUES ($1,$2,$3,$4,5,5,20)`,
+			f.tenantID, f.companyID, zeroVariant, f.warehouseID); e != nil {
+			return e
+		}
+		// The pool as well as the layer. This company costs at weighted
+		// average, so the pool is what a sale reads — seeding only the layer
+		// leaves the shelf empty as far as costing is concerned.
+		_, e := tx.Exec(ctx, `
+			INSERT INTO stock_valuation
+			  (tenant_id, company_id, variant_id, warehouse_id, qty_on_hand, total_value)
+			VALUES ($1,$2,$3,$4,5,100)`,
 			f.tenantID, f.companyID, zeroVariant, f.warehouseID)
 		return e
 	}); err != nil {

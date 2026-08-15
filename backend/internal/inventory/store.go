@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -330,10 +331,18 @@ func companyMethod(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) (Method,
 // readLayers reads the open layers oldest-first, which is the order FIFO
 // consumption requires. Sorting in Go afterwards would mask a mistake here.
 func readLayers(ctx context.Context, tx pgx.Tx, variantID, warehouseID uuid.UUID) ([]Layer, error) {
+	// Locked for the same reason the pool is. FIFO reads the open layers,
+	// computes a cost from them and decrements them; two tills reading the same
+	// layers would compute the same cost from stock only one of them can have.
+	//
+	// The quantity check on cost_layer would eventually refuse a negative
+	// remainder, but by then the COGS figure charged to the ledger has already
+	// been computed from stock that was not there.
 	rows, err := tx.Query(ctx, `
 		SELECT id, qty_remaining, unit_cost FROM cost_layer
 		WHERE variant_id = $1 AND warehouse_id = $2 AND qty_remaining > 0
-		ORDER BY received_at, id`, variantID, warehouseID)
+		ORDER BY received_at, id
+		FOR UPDATE`, variantID, warehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -350,14 +359,74 @@ func readLayers(ctx context.Context, tx pgx.Tx, variantID, warehouseID uuid.UUID
 	return out, rows.Err()
 }
 
+// LockStock takes the row locks a sale needs, in a deterministic order.
+//
+// Two sales that touch the same two items in opposite orders will deadlock:
+// one holds Abaya and wants Thobe, the other holds Thobe and wants Abaya.
+// Postgres detects it and aborts one, which is safe but surfaces to a cashier
+// as a failed sale for no reason they can see.
+//
+// Locking every item the sale touches up front, sorted, removes the cycle:
+// two sales competing for the same items now queue rather than deadlock.
+func LockStock(
+	ctx context.Context, tx pgx.Tx, warehouseID uuid.UUID, variantIDs []uuid.UUID,
+) error {
+	if len(variantIDs) == 0 {
+		return nil
+	}
+
+	ordered := make([]uuid.UUID, 0, len(variantIDs))
+	seen := make(map[uuid.UUID]bool, len(variantIDs))
+	for _, id := range variantIDs {
+		if !seen[id] {
+			seen[id] = true
+			ordered = append(ordered, id)
+		}
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].String() < ordered[j].String()
+	})
+
+	for _, id := range ordered {
+		// Both stores, because which one a company reads depends on its costing
+		// method and a lock on the wrong one protects nothing.
+		if _, err := tx.Exec(ctx, `
+			SELECT 1 FROM stock_valuation
+			WHERE variant_id = $1 AND warehouse_id = $2
+			FOR UPDATE`, id, warehouseID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			SELECT 1 FROM cost_layer
+			WHERE variant_id = $1 AND warehouse_id = $2 AND qty_remaining > 0
+			ORDER BY received_at, id
+			FOR UPDATE`, id, warehouseID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // readPool reads the weighted-average position. A variant never received is an
 // empty pool, not an error — Consume reports it as a shortfall so the company's
 // negative-stock policy decides.
 func readPool(ctx context.Context, tx pgx.Tx, variantID, warehouseID uuid.UUID) (Pool, error) {
 	var p Pool
+	// FOR UPDATE, and it is load-bearing.
+	//
+	// Consumption reads the pool, computes the remainder and writes it back.
+	// That is a read-modify-write, so two tills selling the same item at the
+	// same moment both read the same figure, both compute the same remainder
+	// and both write it — and one sale's stock silently disappears from the
+	// valuation while its journal entry survives. The tie-out then fails by the
+	// value of however many sales were lost.
+	//
+	// A concurrency test caught this at six tills: the valuation read 540 when
+	// it should have read 240.
 	err := tx.QueryRow(ctx, `
 		SELECT qty_on_hand, total_value FROM stock_valuation
-		WHERE variant_id = $1 AND warehouse_id = $2`,
+		WHERE variant_id = $1 AND warehouse_id = $2
+		FOR UPDATE`,
 		variantID, warehouseID).Scan(&p.QtyOnHand, &p.TotalValue)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Pool{}, nil
