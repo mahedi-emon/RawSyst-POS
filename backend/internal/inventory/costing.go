@@ -279,8 +279,8 @@ type Request struct {
 	StandardCost decimal.Decimal
 }
 
-// Consume dispatches on the company's configured method.
-func Consume(req Request) (CostResult, error) {
+// Compute dispatches on the company's configured method.
+func Compute(req Request) (CostResult, error) {
 	switch req.Method {
 	case MethodFIFO:
 		return ConsumeFIFO(req.Layers, req.Qty)

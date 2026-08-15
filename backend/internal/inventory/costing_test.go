@@ -353,7 +353,7 @@ func TestConsumingEverythingLeavesNothing(t *testing.T) {
 }
 
 func TestUnknownMethodIsRefused(t *testing.T) {
-	_, err := Consume(Request{
+	_, err := Compute(Request{
 		Method: "lifo",
 		Qty:    dec("1"),
 		Layers: []Layer{layer("1", "1")},

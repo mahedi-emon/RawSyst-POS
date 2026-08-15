@@ -161,36 +161,14 @@ func (b *books) receive(t *testing.T, qty, unitCost string) {
 	b.entryNo++
 
 	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
-		if _, e := tx.Exec(ctx, `
-			INSERT INTO stock_movement
-			  (tenant_id, company_id, variant_id, warehouse_id, delta, reason, value_delta)
-			VALUES ($1,$2,$3,$4,$5,'grn',$6)`,
-			b.tenantID, b.companyID, b.variantID, b.warehouseID, dec(qty), value); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `
-			INSERT INTO cost_layer
-			  (tenant_id, company_id, variant_id, warehouse_id,
-			   qty_received, qty_remaining, unit_cost)
-			VALUES ($1,$2,$3,$4,$5,$5,$6)`,
-			b.tenantID, b.companyID, b.variantID, b.warehouseID,
-			dec(qty), dec(unitCost)); e != nil {
-			return e
-		}
-
-		// Both stores are kept current on every receipt, whichever method is in
-		// force. A company that switches from FIFO to weighted average must not
-		// discover its new valuation is empty, and back-filling one from the
-		// other after the fact cannot recover costs that layers no longer hold.
-		if _, e := tx.Exec(ctx, `
-			INSERT INTO stock_valuation
-			  (tenant_id, company_id, variant_id, warehouse_id, qty_on_hand, total_value)
-			VALUES ($1,$2,$3,$4,$5,$6)
-			ON CONFLICT (variant_id, warehouse_id) DO UPDATE SET
-			  qty_on_hand = stock_valuation.qty_on_hand + EXCLUDED.qty_on_hand,
-			  total_value = stock_valuation.total_value + EXCLUDED.total_value`,
-			b.tenantID, b.companyID, b.variantID, b.warehouseID,
-			dec(qty), value); e != nil {
+		// The production receipt path, not a reimplementation of it. A harness
+		// that maintained the cost stores itself would prove only that the
+		// harness ties out.
+		if e := Receive(ctx, tx, Receipt{
+			TenantID: b.tenantID, CompanyID: b.companyID,
+			VariantID: b.variantID, WarehouseID: b.warehouseID,
+			Qty: dec(qty), UnitCost: dec(unitCost), Reason: "grn",
+		}); e != nil {
 			return e
 		}
 
@@ -223,102 +201,28 @@ func (b *books) receive(t *testing.T, qty, unitCost string) {
 	}
 }
 
-// openLayers reads the layers oldest-first, exactly as the costing engine
-// expects them.
-func (b *books) openLayers(t *testing.T) []Layer {
-	t.Helper()
-	var out []Layer
-	err := b.pool.TxAsTenant(context.Background(), b.tenantID, func(tx pgx.Tx) error {
-		rows, e := tx.Query(context.Background(), `
-			SELECT id, qty_remaining, unit_cost FROM cost_layer
-			WHERE variant_id=$1 AND warehouse_id=$2 AND qty_remaining > 0
-			ORDER BY received_at, id`, b.variantID, b.warehouseID)
-		if e != nil {
-			return e
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var l Layer
-			if e := rows.Scan(&l.ID, &l.QtyRemaining, &l.UnitCost); e != nil {
-				return e
-			}
-			out = append(out, l)
-		}
-		return rows.Err()
-	})
-	if err != nil {
-		t.Fatalf("read layers: %v", err)
-	}
-	return out
-}
-
-// currentPool reads the weighted-average position.
-func (b *books) currentPool(t *testing.T) Pool {
-	t.Helper()
-	var p Pool
-	err := b.pool.TxAsTenant(context.Background(), b.tenantID, func(tx pgx.Tx) error {
-		e := tx.QueryRow(context.Background(), `
-			SELECT qty_on_hand, total_value FROM stock_valuation
-			WHERE variant_id=$1 AND warehouse_id=$2`,
-			b.variantID, b.warehouseID).Scan(&p.QtyOnHand, &p.TotalValue)
-		if e == pgx.ErrNoRows {
-			return nil // never received: an empty pool, not an error
-		}
-		return e
-	})
-	if err != nil {
-		t.Fatalf("read pool: %v", err)
-	}
-	return p
-}
-
 // sell consumes stock by the company's method and posts COGS.
+//
+// Consumption and its journal entry go in ONE transaction, exactly as a real
+// sale must (C9.1). A sale that committed its stock movement but rolled back
+// its COGS entry would put the valuation and the ledger permanently apart, and
+// nothing later would reconcile them.
 func (b *books) sell(t *testing.T, qty string) CostResult {
 	t.Helper()
 	ctx := context.Background()
 
-	result, err := Consume(Request{
-		Method: b.method,
-		Qty:    dec(qty),
-		Layers: b.openLayers(t),
-		Pool:   b.currentPool(t),
-	})
-	if err != nil {
-		t.Fatalf("consume: %v", err)
-	}
-
 	entryNo := b.entryNo
 	b.entryNo++
 
-	err = b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
-		// Draw the layers down by exactly what the engine said it took.
-		for _, c := range result.Consumed {
-			if _, e := tx.Exec(ctx,
-				`UPDATE cost_layer SET qty_remaining = qty_remaining - $2 WHERE id = $1`,
-				c.LayerID, c.Qty); e != nil {
-				return e
-			}
-		}
-
-		// Write the pool back as the engine computed it, rather than
-		// subtracting here. Recomputing the remaining value at this point would
-		// round a second time, and that second rounding is exactly the drift
-		// this test exists to catch.
-		if b.method == MethodWAC {
-			if _, e := tx.Exec(ctx, `
-				UPDATE stock_valuation SET qty_on_hand = $3, total_value = $4
-				WHERE variant_id = $1 AND warehouse_id = $2`,
-				b.variantID, b.warehouseID,
-				result.PoolQtyAfter, result.PoolValueAfter); e != nil {
-				return e
-			}
-		}
-		if _, e := tx.Exec(ctx, `
-			INSERT INTO stock_movement
-			  (tenant_id, company_id, variant_id, warehouse_id, delta, reason, value_delta)
-			VALUES ($1,$2,$3,$4,$5,'sale',$6)`,
-			b.tenantID, b.companyID, b.variantID, b.warehouseID,
-			dec(qty).Neg(), result.TotalCost.Neg()); e != nil {
+	var result CostResult
+	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
+		var e error
+		result, e = Consume(ctx, tx, Issue{
+			TenantID: b.tenantID, CompanyID: b.companyID,
+			VariantID: b.variantID, WarehouseID: b.warehouseID,
+			Qty: dec(qty), Reason: "sale",
+		})
+		if e != nil {
 			return e
 		}
 
@@ -339,7 +243,7 @@ func (b *books) sell(t *testing.T, qty string) CostResult {
 			b.tenantID, entryID, b.cogs, result.TotalCost); e != nil {
 			return e
 		}
-		_, e := tx.Exec(ctx, `
+		_, e = tx.Exec(ctx, `
 			INSERT INTO journal_line
 			  (tenant_id, entry_id, line_no, account_id, currency,
 			   debit, credit, base_debit, base_credit)
@@ -565,5 +469,103 @@ func TestCostLayerReceiptIsFrozen(t *testing.T) {
 		return e
 	}); err != nil {
 		t.Fatalf("consuming a layer was refused: %v", err)
+	}
+}
+
+// The store costs by the company's OWN configured method, read from the
+// database rather than passed in. Two companies with identical receipts and an
+// identical sale must reach different COGS, because that is the entire point of
+// letting a company choose.
+func TestConsumeCostsByTheCompanysConfiguredMethod(t *testing.T) {
+	fifo := newBooks(t, MethodFIFO)
+	wac := newBooks(t, MethodWAC)
+
+	for _, b := range []*books{fifo, wac} {
+		b.receive(t, "10", "40.00")
+		b.receive(t, "10", "60.00")
+	}
+
+	// FIFO: 10 x 40 + 5 x 60 = 700. Weighted average: 15 x 50 = 750.
+	gotFIFO := fifo.sell(t, "15")
+	gotWAC := wac.sell(t, "15")
+
+	if !gotFIFO.TotalCost.Equal(dec("700")) {
+		t.Errorf("fifo COGS = %s, want 700", gotFIFO.TotalCost)
+	}
+	if !gotWAC.TotalCost.Equal(dec("750")) {
+		t.Errorf("wac COGS = %s, want 750", gotWAC.TotalCost)
+	}
+	if gotFIFO.TotalCost.Equal(gotWAC.TotalCost) {
+		t.Error("both companies reached the same cost on rising prices; the " +
+			"configured method is not being read")
+	}
+
+	// And each still ties out, which is the point of reading the method in both
+	// the costing and the valuation.
+	for _, b := range []*books{fifo, wac} {
+		if diff := b.tieOutDifference(t); !diff.IsZero() {
+			t.Errorf("%s is out by %s", b.method, diff)
+		}
+	}
+}
+
+// QA gate M8, at the costing layer: one tenant cannot cost stock against
+// another tenant's company. Row-level security makes the company unreadable, so
+// it is reported as absent rather than as a permission error — which is the
+// right answer, because its existence is not this caller's business.
+func TestConsumeRefusesACompanyInAnotherTenant(t *testing.T) {
+	mine := newBooks(t, MethodFIFO)
+	theirs := newBooks(t, MethodFIFO)
+
+	theirs.receive(t, "10", "50.00")
+
+	err := mine.pool.TxAsTenant(context.Background(), mine.tenantID, func(tx pgx.Tx) error {
+		_, e := Consume(context.Background(), tx, Issue{
+			TenantID: mine.tenantID, CompanyID: theirs.companyID,
+			VariantID: theirs.variantID, WarehouseID: theirs.warehouseID,
+			Qty: dec("1"), Reason: "sale",
+		})
+		return e
+	})
+	if err == nil {
+		t.Fatal("one tenant costed stock against another tenant's company")
+	}
+
+	// Their stock is untouched.
+	var onHand decimal.Decimal
+	if e := theirs.pool.TxAsTenant(context.Background(), theirs.tenantID, func(tx pgx.Tx) error {
+		var readErr error
+		onHand, readErr = OnHandAt(context.Background(), tx, theirs.variantID, theirs.warehouseID)
+		return readErr
+	}); e != nil {
+		t.Fatalf("read stock: %v", e)
+	}
+	if !onHand.Equal(dec("10")) {
+		t.Fatalf("their stock is now %s, want 10", onHand)
+	}
+}
+
+// Selling past available stock is reported, not refused. Whether the sale may
+// proceed is the company's negative-stock policy, applied by the caller — a
+// costing engine that blocked the sale itself would take that decision away
+// from a shop that has chosen to keep the till running (C13).
+func TestConsumeReportsAShortfallRatherThanRefusing(t *testing.T) {
+	b := newBooks(t, MethodFIFO)
+	b.receive(t, "2", "50.00")
+
+	got := b.sell(t, "5")
+
+	if !got.ShortBy.Equal(dec("3")) {
+		t.Fatalf("short by %s, want 3", got.ShortBy)
+	}
+	if got.TotalCost.LessThanOrEqual(dec("100")) {
+		t.Fatalf("COGS = %s; the uncovered units were costed at nothing, which "+
+			"overstates profit", got.TotalCost)
+	}
+	if err := CheckAvailability(PolicyBlock, got, "Abaya"); err == nil {
+		t.Error("the block policy allowed a sale beyond available stock")
+	}
+	if err := CheckAvailability(PolicyAllowWarn, got, "Abaya"); err != nil {
+		t.Errorf("allow_warn blocked a sale: %v", err)
 	}
 }
