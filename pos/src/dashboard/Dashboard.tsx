@@ -42,7 +42,20 @@ type Load =
   | { state: 'offline' }
   | { state: 'error'; message: string };
 
-export function Dashboard({ companyId }: { companyId: string }) {
+/** Where a widget drills through to. A8 requires every one of them to open. */
+export type DrillTarget =
+  | { screen: 'sales'; date: string }
+  | { screen: 'expenses'; date: string }
+  | { screen: 'compliance' }
+  | { screen: 'stock'; filter: 'low' | 'out' };
+
+export function Dashboard({
+  companyId,
+  onOpen,
+}: {
+  companyId: string;
+  onOpen: (target: DrillTarget) => void;
+}) {
   const { client } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [date, setDate] = useState<string | undefined>(undefined);
@@ -111,6 +124,8 @@ export function Dashboard({ companyId }: { companyId: string }) {
             <Kpi
               label="Sales"
               value={money(d.sales.total, { currency })}
+              onOpen={() => onOpen({ screen: 'sales', date: d.date })}
+              opens="the invoices behind today's sales"
               foot={
                 d.sales.change_pct === null ? (
                   <span className="ds-subtle">
@@ -126,6 +141,8 @@ export function Dashboard({ companyId }: { companyId: string }) {
             <Kpi
               label="Gross profit"
               value={money(d.profit.gross, { currency })}
+              onOpen={() => onOpen({ screen: 'sales', date: d.date })}
+              opens="the sales this profit came from"
               foot={
                 d.profit.margin_pct === null ? (
                   <span className="ds-subtle">No sales to measure against</span>
@@ -138,6 +155,8 @@ export function Dashboard({ companyId }: { companyId: string }) {
             <Kpi
               label="Expenses"
               value={money(d.expenses.total, { currency })}
+              onOpen={() => onOpen({ screen: 'expenses', date: d.date })}
+              opens="the postings behind today's expenses"
               foot={
                 d.expenses.by_account.length === 0 ? (
                   <span className="ds-subtle">Nothing posted today</span>
@@ -226,14 +245,20 @@ export function Dashboard({ companyId }: { companyId: string }) {
                 {(d.inventory.out_of_stock > 0 || d.inventory.low_stock > 0) && (
                   <p className="dash__stockline ds-body-sm">
                     {d.inventory.out_of_stock > 0 && (
-                      <span className="ds-badge ds-badge--danger">
+                      <button
+                        className="ds-badge ds-badge--danger badge--opens"
+                        onClick={() => onOpen({ screen: 'stock', filter: 'out' })}
+                      >
                         {d.inventory.out_of_stock} out of stock
-                      </span>
+                      </button>
                     )}
                     {d.inventory.low_stock > 0 && (
-                      <span className="ds-badge ds-badge--warning">
+                      <button
+                        className="ds-badge ds-badge--warning badge--opens"
+                        onClick={() => onOpen({ screen: 'stock', filter: 'low' })}
+                      >
                         {d.inventory.low_stock} low
-                      </span>
+                      </button>
                     )}
                   </p>
                 )}
@@ -247,7 +272,7 @@ export function Dashboard({ companyId }: { companyId: string }) {
             />
           </div>
 
-          <AttentionList items={d.attention} />
+          <AttentionList items={d.attention} onOpen={onOpen} />
         </>
       )}
 
@@ -259,28 +284,55 @@ export function Dashboard({ companyId }: { companyId: string }) {
 /** One headline figure.
  *
  * The label is small and the number is large, because the reader is scanning
- * for the number and already knows what they came to look at. */
+ * for the number and already knows what they came to look at.
+ *
+ * A tile with somewhere to go is a button wrapping the whole tile, not a small
+ * link tucked inside it. A8 promises one CLICK, and a 14-pixel "view details"
+ * in the corner of a large target is a miss waiting to happen on a tablet. A
+ * tile with nowhere to go stays inert rather than pretending — a control that
+ * looks pressable and is not teaches people to stop pressing.
+ */
 function Kpi({
   label,
   value,
   foot,
   chart,
+  onOpen,
+  opens,
 }: {
   label: string;
   value: string;
   foot: React.ReactNode;
   chart?: React.ReactNode;
+  onOpen?: () => void;
+  opens?: string;
 }) {
-  return (
-    <div className="kpi">
+  const body = (
+    <>
       <span className="kpi__label ds-caption">{label}</span>
       <span className="kpi__value num">{value}</span>
       <span className="kpi__foot ds-body-sm">{foot}</span>
       {chart && <div className="kpi__chart">{chart}</div>}
-    </div>
+    </>
+  );
+
+  if (!onOpen) return <div className="kpi">{body}</div>;
+
+  return (
+    <button
+      className="kpi kpi--opens"
+      onClick={onOpen}
+      // The label says what opens, because "Sales SAR 48,290.00" read aloud
+      // gives no clue that it is actionable.
+      aria-label={opens ? `${label}. Open ${opens}` : `Open ${label}`}
+    >
+      {body}
+      <span className="kpi__chev" aria-hidden="true">
+        ›
+      </span>
+    </button>
   );
 }
-
 /** A change against yesterday, with an arrow so colour is never the only
  *  signal — roughly 1 in 12 men has a colour vision deficiency. */
 function Change({ pct, suffix }: { pct: string; suffix: string }) {

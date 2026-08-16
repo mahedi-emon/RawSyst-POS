@@ -93,6 +93,10 @@ Departures from the sketch below, each deliberate:
   this.
 - **No activity feed.** It answered no question an owner arrives with, and a
   feed of every sale on a dashboard is the thing people scroll past.
+- **Drill-through is wired.** Sales, Gross profit and Expenses open their detail;
+  the stock badges and every attention row with a known target open theirs. A KPI
+  you cannot open is trivia, so the two tiles with nowhere useful to go — Cash and
+  bank — stay visibly inert rather than pretending to be pressable.
 - **The tiles are not cards.** Four bordered boxes in a row is the most
   recognisable generic-dashboard signature and adds nothing; position already
   groups them. On desktop they are separated by hairlines.
@@ -141,6 +145,35 @@ Content is never dropped — only rearranged. The Owner checking margin on a pho
 at the airport is a stated use case.
 
 ---
+
+## 2a. Drill-through screens
+
+**Implemented.** `pos/src/dashboard/` — `SalesDetailScreen`, `ExpensesDetailScreen`,
+`ComplianceScreen`, `StockScreen`, all on one `DetailScreen` frame and one
+`useRemote` hook so the five states (loading, ready, denied, offline, error) are
+written once rather than five times. The states that drift first are the ones
+nobody demos, which are exactly the ones a real deployment spends its first week in.
+
+| Screen | Route | Permission |
+|---|---|---|
+| Sales | `GET /api/v1/dashboard/sales` | `sales.view` |
+| Expenses | `GET /api/v1/dashboard/expenses` | `accounting.view` |
+| Reporting to ZATCA | `GET /api/v1/dashboard/compliance` | `accounting.view` |
+| Stock to reorder | `GET /api/v1/dashboard/stock` | `inventory.view` |
+
+Each is gated on the permission covering the **records it shows** rather than on
+the dashboard's own `accounting.view` — a role holding one and not the other is an
+ordinary arrangement, and a backend test asserts each pairing.
+
+Every list sums to the tile it sits behind, asserted by test. A detail screen
+filtered slightly differently from its summary is worse than no detail screen,
+because it makes an owner believe the summary is wrong.
+
+**The compliance screen carries no Retry button.** There is nothing to retry: the
+terminal refuses to sign because the P1 verification gate is open, and a button
+implying otherwise would have an owner clicking it for weeks. It states what is
+outstanding (the submission) and what is not (the sale, the receipt, the books,
+the chain), because precision there reassures more than vagueness does.
 
 ## 3. Compliance (ZATCA / VAT / PDPL)
 

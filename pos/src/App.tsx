@@ -19,7 +19,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { LoginScreen } from './auth/LoginScreen';
 import { useAuth } from './auth/session';
 import { listCompanies, type Company } from './api/companies';
-import { Dashboard } from './dashboard/Dashboard';
+import { Dashboard, type DrillTarget } from './dashboard/Dashboard';
+import { SalesDetailScreen } from './dashboard/SalesDetailScreen';
+import { ExpensesDetailScreen } from './dashboard/ExpensesDetailScreen';
+import { ComplianceScreen } from './dashboard/ComplianceScreen';
+import { StockScreen } from './dashboard/StockScreen';
 import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
 import { TerminalBanner } from './ui/TerminalBanner';
@@ -49,6 +53,17 @@ export function App() {
   // The dashboard opens first for whoever can read the figures — that is what
   // an owner signs in for. A cashier lands on the till.
   const [screen, setScreen] = useState<Screen | null>(null);
+
+  // Where the dashboard has drilled to, or null for the dashboard itself.
+  //
+  // Deliberately not a URL router. This is one authenticated surface with no
+  // deep links to honour and no browser history of its own to fight, so a
+  // router would add a dependency and a class of bugs to solve a problem that
+  // does not exist here. The Dashboard button in each detail header is the way
+  // back: A8 promises one click in, and one click out is the other half of that
+  // promise — a drill-through you have to navigate out of is a trap, and people
+  // stop clicking into things that trap them.
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
 
   useEffect(() => {
     if (screen !== null || !me) return;
@@ -108,7 +123,13 @@ export function App() {
                 key={d.key}
                 className={`app__navlink${screen === d.key ? ' app__navlink--on' : ''}`}
                 aria-current={screen === d.key ? 'page' : undefined}
-                onClick={() => setScreen(d.key)}
+                onClick={() => {
+                  setScreen(d.key);
+                  // Leaving the section clears the drill, so coming back to
+                  // the dashboard starts at the dashboard rather than three
+                  // levels into wherever you were last week.
+                  setDrill(null);
+                }}
               >
                 {d.label}
               </button>
@@ -147,7 +168,12 @@ export function App() {
 
       {screen === 'dashboard' && mayReadFigures ? (
         companyId ? (
-          <Dashboard companyId={companyId} />
+          <DashboardArea
+            companyId={companyId}
+            drill={drill}
+            onOpen={setDrill}
+            onBack={() => setDrill(null)}
+          />
         ) : (
           <NoCompany loading={companies === null} />
         )
@@ -160,6 +186,42 @@ export function App() {
       )}
     </div>
   );
+}
+
+/** The dashboard and everything it drills into.
+ *
+ * Each detail screen is gated server-side on the permission covering the
+ * records it shows — sales.view for invoices, inventory.view for stock — and
+ * each renders its own permission-denied state when refused. That is the honest
+ * arrangement: the client cannot know every scope on the token, so it asks and
+ * reports the answer rather than pre-judging it and hiding something the user
+ * was in fact allowed to see.
+ */
+function DashboardArea({
+  companyId,
+  drill,
+  onOpen,
+  onBack,
+}: {
+  companyId: string;
+  drill: DrillTarget | null;
+  onOpen: (target: DrillTarget) => void;
+  onBack: () => void;
+}) {
+  if (!drill) return <Dashboard companyId={companyId} onOpen={onOpen} />;
+
+  switch (drill.screen) {
+    case 'sales':
+      return <SalesDetailScreen companyId={companyId} date={drill.date} onBack={onBack} />;
+    case 'expenses':
+      return <ExpensesDetailScreen companyId={companyId} date={drill.date} onBack={onBack} />;
+    case 'compliance':
+      return <ComplianceScreen companyId={companyId} onBack={onBack} />;
+    case 'stock':
+      return (
+        <StockScreen companyId={companyId} initialFilter={drill.filter} onBack={onBack} />
+      );
+  }
 }
 
 function NoCompany({ loading }: { loading: boolean }) {

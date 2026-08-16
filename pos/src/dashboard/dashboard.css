@@ -235,3 +235,230 @@
   .kpi { padding-inline: var(--space-5); border-inline-start: 1px solid var(--border); }
   .kpi:first-child { padding-inline-start: 0; border-inline-start: none; }
 }
+
+/* --- Drill-through screens ----------------------------------------------
+ *
+ * Built entirely on the tokens in design-system.css. Nothing here introduces a
+ * colour, radius or spacing value of its own — if a screen needs one the system
+ * does not have, the system is what should change.
+ */
+
+.detail {
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  display: grid;
+  gap: var(--space-4);
+  max-inline-size: 1600px;
+  margin-inline: auto;
+}
+
+.detail__head {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-areas: "back back" "titles actions";
+  align-items: end;
+}
+
+.detail__back {
+  grid-area: back;
+  justify-self: start;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  margin-inline-start: calc(var(--space-2) * -1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--tap-mobile);
+}
+
+.detail__back:hover { color: var(--text); background: var(--surface-sunken); }
+
+/* The arrow follows the page direction. In Arabic the whole layout mirrors and
+ * "back" is to the right, so a hard-coded ← would point out of the page. */
+[dir='rtl'] .detail__backarrow { transform: scaleX(-1); }
+
+.detail__titles { grid-area: titles; }
+.detail__actions {
+  grid-area: actions;
+  justify-self: end;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.detail__more { margin: 0; }
+
+/* The day's shape, above the detail. Same treatment as the dashboard's
+ * figures: hairlines, not boxes. */
+.detail__summary {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.figure { display: grid; gap: 2px; min-inline-size: 0; }
+
+.figure__value {
+  font-size: clamp(1.15rem, 0.9rem + 1vw, 1.4rem);
+  font-weight: 600;
+  text-align: start;
+  letter-spacing: -0.01em;
+}
+
+.figure--strong .figure__value { color: var(--text); }
+
+/* Two panels side by side once there is room for both to be readable. */
+.detail__split { display: grid; gap: var(--space-4); }
+
+/* A credit note is money going the other way. Dimmed rather than coloured
+ * throughout: the bracketed amount already carries the direction, and a red
+ * row would read as an error rather than as a refund. */
+.detail__row--credit td { color: var(--text-muted); }
+
+.detail__row--on td { background: var(--brand-subtle); }
+
+.detail__strong { display: block; font-weight: 500; }
+
+/* A whole table row that acts as a button. Full width so the target is the
+ * row, not a word inside it — a small link in a wide row is a miss waiting to
+ * happen on a tablet. */
+.detail__rowbtn {
+  font: inherit;
+  text-align: start;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  inline-size: 100%;
+  display: grid;
+  gap: 2px;
+  min-block-size: var(--tap-desk);
+}
+
+.detail__rowbtn:hover .detail__strong { color: var(--brand); }
+
+/* --- Openable tiles ------------------------------------------------------ */
+
+/* A tile that goes somewhere is the whole tile. It stays visually identical to
+ * an inert one at rest — the affordance is the chevron and the hover, not a
+ * border, because four outlined boxes is the look this product avoids. */
+.kpi--opens {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  padding-inline-end: var(--space-5);
+  border-radius: var(--radius-sm);
+}
+
+.kpi--opens:hover { background: var(--surface-sunken); }
+.kpi--opens:hover .kpi__chev { color: var(--brand); transform: translateX(2px); }
+
+.kpi__chev {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: var(--space-2);
+  color: var(--text-subtle);
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 120ms ease, color 120ms ease;
+}
+
+[dir='rtl'] .kpi__chev { transform: scaleX(-1); }
+[dir='rtl'] .kpi--opens:hover .kpi__chev { transform: scaleX(-1) translateX(2px); }
+
+/* A badge that opens something. Still a badge; simply pressable. */
+.badge--opens {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+}
+
+.badge--opens:hover { filter: brightness(0.96); }
+
+.attention__side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.attention__open { min-block-size: var(--tap-desk); padding-inline: var(--space-3); }
+
+/* --- Segmented control --------------------------------------------------- */
+
+.segmented {
+  display: inline-flex;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.segmented__btn {
+  font: inherit;
+  font-size: 0.87rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  border-radius: calc(var(--radius-sm) - 1px);
+  cursor: pointer;
+  min-block-size: var(--tap-desk);
+  white-space: nowrap;
+}
+
+.segmented__btn--on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+/* --- The compliance explanation ------------------------------------------ */
+
+/* Informational, not alarming. The system refusing to produce a cryptographic
+ * document it cannot yet produce correctly IS the safe behaviour, and styling
+ * that as an error would tell an owner something is broken when nothing is. */
+.gate {
+  border-inline-start: 3px solid var(--info);
+  background: var(--info-subtle);
+}
+
+.gate__body {
+  margin: var(--space-3) 0 0;
+  max-inline-size: 68ch;
+  font-size: 0.93rem;
+  line-height: 1.55;
+}
+
+/* --- Tablet and up ------------------------------------------------------- */
+
+@media (min-width: 640px) {
+  .detail { padding-inline: var(--space-5); }
+  .detail__summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .detail__head {
+    grid-template-areas: "back back" "titles actions";
+  }
+}
+
+@media (min-width: 1080px) {
+  .detail { padding-inline: var(--space-6); }
+  .detail__split { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; }
+}

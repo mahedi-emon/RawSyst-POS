@@ -18,6 +18,8 @@
 
 import type { Attention } from '../api/dashboard';
 import { sortAttention } from './logic';
+import type { DrillTarget } from './Dashboard';
+import { targetForLink } from './drilldown';
 
 
 const LABEL: Record<Attention['severity'], string> = {
@@ -26,7 +28,13 @@ const LABEL: Record<Attention['severity'], string> = {
   notice: 'Worth knowing',
 };
 
-export function AttentionList({ items }: { items: Attention[] }) {
+export function AttentionList({
+  items,
+  onOpen,
+}: {
+  items: Attention[];
+  onOpen: (target: DrillTarget) => void;
+}) {
   const sorted = sortAttention(items);
 
   return (
@@ -65,11 +73,26 @@ export function AttentionList({ items }: { items: Attention[] }) {
                   </span>
                 </div>
 
-                {/* The severity in words, so the stripe is reinforcement rather
-                    than the only signal. */}
-                <span className={`ds-badge ${badge(item.severity)}`}>
-                  {LABEL[item.severity] ?? item.severity}
-                </span>
+                <div className="attention__side">
+                  {/* The severity in words, so the stripe is reinforcement
+                      rather than the only signal. */}
+                  <span className={`ds-badge ${badge(item.severity)}`}>
+                    {LABEL[item.severity] ?? item.severity}
+                  </span>
+
+                  {/* Every row that has somewhere to go, goes there. A8. */}
+                  {targetForLink(item.link) && (
+                    <button
+                      className="ds-btn ds-btn--quiet attention__open"
+                      onClick={() => {
+                        const target = targetForLink(item.link);
+                        if (target) onOpen(target);
+                      }}
+                    >
+                      Open
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

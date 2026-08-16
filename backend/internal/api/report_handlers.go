@@ -2,7 +2,10 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
@@ -255,4 +258,118 @@ func (s *Server) handleListCompanies(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": allowed})
+}
+
+// --- Drill-through -------------------------------------------------------
+//
+// Blueprint A8 requires one-click drill-through on every dashboard widget. A
+// KPI you cannot open is trivia: an owner who sees an unexpected number has one
+// useful next question — which transactions made it — and a dashboard that
+// cannot answer it sends them to a spreadsheet.
+//
+// Each is gated on the permission covering the RECORDS it shows rather than on
+// the dashboard's own accounting.view. A role holding one and not the other is
+// an ordinary arrangement, and the route is the only place that can enforce it.
+
+// dayFromQuery reads the optional ?date, defaulting to today.
+func dayFromQuery(r *http.Request) (time.Time, error) {
+	raw := r.URL.Query().Get("date")
+	if raw == "" {
+		return time.Now().UTC(), nil
+	}
+	day, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, errs.New(errs.CodeInvalidInput,
+			"Dates look like 2026-08-16.")
+	}
+	return day, nil
+}
+
+func (s *Server) handleSalesDetail(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	day, err := dayFromQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+
+	out, err := s.reports.SalesFor(r.Context(), scope, day, limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleExpensesDetail(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	day, err := dayFromQuery(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Optional: absent means the whole day, present means the one account the
+	// owner clicked in the summary.
+	var accountID *uuid.UUID
+	if raw := r.URL.Query().Get("account_id"); raw != "" {
+		id, e := parseUUID(raw, "account_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		accountID = &id
+	}
+
+	out, err := s.reports.ExpensesFor(r.Context(), scope, day, accountID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleComplianceQueue(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+
+	out, err := s.reports.ComplianceFor(r.Context(), scope, limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleStockDetail(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	filter := r.URL.Query().Get("filter")
+	if filter == "" {
+		filter = "low"
+	}
+
+	out, err := s.reports.StockFor(r.Context(), scope, filter)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }

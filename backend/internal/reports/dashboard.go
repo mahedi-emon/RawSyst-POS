@@ -558,3 +558,14 @@ func (s *Service) CompaniesFor(
 	})
 	return out, err
 }
+
+// dec parses a decimal the database produced. Panics on malformed input,
+// deliberately: every caller passes a value Postgres just serialised from a
+// numeric column, so a failure here is a schema bug rather than bad user
+// input, and returning zero would hide it inside a total.
+func dec(s string) decimal.Decimal {
+	if s == "" {
+		return decimal.Zero
+	}
+	return decimal.RequireFromString(s)
+}
