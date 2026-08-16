@@ -24,12 +24,13 @@ import { SalesDetailScreen } from './dashboard/SalesDetailScreen';
 import { ExpensesDetailScreen } from './dashboard/ExpensesDetailScreen';
 import { ComplianceScreen } from './dashboard/ComplianceScreen';
 import { StockScreen } from './dashboard/StockScreen';
+import { PurchasingScreen } from './purchasing/PurchasingScreen';
 import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
 import { TerminalBanner } from './ui/TerminalBanner';
 import { terminalCapabilities, type Capabilities } from './pos/terminal';
 
-type Screen = 'dashboard' | 'sell' | 'return';
+type Screen = 'dashboard' | 'sell' | 'return' | 'buying';
 
 export function App() {
   const { status, me, signOut, client } = useAuth();
@@ -49,6 +50,7 @@ export function App() {
   const mayReadFigures = may('accounting.view');
   const maySell = may('sales.create');
   const mayRefund = may('sales.refund');
+  const mayBuy = may('purchasing.view');
 
   // The dashboard opens first for whoever can read the figures — that is what
   // an owner signs in for. A cashier lands on the till.
@@ -74,7 +76,7 @@ export function App() {
   // list is fetched rather than assumed because a terminal resolves its company
   // from its device and a browser has no device to resolve from.
   useEffect(() => {
-    if (!me || !mayReadFigures) return;
+    if (!me || !(mayReadFigures || mayBuy)) return;
     let cancelled = false;
     listCompanies(client)
       .then((found) => {
@@ -88,7 +90,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [client, me, mayReadFigures]);
+  }, [client, me, mayReadFigures, mayBuy]);
 
   if (status === 'restoring') {
     return (
@@ -106,6 +108,7 @@ export function App() {
     { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
     { key: 'sell', label: 'Sell', shown: maySell },
     { key: 'return', label: 'Returns', shown: mayRefund },
+    { key: 'buying', label: 'Buying', shown: mayBuy },
   ];
   const visible = destinations.filter((d) => d.shown);
 
@@ -174,6 +177,12 @@ export function App() {
             onOpen={setDrill}
             onBack={() => setDrill(null)}
           />
+        ) : (
+          <NoCompany loading={companies === null} />
+        )
+      ) : screen === 'buying' && mayBuy ? (
+        companyId ? (
+          <PurchasingScreen companyId={companyId} />
         ) : (
           <NoCompany loading={companies === null} />
         )

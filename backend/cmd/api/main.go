@@ -21,6 +21,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
@@ -97,7 +98,7 @@ func run() error {
 	syncEngine := sync.NewEngine(pool)
 	syncEngine.Register("sales_invoice", sales.NewSaleApplier(salesSvc))
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine,
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool),
 		func() error { return pool.Health(ctx) }, version)
 
 	handler := srv.Handler(

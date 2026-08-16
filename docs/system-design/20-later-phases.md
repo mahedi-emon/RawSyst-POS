@@ -14,6 +14,22 @@ made constrain it. Those do not change.
 
 ### Purchasing (B5, B5.1, B5.2)
 
+> **Partly implemented.** `backend/internal/purchasing/`, migrations `0031`–`0032`,
+> and `pos/src/purchasing/`. The spine ships: supplier → PO → GRN → Bill →
+> three-way match → Payment, with AP ageing.
+>
+> **Requisition, RFQ and quote comparison are NOT built.** They are an approval
+> workflow that feeds a purchase order and that nothing downstream depends on, so
+> they are absent rather than half-present. `debit_note` on supplier return is
+> also not built; a supplier return today is handled by rejecting goods at the
+> point of receipt, which keeps them out of stock but raises no document.
+>
+> Seven permissions rather than one, because B5.2's control depends on
+> separating them: the person who records a bill must not necessarily be the one
+> who approves its discrepancy, and the seeded roles reflect that — a Purchase
+> Manager can order, receive and bill but cannot approve or pay, while an
+> Accountant can approve and pay but cannot order or receive.
+
 ```
 Requisition → Approval → RFQ → Quote comparison → PO → GRN → Bill → 3-way match → Payment
 ```

@@ -22,6 +22,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
@@ -73,6 +74,7 @@ type Server struct {
 	vat          *vat.Service
 	catalog      *catalog.Service
 	sync         *sync.Engine
+	purchasing   *purchasing.Service
 	health       func() error
 	version      string
 }
@@ -87,6 +89,7 @@ func NewServer(
 	vatSvc *vat.Service,
 	catalogSvc *catalog.Service,
 	syncEngine *sync.Engine,
+	purchasingSvc *purchasing.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -100,6 +103,7 @@ func NewServer(
 		vat:          vatSvc,
 		catalog:      catalogSvc,
 		sync:         syncEngine,
+		purchasing:   purchasingSvc,
 		health:       health,
 		version:      version,
 	}
@@ -211,6 +215,48 @@ func (s *Server) Routes() []Route {
 		// Gated on accounting.view, not sales.view. A statement exposes the whole
 		// company position — margin, cash, what is owed — which is precisely the
 		// information a cashier is deliberately kept away from.
+		// --- Purchasing (B5) ---
+		//
+		// Gated on purchasing permissions rather than catalog.view, because
+		// every payload here is a cost document: a Cashier who holds
+		// catalog.view and is denied catalog.view_cost_price must not reach
+		// them.
+		{http.MethodGet, "/api/v1/purchasing/suppliers", AccessPermission, "purchasing.view",
+			s.handleListSuppliers, "suppliers, with what is owed to each"},
+		{http.MethodPost, "/api/v1/purchasing/suppliers", AccessPermission, "purchasing.manage_suppliers",
+			s.handleCreateSupplier, ""},
+
+		{http.MethodGet, "/api/v1/purchasing/orders", AccessPermission, "purchasing.view",
+			s.handleListOrders, ""},
+		{http.MethodPost, "/api/v1/purchasing/orders", AccessPermission, "purchasing.create_order",
+			s.handleCreateOrder, ""},
+		{http.MethodGet, "/api/v1/purchasing/orders/{poID}", AccessPermission, "purchasing.view",
+			s.handleReadOrder, ""},
+		{http.MethodPost, "/api/v1/purchasing/orders/{poID}/issue", AccessPermission, "purchasing.issue_order",
+			s.handleIssueOrder,
+			"freezing an order and committing the shop to it is its own permission"},
+		{http.MethodGet, "/api/v1/purchasing/orders/{poID}/receipts", AccessPermission, "purchasing.view",
+			s.handleListReceipts, ""},
+
+		{http.MethodPost, "/api/v1/purchasing/receipts", AccessPermission, "purchasing.receive_goods",
+			s.handleReceiveGoods,
+			"the ONLY route that increases stock through a purchase; B5 forbids a PO doing it"},
+
+		{http.MethodGet, "/api/v1/purchasing/bills", AccessPermission, "purchasing.view",
+			s.handleListBills, ""},
+		{http.MethodPost, "/api/v1/purchasing/bills", AccessPermission, "purchasing.record_bill",
+			s.handleRecordBill, "records the bill and runs the three-way match"},
+		{http.MethodGet, "/api/v1/purchasing/bills/{billID}", AccessPermission, "purchasing.view",
+			s.handleReadBill, ""},
+		{http.MethodPost, "/api/v1/purchasing/bills/{billID}/approve", AccessPermission, "purchasing.approve_bill",
+			s.handleApproveBill,
+			"separate from recording, so the person accepting a discrepancy need not be the one who entered it"},
+
+		{http.MethodPost, "/api/v1/purchasing/payments", AccessPermission, "purchasing.pay_supplier",
+			s.handlePaySupplier, ""},
+		{http.MethodGet, "/api/v1/purchasing/ageing", AccessPermission, "accounting.view",
+			s.handleSupplierAgeing, "what is owed to whom, aged from the due date"},
+
 		{http.MethodGet, "/api/v1/companies", AccessAuthenticated, "", s.handleListCompanies,
 			"every signed-in user needs to know which companies they are in before asking about one; scoped by RLS and the token"},
 		{http.MethodGet, "/api/v1/dashboard/overview", AccessPermission, "accounting.view",

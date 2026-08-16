@@ -239,9 +239,18 @@ func TestDashboardNamesWhatIsNotBuiltRatherThanShowingZero(t *testing.T) {
 		s, _ := raw.(string)
 		named[s] = true
 	}
-	for _, want := range []string{"purchases", "suppliers", "payables", "customers", "employees"} {
+	for _, want := range []string{"customers", "employees"} {
 		if !named[want] {
 			t.Errorf("%q is not declared unbuilt, so the screen would show it as zero", want)
+		}
+	}
+
+	// Purchases, suppliers and payables are built now, so they must NOT be
+	// declared unbuilt — a screen saying "coming later" about a module the user
+	// can already open is worse than saying nothing.
+	for _, built := range []string{"purchases", "suppliers", "payables"} {
+		if named[built] {
+			t.Errorf("%q is declared unbuilt but the module ships", built)
 		}
 	}
 

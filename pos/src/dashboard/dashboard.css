@@ -462,3 +462,82 @@
   .detail { padding-inline: var(--space-6); }
   .detail__split { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; }
 }
+
+/* --- Purchasing ----------------------------------------------------------
+ *
+ * No new tokens. Everything below composes what design-system.css already
+ * defines; a value this module needed and the system lacked would be a change
+ * to the system, not a local override.
+ */
+
+/* The purchasing index has no back button, so the header sits flat rather than
+ * reserving the row one would occupy. */
+.detail__head--flat { grid-template-areas: 'titles actions'; }
+
+.purchase__notice {
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+  border-inline-start: 3px solid var(--brand);
+}
+
+/* Informational, never alarming. A draft order or a held bill is the system
+ * working correctly, and styling either as an error teaches buyers to click
+ * past the one that matters. */
+.purchase__hint {
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.93rem;
+  border-inline-start: 3px solid var(--border-strong);
+}
+
+.purchase__form {
+  display: grid;
+  gap: var(--space-3);
+  align-items: end;
+  grid-template-columns: 1fr;
+}
+
+.purchase__field { display: grid; gap: var(--space-1); min-inline-size: 0; }
+
+.purchase__field input,
+.purchase__field select,
+.purchase__ref input {
+  font: inherit;
+  min-block-size: var(--tap-mobile);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  inline-size: 100%;
+}
+
+.purchase__ref { display: grid; gap: var(--space-1); min-inline-size: 12rem; }
+
+.purchase__actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.purchase__aside {
+  flex: 1 1 20rem;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* What the match found, as sentences rather than a table of variances. This is
+ * the text a buyer reads out to a supplier on the phone. */
+.purchase__breaches {
+  margin: var(--space-3) 0 0;
+  padding-inline-start: var(--space-5);
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.93rem;
+}
+
+@media (min-width: 640px) {
+  .purchase__form { grid-template-columns: minmax(0, 24rem) auto auto; }
+}
