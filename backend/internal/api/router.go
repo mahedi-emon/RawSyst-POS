@@ -211,6 +211,11 @@ func (s *Server) Routes() []Route {
 		// Gated on accounting.view, not sales.view. A statement exposes the whole
 		// company position — margin, cash, what is owed — which is precisely the
 		// information a cashier is deliberately kept away from.
+		{http.MethodGet, "/api/v1/companies", AccessAuthenticated, "", s.handleListCompanies,
+			"every signed-in user needs to know which companies they are in before asking about one; scoped by RLS and the token"},
+		{http.MethodGet, "/api/v1/dashboard/overview", AccessPermission, "accounting.view",
+			s.handleDashboardOverview,
+			"the Owner Dashboard in one call; every figure computed from the journal"},
 		{http.MethodGet, "/api/v1/reports/trial-balance", AccessPermission, "accounting.view",
 			s.handleTrialBalance, ""},
 		{http.MethodGet, "/api/v1/reports/profit-and-loss", AccessPermission, "accounting.view",

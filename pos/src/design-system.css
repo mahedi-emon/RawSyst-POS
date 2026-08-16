@@ -1,0 +1,469 @@
+/* RawSyst POS — the design system, in code.
+ *
+ * docs/ui-ux/00-design-system.md specifies this. Until now nothing implemented
+ * it: the POS had grown its own ad-hoc token names (--ink, --line, --accent)
+ * that matched no document and no other surface. This file is the documented
+ * system, and the old names are kept below as aliases so the existing screens
+ * keep working while new work uses the real vocabulary.
+ *
+ * Everything here is product-wide. A change made in this file must be right for
+ * the till under fluorescent light, the owner's phone at midnight, and an
+ * accountant's 27-inch monitor — which is the reason there is one file rather
+ * than one per screen.
+ *
+ * Three things govern the visual language:
+ *
+ *   1. The interface is mostly neutral. Colour is information, not decoration,
+ *      so brand blue appears on primary actions and active navigation and
+ *      almost nowhere else. A screen where everything is emphasised has nothing
+ *      emphasised.
+ *   2. Numbers are tabular and monospaced. In a column of currency,
+ *      proportional digits make totals genuinely harder to scan, and this
+ *      product is read in columns of currency all day.
+ *   3. Colour is never the only signal. Roughly 1 in 12 men has a colour vision
+ *      deficiency and a POS is used by whoever is on shift, so status carries
+ *      an icon or a word, and financial direction carries a sign.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Colour
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* Neutrals — the interface is mostly this. */
+  --bg: #fbfbfd;
+  --surface: #ffffff;
+  --surface-sunken: #f4f5f7;
+  --border: #e3e5e9;
+  --border-strong: #c9cdd4;
+  --text: #16181d;
+  --text-muted: #5c6270;
+  --text-subtle: #878d9a;
+
+  /* Brand — primary actions, active nav, focus. Used sparingly. */
+  --brand: #1f6feb;
+  --brand-hover: #1a5fcc;
+  --brand-subtle: #eaf1fe;
+  --on-brand: #ffffff;
+
+  /* Semantic */
+  --success: #17803d;
+  --success-subtle: #e7f6ec;
+  --warning: #a65b00;
+  --warning-subtle: #fdf2e3;
+  --danger: #c02626;
+  --danger-subtle: #fdecec;
+  --info: #0f6c94;
+  --info-subtle: #e8f4fb;
+
+  /* Offline is a NEUTRAL operating state, not a warning. The POS is designed
+   * to work offline; colouring it amber teaches cashiers to ignore amber. */
+  --offline: #5c6270;
+  --offline-subtle: #f0f1f4;
+
+  /* Financial direction. Paired with a sign, never colour alone. */
+  --credit: #17803d;
+  --debit: #c02626;
+
+  /* Type */
+  --font-latin: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-arabic: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  /* 4px base scale. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* Three levels only. Flat surfaces with clear borders read better under
+   * showroom lighting than soft shadows do. */
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 6%);
+  --shadow-2: 0 4px 12px rgb(16 24 40 / 8%);
+  --shadow-3: 0 16px 40px rgb(16 24 40 / 14%);
+
+  /* Touch targets. */
+  --tap-pos: 56px;
+  --tap-mobile: 44px;
+  --tap-desk: 32px;
+}
+
+:root[data-theme='dark'],
+:root:not([data-theme='light']) {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1014;
+    --surface: #171a20;
+    --surface-sunken: #101318;
+    --border: #262a33;
+    --border-strong: #3a404c;
+    --text: #f2f3f5;
+    --text-muted: #a2a9b8;
+    --text-subtle: #757d8c;
+    --brand: #5b9bff;
+    --brand-hover: #7fb0ff;
+    --brand-subtle: #16233a;
+    --on-brand: #06120f;
+    --success: #4ade80;
+    --success-subtle: #10261a;
+    --warning: #fbbf6b;
+    --warning-subtle: #2a1d0b;
+    --danger: #ff7b72;
+    --danger-subtle: #2c1416;
+    --info: #7cc7e8;
+    --info-subtle: #0f2029;
+    --offline: #a2a9b8;
+    --offline-subtle: #1b1f26;
+    --credit: #4ade80;
+    --debit: #ff7b72;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1014;
+  --surface: #171a20;
+  --surface-sunken: #101318;
+  --border: #262a33;
+  --border-strong: #3a404c;
+  --text: #f2f3f5;
+  --text-muted: #a2a9b8;
+  --text-subtle: #757d8c;
+  --brand: #5b9bff;
+  --brand-hover: #7fb0ff;
+  --brand-subtle: #16233a;
+  --on-brand: #06120f;
+  --success: #4ade80;
+  --success-subtle: #10261a;
+  --warning: #fbbf6b;
+  --warning-subtle: #2a1d0b;
+  --danger: #ff7b72;
+  --danger-subtle: #2c1416;
+  --info: #7cc7e8;
+  --info-subtle: #0f2029;
+  --offline: #a2a9b8;
+  --offline-subtle: #1b1f26;
+  --credit: #4ade80;
+  --debit: #ff7b72;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * Compatibility aliases
+ *
+ * The POS screens were written against names that predate this file. Aliasing
+ * rather than renaming everything at once keeps that work untouched and lets
+ * it migrate screen by screen; new code uses the real names above.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --ink: var(--text);
+  --ink-quiet: var(--text-muted);
+  --line: var(--border);
+  --accent: var(--brand);
+  --accent-ink: var(--on-brand);
+  --warn-bg: var(--warning-subtle);
+  --warn-line: var(--warning);
+  --radius: var(--radius-md);
+  --tap: var(--tap-pos);
+}
+
+/* ---------------------------------------------------------------------------
+ * Typography
+ * ------------------------------------------------------------------------- */
+
+html {
+  font-family: var(--font-latin);
+  font-size: 15px;
+  line-height: 1.47;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Arabic runs ~15% larger at the same nominal size to match Latin x-height
+ * perception. Applied by language, so a mixed Arabic/English product name in
+ * one cell still reads evenly — acceptance gate M6. */
+:lang(ar) {
+  font-family: var(--font-arabic);
+  font-size: 1.15em;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* All numbers, everywhere. Tabular figures keep a column of currency aligned
+ * on the decimal without any per-cell effort. */
+.num,
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.ds-display { font-size: 2.6rem; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
+.ds-h1      { font-size: 1.55rem; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.ds-h2      { font-size: 1.2rem;  line-height: 1.3;  font-weight: 600; margin: 0; }
+.ds-h3      { font-size: 1rem;    line-height: 1.4;  font-weight: 600; margin: 0; }
+.ds-body-sm { font-size: 0.87rem; line-height: 1.45; }
+.ds-caption {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  /* Small caps rather than uppercase-with-letterspacing everywhere: labels
+   * still need to be readable, not decorative. */
+  font-weight: 500;
+}
+
+.ds-muted  { color: var(--text-muted); }
+.ds-subtle { color: var(--text-subtle); }
+
+/* ---------------------------------------------------------------------------
+ * Focus — one visible ring, product-wide
+ * ------------------------------------------------------------------------- */
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------------------------------------------------------------------------
+ * Buttons
+ *
+ * Three weights, and the hierarchy is carried by fill rather than by size.
+ * A screen with two competing filled buttons has no primary action.
+ * ------------------------------------------------------------------------- */
+
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: var(--tap-mobile);
+  padding-inline: var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ds-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.ds-btn--primary {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.ds-btn--primary:hover:not(:disabled) { background: var(--brand-hover); }
+
+.ds-btn--secondary {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+.ds-btn--secondary:hover:not(:disabled) { background: var(--surface-sunken); }
+
+/* Quiet actions carry no border at rest. Borders around every control produce
+ * the boxed-in look the brief rules out. */
+.ds-btn--quiet { color: var(--text-muted); }
+.ds-btn--quiet:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.ds-btn--danger { background: var(--danger); color: #fff; }
+
+/* ---------------------------------------------------------------------------
+ * Surfaces
+ *
+ * A panel is a border and a background — no shadow at rest. Elevation is for
+ * things that float above the page (menus, modals), not for everything.
+ * ------------------------------------------------------------------------- */
+
+.ds-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.ds-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) 0;
+}
+
+.ds-panel__body { padding: var(--space-4); }
+
+/* ---------------------------------------------------------------------------
+ * Badges and status
+ * ------------------------------------------------------------------------- */
+
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ds-badge--success { background: var(--success-subtle); color: var(--success); }
+.ds-badge--warning { background: var(--warning-subtle); color: var(--warning); }
+.ds-badge--danger  { background: var(--danger-subtle);  color: var(--danger); }
+.ds-badge--info    { background: var(--info-subtle);    color: var(--info); }
+.ds-badge--neutral { background: var(--offline-subtle); color: var(--offline); }
+
+/* Financial direction. The sign does the work; colour reinforces it. */
+.ds-up   { color: var(--credit); }
+.ds-down { color: var(--debit); }
+
+/* ---------------------------------------------------------------------------
+ * Tables
+ *
+ * Built for real business data: many rows, read in columns, scanned for
+ * outliers. Zebra striping is deliberately absent — a hairline rule per row is
+ * quieter and does not fight the status colours that carry meaning.
+ * ------------------------------------------------------------------------- */
+
+.ds-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.93rem;
+}
+
+.ds-table th {
+  text-align: start;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-3);
+  border-block-end: 1px solid var(--border);
+  white-space: nowrap;
+  /* Headers stay put on long tables. An owner scrolling a hundred rows should
+   * never have to scroll back up to remember which column is which. */
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.ds-table th.num { text-align: end; }
+
+.ds-table td {
+  padding: var(--space-3);
+  border-block-end: 1px solid var(--border);
+  vertical-align: baseline;
+}
+
+.ds-table tbody tr:last-child td { border-block-end: none; }
+.ds-table tbody tr:hover td { background: var(--surface-sunken); }
+
+/* Totals belong to the table, not to a paragraph underneath it. */
+.ds-table tfoot td {
+  font-weight: 600;
+  border-block-start: 2px solid var(--border-strong);
+  border-block-end: none;
+}
+
+/* A wide table scrolls inside its own container. The page never scrolls
+ * sideways — that breaks the reading position of everything else on it. */
+.ds-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------------------------------------------------------------------------
+ * States: loading, empty, error, permission-denied
+ *
+ * First-class, because the first run of any real deployment is entirely made
+ * of these. A screen that only looks right with data is a screen that looks
+ * broken on day one.
+ * ------------------------------------------------------------------------- */
+
+.ds-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--border) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: ds-shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes ds-shimmer {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+
+/* Respected, not optional: vestibular disorders are common and a shimmering
+ * dashboard is genuinely unpleasant for people who have one. */
+@media (prefers-reduced-motion: reduce) {
+  .ds-skeleton { animation: none; }
+  * { transition-duration: 1ms !important; }
+}
+
+.ds-state {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-muted);
+}
+
+.ds-state__title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ds-state__body { max-inline-size: 42ch; font-size: 0.9rem; }
+
+/* ---------------------------------------------------------------------------
+ * RTL
+ *
+ * Blueprint G3 requires a full mirror, not translated text in an LTR frame.
+ * Every rule above uses logical properties, so mirroring is a document
+ * direction change rather than a stylesheet. The exceptions are listed here
+ * because they are the things that must NOT mirror.
+ * ------------------------------------------------------------------------- */
+
+[dir='rtl'] .ds-table th,
+[dir='rtl'] .ds-table td { text-align: start; }
+
+/* Numbers stay LTR inside an RTL page. A currency amount is read
+ * most-significant-digit first in both scripts, and mirroring it produces a
+ * figure that is simply wrong. */
+[dir='rtl'] .num,
+[dir='rtl'] .numeric {
+  direction: ltr;
+  text-align: start;
+}
+
+/* A sparkline reads left-to-right as time in both directions of script, so it
+ * is flipped back to keep "later" on the side the eye expects after mirroring
+ * the surrounding layout. */
+[dir='rtl'] .ds-sparkline { transform: scaleX(-1); }

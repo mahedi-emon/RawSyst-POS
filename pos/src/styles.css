@@ -322,3 +322,72 @@ body {
  * be typed into at all, because offering it invites the double refund the
  * whole flow exists to prevent. */
 .cart__qty:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- The application bar -------------------------------------------------
+ *
+ * One row, quiet, and the same on every screen. Navigation that moves or
+ * restyles per section makes a product feel like several products.
+ */
+
+.app__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border-block-end: 1px solid var(--border);
+  min-block-size: 52px;
+  flex-wrap: wrap;
+}
+
+.app__brand {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-size: 1rem;
+}
+
+.app__nav { display: flex; gap: var(--space-1); }
+
+.app__navlink {
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  min-block-size: var(--tap-mobile);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.app__navlink:hover { background: var(--surface-sunken); color: var(--text); }
+
+/* The current section is marked by weight and an underline, not by a filled
+ * pill. A filled nav item competes with the primary action on the page. */
+.app__navlink--on {
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--brand);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.app__spacer { flex: 1 1 auto; }
+
+.app__company { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+.app__company select {
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+  min-block-size: var(--tap-desk);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* On a phone the bar wraps to two rows rather than compressing the brand and
+ * the nav into illegibility. */
+@media (max-width: 560px) {
+  .app__brand { flex-basis: 100%; }
+  .app__nav { order: 3; flex-basis: 100%; }
+}

@@ -9,7 +9,10 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
 import { AuthProvider } from './auth/session';
+// The design system first: it defines the tokens everything else consumes.
+import './design-system.css';
 import './styles.css';
+import './dashboard/dashboard.css';
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8080';
 

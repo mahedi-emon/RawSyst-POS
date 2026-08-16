@@ -76,6 +76,27 @@ never reorder next to Arabic text.
 
 ## 2. Owner Dashboard
 
+**Implemented.** `GET /api/v1/dashboard/overview` (one call, `accounting.view`)
+and `pos/src/dashboard/`. Every figure is computed by the posting engine — the
+same journal the trial balance reads — so a number an owner disputes traces to
+entries rather than to browser code, and a backend test asserts the dashboard's
+revenue equals the P&L's.
+
+Departures from the sketch below, each deliberate:
+
+- **Expenses are listed by account, not by category.** Categories are a Phase 2
+  concept; the accounts exist now and are what the books actually hold.
+- **Purchases, suppliers, payables, customers and employees are named as
+  unbuilt** rather than shown as zero. An owner reading "Payables: 0.00" would
+  reasonably conclude they owe nobody, which is a different and much worse
+  statement than "not yet built". The API returns an `unbuilt` list for exactly
+  this.
+- **No activity feed.** It answered no question an owner arrives with, and a
+  feed of every sale on a dashboard is the thing people scroll past.
+- **The tiles are not cards.** Four bordered boxes in a row is the most
+  recognisable generic-dashboard signature and adds nothing; position already
+  groups them. On desktop they are separated by hairlines.
+
 Answers "where is my money going" in one click (A2 #10).
 
 ### Layout

@@ -1,0 +1,237 @@
+/* The Owner Dashboard's layout.
+ *
+ * Built on the tokens in design-system.css and adding no colours, radii or
+ * spacing of its own. If something here needs a value the system does not have,
+ * the system is what should change.
+ *
+ * Three layouts, each designed rather than scaled:
+ *
+ *   Phone   — one column. The four figures stack in the order an owner asks
+ *             them: what did I sell, what did I make, what did it cost, what
+ *             have I got. The sparkline stays, because it is the only thing on
+ *             the screen giving a single day context.
+ *   Tablet  — two columns. Figures pair up; panels sit side by side.
+ *   Desktop — four figures across, panels in a two-column grid.
+ *
+ * No max-width beyond a comfortable reading measure. An owner with a 27-inch
+ * monitor bought it to see more at once, and a dashboard pinned to 1100px in
+ * the middle of it looks like a phone app someone stretched.
+ */
+
+.dash {
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  display: grid;
+  gap: var(--space-5);
+  max-inline-size: 1600px;
+  margin-inline: auto;
+}
+
+.dash__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.dash__date {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dash__date input {
+  font: inherit;
+  font-family: var(--font-mono);
+  padding: var(--space-2) var(--space-3);
+  min-block-size: var(--tap-mobile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* --- The four figures ---------------------------------------------------
+ *
+ * Not cards. They sit on the page background separated by rules, because four
+ * bordered boxes in a row is the single most recognisable "AI dashboard"
+ * signature and adds nothing: the grouping is already obvious from position.
+ */
+
+.dash__kpis {
+  display: grid;
+  gap: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5) var(--space-4);
+}
+
+.kpi {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-inline-size: 0;
+}
+
+.kpi__label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-subtle);
+}
+
+.kpi__value {
+  /* The largest thing on the screen, and the only thing at this size. A
+   * dashboard where four numbers compete has chosen nothing for the reader. */
+  font-size: clamp(1.6rem, 1.1rem + 1.6vw, 2.1rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-align: start;
+  color: var(--text);
+}
+
+.kpi__foot { color: var(--text-muted); min-block-size: 1.4em; }
+
+.kpi__chart {
+  margin-block-start: var(--space-2);
+  color: var(--brand);
+  block-size: 28px;
+}
+
+.ds-sparkline { inline-size: 100%; block-size: 28px; display: block; }
+
+/* --- Panels ------------------------------------------------------------- */
+
+.dash__grid { display: grid; gap: var(--space-4); }
+
+.dash__figure {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-1);
+  text-align: start;
+}
+
+.dash__stockline {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-block-start: var(--space-3);
+}
+
+.dash__note {
+  display: block;
+  color: var(--text-subtle);
+}
+
+/* Rows that are deliberately outside the total. Dimmed rather than hidden:
+ * money owed by customers is real and worth seeing, it is simply not money the
+ * shop has, and adding it to "where is my money" is how a business talks
+ * itself into a cash-flow problem. */
+.dash__row--aside td { color: var(--text-muted); }
+
+.dash__soon {
+  border-block-start: 1px solid var(--border);
+  padding-block-start: var(--space-4);
+}
+
+.dash__soon h2 { margin: 0 0 var(--space-1); }
+
+/* --- Payment mix -------------------------------------------------------- */
+
+.mix { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+
+.mix__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 8rem) 1fr auto;
+  grid-template-areas:
+    'name track amount'
+    'name track count';
+  align-items: center;
+  gap: 0 var(--space-3);
+}
+
+.mix__name { grid-area: name; font-size: 0.93rem; }
+.mix__track {
+  grid-area: track;
+  block-size: 8px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.mix__bar {
+  display: block;
+  block-size: 100%;
+  background: var(--brand);
+  border-radius: var(--radius-full);
+  /* No animation on load. A bar that grows every time the dashboard refreshes
+   * draws the eye to nothing in particular, thirty times a day. */
+}
+
+.mix__amount { grid-area: amount; font-size: 0.95rem; }
+.mix__count  { grid-area: count; text-align: end; }
+.mix__why    { margin-block-start: var(--space-4); }
+
+/* --- Needs attention ----------------------------------------------------- */
+
+.attention__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+
+.attention__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  padding-inline-start: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  /* The stripe. Logical property, so it mirrors with the page in Arabic. */
+  border-inline-start: 3px solid var(--border-strong);
+}
+
+.attention__row--critical { border-inline-start-color: var(--danger); }
+.attention__row--warning  { border-inline-start-color: var(--warning); }
+.attention__row--notice   { border-inline-start-color: var(--offline); }
+
+.attention__main { display: grid; gap: 2px; min-inline-size: 0; }
+
+.attention__title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.attention__count {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-2);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* --- Tablet -------------------------------------------------------------- */
+
+@media (min-width: 640px) {
+  .dash { padding-inline: var(--space-5); }
+  .dash__kpis { grid-template-columns: repeat(2, 1fr); gap: var(--space-5); }
+  .dash__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* --- Desktop ------------------------------------------------------------- */
+
+@media (min-width: 1080px) {
+  .dash { padding-inline: var(--space-6); gap: var(--space-6); }
+
+  .dash__kpis {
+    grid-template-columns: repeat(4, 1fr);
+    /* Hairlines between the figures rather than four boxes. The separation is
+     * all that was needed; the boxes were never doing anything. */
+    gap: 0;
+  }
+
+  .kpi { padding-inline: var(--space-5); border-inline-start: 1px solid var(--border); }
+  .kpi:first-child { padding-inline-start: 0; border-inline-start: none; }
+}

@@ -183,3 +183,76 @@ func (s *Server) handleVATReturn(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// --- GET /api/v1/dashboard/overview -------------------------------------
+
+// handleDashboardOverview serves the Owner Dashboard in one call.
+//
+// One request rather than nine. A dashboard that fires a request per widget
+// renders nine times and reflows under the owner”s eyes, and — worse — takes
+// its figures from nine different instants, so a screen can appear not to
+// balance when nothing is wrong.
+//
+// Gated on accounting.view, the same permission the statements carry. The
+// dashboard shows revenue, cost, margin and cash position, which is precisely
+// what that permission exists to protect; a Cashier holding sales.create must
+// not learn the shop”s margin from a tile.
+func (s *Server) handleDashboardOverview(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Defaults to today. Explicit dates are what make the tiles drillable
+	// backwards — an owner asking "what happened last Tuesday" uses the same
+	// screen rather than a separate report.
+	day := time.Now().UTC()
+	if raw := r.URL.Query().Get("date"); raw != "" {
+		parsed, e := time.Parse("2006-01-02", raw)
+		if e != nil {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"Dates look like 2026-08-16."))
+			return
+		}
+		day = parsed
+	}
+
+	out, err := s.reports.OverviewFor(r.Context(), scope, day)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// --- GET /api/v1/companies ----------------------------------------------
+
+// handleListCompanies names the legal entities this caller may work in.
+//
+// Authenticated rather than permission-gated, and that is deliberate: every
+// signed-in user needs to know which companies they are in before they can ask
+// for anything about one, so requiring a permission would make the app
+// unusable for whoever lacked it. It discloses nothing new — row-level
+// security scopes the query to the tenant, and CanAccessCompany narrows it
+// further to the entities this user is actually assigned to.
+func (s *Server) handleListCompanies(w http.ResponseWriter, r *http.Request) {
+	a := actor.From(r.Context())
+
+	companies, err := s.reports.CompaniesFor(r.Context(), a.TenantID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Filtered here rather than in SQL because the scope lives on the token,
+	// not in the database. An empty CompanyIDs means every company in the
+	// tenant, which is the ordinary case for an owner.
+	allowed := companies[:0]
+	for _, c := range companies {
+		if a.CanAccessCompany(c.ID) {
+			allowed = append(allowed, c)
+		}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": allowed})
+}

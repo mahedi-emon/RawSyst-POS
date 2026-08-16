@@ -1,5 +1,17 @@
 # UI/UX Design System
 
+> **Implemented in `pos/src/design-system.css`.**
+>
+> Until the Owner Dashboard was built this document described a system nothing
+> implemented: the POS had grown its own ad-hoc token names (`--ink`, `--line`,
+> `--accent`) matching no document and no other surface. That file is now the
+> documented system in code, product-wide, with the old names kept as aliases so
+> existing screens migrate gradually rather than in one risky sweep.
+>
+> A change to the visual language belongs in that file and in this document
+> together. One-off styling on a single screen is how a second design system
+> starts.
+
 **Binding source:** Blueprint A7 (one design system across Web/Desktop/Mobile), A8 (dashboard), B7 (POS speed), E1.5 (Arabic RTL), G3 (full RTL mirroring), J4 (performance).
 **Acceptance gate M6:** receipt, invoice, and UI render correctly in Arabic RTL **including mixed Arabic/English product names and numerals**.
 
@@ -47,7 +59,7 @@ Semantic tokens, defined once, consumed everywhere. Light and dark are both firs
   --success:         #17803D;   --success-subtle: #E7F6EC;
   --warning:         #A65B00;   --warning-subtle: #FDF2E3;
   --danger:          #C02626;   --danger-subtle:  #FDECEC;
-  --info:            #0F6C349;  --info-subtle:    #E8F4FB;
+  --info:            #0F6C94;   --info-subtle:    #E8F4FB;
 
   /* Offline is neutral, NOT a warning */
   --offline:         #5C6270;   --offline-subtle: #F0F1F4;

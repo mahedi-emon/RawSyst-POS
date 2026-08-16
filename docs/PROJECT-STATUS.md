@@ -5,9 +5,9 @@
 | **Last updated** | 2026-08-15 |
 | **Branch** | `main` @ `7fb0689` |
 | **Backend** | 63 Go files, ~24,800 lines, 311 tests, 29 migrations |
-| **HTTP routes live** | 35 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, reachability ping |
+| **HTTP routes live** | 37 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard, companies, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
-| **Front ends** | Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor, hold/resume, returns, exchanges, receipt (102 tests) |
+| **Front ends** | Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor, hold/resume, returns, exchanges, receipt, Owner Dashboard (132 tests) |
 
 > Percentages below are estimates of **remaining engineering effort**, not of files
 > written. They are deliberately conservative: the parts still missing (front ends,

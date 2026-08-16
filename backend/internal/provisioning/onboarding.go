@@ -358,7 +358,7 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 				"Your plan allows %d companies and you already have %d.", ceiling, existing)
 		}
 
-		return tx.QueryRow(ctx, `
+		if err := tx.QueryRow(ctx, `
 			INSERT INTO company
 			  (tenant_id, legal_name, legal_name_ar, trade_name, country,
 			   base_currency, timezone, cr_number, vat_registered, vat_number, zatca_wave)
@@ -367,7 +367,11 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 			a.TenantID, v.LegalName, nullIfBlank(v.LegalNameAr), nullIfBlank(v.TradeName),
 			v.Country, v.BaseCurrency, v.Timezone, nullIfBlank(v.CRNumber),
 			v.VATRegistered, nullIfBlank(v.VATNumber), nullIfBlank(v.ZATCAWave)).
-			Scan(&companyID)
+			Scan(&companyID); err != nil {
+			return err
+		}
+
+		return SeedChartOfAccounts(ctx, tx, a.TenantID, companyID)
 	})
 	if err != nil {
 		if errs.As(err) != nil {
