@@ -212,6 +212,40 @@ Refunding is its own permission. A returns desk that takes goods back but rings
 nothing up is an ordinary arrangement in a larger shop, so the returns screen is
 gated on `sales.refund` alone and not behind `sales.create`.
 
+## Exchanges
+
+One screen, two documents. Design 11 §7 draws it as scan the invoice, pick what
+is coming back, pick the replacement, settle the difference — and underneath,
+ZATCA sees a credit note against the original and a new invoice for the goods
+leaving the shop. There is no third document type, because inventing one would
+mean inventing its treatment.
+
+Both halves go in a single request and a single server transaction. A terminal
+that issued the credit note and then failed to place the sale would have given
+the goods away; one that placed the sale and failed to credit would have charged
+twice.
+
+**The till does not compute the settlement.** It shows an estimate, labelled as
+one, so the cashier can tell the customer what to expect before committing — a
+screen that said nothing until the server answered would be unusable at a
+counter. The authority is the server: it prices the replacement from the
+registry rate at the transaction date and the credit from the original invoice,
+and refuses the exchange outright if what the till offered does not match. A
+till permitted to state its own settlement could quietly undercharge, and
+nothing downstream would notice — the invoice would balance, the journal would
+balance, and the shop would simply be poorer.
+
+The offsetting portion never moves money. A customer swapping a 115 item for a
+230 one hands over 115, not 230 with 115 back, and the drawer records exactly
+that. See the backend note on `exchange_clearing` for how the two documents
+settle against each other.
+
+Exchanging is its own permission (`sales.exchange`), separate from refunding
+again, and the server enforces the split on the route.
+
+Like returns, an exchange needs the network, for the same reason: how much of
+the original invoice has already been given back cannot be known here.
+
 ## What is not built yet
 
 - **The seller identity on the receipt.** The terminal does not know its trading

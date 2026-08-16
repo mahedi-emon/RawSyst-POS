@@ -163,6 +163,58 @@ scan invoice → select line(s) → pick replacement variant
              → system computes the difference → settle → done
 ```
 
+**Implemented.** `POST /api/v1/pos/exchanges`, gated on `sales.exchange`. One
+request, one transaction, two documents: a credit note against the original and
+a new invoice for the replacement. There is deliberately no third document type
+— inventing one would mean inventing its ZATCA treatment, and E1 has none to
+invent. The credit note takes the earlier ICV on the terminal's chain, fixed
+rather than incidental, so the sequence does not depend on execution order.
+
+#### How the two settle against each other
+
+A customer swapping a 115 item for a 230 one hands over 115. They do not hand
+over 230 and receive 115 back, and the books must not record that they did: the
+drawer would be expected to hold cash that never passed through it, and the
+blind Z-count at close would show a variance with no cause.
+
+So the offsetting portion — `min(credit, replacement)` — settles on **both**
+documents through an `exchange_clearing` tender, and only the genuine difference
+moves real money. The account rises on the credit note and falls on the invoice
+inside the same transaction, netting to zero.
+
+| | Credit note | Replacement invoice | Cash |
+|---|---|---|---|
+| Swap up (115 → 230) | clearing 115 | clearing 115 + cash 115 | **+115** |
+| Swap down (230 → 115) | clearing 115 + cash 115 | clearing 115 | **−115** |
+| Even swap | clearing 115 | clearing 115 | **0** |
+
+`exchange_clearing` is deliberately **not** `store_credit`. Store credit is a
+real balance a real customer can come back and spend; borrowing it as an
+internal mechanism would inflate every report of credit issued and outstanding.
+`cash_session_cash_in` filters on `method = 'cash'`, so the clearing half never
+reaches the drawer.
+
+The invariant is asserted in Go before commit and queryable afterwards as
+`exchange_clearing_balance(company_id)`, which is **always zero** for a healthy
+company. A balance on it is a bug with a name, findable by looking at one
+account rather than by reconciling a day of takings.
+
+The company must have an account mapped to the `exchange_clearing` role, like
+`cash` or `cogs`. Migration 0030 creates one (code 2350, a liability) for every
+company that already has a chart of accounts; a company without the mapping is
+refused with a message naming exactly what to set.
+
+**The settlement is computed by the server, never accepted from the till.** A
+terminal stating how an exchange settles could quietly undercharge, and the
+figure is derivable from two totals the server already owns — the original
+invoice and the registry rate at the transaction date. The POS shows an estimate
+so the cashier can speak to the customer before committing, labelled as an
+estimate, and the server refuses the exchange if the two disagree.
+
+Idempotency covers the **pair**. Both halves carry device-assigned UUIDs and
+both must be present for a retry to be recognised; deduplicating each half alone
+would let a retry sell the replacement a second time.
+
 ### The nine effects (C14)
 
 Every return performs all nine in **one transaction**:
