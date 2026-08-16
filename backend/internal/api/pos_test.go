@@ -101,6 +101,10 @@ func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
 		accounts := []struct{ code, name, kind, role string }{
 			{"1100", "Cash", "asset", "cash"},
 			{"1150", "Card Settlement Clearing", "asset", "card_clearing"},
+			// The offsetting half of an exchange. A liability, because during
+			// one it holds what the shop owes for goods already taken back but
+			// not yet swapped; zero between exchanges.
+			{"2350", "Exchange Clearing", "liability", "exchange_clearing"},
 			{"4100", "Sales Revenue", "revenue", "sales_revenue"},
 			{"2200", "Output VAT Payable", "liability", "output_vat"},
 			{"5100", "Cost of Goods Sold", "expense", "cogs"},

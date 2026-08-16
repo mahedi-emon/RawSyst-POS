@@ -510,7 +510,11 @@ func TestSnapshotCursorReturnsOnlyWhatChanged(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "cashier")
 
-	first := decodeJSON(t, h.do(t, "GET", "/api/v1/catalog/snapshot", f.token, nil))
+	firstResp := h.do(t, "GET", "/api/v1/catalog/snapshot", f.token, nil)
+	if firstResp.StatusCode != 200 {
+		t.Fatalf("snapshot: %d %s", firstResp.StatusCode, readBody(t, firstResp))
+	}
+	first := decodeJSON(t, firstResp)
 	since, _ := first["next_since"].(string)
 	sinceID, _ := first["next_since_id"].(string)
 	if since == "" || sinceID == "" {
@@ -519,7 +523,11 @@ func TestSnapshotCursorReturnsOnlyWhatChanged(t *testing.T) {
 
 	path := "/api/v1/catalog/snapshot?since=" + url.QueryEscape(since) +
 		"&since_id=" + url.QueryEscape(sinceID)
-	second := decodeJSON(t, h.do(t, "GET", path, f.token, nil))
+	secondResp := h.do(t, "GET", path, f.token, nil)
+	if secondResp.StatusCode != 200 {
+		t.Fatalf("snapshot delta: %d %s", secondResp.StatusCode, readBody(t, secondResp))
+	}
+	second := decodeJSON(t, secondResp)
 
 	items, _ := second["items"].([]any)
 	if len(items) != 0 {

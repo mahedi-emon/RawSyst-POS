@@ -564,3 +564,163 @@ func (s *Server) handleUploadSignedDocument(w http.ResponseWriter, r *http.Reque
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// --- POST /api/v1/pos/exchanges -----------------------------------------
+
+type createExchangeRequest struct {
+	// Both halves carry their own device-assigned UUID. Idempotency covers the
+	// PAIR: a retry that recognised the credit note and went on to sell the
+	// replacement again would hand the customer two jackets for one.
+	CreditNoteUUID string `json:"credit_note_uuid"`
+	InvoiceUUID    string `json:"invoice_uuid"`
+
+	OriginalInvoiceID string `json:"original_invoice_id"`
+	IssuedAt          string `json:"issued_at"`
+	WarehouseID       string `json:"warehouse_id"`
+	Reason            string `json:"reason"`
+
+	// Returning names the lines coming back off the original invoice.
+	Returning []returnLineRequest `json:"returning"`
+
+	// Replacement is an ordinary sale: the goods going out. Its own tenders
+	// are ignored — how an exchange settles is arithmetic the server does.
+	Replacement createSaleRequest `json:"replacement"`
+
+	// Settlement is how the DIFFERENCE moves, in whichever direction it is
+	// owed. Empty for an even swap.
+	Settlement []posTenderRequest `json:"settlement"`
+}
+
+// handleCreateExchange swaps goods: a credit note and an invoice, at once.
+//
+// Design 11 §7 draws this as one screen and it stays one request, because the
+// two halves must not be separable. A till that issued the credit note and
+// then failed to place the sale would have given the goods away; one that
+// placed the sale and failed to credit would have charged twice. Both go
+// through a single transaction, so neither outcome exists.
+//
+// The replacement's tenders and the return's refunds are both computed here
+// rather than accepted. A till stating how an exchange settles could quietly
+// undercharge, and the figure is derivable from the two totals — which are
+// themselves the server's, from the registry and the original invoice.
+func (s *Server) handleCreateExchange(w http.ResponseWriter, r *http.Request) {
+	var req createExchangeRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+
+	creditNoteUUID, err := parseUUID(req.CreditNoteUUID, "credit_note_uuid")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	invoiceUUID, err := parseUUID(req.InvoiceUUID, "invoice_uuid")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if creditNoteUUID == invoiceUUID {
+		// Two documents, two identities. Sharing one would make the pair
+		// indistinguishable to every idempotency check downstream.
+		httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+			"The credit note and the replacement invoice need different ids."))
+		return
+	}
+
+	originalID, err := parseUUID(req.OriginalInvoiceID, "original_invoice_id")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	warehouseID, err := parseOptionalUUID(req.WarehouseID, "warehouse_id")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	issuedAt, err := parseIssuedAt(req.IssuedAt)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// C14 requires a reason on every return, and an exchange contains one.
+	// Unexplained returns are how refund fraud is concealed.
+	if len(req.Reason) < 3 {
+		httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+			"An exchange needs a reason. It appears on the credit note and in "+
+				"the returns report."))
+		return
+	}
+
+	returning := make([]sales.ReturnRequest, 0, len(req.Returning))
+	for i, l := range req.Returning {
+		lineID, e := parseUUID(l.LineID, "returning[].line_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		qty, e := parseAmount(l.Qty, "returning[].qty", i)
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		returning = append(returning, sales.ReturnRequest{LineID: lineID, Qty: qty})
+	}
+
+	replacement, err := s.buildSale(r, req.Replacement, invoiceUUID, issuedAt, a)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	settlement := make([]sales.Tender, 0, len(req.Settlement))
+	for i, t := range req.Settlement {
+		amount, e := parseAmount(t.Amount, "settlement[].amount", i)
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		settlement = append(settlement, sales.Tender{
+			Method: t.Method, Amount: amount, Reference: t.Reference,
+		})
+	}
+
+	userID := a.UserID
+	out, err := s.sales.ExchangeGoods(r.Context(), a.TenantID, a.DeviceID,
+		sales.Exchange{
+			Return: sales.Return{
+				CreditNoteUUID:    creditNoteUUID,
+				OriginalInvoiceID: originalID,
+				IssuedAt:          issuedAt,
+				Reason:            req.Reason,
+				Requests:          returning,
+				CashierID:         &userID,
+			},
+			Replacement: replacement,
+			Settlement:  settlement,
+		}, warehouseID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	status := http.StatusCreated
+	if out.AlreadyExchanged {
+		status = http.StatusOK
+		w.Header().Set("Idempotency-Replayed", "true")
+	}
+
+	httpx.JSON(w, status, map[string]any{
+		"credit_note": refundResponse(out.Refunded),
+		"replacement": saleResponse(out.Finalized),
+		// The figures the receipt needs, stated by the server so the till
+		// prints what was actually charged rather than what it computed.
+		"credit_applied": out.CreditApplied.String(),
+		"difference":     out.Difference.String(),
+		// Positive means the customer paid; negative means the shop paid out.
+		"customer_paid": out.Difference.IsPositive(),
+	})
+}

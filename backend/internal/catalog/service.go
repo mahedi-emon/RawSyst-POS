@@ -293,7 +293,12 @@ func (s *Service) Snapshot(
 			FROM variant v
 			JOIN product p ON p.id = v.product_id
 			WHERE v.company_id = $1
-			  AND p.lifecycle <> 'archived'
+			  -- product_lifecycle is ('active','inactive','discontinued').
+			  -- Discontinued products still travel in the delta rather than
+			  -- being filtered out, for the same reason withdrawn variants do:
+			  -- a row silently omitted stays in the till's cache forever, and
+			  -- the cashier keeps selling something taken off sale.
+			  AND p.lifecycle IN ('active', 'inactive', 'discontinued')
 			  AND ($2::timestamptz IS NULL
 			       OR v.updated_at > $2::timestamptz
 			       OR (v.updated_at = $2::timestamptz AND v.id > $3::uuid))

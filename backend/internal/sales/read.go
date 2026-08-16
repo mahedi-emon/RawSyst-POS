@@ -242,9 +242,17 @@ func (s *Service) Returnable(
 			SELECT line_id, line_no, coalesce(variant_id::text, ''), description,
 			       qty_sold::text, qty_returned::text, qty_returnable::text,
 			       unit_price::text, tax_treatment, tax_rate::text,
-			       net_amount::text, tax_amount::text, gross_amount::text,
-			       net_returnable::text, tax_returnable::text,
-			       gross_returnable::text
+			       net_amount::text, tax_amount::text,
+			       (net_amount + tax_amount)::text AS gross_amount,
+			       -- What is LEFT: what the line was sold for, less what has
+			       -- already gone back. The function reports both halves and
+			       -- deliberately does not subtract them for us, because the
+			       -- return path needs the two separately to allocate a partial
+			       -- return proportionally.
+			       (net_amount - net_returned)::text AS net_returnable,
+			       (tax_amount - tax_returned)::text AS tax_returnable,
+			       ((net_amount - net_returned)
+			        + (tax_amount - tax_returned))::text AS gross_returnable
 			FROM returnable_lines($1)
 			ORDER BY line_no`, invoiceID)
 		if e != nil {

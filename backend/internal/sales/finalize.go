@@ -554,6 +554,13 @@ func tenderRole(method string) string {
 		return "accounts_receivable"
 	case "store_credit":
 		return "store_credit_liability"
+	case ExchangeClearing:
+		// The offsetting half of an exchange. Rises on the credit note and
+		// falls on the invoice inside the same transaction, so the account is
+		// always zero between exchanges and a balance on it is a bug with a
+		// name. Deliberately not store_credit, which is a real balance a real
+		// customer can come back and spend.
+		return ExchangeClearing
 	case "loyalty_points":
 		return "loyalty_liability"
 	case "bank_transfer", "cheque", "sadad":

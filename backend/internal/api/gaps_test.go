@@ -380,8 +380,14 @@ func TestReturnableLinesTellTheTillWhatIsLeft(t *testing.T) {
 	}
 	invoiceID, _ := decodeJSON(t, created)["invoice_id"].(string)
 
-	body := decodeJSON(t, h.do(t, "GET",
-		"/api/v1/pos/sales/"+invoiceID+"/returnable", f.token, nil))
+	// The status is asserted before the payload. Without it a 500 arrives as a
+	// body with no "lines" key, which reads as "zero lines returnable" and
+	// sends you looking at the SQL function instead of at the error.
+	resp := h.do(t, "GET", "/api/v1/pos/sales/"+invoiceID+"/returnable", f.token, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("returnable: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	body := decodeJSON(t, resp)
 	lines, _ := body["lines"].([]any)
 	if len(lines) != 1 {
 		t.Fatalf("returnable reported %d lines, want 1", len(lines))
@@ -418,8 +424,12 @@ func TestReturnableLinesTellTheTillWhatIsLeft(t *testing.T) {
 		t.Fatalf("return: %s", readBody(t, refund))
 	}
 
-	after := decodeJSON(t, h.do(t, "GET",
-		"/api/v1/pos/sales/"+invoiceID+"/returnable", f.token, nil))
+	afterResp := h.do(t, "GET", "/api/v1/pos/sales/"+invoiceID+"/returnable", f.token, nil)
+	if afterResp.StatusCode != 200 {
+		t.Fatalf("returnable after refund: %d %s",
+			afterResp.StatusCode, readBody(t, afterResp))
+	}
+	after := decodeJSON(t, afterResp)
 	afterLines, _ := after["lines"].([]any)
 	got, _ := afterLines[0].(map[string]any)
 
