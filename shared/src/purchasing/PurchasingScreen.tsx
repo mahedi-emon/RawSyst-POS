@@ -27,13 +27,63 @@ import {
 } from '../api/purchasing';
 import { OrderDetail } from './OrderDetail';
 import { BillDetail } from './BillDetail';
+import { SupplierForm } from './SupplierForm';
+import { OrderForm } from './OrderForm';
 
 type Tab = 'orders' | 'bills' | 'suppliers' | 'ageing';
 
 export function PurchasingScreen({ companyId }: { companyId: string }) {
+  const { can } = useAuth();
   const [tab, setTab] = useState<Tab>('orders');
   const [openOrder, setOpenOrder] = useState<string | null>(null);
   const [openBill, setOpenBill] = useState<string | null>(null);
+
+  // Which form is showing, if any. A form takes over the screen rather than
+  // opening in a modal: an order has a line table that grows, and a dialog
+  // that scrolls internally on a laptop is a worse place to do real work than
+  // the page itself.
+  const [creating, setCreating] = useState<null | 'supplier' | 'order'>(null);
+
+  // Bumped after a save so the list underneath refetches. Cheaper and harder
+  // to get wrong than threading a refresh callback through every list.
+  const [saved, setSaved] = useState(0);
+
+  const mayAddSupplier = can('purchasing.manage_suppliers');
+  const mayCreateOrder = can('purchasing.create_order');
+
+  if (creating === 'supplier') {
+    return (
+      <FormPage title="Suppliers" onBack={() => setCreating(null)}>
+        <SupplierForm
+          companyId={companyId}
+          onSaved={() => {
+            setCreating(null);
+            setTab('suppliers');
+            setSaved((n) => n + 1);
+          }}
+          onCancel={() => setCreating(null)}
+        />
+      </FormPage>
+    );
+  }
+
+  if (creating === 'order') {
+    return (
+      <FormPage title="Orders" onBack={() => setCreating(null)}>
+        <OrderForm
+          companyId={companyId}
+          onSaved={(order) => {
+            setCreating(null);
+            setSaved((n) => n + 1);
+            // Straight to the order just raised, because the next thing a
+            // buyer does is send it to the supplier.
+            setOpenOrder(order.id);
+          }}
+          onCancel={() => setCreating(null)}
+        />
+      </FormPage>
+    );
+  }
 
   if (openOrder) {
     return (
@@ -63,6 +113,28 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
         </div>
 
         <div className="detail__actions">
+          {/* The primary action sits beside the tab it acts on, so it always
+              means the thing the reader is currently looking at. Shown only
+              when the permission is held — the server refuses it either way,
+              but a button that always refuses teaches people to distrust the
+              rest of them. */}
+          {tab === 'suppliers' && mayAddSupplier && (
+            <button
+              className="ds-btn ds-btn--primary"
+              onClick={() => setCreating('supplier')}
+            >
+              Add supplier
+            </button>
+          )}
+          {tab === 'orders' && mayCreateOrder && (
+            <button
+              className="ds-btn ds-btn--primary"
+              onClick={() => setCreating('order')}
+            >
+              New order
+            </button>
+          )}
+
           <div className="segmented" role="group" aria-label="What to show">
             {(
               [
@@ -85,9 +157,9 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
         </div>
       </header>
 
-      {tab === 'orders' && <Orders companyId={companyId} onOpen={setOpenOrder} />}
+      {tab === 'orders' && <Orders key={saved} companyId={companyId} onOpen={setOpenOrder} />}
       {tab === 'bills' && <Bills companyId={companyId} onOpen={setOpenBill} />}
-      {tab === 'suppliers' && <Suppliers companyId={companyId} />}
+      {tab === 'suppliers' && <Suppliers key={saved} companyId={companyId} />}
       {tab === 'ageing' && <AgeingView companyId={companyId} />}
     </main>
   );
@@ -388,3 +460,34 @@ export function BillStatus({ bill }: { bill: Bill }) {
 }
 
 export type { Order };
+
+/** A form filling the page, with one click back to the list it came from.
+ *
+ * The same shape as a drill-through, because it is the same journey: you went
+ * somewhere from a list and you need to get back. Reusing the pattern rather
+ * than inventing a second one means the back control is where a reader already
+ * expects it.
+ */
+function FormPage({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <main className="detail">
+      <header className="detail__head">
+        <button className="detail__back" onClick={onBack}>
+          <span aria-hidden="true" className="detail__backarrow">
+            ←
+          </span>
+          {title}
+        </button>
+      </header>
+      {children}
+    </main>
+  );
+}

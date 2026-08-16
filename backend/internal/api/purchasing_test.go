@@ -3,6 +3,7 @@
 package api
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -762,6 +763,208 @@ func TestPurchasingMoneyIsAlwaysAString(t *testing.T) {
 	for _, field := range []string{"subtotal_net", "tax_total", "total_inclusive"} {
 		if _, ok := order[field].(string); !ok {
 			t.Errorf("%s came back as %T, not a string", field, order[field])
+		}
+	}
+}
+
+// --- Write forms ---------------------------------------------------------
+
+// A buyer must be able to see what they are buying. 0032 gave the Purchase
+// Manager the purchasing verbs and stopped there, which left the role able to
+// create an order through the API and unable to fill one in from the product
+// list.
+func TestABuyerCanReadTheCatalogue(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "purchase_manager")
+
+	resp := h.do(t, "GET",
+		"/api/v1/catalog/snapshot?company_id="+f.companyID.String(), f.token, nil)
+	if resp.StatusCode != 200 {
+		t.Errorf("a purchase manager got %d reading the catalogue, want 200",
+			resp.StatusCode)
+	}
+
+	// But not what everything else in the shop cost. Raising an order needs the
+	// cost the buyer negotiates, which is a different thing.
+	body := strings.ToLower(readBody(t, resp))
+	if strings.Contains(body, "cost") {
+		t.Error("the catalogue snapshot exposes cost to a buyer")
+	}
+}
+
+// The order form has to offer somewhere to deliver to, and a buyer cannot be
+// expected to know a warehouse id.
+func TestWarehousesAreListedForTheOrderForm(t *testing.T) {
+	h := newHarness(t)
+	f := seedBuying(t, h)
+
+	body := decodeJSON(t, h.do(t, "GET",
+		f.path("/api/v1/purchasing/warehouses"), f.token, nil))
+	list, _ := body["data"].([]any)
+	if len(list) == 0 {
+		t.Fatal("no warehouses returned; an order cannot name a destination")
+	}
+	row, _ := list[0].(map[string]any)
+	for _, field := range []string{"id", "name"} {
+		if _, present := row[field]; !present {
+			t.Errorf("a warehouse is missing %q", field)
+		}
+	}
+}
+
+func TestADraftOrderCanBeCorrected(t *testing.T) {
+	h := newHarness(t)
+	f := seedBuying(t, h)
+
+	created := h.do(t, "POST", f.path("/api/v1/purchasing/orders"), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "description": "Abaya",
+				"qty": "5", "unit_cost": "100.00", "tax_rate": "0.15",
+			}},
+		})
+	poID, _ := decodeJSON(t, created)["id"].(string)
+
+	// The buyer noticed they meant ten, at a price they renegotiated.
+	updated := h.do(t, "PUT", f.path("/api/v1/purchasing/orders/"+poID), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"notes": "renegotiated",
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "description": "Abaya",
+				"qty": "10", "unit_cost": "90.00", "tax_rate": "0.15",
+			}},
+		})
+	if updated.StatusCode != 200 {
+		t.Fatalf("update: %s", readBody(t, updated))
+	}
+
+	order := decodeJSON(t, updated)
+	// Ten at 90 is 900 net, 1035 inclusive. Totals are recomputed server-side
+	// from the lines rather than taken from the caller.
+	if !amountsEqual(order["total_inclusive"].(string), "1035.00") {
+		t.Errorf("total is %v after the correction, want 1035.00",
+			order["total_inclusive"])
+	}
+	lines, _ := order["lines"].([]any)
+	if len(lines) != 1 {
+		t.Errorf("the order has %d lines after replacing one, want 1", len(lines))
+	}
+}
+
+// An issued order is a commitment the supplier can hold the shop to. Editing
+// one after goods had been received against it is the same class of problem as
+// editing a finalized invoice.
+func TestAnIssuedOrderCannotBeEdited(t *testing.T) {
+	h := newHarness(t)
+	f := seedBuying(t, h)
+	poID, _ := raiseOrder(t, h, f, "10", "100.00")
+
+	resp := h.do(t, "PUT", f.path("/api/v1/purchasing/orders/"+poID), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "description": "Abaya",
+				"qty": "1", "unit_cost": "1.00", "tax_rate": "0.15",
+			}},
+		})
+	if resp.StatusCode != 409 {
+		t.Errorf("editing an issued order returned %d, want 409", resp.StatusCode)
+	}
+	if body := readBody(t, resp); !strings.Contains(body, "draft") {
+		t.Errorf("the refusal does not explain why: %s", body)
+	}
+}
+
+// An empty order is not a correction, it is a mistake.
+func TestAnOrderCannotBeEmptied(t *testing.T) {
+	h := newHarness(t)
+	f := seedBuying(t, h)
+
+	created := h.do(t, "POST", f.path("/api/v1/purchasing/orders"), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "description": "Abaya",
+				"qty": "5", "unit_cost": "100.00", "tax_rate": "0.15",
+			}},
+		})
+	poID, _ := decodeJSON(t, created)["id"].(string)
+
+	resp := h.do(t, "PUT", f.path("/api/v1/purchasing/orders/"+poID), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{},
+		})
+	if resp.StatusCode != 400 {
+		t.Errorf("emptying an order returned %d, want 400", resp.StatusCode)
+	}
+}
+
+// The form's own validation must not be the only validation.
+func TestSupplierValidationNamesEveryMissingField(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	resp := h.do(t, "POST",
+		"/api/v1/purchasing/suppliers?company_id="+f.companyID.String(), f.token,
+		map[string]any{"code": "", "legal_name": "", "payment_terms_days": 999})
+	if resp.StatusCode != 400 {
+		t.Fatalf("got %d for an empty supplier, want 400", resp.StatusCode)
+	}
+
+	// Field-level messages, so the form can put each one beside its input
+	// rather than showing one banner for three problems.
+	body := readBody(t, resp)
+	for _, field := range []string{"code", "legal_name", "payment_terms_days"} {
+		if !strings.Contains(body, field) {
+			t.Errorf("the refusal does not name %q: %s", field, body)
+		}
+	}
+}
+
+func TestSupplierCodeMustBeUniquePerCompany(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	body := map[string]any{
+		"code": "ACME", "legal_name": "Acme", "payment_terms_days": 30,
+	}
+	path := "/api/v1/purchasing/suppliers?company_id=" + f.companyID.String()
+
+	if first := h.do(t, "POST", path, f.token, body); first.StatusCode != 201 {
+		t.Fatalf("first supplier: %s", readBody(t, first))
+	}
+	second := h.do(t, "POST", path, f.token, body)
+	if second.StatusCode != 409 {
+		t.Errorf("a duplicate supplier code returned %d, want 409", second.StatusCode)
+	}
+}
+
+// Drafting and correcting are the same act, so they share a permission.
+// Issuing is separate, because that is the step that commits the shop.
+func TestWriteRoutesAreGatedCorrectly(t *testing.T) {
+	want := map[string]struct{ method, permission string }{
+		"/api/v1/purchasing/orders/{poID}": {"PUT", "purchasing.create_order"},
+		"/api/v1/purchasing/warehouses":    {"GET", "purchasing.view"},
+	}
+
+	found := map[string]bool{}
+	for _, rt := range (&Server{}).Routes() {
+		expected, watched := want[rt.Pattern]
+		if !watched || rt.Method != expected.method {
+			continue
+		}
+		found[rt.Pattern] = true
+		if rt.Permission != expected.permission {
+			t.Errorf("%s %s is gated on %q, want %q",
+				rt.Method, rt.Pattern, rt.Permission, expected.permission)
+		}
+	}
+	for pattern := range want {
+		if !found[pattern] {
+			t.Errorf("%s is not registered", pattern)
 		}
 	}
 }

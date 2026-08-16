@@ -128,7 +128,10 @@ func (s *Service) CreateSupplier(
 			&out.TermsDays, &out.CreditLimit, &out.Notes, &out.IsActive)
 	})
 	if err != nil {
-		return Supplier{}, db.Translate(err, "A supplier with that code already exists.")
+		return Supplier{}, conflictMessage(
+			db.Translate(err, "That supplier was not found."),
+			"A supplier already uses the code "+in.Code+". Codes are how you find "+
+				"them in a list, so each one has to be different.")
 	}
 	out.Outstanding = "0.00"
 	return out, nil
@@ -612,4 +615,171 @@ func trim(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// --- Warehouses ----------------------------------------------------------
+
+// Warehouse is somewhere stock can be received into.
+type Warehouse struct {
+	ID    uuid.UUID `json:"id"`
+	Code  string    `json:"code"`
+	Name  string    `json:"name"`
+	Store string    `json:"store,omitempty"`
+}
+
+// WarehousesFor lists where a purchase order can be delivered.
+//
+// A buyer has to pick one and cannot be expected to know its id. The list is
+// scoped to the company for the same reason every other purchasing query is:
+// a group holding two companies must not be able to order goods into the
+// other one's stockroom.
+func (s *Service) WarehousesFor(
+	ctx context.Context, scope Scope,
+) ([]Warehouse, error) {
+	out := []Warehouse{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		if e := requireCompany(ctx, tx, scope.CompanyID); e != nil {
+			return e
+		}
+		rows, e := tx.Query(ctx, `
+			SELECT w.id, w.code, w.name, coalesce(st.name, '')
+			FROM warehouse w
+			LEFT JOIN store st ON st.id = w.store_id
+			WHERE w.company_id = $1
+			ORDER BY w.name`, scope.CompanyID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var w Warehouse
+			if e := rows.Scan(&w.ID, &w.Code, &w.Name, &w.Store); e != nil {
+				return e
+			}
+			out = append(out, w)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// --- Editing a draft -----------------------------------------------------
+
+// ReplaceOrderLines rewrites a DRAFT order's lines.
+//
+// Draft only, and that is the whole point of the status existing. An issued
+// order is a commitment a supplier can hold the shop to, and one that could be
+// edited afterwards would let somebody change what was agreed after goods had
+// been received against it — which is the same class of problem as editing a
+// finalized invoice, and gets the same answer: no.
+//
+// The lines are replaced wholesale rather than patched. A draft has no
+// receipts and no bills pointing at its lines, so there is nothing to orphan,
+// and a diffing edit would be considerably more code for a case that only ever
+// happens before anything depends on it.
+func (s *Service) ReplaceOrderLines(
+	ctx context.Context, scope Scope, poID uuid.UUID, in NewOrder,
+) (Order, error) {
+	if len(in.Lines) == 0 {
+		return Order{}, errs.New(errs.CodeInvalidInput,
+			"A purchase order needs at least one line.")
+	}
+
+	var out Order
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		var status string
+		if e := tx.QueryRow(ctx, `
+			SELECT status FROM purchase_order
+			WHERE id = $1 AND company_id = $2 FOR UPDATE`,
+			poID, scope.CompanyID).Scan(&status); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return errs.New(errs.CodeNotFound, "That purchase order was not found.")
+			}
+			return e
+		}
+		if status != "draft" {
+			return errs.Newf(errs.CodeConflict,
+				"That order is %s. Only a draft can be changed — an issued order "+
+					"is a commitment the supplier can hold you to.", status)
+		}
+
+		if e := checkBelongs(ctx, tx, "supplier", in.SupplierID, scope.CompanyID,
+			"That supplier was not found."); e != nil {
+			return e
+		}
+		if e := checkBelongs(ctx, tx, "warehouse", in.WarehouseID, scope.CompanyID,
+			"That warehouse was not found."); e != nil {
+			return e
+		}
+
+		if _, e := tx.Exec(ctx, `DELETE FROM po_line WHERE po_id = $1`, poID); e != nil {
+			return e
+		}
+
+		subtotal, tax, total := decimal.Zero, decimal.Zero, decimal.Zero
+		for i, line := range in.Lines {
+			if !line.Qty.IsPositive() {
+				return errs.Newf(errs.CodeInvalidInput, "Line %d has no quantity.", i+1)
+			}
+			if line.UnitCost.IsNegative() {
+				return errs.Newf(errs.CodeInvalidInput, "Line %d has a negative cost.", i+1)
+			}
+
+			net := line.Qty.Mul(line.UnitCost).Round(4)
+			lineTax := net.Mul(line.TaxRate).Round(4)
+			gross := net.Add(lineTax)
+
+			treatment := line.TaxTreatment
+			if treatment == "" {
+				treatment = "standard"
+			}
+
+			if _, e := tx.Exec(ctx, `
+				INSERT INTO po_line
+				  (tenant_id, po_id, line_no, variant_id, description,
+				   qty_ordered, unit_cost, tax_treatment, tax_rate,
+				   net_amount, tax_amount, gross_amount)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+				scope.TenantID, poID, i+1, line.VariantID, line.Description,
+				line.Qty, line.UnitCost, treatment, line.TaxRate,
+				net, lineTax, gross); e != nil {
+				return e
+			}
+
+			subtotal = subtotal.Add(net)
+			tax = tax.Add(lineTax)
+			total = total.Add(gross)
+		}
+
+		if _, e := tx.Exec(ctx, `
+			UPDATE purchase_order
+			SET supplier_id = $2, warehouse_id = $3, expected_on = $4, notes = $5,
+			    subtotal_net = $6, tax_total = $7, total_inclusive = $8
+			WHERE id = $1`,
+			poID, in.SupplierID, in.WarehouseID, in.ExpectedOn,
+			nullText(in.Notes), subtotal, tax, total); e != nil {
+			return e
+		}
+
+		read, e := s.readOrder(ctx, tx, poID)
+		out = read
+		return e
+	})
+	return out, err
+}
+
+// conflictMessage replaces the generic duplicate wording with something the
+// person reading it can act on.
+//
+// db.Translate maps every unique violation to "That record already exists.",
+// which is correct as a default and useless on a form: it does not say WHICH
+// record or which field. A browser check surfaced it — the supplier form
+// refused a duplicate code with a sentence that gave the buyer nothing to
+// change.
+func conflictMessage(err error, message string) error {
+	if e := errs.As(err); e != nil && e.Code == errs.CodeConflict {
+		return errs.New(errs.CodeConflict, message)
+	}
+	return err
 }

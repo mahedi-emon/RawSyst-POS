@@ -693,3 +693,87 @@ func (s *Server) handleListReceipts(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
+
+func (s *Server) handleListWarehouses(w http.ResponseWriter, r *http.Request) {
+	scope, err := purchaseScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.purchasing.WarehousesFor(r.Context(), scope)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+// handleUpdateOrder rewrites a draft order.
+//
+// Gated on create_order rather than a new verb: drafting and redrafting are the
+// same act, and a role able to raise an order it cannot then correct would be
+// an odd thing to configure. Issuing stays separate, because that is the step
+// that commits the shop.
+func (s *Server) handleUpdateOrder(w http.ResponseWriter, r *http.Request) {
+	var req createOrderRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := purchaseScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	poID, err := parseUUID(chi.URLParam(r, "poID"), "poID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	in, err := orderFromRequest(req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.purchasing.ReplaceOrderLines(r.Context(), scope, poID, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// orderFromRequest parses the shared body used by create and update.
+func orderFromRequest(req createOrderRequest) (purchasing.NewOrder, error) {
+	supplierID, err := parseUUID(req.SupplierID, "supplier_id")
+	if err != nil {
+		return purchasing.NewOrder{}, err
+	}
+	warehouseID, err := parseUUID(req.WarehouseID, "warehouse_id")
+	if err != nil {
+		return purchasing.NewOrder{}, err
+	}
+
+	in := purchasing.NewOrder{
+		SupplierID: supplierID, WarehouseID: warehouseID, Notes: req.Notes,
+	}
+	if req.ExpectedOn != "" {
+		when, e := time.Parse("2006-01-02", req.ExpectedOn)
+		if e != nil {
+			return purchasing.NewOrder{}, errs.New(errs.CodeInvalidInput,
+				"Dates look like 2026-08-16.")
+		}
+		in.ExpectedOn = &when
+	}
+	for i, line := range req.Lines {
+		parsed, e := parseOrderLine(i, line)
+		if e != nil {
+			return purchasing.NewOrder{}, e
+		}
+		in.Lines = append(in.Lines, parsed)
+	}
+	return in, nil
+}

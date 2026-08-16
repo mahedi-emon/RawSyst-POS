@@ -235,6 +235,11 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/purchasing/orders/{poID}/issue", AccessPermission, "purchasing.issue_order",
 			s.handleIssueOrder,
 			"freezing an order and committing the shop to it is its own permission"},
+		{http.MethodPut, "/api/v1/purchasing/orders/{poID}", AccessPermission, "purchasing.create_order",
+			s.handleUpdateOrder,
+			"rewrites a DRAFT order; an issued one is a commitment and cannot be edited"},
+		{http.MethodGet, "/api/v1/purchasing/warehouses", AccessPermission, "purchasing.view",
+			s.handleListWarehouses, "where an order can be delivered"},
 		{http.MethodGet, "/api/v1/purchasing/orders/{poID}/receipts", AccessPermission, "purchasing.view",
 			s.handleListReceipts, ""},
 

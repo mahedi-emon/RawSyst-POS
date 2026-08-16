@@ -366,3 +366,55 @@ export function fetchAgeing(
     `/api/v1/purchasing/ageing?company_id=${companyId}`,
   );
 }
+
+// --- Warehouses ----------------------------------------------------------
+
+export interface Warehouse {
+  id: string;
+  code: string;
+  name: string;
+  /** The branch it belongs to, where a company has several. */
+  store?: string;
+}
+
+export function listWarehouses(
+  client: Client,
+  companyId: string,
+): Promise<Warehouse[]> {
+  return client
+    .send<{ data: Warehouse[] }>(
+      'GET',
+      `/api/v1/purchasing/warehouses?company_id=${companyId}`,
+    )
+    .then((b) => b.data ?? []);
+}
+
+/** Rewrites a DRAFT order.
+ *
+ * Draft only. An issued order is a commitment the supplier can hold the shop
+ * to, and the server refuses to change one — the same reasoning that forbids
+ * editing a finalized invoice. */
+export function updateOrder(
+  client: Client,
+  companyId: string,
+  poId: string,
+  body: {
+    supplier_id: string;
+    warehouse_id: string;
+    expected_on?: string;
+    notes?: string;
+    lines: Array<{
+      variant_id: string;
+      description: string;
+      qty: string;
+      unit_cost: string;
+      tax_rate: string;
+    }>;
+  },
+): Promise<Order> {
+  return client.send<Order>(
+    'PUT',
+    `/api/v1/purchasing/orders/${poId}?company_id=${companyId}`,
+    body,
+  );
+}

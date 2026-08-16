@@ -30,8 +30,11 @@ export function LoginScreen() {
       // problem.
       if (err instanceof Offline) {
         setProblem(
-          'This till cannot reach the server. Check the network, or ask an ' +
-            'owner — sales already recorded on this terminal are safe.',
+          // Also shared, so it says "this device" rather than "this till". The
+        // reassurance about queued sales stays: it is true on a terminal and
+        // harmlessly irrelevant on a laptop, where nothing was queued anyway.
+        'This device cannot reach the server. Check the network, or ask an ' +
+            'owner. Nothing already recorded on this device has been lost.',
         );
       } else if (err instanceof RequestFailed && err.status === 401) {
         setProblem('That email and password do not match an account here.');
@@ -46,8 +49,12 @@ export function LoginScreen() {
   return (
     <main className="login">
       <form className="login__card" onSubmit={submit}>
-        <h1 className="login__title">RawSyst POS</h1>
-        <p className="login__subtitle">Sign in to open the till</p>
+        <h1 className="login__title">RawSyst</h1>
+        {/* The screen is shared by the till and the back office, so it does
+            not claim to be either. "Sign in to open the till" was on the back
+            office until a browser check read it out loud — a buyer signing in
+            to raise a purchase order is not opening a till. */}
+        <p className="login__subtitle">Sign in to continue</p>
 
         <label className="field">
           <span className="field__label">Email</span>

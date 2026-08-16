@@ -168,8 +168,10 @@ func (s *Service) RecordBill(
 			scope.TenantID, scope.CompanyID, in.SupplierID, in.POID,
 			in.SupplierRef, in.UUID, billDate, dueDate, currency,
 			scope.UserID).Scan(&billID); e != nil {
-			return db.Translate(e,
-				"That invoice number has already been recorded for this supplier.")
+			return conflictMessage(db.Translate(e, ""),
+				"Invoice "+in.SupplierRef+" has already been recorded for this "+
+					"supplier. Paying the same invoice twice is the commonest way "+
+					"a shop loses money to its own paperwork, so it is refused.")
 		}
 
 		subtotal, tax, total := decimal.Zero, decimal.Zero, decimal.Zero

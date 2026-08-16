@@ -541,3 +541,141 @@
 @media (min-width: 640px) {
   .purchase__form { grid-template-columns: minmax(0, 24rem) auto auto; }
 }
+
+/* --- Forms ---------------------------------------------------------------
+ *
+ * Composed from the tokens above. A write screen that introduced its own
+ * spacing or its own idea of an input border is how a product starts feeling
+ * assembled rather than designed.
+ */
+
+.form { display: block; }
+.form__body { display: grid; gap: var(--space-5); }
+
+/* One column on a phone, two once there is room. Not more: a four-across form
+ * makes the eye travel and the tab order stop matching the reading order. */
+.form__grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
+}
+
+.field { display: grid; gap: var(--space-1); min-inline-size: 0; }
+
+.field__label { font-size: 0.87rem; font-weight: 500; }
+
+/* "(optional)" rather than an asterisk on the required ones. An asterisk needs
+ * a legend elsewhere on the page, which is one more thing to read and to
+ * translate — and most fields on most forms are required, so marking the
+ * exceptions is less ink. */
+.field__optional { color: var(--text-subtle); font-weight: 400; }
+
+.field__hint { font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
+
+.field__error {
+  font-size: 0.8rem;
+  color: var(--danger);
+  /* Paired with the red border below, and with a word rather than only a
+   * colour, because roughly 1 in 12 men has a colour vision deficiency. */
+  font-weight: 500;
+}
+
+.input {
+  font: inherit;
+  inline-size: 100%;
+  min-block-size: var(--tap-mobile);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.input::placeholder { color: var(--text-subtle); }
+.input:disabled { background: var(--surface-sunken); color: var(--text-muted); }
+.input--narrow { inline-size: 7rem; text-align: end; font-family: var(--font-mono); }
+
+.field--bad .input { border-color: var(--danger); }
+
+.form__error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border-inline-start: 3px solid var(--danger);
+  font-size: 0.93rem;
+}
+
+.form__actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border);
+}
+
+.form__lines { display: grid; gap: var(--space-3); justify-items: start; }
+.form__lineshead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  inline-size: 100%;
+}
+.form__lines .ds-scroll-x { inline-size: 100%; }
+.form__empty { color: var(--text-muted); text-align: center; padding: var(--space-5); }
+.form__aside { color: var(--text-muted); margin: 0; }
+
+/* --- The item picker ----------------------------------------------------- */
+
+.picker { position: relative; min-inline-size: 14rem; }
+
+.picker--chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Floats above the row rather than pushing the table apart. A list that
+ * reflowed the whole table on every keystroke would move the field the buyer
+ * is typing into. */
+.picker__list {
+  position: absolute;
+  inset-block-start: calc(100% + 2px);
+  inset-inline-start: 0;
+  z-index: 20;
+  min-inline-size: 100%;
+  max-block-size: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+}
+
+.picker__option {
+  display: grid;
+  gap: 1px;
+  inline-size: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-block-size: var(--tap-mobile);
+}
+
+.picker__option:hover { background: var(--brand-subtle); }
+.picker__empty { padding: var(--space-3); color: var(--text-muted); font-size: 0.9rem; }
+
+@media (min-width: 720px) {
+  .form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
