@@ -179,7 +179,7 @@ lives in the credit notes against it, which a till that was offline when they
 were raised has never seen. A terminal that guessed would refund the same jacket
 twice, and the second refund is real money leaving a real drawer. So the till
 asks `GET /api/v1/pos/sales/{id}/returnable`, and when it cannot reach the
-server it says so and refuses — a customer told "not until we are back online"
+server it says so and refuses, naming the reason — a customer told "not until we are back online"
 is inconvenienced; one refunded twice is a loss the shop may never notice.
 
 The refund amount is computed from the line's own returnable amount, not from
@@ -207,6 +207,10 @@ customer's hand at the counter. 42 columns of plain text for an 80mm roll,
 rather than ESC/POS, whose escape sequences differ by manufacturer; the same text
 is shown on screen so the two cannot drift apart. Change is computed in minor
 units, never floats.
+
+Refunding is its own permission. A returns desk that takes goods back but rings
+nothing up is an ordinary arrangement in a larger shop, so the returns screen is
+gated on `sales.refund` alone and not behind `sales.create`.
 
 ## What is not built yet
 

@@ -298,3 +298,27 @@ body {
     padding: 0;
   }
 }
+
+/* --- Returns ------------------------------------------------------------- */
+
+.app__nav { display: flex; gap: 8px; margin-inline-start: 16px; }
+
+.returns { padding: 16px; display: grid; gap: 12px; max-inline-size: 720px; }
+
+.returns__title { font-size: 1.1rem; margin: 0; }
+
+.returns__reason { display: grid; gap: 4px; font-size: 0.85rem; }
+
+.returns__reason input {
+  min-block-size: var(--tap);
+  padding-inline: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* A line with nothing left to give back is not merely greyed out — it cannot
+ * be typed into at all, because offering it invites the double refund the
+ * whole flow exists to prevent. */
+.cart__qty:disabled { opacity: 0.4; cursor: not-allowed; }
