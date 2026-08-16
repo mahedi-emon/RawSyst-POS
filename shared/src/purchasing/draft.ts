@@ -138,3 +138,32 @@ export function readyToSave(
   if (!supplierId || !warehouseId) return false;
   return lines.some((l) => l.variantId !== '' && Number(l.qty) > 0);
 }
+/**
+ * What to prefill a bill line with, from the order line it answers.
+ *
+ * What has been RECEIVED and not yet billed — not what was ordered.
+ *
+ * That distinction is the whole point. A supplier who delivered five of eight
+ * will normally invoice for five, and prefilling eight would have the buyer
+ * accept a manufactured discrepancy without reading it. Prefilling what
+ * arrived means the common case needs no correction and the uncommon one is a
+ * number the buyer had to type themselves.
+ *
+ * Never negative: over-receiving is a real event, and a bill line of "-2" is
+ * arithmetic rather than an answer.
+ */
+export function billableQty(line: {
+  qty_received: string;
+  qty_billed: string;
+}): string {
+  const received = Number(line.qty_received);
+  const billed = Number(line.qty_billed);
+  if (!Number.isFinite(received) || !Number.isFinite(billed)) return '0';
+
+  const left = received - billed;
+  if (left <= 0) return '0';
+
+  // Trimmed, because a numeric column returns "5.0000" and a form field
+  // holding that invites somebody to edit around the zeros.
+  return String(Number(left.toFixed(4)));
+}

@@ -8,7 +8,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { lineTotals, orderTotals, readyToSave, type DraftLine } from './draft';
+import {
+  billableQty,
+  lineTotals,
+  orderTotals,
+  readyToSave,
+  type DraftLine,
+} from './draft';
 
 function line(over: Partial<DraftLine> = {}): DraftLine {
   return {
@@ -138,5 +144,45 @@ describe('whether the order is worth saving', () => {
     expect(
       readyToSave('s1', 'w1', [line(), line({ variantId: '', qty: '' })]),
     ).toBe(true);
+  });
+});
+
+describe('what to prefill a bill line with', () => {
+  it('offers what arrived, not what was ordered', () => {
+    // A supplier who delivered five of eight will normally invoice for five.
+    // Prefilling eight would have the buyer accept a manufactured discrepancy
+    // without reading it.
+    expect(billableQty({ qty_received: '5.0000', qty_billed: '0.0000' })).toBe('5');
+  });
+
+  it('subtracts what has already been billed', () => {
+    // A second invoice against the same delivery covers the remainder only.
+    expect(billableQty({ qty_received: '8.0000', qty_billed: '5.0000' })).toBe('3');
+  });
+
+  it('offers nothing where nothing has arrived', () => {
+    // Billing for goods that have not come is the fraud case the match exists
+    // to catch. The form must not put the number there itself.
+    expect(billableQty({ qty_received: '0.0000', qty_billed: '0.0000' })).toBe('0');
+  });
+
+  it('offers nothing on a line already fully billed', () => {
+    expect(billableQty({ qty_received: '5.0000', qty_billed: '5.0000' })).toBe('0');
+  });
+
+  it('never offers a negative, however the counts came out', () => {
+    // Over-billing already happened, or goods were returned. Either way "-2"
+    // is arithmetic rather than an answer to what should be invoiced now.
+    expect(billableQty({ qty_received: '3.0000', qty_billed: '5.0000' })).toBe('0');
+  });
+
+  it('keeps a genuine fraction and drops the column scale', () => {
+    expect(billableQty({ qty_received: '2.5000', qty_billed: '0' })).toBe('2.5');
+    expect(billableQty({ qty_received: '120.0000', qty_billed: '0' })).toBe('120');
+  });
+
+  it('treats unreadable counts as nothing rather than NaN', () => {
+    expect(billableQty({ qty_received: '', qty_billed: '' })).toBe('0');
+    expect(billableQty({ qty_received: 'x', qty_billed: '0' })).toBe('0');
   });
 });

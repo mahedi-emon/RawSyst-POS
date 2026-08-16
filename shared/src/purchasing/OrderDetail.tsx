@@ -21,6 +21,7 @@ import { trimQuantity } from '../dashboard/drilldown';
 import { receivingDefaults } from './purchasing';
 import { issueOrder, readOrder, receiveGoods, type Order } from '../api/purchasing';
 import { OrderStatus } from './PurchasingScreen';
+import { OrderForm } from './OrderForm';
 
 export function OrderDetail({
   companyId,
@@ -39,6 +40,7 @@ export function OrderDetail({
   const { remote, reload, refreshing } = useRemote(load);
 
   const [receiving, setReceiving] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [qty, setQty] = useState<Record<string, string>>({});
   const [rejected, setRejected] = useState<Record<string, string>>({});
   const [deliveryRef, setDeliveryRef] = useState('');
@@ -47,6 +49,7 @@ export function OrderDetail({
 
   const mayReceive = can('purchasing.receive_goods');
   const mayIssue = can('purchasing.issue_order');
+  const mayEdit = can('purchasing.create_order');
 
   function startReceiving(order: Order) {
     // Pre-filled with what is still outstanding: the common case is a delivery
@@ -109,16 +112,50 @@ export function OrderDetail({
 
   return (
     <RemoteBody remote={remote} onRetry={reload}>
-      {(order) => (
+      {(order) =>
+        // Correcting a draft reuses the form that raised it. A separate edit
+        // screen would be the same fields twice, and the two would drift.
+        editing ? (
+          <DetailScreen
+            title={`Correcting ${order.po_number}`}
+            subtitle="Draft — nothing is committed to the supplier yet"
+            backLabel={order.po_number}
+            onBack={() => setEditing(false)}
+          >
+            <OrderForm
+              companyId={companyId}
+              existing={order}
+              onSaved={() => {
+                setEditing(false);
+                setNotice('Order updated.');
+                reload();
+              }}
+              onCancel={() => setEditing(false)}
+            />
+          </DetailScreen>
+        ) : (
         <DetailScreen
           title={order.po_number}
           subtitle={`${order.supplier} · ordered ${order.ordered_on}`}
+          backLabel="Orders"
           onBack={onBack}
           onRefresh={reload}
           refreshing={refreshing}
           actions={
             <>
               <OrderStatus status={order.status} />
+              {/* Only a draft. An issued order is a commitment the supplier
+                  can hold the shop to, and the server refuses to change one —
+                  so the button is absent rather than offering something that
+                  would be turned down. */}
+              {order.status === 'draft' && mayEdit && (
+                <button
+                  className="ds-btn ds-btn--secondary"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit
+                </button>
+              )}
               {order.status === 'draft' && mayIssue && (
                 <button
                   className="ds-btn ds-btn--primary"
@@ -289,7 +326,8 @@ export function OrderDetail({
             </div>
           )}
         </DetailScreen>
-      )}
+        )
+      }
     </RemoteBody>
   );
 }

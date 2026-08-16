@@ -19,6 +19,7 @@ export function DetailScreen({
   title,
   subtitle,
   onBack,
+  backLabel = 'Dashboard',
   onRefresh,
   refreshing,
   actions,
@@ -27,6 +28,13 @@ export function DetailScreen({
   title: string;
   subtitle?: string;
   onBack: () => void;
+  /** Where back goes, in the reader's words.
+   *
+   * Defaulted to Dashboard because that is where most of these were opened
+   * from, but a purchase order was reached from the order list and saying
+   * "Dashboard" there is simply wrong — a browser check read it out loud and
+   * caught it. The label has to name the place, or the control is a guess. */
+  backLabel?: string;
   onRefresh?: () => void;
   refreshing?: boolean;
   actions?: ReactNode;
@@ -41,7 +49,7 @@ export function DetailScreen({
           <span aria-hidden="true" className="detail__backarrow">
             ←
           </span>
-          Dashboard
+          {backLabel}
         </button>
 
         <div className="detail__titles">

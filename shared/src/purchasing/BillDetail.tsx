@@ -104,6 +104,7 @@ export function BillDetail({
         <DetailScreen
           title={bill.supplier_ref}
           subtitle={`${bill.supplier} · due ${bill.due_date}`}
+          backLabel="Bills"
           onBack={onBack}
           onRefresh={reload}
           refreshing={refreshing}

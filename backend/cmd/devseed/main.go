@@ -102,13 +102,20 @@ func seedShop(
 	ctx context.Context, pool *db.Pool, tenantID uuid.UUID, name string,
 ) error {
 	return pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		// A distinct registration number per seeded shop, because the column is
+		// unique across the whole platform — two demo companies sharing one
+		// would fail the second time this is run. Structurally shaped like a
+		// Saudi VAT number and deliberately not a real one; nothing here is a
+		// verified regulatory value.
+		vatNumber := fmt.Sprintf("3%013d3", time.Now().UnixNano()%1e13)
+
 		var companyID uuid.UUID
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO company
 			  (tenant_id, legal_name, trade_name, country, base_currency,
 			   timezone, vat_registered, vat_number)
-			VALUES ($1, $2, $2, 'sa', 'SAR', 'Asia/Riyadh', true, '300000000000003')
-			RETURNING id`, tenantID, name).Scan(&companyID); err != nil {
+			VALUES ($1, $2, $2, 'sa', 'SAR', 'Asia/Riyadh', true, $3)
+			RETURNING id`, tenantID, name, vatNumber).Scan(&companyID); err != nil {
 			return err
 		}
 
@@ -116,6 +123,26 @@ func seedShop(
 		// real one have identical books.
 		if err := provisioning.SeedChartOfAccounts(ctx, tx, tenantID, companyID); err != nil {
 			return err
+		}
+
+		// Twelve open months for the current year.
+		//
+		// Without these the company looks complete and cannot post a single
+		// transaction: the engine refuses with "no accounting period covers
+		// that date", which is correct and which a browser check found the
+		// hard way when approving a bill. A seeded shop that cannot take money
+		// is not a seeded shop.
+		year := time.Now().UTC().Year()
+		for month := 1; month <= 12; month++ {
+			starts := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+			ends := starts.AddDate(0, 1, -1)
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO fiscal_period
+				  (tenant_id, company_id, fiscal_year, period_no, starts_on, ends_on)
+				VALUES ($1,$2,$3,$4,$5,$6)`,
+				tenantID, companyID, year, month, starts, ends); err != nil {
+				return err
+			}
 		}
 
 		var storeID uuid.UUID
@@ -162,7 +189,6 @@ func seedShop(
 			}
 		}
 
-		_ = time.Now
 		return nil
 	})
 }

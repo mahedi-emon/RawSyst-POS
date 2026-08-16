@@ -29,6 +29,7 @@ import { OrderDetail } from './OrderDetail';
 import { BillDetail } from './BillDetail';
 import { SupplierForm } from './SupplierForm';
 import { OrderForm } from './OrderForm';
+import { BillForm } from './BillForm';
 
 type Tab = 'orders' | 'bills' | 'suppliers' | 'ageing';
 
@@ -42,7 +43,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
   // opening in a modal: an order has a line table that grows, and a dialog
   // that scrolls internally on a laptop is a worse place to do real work than
   // the page itself.
-  const [creating, setCreating] = useState<null | 'supplier' | 'order'>(null);
+  const [creating, setCreating] = useState<null | 'supplier' | 'order' | 'bill'>(null);
 
   // Bumped after a save so the list underneath refetches. Cheaper and harder
   // to get wrong than threading a refresh callback through every list.
@@ -50,6 +51,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
 
   const mayAddSupplier = can('purchasing.manage_suppliers');
   const mayCreateOrder = can('purchasing.create_order');
+  const mayRecordBill = can('purchasing.record_bill');
 
   if (creating === 'supplier') {
     return (
@@ -78,6 +80,24 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
             // Straight to the order just raised, because the next thing a
             // buyer does is send it to the supplier.
             setOpenOrder(order.id);
+          }}
+          onCancel={() => setCreating(null)}
+        />
+      </FormPage>
+    );
+  }
+
+  if (creating === 'bill') {
+    return (
+      <FormPage title="Bills" onBack={() => setCreating(null)}>
+        <BillForm
+          companyId={companyId}
+          onSaved={(bill) => {
+            setCreating(null);
+            setSaved((n) => n + 1);
+            // Straight to the bill, because the match result is the thing the
+            // buyer needs to see and it is only known once it is recorded.
+            setOpenBill(bill.id);
           }}
           onCancel={() => setCreating(null)}
         />
@@ -126,6 +146,14 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
               Add supplier
             </button>
           )}
+          {tab === 'bills' && mayRecordBill && (
+            <button
+              className="ds-btn ds-btn--primary"
+              onClick={() => setCreating('bill')}
+            >
+              Record a bill
+            </button>
+          )}
           {tab === 'orders' && mayCreateOrder && (
             <button
               className="ds-btn ds-btn--primary"
@@ -158,7 +186,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
       </header>
 
       {tab === 'orders' && <Orders key={saved} companyId={companyId} onOpen={setOpenOrder} />}
-      {tab === 'bills' && <Bills companyId={companyId} onOpen={setOpenBill} />}
+      {tab === 'bills' && <Bills key={saved} companyId={companyId} onOpen={setOpenBill} />}
       {tab === 'suppliers' && <Suppliers key={saved} companyId={companyId} />}
       {tab === 'ageing' && <AgeingView companyId={companyId} />}
     </main>
