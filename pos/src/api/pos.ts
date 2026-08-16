@@ -5,7 +5,7 @@
 // the invoice chain, stock and the journal all belong to the server, reached
 // through the same sale service an online sale uses.
 
-import type { Client } from './client';
+import type { Client } from '@rawsyst/shared/api/client';
 import type { OfflineSalePayload } from '../offline/queue';
 
 /** What a scan returns. Money is a string and stays one. */

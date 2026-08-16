@@ -22,11 +22,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { scan } from '../api/pos';
-import { Offline, RequestFailed } from '../api/client';
-import { useAuth } from '../auth/session';
+import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
+import { useAuth } from '@rawsyst/shared/auth/session';
 import { useTerminal } from '../offline/useTerminal';
 import { describeVariant, type CachedVariant } from '../offline/catalogue';
-import { QueueStatus } from '../ui/QueueStatus';
+import { QueueStatus } from './QueueStatus';
 import {
   emptyLine,
   outstanding,

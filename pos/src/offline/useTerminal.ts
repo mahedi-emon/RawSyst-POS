@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useAuth } from '../auth/session';
+import { useAuth } from '@rawsyst/shared/auth/session';
 import { pushBatch } from '../api/pos';
 import { SaleQueue, type OfflineSalePayload, type QueueCounts } from './queue';
 import { Catalogue } from './catalogue';

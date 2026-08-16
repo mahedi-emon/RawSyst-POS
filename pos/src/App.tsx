@@ -16,18 +16,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { LoginScreen } from './auth/LoginScreen';
-import { useAuth } from './auth/session';
-import { listCompanies, type Company } from './api/companies';
-import { Dashboard, type DrillTarget } from './dashboard/Dashboard';
-import { SalesDetailScreen } from './dashboard/SalesDetailScreen';
-import { ExpensesDetailScreen } from './dashboard/ExpensesDetailScreen';
-import { ComplianceScreen } from './dashboard/ComplianceScreen';
-import { StockScreen } from './dashboard/StockScreen';
-import { PurchasingScreen } from './purchasing/PurchasingScreen';
+import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
+import { useAuth } from '@rawsyst/shared/auth/session';
+import { listCompanies, type Company } from '@rawsyst/shared/api/companies';
+import { Dashboard, type DrillTarget } from '@rawsyst/shared/dashboard/Dashboard';
+import { SalesDetailScreen } from '@rawsyst/shared/dashboard/SalesDetailScreen';
+import { ExpensesDetailScreen } from '@rawsyst/shared/dashboard/ExpensesDetailScreen';
+import { ComplianceScreen } from '@rawsyst/shared/dashboard/ComplianceScreen';
+import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
+import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
-import { TerminalBanner } from './ui/TerminalBanner';
+import { TerminalBanner } from './pos/TerminalBanner';
 import { terminalCapabilities, type Capabilities } from './pos/terminal';
 
 type Screen = 'dashboard' | 'sell' | 'return' | 'buying';

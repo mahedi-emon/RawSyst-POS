@@ -20,8 +20,8 @@
 
 import { useState } from 'react';
 
-import { Offline, RequestFailed } from '../api/client';
-import { useAuth } from '../auth/session';
+import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
+import { useAuth } from '@rawsyst/shared/auth/session';
 import {
   fetchReturnable,
   overReturned,

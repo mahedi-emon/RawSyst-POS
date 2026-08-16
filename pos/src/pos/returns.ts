@@ -20,7 +20,7 @@
 // none of them is reimplemented here. This module builds a request and reads
 // the answer.
 
-import type { Client } from '../api/client';
+import type { Client } from '@rawsyst/shared/api/client';
 
 /** One line of the original sale, with what is still claimable on it. */
 export interface ReturnableLine {

@@ -1,0 +1,48 @@
+/* Back-office chrome.
+ *
+ * Everything else comes from @rawsyst/shared/design-system.css. This file adds
+ * the application bar and nothing more — growing a second design system is
+ * exactly the risk a separate app like this runs, so it is kept to the shell.
+ */
+
+.bo {
+  min-block-size: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.bo__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border-block-end: 1px solid var(--border);
+  min-block-size: 56px;
+  flex-wrap: wrap;
+  /* The bar stays put while a long table scrolls. In a back office the nav is
+   * how you leave a report, and hunting for it by scrolling back up is friction
+   * on the commonest action there is. */
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 10;
+}
+
+.bo__brand {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-size: 1rem;
+}
+
+.bo__splash {
+  min-block-size: 100dvh;
+  display: grid;
+  place-items: center;
+}
+
+/* On a phone the bar wraps rather than compressing the brand and the nav into
+ * illegibility. */
+@media (max-width: 560px) {
+  .bo__brand { flex-basis: 100%; }
+  .bo__bar .app__nav { order: 3; flex-basis: 100%; }
+}

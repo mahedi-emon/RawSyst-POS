@@ -10,7 +10,7 @@
 // its own reads as "stop selling", and that would be the wrong reaction: the
 // sale, the stock and the books are all recorded correctly.
 
-import type { Capabilities } from '../pos/terminal';
+import type { Capabilities } from './terminal';
 
 export function TerminalBanner({ caps }: { caps: Capabilities | null }) {
   if (!caps || caps.signing_available) return null;

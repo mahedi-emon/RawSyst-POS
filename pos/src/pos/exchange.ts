@@ -24,7 +24,7 @@
 // For the same reason: how much of the original invoice has already been given
 // back cannot be known here. See returns.ts.
 
-import type { Client } from '../api/client';
+import type { Client } from '@rawsyst/shared/api/client';
 import type { CachedVariant } from '../offline/catalogue';
 import type { ReturnableLine, ReturnSelection } from './returns';
 

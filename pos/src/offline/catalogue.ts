@@ -27,7 +27,7 @@
 // sends `is_active: false` and this code stores it — the absence of news is
 // not the same as news of an absence.
 
-import type { Client } from '../api/client';
+import type { Client } from '@rawsyst/shared/api/client';
 
 /** One sellable line of the cached catalogue. Money stays a string. */
 export interface CachedVariant {

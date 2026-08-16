@@ -1,0 +1,5 @@
+{
+  "name": "rawsyst",
+  "private": true,
+  "workspaces": ["shared", "pos", "web"]
+}
