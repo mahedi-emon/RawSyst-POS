@@ -349,6 +349,32 @@ func (s *Server) handleGetSale(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, out)
 }
 
+// handleReturnableLines reports what is still owed back on an invoice.
+//
+// Gated on sales.refund, not sales.view: the numbers here exist to authorise a
+// refund, and a Cashier who may look up a sale but not refund one has no
+// business being told how much of it is still claimable.
+//
+// A till must never compute this for itself. How much of a line has already
+// been returned lives in the credit notes against the invoice, which a
+// terminal that was offline when they were raised has never seen — and the
+// failure mode is refunding the same jacket twice.
+func (s *Server) handleReturnableLines(w http.ResponseWriter, r *http.Request) {
+	invoiceID, err := parseUUID(chi.URLParam(r, "invoiceID"), "invoiceID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	lines, err := s.sales.Returnable(r.Context(), a.TenantID, invoiceID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"lines": lines})
+}
+
 // --- responses ----------------------------------------------------------
 
 func saleResponse(f sales.Finalized) map[string]any {

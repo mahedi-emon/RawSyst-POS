@@ -183,6 +183,9 @@ func (s *Server) Routes() []Route {
 			s.handleCreateReturn, ""},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}", AccessPermission, "sales.view",
 			s.handleGetSale, ""},
+		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}/returnable", AccessPermission, "sales.refund",
+			s.handleReturnableLines,
+			"what is still owed back on an invoice; a till must never work this out itself"},
 		// The terminal hands back what it signed locally. Gated on sales.create
 		// because it completes a sale rather than reading one, and refused
 		// outright for a session with no terminal behind it.

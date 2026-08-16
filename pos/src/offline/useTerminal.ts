@@ -27,6 +27,7 @@ import { useAuth } from '../auth/session';
 import { pushBatch } from '../api/pos';
 import { SaleQueue, type OfflineSalePayload, type QueueCounts } from './queue';
 import { Catalogue } from './catalogue';
+import { HeldCarts } from '../pos/held';
 import {
   ConnectivityMonitor,
   DEFAULT_CONNECTIVITY,
@@ -63,6 +64,8 @@ export interface TerminalState {
   syncingCatalogue: boolean;
 
   catalogue: Catalogue | null;
+  /** Carts parked mid-sale. Local only and never synced. */
+  held: HeldCarts | null;
 
   record(payload: OfflineSalePayload): Promise<void>;
   flushNow(): Promise<void>;
@@ -76,6 +79,7 @@ export function useTerminal(
 
   const [queue, setQueue] = useState<SaleQueue | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [held, setHeld] = useState<HeldCarts | null>(null);
   const [counts, setCounts] = useState<QueueCounts>({ pending: 0, failed: 0 });
   const [sending, setSending] = useState(false);
   const [cached, setCached] = useState(0);
@@ -112,6 +116,12 @@ export function useTerminal(
         const c = new Catalogue(stores.catalogue, client);
         setQueue(q);
         setCatalogue(c);
+
+        const h = new HeldCarts(stores.held);
+        setHeld(h);
+        // Sweep on open, so Monday's list is not last week's ghosts.
+        void h.purgeExpired();
+
         setCounts(await q.counts());
         setCached(await c.size());
       })
@@ -245,6 +255,7 @@ export function useTerminal(
     cached,
     syncingCatalogue,
     catalogue,
+    held,
     record,
     flushNow,
     refreshCatalogue,

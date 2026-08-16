@@ -361,3 +361,73 @@ func TestTheStandardCostVarianceIsPosted(t *testing.T) {
 		t.Errorf("the trial balance is out by %v once a variance is posted", tbDiff)
 	}
 }
+
+// What a till is told is still owed back on an invoice.
+//
+// A terminal must never work this out for itself: how much of a line has
+// already been returned lives in the credit notes against the invoice, which a
+// till that was offline when they were raised has never seen. The failure mode
+// is refunding the same jacket twice, and the second refund is real money
+// leaving a real drawer.
+func TestReturnableLinesTellTheTillWhatIsLeft(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	created := h.do(t, "POST", "/api/v1/pos/sales", f.token,
+		oneItemSale(f, newUUID(), "2", "115.00", "230.00"))
+	if created.StatusCode != 201 {
+		t.Fatalf("sale: %s", readBody(t, created))
+	}
+	invoiceID, _ := decodeJSON(t, created)["invoice_id"].(string)
+
+	body := decodeJSON(t, h.do(t, "GET",
+		"/api/v1/pos/sales/"+invoiceID+"/returnable", f.token, nil))
+	lines, _ := body["lines"].([]any)
+	if len(lines) != 1 {
+		t.Fatalf("returnable reported %d lines, want 1", len(lines))
+	}
+	line, _ := lines[0].(map[string]any)
+
+	// The line id is the whole point of the route: without it a till cannot
+	// name what it is giving back.
+	lineID, _ := line["line_id"].(string)
+	if lineID == "" {
+		t.Fatalf("no line_id; a till cannot build a return without one")
+	}
+	if got := line["qty_returnable"]; got != "2.000" && got != "2.0000" && got != "2" {
+		t.Errorf("qty_returnable is %v, want the full 2 sold", got)
+	}
+	// Money as a string, here as everywhere.
+	if _, ok := line["gross_returnable"].(string); !ok {
+		t.Errorf("gross_returnable came back as %T, not a string",
+			line["gross_returnable"])
+	}
+
+	// Give one back, then ask again.
+	refund := h.do(t, "POST", "/api/v1/pos/returns", f.token, map[string]any{
+		"credit_note_uuid":    newUUID(),
+		"original_invoice_id": invoiceID,
+		"issued_at":           "2026-08-16T12:00:00+03:00",
+		"reason":              "customer changed their mind",
+		"lines":               []any{map[string]any{"line_id": lineID, "qty": "1"}},
+		"refunds": []any{
+			map[string]any{"method": "cash", "amount": "115.00"},
+		},
+	})
+	if refund.StatusCode != 201 {
+		t.Fatalf("return: %s", readBody(t, refund))
+	}
+
+	after := decodeJSON(t, h.do(t, "GET",
+		"/api/v1/pos/sales/"+invoiceID+"/returnable", f.token, nil))
+	afterLines, _ := after["lines"].([]any)
+	got, _ := afterLines[0].(map[string]any)
+
+	// One left, not two. A till reading this cannot offer the second refund.
+	if q, _ := got["qty_returnable"].(string); !strings.HasPrefix(q, "1") {
+		t.Errorf("qty_returnable is %q after returning one of two, want 1", q)
+	}
+	if q, _ := got["qty_returned"].(string); !strings.HasPrefix(q, "1") {
+		t.Errorf("qty_returned is %q, want 1", q)
+	}
+}

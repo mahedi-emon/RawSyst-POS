@@ -5,9 +5,9 @@
 | **Last updated** | 2026-08-15 |
 | **Branch** | `main` @ `7fb0689` |
 | **Backend** | 63 Go files, ~24,800 lines, 311 tests, 29 migrations |
-| **HTTP routes live** | 33 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue (incl. offline snapshot), reachability ping |
+| **HTTP routes live** | 34 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue (incl. offline snapshot), returnable lines, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
-| **Front ends** | Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor (63 tests) |
+| **Front ends** | Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor, hold/resume, returns, receipt (86 tests) |
 
 > Percentages below are estimates of **remaining engineering effort**, not of files
 > written. They are deliberately conservative: the parts still missing (front ends,
@@ -89,7 +89,7 @@ fixing it involves.
 | ~~P3~~ | ~~**No shift / cash session management.**~~ **DONE** (`98b26d3`). Cash sessions, X/Z reports, blind close, cash movements. Sales belong to a session by foreign key, not a time window; a till with no open session cannot sell. | — | — |
 | ~~P4~~ | ~~**No financial reports.**~~ **DONE** (`69371d8`). Trial Balance, P&L, Balance Sheet and Cash Flow over four routes, gated on `accounting.view`. Balance sheet includes current earnings; cash flow is direct-method and says so. | — | — |
 | ~~P5~~ | ~~**No VAT return preparation.**~~ **DONE**. Totals by treatment over a period, reconciled against the Output VAT account. Preparation only: the official form layout is unverified, so nothing is mapped to numbered boxes, and input tax is reported as absent rather than zero. | — | — |
-| **P6** | **Front ends.** Tauri POS now trades genuinely offline: login, permission gating, cache-first scan, cart, tenders, durable local queue, sync push, local catalogue cache and a connectivity monitor that triggers the drain on reconnect. Returns, hold/resume and the receipt remain; Next.js back-office and PWA not started. | A shop can start and finish a sale with the network down. | Returns, hold/resume, then the receipt and printing. |
+| **P6** | **Front ends.** Tauri POS now trades genuinely offline: login, permission gating, cache-first scan, cart, tenders, durable local queue, sync push, local catalogue cache and a connectivity monitor that triggers the drain on reconnect. Hold/resume, returns and a printable receipt are in. Next.js back-office and PWA not started. | A shop can start and finish a sale with the network down, park and resume carts, refund against an invoice, and print. | Exchanges, then the Owner Dashboard. |
 
 ### 🟠 Correctness gaps — real defects, currently latent
 

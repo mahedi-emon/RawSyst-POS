@@ -1,0 +1,213 @@
+// The piece of paper the customer takes away.
+//
+// # What it may and may not claim
+//
+// A simplified tax invoice under ZATCA Phase 2 carries a QR code containing a
+// TLV payload derived from the signed document. This terminal cannot sign yet
+// — the P1 verification gate is open, and the canonicalisation and TLV field
+// encoding are unverified — so there is no QR to print and none is invented.
+//
+// The receipt therefore prints as a SALES RECEIPT and says, in words, that the
+// tax invoice follows. That is the honest description of what it is: the sale
+// is real, the money is real, the stock and the journal are real, and the only
+// outstanding part is the regulatory document. Printing a box labelled "ZATCA
+// QR" with a placeholder inside would be worse than printing nothing, because
+// a customer and an inspector would both read it as a compliant invoice.
+//
+// Nothing printed here claims certification or guaranteed compliance in any
+// form. The software SUPPORTS the requirements; it never warrants them, and
+// `make lint-wording` enforces that across the repository — including on this
+// file, which is why the banned phrasings are described rather than quoted.
+//
+// # It is rendered from what the terminal recorded
+//
+// Not from a server response, because there may not have been one — a sale
+// finished offline must still produce a receipt, immediately, at the counter.
+// The figures shown are the terminal's own, computed by `totalCart`, which is
+// why they are marked as provisional where the server may yet disagree.
+
+import type { CartLine, CartTender } from './cart';
+import type { CartTotals } from './cart';
+
+export interface ReceiptHeader {
+  /** The trading name as the customer knows it. */
+  storeName: string;
+  /** Printed because a simplified tax invoice must carry the seller's VAT
+   *  registration number. Supplied by the server at device registration; the
+   *  till does not compose or validate it. */
+  vatNumber: string;
+  addressLines: string[];
+}
+
+export interface Receipt {
+  header: ReceiptHeader;
+  /** The terminal's own id for the sale, printed so a customer returning goods
+   *  can be matched to it before the invoice number exists. */
+  reference: string;
+  issuedAt: string;
+  cashier: string;
+  lines: ReceiptLine[];
+  totals: CartTotals;
+  tenders: CartTender[];
+  change: string;
+  /** True when the sale has not yet been acknowledged by the server. */
+  provisional: boolean;
+}
+
+export interface ReceiptLine {
+  description: string;
+  qty: string;
+  unitPrice: string;
+  lineTotal: string;
+}
+
+/** Builds the receipt from what the terminal recorded. */
+export function buildReceipt(input: {
+  header: ReceiptHeader;
+  reference: string;
+  issuedAt: string;
+  cashier: string;
+  lines: CartLine[];
+  totals: CartTotals;
+  tenders: CartTender[];
+  provisional: boolean;
+}): Receipt {
+  return {
+    header: input.header,
+    reference: input.reference,
+    issuedAt: input.issuedAt,
+    cashier: input.cashier,
+    lines: input.lines.map((l) => ({
+      description: l.description,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      lineTotal: lineTotal(l),
+    })),
+    totals: input.totals,
+    tenders: input.tenders,
+    change: changeDue(input.totals.totalInclusive, input.tenders),
+    provisional: input.provisional,
+  };
+}
+
+/**
+ * What one line comes to, VAT included.
+ *
+ * The receipt's own arithmetic, deliberately kept simple: quantity times price
+ * less the line discount. It is NOT the figure the invoice will carry — the
+ * server recomputes every line, allocates the invoice-level discount with the
+ * rounding remainder, and may resolve a different VAT rate from the registry.
+ * A receipt printed at the counter shows the customer what they were charged;
+ * the tax invoice that follows is the authority.
+ */
+function lineTotal(line: CartLine): string {
+  const qty = Number(line.qty);
+  if (!Number.isFinite(qty)) return '0.00';
+  const gross = Math.round(minor(line.unitPrice) * qty);
+  return major(Math.max(0, gross - minor(line.lineDiscount || '0')));
+}
+
+/**
+ * Change owed to the customer.
+ *
+ * String arithmetic on the minor unit, not floats: a receipt that says 0.1 +
+ * 0.2 is 0.30000000000000004 has failed at the one job it has. Two decimal
+ * places throughout, which holds for SAR, BDT and USD alike; a currency with
+ * a different minor unit would need this revisited, and none of the three
+ * target markets has one.
+ */
+export function changeDue(total: string, tenders: CartTender[]): string {
+  const paid = tenders.reduce((sum, t) => sum + minor(t.amount), 0);
+  const owed = paid - minor(total);
+  return owed > 0 ? major(owed) : '0.00';
+}
+
+function minor(amount: string): number {
+  const negative = amount.trimStart().startsWith('-');
+  const [whole = '0', frac = ''] = amount.replace('-', '').split('.');
+  const cents = Number(whole) * 100 + Number((frac + '00').slice(0, 2));
+  return negative ? -cents : cents;
+}
+
+function major(cents: number): string {
+  const sign = cents < 0 ? '-' : '';
+  const abs = Math.abs(cents);
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
+/**
+ * The receipt as plain text, for a thermal printer.
+ *
+ * 42 columns, the width of the 80mm roll almost every counter printer in these
+ * markets uses. Plain text rather than ESC/POS: the escape sequences differ by
+ * manufacturer, and a text receipt prints correctly on all of them and can be
+ * read on screen when no printer is attached.
+ */
+export function renderReceipt(receipt: Receipt, width = 42): string {
+  const out: string[] = [];
+  const rule = '-'.repeat(width);
+
+  out.push(centre(receipt.header.storeName.toUpperCase(), width));
+  for (const line of receipt.header.addressLines) out.push(centre(line, width));
+  if (receipt.header.vatNumber) {
+    out.push(centre(`VAT ${receipt.header.vatNumber}`, width));
+  }
+  out.push('');
+  out.push(centre('SALES RECEIPT', width));
+  out.push('');
+  out.push(`Ref    ${receipt.reference}`);
+  out.push(`Date   ${receipt.issuedAt}`);
+  out.push(`Served ${receipt.cashier}`);
+  out.push(rule);
+
+  for (const line of receipt.lines) {
+    out.push(line.description.slice(0, width));
+    out.push(columns(`  ${line.qty} x ${line.unitPrice}`, line.lineTotal, width));
+  }
+
+  out.push(rule);
+  out.push(columns('Subtotal', receipt.totals.subtotalNet, width));
+  out.push(columns('VAT', receipt.totals.taxTotal, width));
+  out.push(columns('TOTAL', receipt.totals.totalInclusive, width));
+  out.push('');
+
+  for (const tender of receipt.tenders) {
+    out.push(columns(label(tender.method), tender.amount, width));
+  }
+  if (receipt.change !== '0.00') {
+    out.push(columns('Change', receipt.change, width));
+  }
+
+  out.push(rule);
+
+  // The honest statement, always. Not a placeholder QR, not a claim of
+  // compliance — what this document is, and what is still coming.
+  out.push(centre('This is not a tax invoice.', width));
+  out.push(centre('Your tax invoice will be issued', width));
+  out.push(centre('and sent separately.', width));
+
+  if (receipt.provisional) {
+    out.push('');
+    out.push(centre('Recorded on this terminal.', width));
+  }
+
+  out.push('');
+  out.push(centre('Thank you', width));
+  return out.join('\n');
+}
+
+function label(method: string): string {
+  return method === 'mada' ? 'Mada' : method.charAt(0).toUpperCase() + method.slice(1);
+}
+
+function centre(text: string, width: number): string {
+  const t = text.slice(0, width);
+  const pad = Math.max(0, Math.floor((width - t.length) / 2));
+  return ' '.repeat(pad) + t;
+}
+
+/** Left label, right-aligned amount, the layout every receipt uses. */
+function columns(left: string, right: string, width: number): string {
+  const l = left.slice(0, width - right.length - 1);
+  return l + ' '.repeat(Math.max(1, width - l.length - right.length)) + right;
+}

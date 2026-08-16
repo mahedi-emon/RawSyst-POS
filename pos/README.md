@@ -150,9 +150,72 @@ returns, the flush it starts is not awaited, and the monitor is never consulted
 before a sale is recorded. `selling.test.ts` composes the real queue, catalogue
 and monitor, hangs every network call they make, and rings up twenty sales.
 
+## Holding a sale
+
+A held cart is **not a sale**. It has no invoice UUID, consumes no ICV, touches
+no stock and produces no journal entry — it is a note on the terminal about what
+somebody was buying, and it becomes a sale only when it is resumed and finished,
+through the ordinary queue like any other.
+
+That is why held carts never leave the terminal and are not in the sync queue.
+Pushing them would have the server holding rows that look like sales and are
+not, and would raise the question of what happens when two tills resume the same
+one.
+
+A cart is removed from the list **on resume, not on finish**. Leaving it until
+the sale completed would let a second cashier resume it from a second till and
+ring it up twice — two invoices, two stock movements, one customer. A cart the
+cashier then abandons is simply re-held.
+
+Twenty per terminal (`MAX_HELD`), a concrete ceiling rather than an "unlimited"
+claim, and swept after 24 hours: a cart held on Friday is not a pending sale on
+Monday, it is a customer who left.
+
+## Returns
+
+**This is the one counter operation that needs the network, and that is a
+decision rather than a gap.** How much of an invoice has already been given back
+lives in the credit notes against it, which a till that was offline when they
+were raised has never seen. A terminal that guessed would refund the same jacket
+twice, and the second refund is real money leaving a real drawer. So the till
+asks `GET /api/v1/pos/sales/{id}/returnable`, and when it cannot reach the
+server it says so and refuses — a customer told "not until we are back online"
+is inconvenienced; one refunded twice is a loss the shop may never notice.
+
+The refund amount is computed from the line's own returnable amount, not from
+quantity times unit price. The two differ whenever an invoice-level discount was
+allocated across the lines, and using the unit price would refund more than the
+customer paid — a little on each line, reliably in the shop's disfavour. The
+server recomputes it and is the authority.
+
+Blueprint C14 gives a return nine atomic effects. All nine are the server's and
+none is reimplemented here.
+
+## The receipt
+
+Prints as a **SALES RECEIPT** and says, in words, that the tax invoice follows.
+There is no QR code, because a simplified tax invoice's QR carries a TLV payload
+derived from the signed document and this terminal cannot sign yet — the P1
+verification gate is open and the canonicalisation and TLV encoding are
+unverified. Printing a box labelled "ZATCA QR" with a placeholder inside would be
+worse than printing nothing: a customer and an inspector would both read it as a
+compliant invoice.
+
+Rendered from what the terminal recorded, not from a server response, because
+there may not have been one — a sale finished offline must still put paper in the
+customer's hand at the counter. 42 columns of plain text for an 80mm roll,
+rather than ESC/POS, whose escape sequences differ by manufacturer; the same text
+is shown on screen so the two cannot drift apart. Change is computed in minor
+units, never floats.
+
 ## What is not built yet
 
-- Returns, hold/resume, and the receipt itself.
+- **The seller identity on the receipt.** The terminal does not know its trading
+  name or VAT registration number — `/auth/me` carries neither — so the header is
+  a placeholder. A receipt cannot become a simplified tax invoice without it, and
+  it cannot become one without signing either, so this is gated behind the same
+  P1 work rather than being invented now.
+- Exchanges (a return and a sale in one transaction).
 - The local ICV/PIH chain. The table exists in the local schema and is unused:
   the server allocates the counter today, and the terminal cannot extend a chain
   it cannot sign.

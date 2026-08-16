@@ -199,3 +199,71 @@ func readInvoiceChain(ctx context.Context, tx pgx.Tx, invoiceID uuid.UUID, out *
 	out.ZATCA = &c
 	return nil
 }
+
+// ReturnableLine is one line of an invoice, with how much of it is still
+// returnable.
+//
+// Quantity AND money, because a partial return needs both: refunding
+// proportionally requires knowing what the line was sold for after its share
+// of the invoice discount, and a till recomputing that from the unit price
+// would drift from the invoice by a hallala at a time.
+type ReturnableLine struct {
+	LineID          string `json:"line_id"`
+	LineNo          int    `json:"line_no"`
+	VariantID       string `json:"variant_id,omitempty"`
+	Description     string `json:"description"`
+	QtySold         string `json:"qty_sold"`
+	QtyReturned     string `json:"qty_returned"`
+	QtyReturnable   string `json:"qty_returnable"`
+	UnitPrice       string `json:"unit_price"`
+	TaxTreatment    string `json:"tax_treatment"`
+	TaxRate         string `json:"tax_rate"`
+	NetAmount       string `json:"net_amount"`
+	TaxAmount       string `json:"tax_amount"`
+	GrossAmount     string `json:"gross_amount"`
+	NetReturnable   string `json:"net_returnable"`
+	TaxReturnable   string `json:"tax_returnable"`
+	GrossReturnable string `json:"gross_returnable"`
+}
+
+// Returnable reports what is still owed back on an invoice.
+//
+// A till must never work this out for itself. Whether a line has already been
+// returned, and how much of its money went with it, lives in the credit notes
+// against the invoice — which a terminal that was offline when they were
+// raised has never seen. Asking the server is the only way to avoid refunding
+// the same jacket twice.
+func (s *Service) Returnable(
+	ctx context.Context, tenantID, invoiceID uuid.UUID,
+) ([]ReturnableLine, error) {
+	out := []ReturnableLine{}
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT line_id, line_no, coalesce(variant_id::text, ''), description,
+			       qty_sold::text, qty_returned::text, qty_returnable::text,
+			       unit_price::text, tax_treatment, tax_rate::text,
+			       net_amount::text, tax_amount::text, gross_amount::text,
+			       net_returnable::text, tax_returnable::text,
+			       gross_returnable::text
+			FROM returnable_lines($1)
+			ORDER BY line_no`, invoiceID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var l ReturnableLine
+			if e := rows.Scan(&l.LineID, &l.LineNo, &l.VariantID, &l.Description,
+				&l.QtySold, &l.QtyReturned, &l.QtyReturnable,
+				&l.UnitPrice, &l.TaxTreatment, &l.TaxRate,
+				&l.NetAmount, &l.TaxAmount, &l.GrossAmount,
+				&l.NetReturnable, &l.TaxReturnable, &l.GrossReturnable); e != nil {
+				return e
+			}
+			out = append(out, l)
+		}
+		return rows.Err()
+	})
+	return out, err
+}

@@ -226,3 +226,75 @@ body {
   background: var(--bg);
   border-radius: 8px;
 }
+
+/* --- Held sales, the receipt, and the two-line status --------------------
+ *
+ * All logical properties (inline-start, not left). The counter mirrors wholly
+ * in Arabic and a hard-coded left is a bug that only shows up in the market
+ * this product is built for.
+ */
+
+.status { display: grid; gap: 6px; }
+
+.held { margin-block: 16px; }
+
+.held__title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-quiet);
+  margin-block-end: 8px;
+}
+
+.held__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.held__list button {
+  inline-size: 100%;
+  text-align: start;
+}
+
+.receipt {
+  margin-block-start: 16px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--line);
+}
+
+/* The exact text the thermal printer receives, so what the cashier reads on
+ * screen and what the customer is handed cannot drift apart. Always LTR and
+ * monospaced even in an Arabic interface: the column alignment IS the layout,
+ * and mirroring it would misalign every amount. */
+.receipt__paper {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+  direction: ltr;
+  text-align: start;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-block-end: 8px;
+}
+
+/* Printing gives the customer the receipt and nothing else — no counter, no
+ * queue indicator, no navigation. */
+@media print {
+  body * { visibility: hidden; }
+  .receipt__paper, .receipt__paper * { visibility: visible; }
+  .receipt__paper {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    border: none;
+    background: none;
+    padding: 0;
+  }
+}

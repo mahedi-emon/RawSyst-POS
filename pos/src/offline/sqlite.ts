@@ -18,6 +18,7 @@ import type {
   QueuedSale,
   SettledState,
 } from './queue';
+import type { HeldCart, HeldCartStore } from '../pos/held';
 import type {
   CachedVariant,
   CatalogueCursor,
@@ -81,6 +82,20 @@ CREATE TABLE IF NOT EXISTS catalogue_cursor (
   since_id TEXT
 );
 INSERT OR IGNORE INTO catalogue_cursor (id) VALUES (1);
+
+-- Carts parked mid-sale. NOT sales: no invoice UUID, no ICV, no stock, no
+-- journal entry. A held cart is a note about what somebody was buying, which
+-- is why it never leaves the terminal.
+CREATE TABLE IF NOT EXISTS held_cart (
+  id          TEXT PRIMARY KEY,
+  label       TEXT NOT NULL DEFAULT '',
+  payload     TEXT NOT NULL,
+  total       TEXT NOT NULL,
+  item_count  INTEGER NOT NULL,
+  held_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS held_cart_recent ON held_cart (held_at DESC);
 `;
 
 interface Row {
@@ -102,6 +117,7 @@ export async function openLocalStore(): Promise<LocalStores> {
   return {
     queue: new SqliteQueueStore(db),
     catalogue: new SqliteCatalogueStore(db),
+    held: new SqliteHeldCartStore(db),
   };
 }
 
@@ -111,6 +127,7 @@ export async function openLocalStore(): Promise<LocalStores> {
 export interface LocalStores {
   queue: SqliteQueueStore;
   catalogue: SqliteCatalogueStore;
+  held: SqliteHeldCartStore;
 }
 
 export class SqliteQueueStore implements QueueStore {
@@ -326,5 +343,86 @@ function toVariant(row: VariantRow): CachedVariant {
     taxTreatment: row.tax_treatment,
     isActive: row.is_active === 1,
     updatedAt: row.updated_at,
+  };
+}
+
+/** Held carts, in SQLite.
+ *
+ * The cart itself is stored as JSON rather than normalised into lines: it is
+ * an opaque blob to everything except the counter that wrote it, has no
+ * queries run against its contents, and normalising it would create a second
+ * schema for a cart that must then be kept in step with the first.
+ */
+export class SqliteHeldCartStore implements HeldCartStore {
+  constructor(private readonly db: Database) {}
+
+  async put(cart: HeldCart): Promise<void> {
+    await this.db.execute(
+      `INSERT INTO held_cart (id, label, payload, total, item_count, held_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        cart.id,
+        cart.label,
+        JSON.stringify({ lines: cart.lines, tenders: cart.tenders }),
+        cart.total,
+        cart.itemCount,
+        cart.heldAt,
+      ],
+    );
+  }
+
+  async list(): Promise<HeldCart[]> {
+    const rows = await this.db.select<HeldRow[]>(
+      `SELECT * FROM held_cart ORDER BY held_at DESC`,
+    );
+    return rows.map(toHeld);
+  }
+
+  /** Reads then deletes. A cart handed to a cashier must leave the list in the
+   *  same breath, or a second till can resume it too. */
+  async take(id: string): Promise<HeldCart | null> {
+    const rows = await this.db.select<HeldRow[]>(
+      `SELECT * FROM held_cart WHERE id = $1`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    await this.db.execute(`DELETE FROM held_cart WHERE id = $1`, [id]);
+    return toHeld(row);
+  }
+
+  async purgeBefore(cutoff: string): Promise<number> {
+    const before = await this.count();
+    await this.db.execute(`DELETE FROM held_cart WHERE held_at < $1`, [cutoff]);
+    return before - (await this.count());
+  }
+
+  async count(): Promise<number> {
+    const rows = await this.db.select<Array<{ n: number }>>(
+      `SELECT COUNT(*) AS n FROM held_cart`,
+    );
+    return rows[0]?.n ?? 0;
+  }
+}
+
+interface HeldRow {
+  id: string;
+  label: string;
+  payload: string;
+  total: string;
+  item_count: number;
+  held_at: string;
+}
+
+function toHeld(row: HeldRow): HeldCart {
+  const body = JSON.parse(row.payload) as Pick<HeldCart, 'lines' | 'tenders'>;
+  return {
+    id: row.id,
+    label: row.label,
+    lines: body.lines ?? [],
+    tenders: body.tenders ?? [],
+    total: row.total,
+    itemCount: row.item_count,
+    heldAt: row.held_at,
   };
 }
