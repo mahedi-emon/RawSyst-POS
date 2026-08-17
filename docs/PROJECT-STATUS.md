@@ -5,7 +5,7 @@
 | **Last updated** | 2026-08-15 |
 | **Branch** | `main` @ `7fb0689` |
 | **Backend** | 63 Go files, ~24,800 lines, 311 tests, 29 migrations |
-| **HTTP routes live** | 55 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, ageing), companies, reachability ping |
+| **HTTP routes live** | 55 — auth, onboarding, platform, POS (incl. signed-document upload), sync, statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, ageing, supplier edit/retire), companies, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
 | **Front ends** | Next.js back-office (dashboard, drill-through, buying) + Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor, hold/resume, returns, exchanges, receipt, Owner Dashboard with A8 drill-through, Buying (171 tests across shared/pos) |
 

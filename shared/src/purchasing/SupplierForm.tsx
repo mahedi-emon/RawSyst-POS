@@ -16,7 +16,11 @@
 import { useState } from 'react';
 
 import { Offline, RequestFailed } from '../api/client';
-import { createSupplier, type Supplier } from '../api/purchasing';
+import {
+  createSupplier,
+  updateSupplier,
+  type Supplier,
+} from '../api/purchasing';
 import { useAuth } from '../auth/session';
 import {
   Field,
@@ -28,21 +32,24 @@ import {
 
 export function SupplierForm({
   companyId,
+  existing,
   onSaved,
   onCancel,
 }: {
   companyId: string;
+  /** The supplier being corrected. Absent when adding a new one. */
+  existing?: Supplier;
   onSaved: (supplier: Supplier) => void;
   onCancel: () => void;
 }) {
   const { client } = useAuth();
 
-  const [code, setCode] = useState('');
-  const [legalName, setLegalName] = useState('');
-  const [terms, setTerms] = useState('0');
-  const [vatNumber, setVatNumber] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [code, setCode] = useState(existing?.code ?? '');
+  const [legalName, setLegalName] = useState(existing?.legal_name ?? '');
+  const [terms, setTerms] = useState(String(existing?.payment_terms_days ?? 0));
+  const [vatNumber, setVatNumber] = useState(existing?.vat_number ?? '');
+  const [phone, setPhone] = useState(existing?.phone ?? '');
+  const [email, setEmail] = useState(existing?.email ?? '');
 
   const [fields, setFields] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -54,7 +61,9 @@ export function SupplierForm({
     // A cheap check to save a round trip, never the only one: the same
     // validation runs in Go and a test asserts it names every missing field.
     const local: FieldErrors = {};
-    if (!code.trim()) local.code = 'Give the supplier a short code you will recognise.';
+    if (!existing && !code.trim()) {
+      local.code = 'Give the supplier a short code you will recognise.';
+    }
     if (!legalName.trim()) local.legal_name = "Enter the supplier's registered name.";
     const days = Number(terms);
     if (!Number.isInteger(days) || days < 0 || days > 365) {
@@ -70,15 +79,20 @@ export function SupplierForm({
     setFields({});
     setFailure(null);
     try {
+      const details = {
+        legal_name: legalName.trim(),
+        payment_terms_days: days,
+        vat_number: vatNumber.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+      };
       onSaved(
-        await createSupplier(client, companyId, {
-          code: code.trim(),
-          legal_name: legalName.trim(),
-          payment_terms_days: days,
-          vat_number: vatNumber.trim() || undefined,
-          phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
-        }),
+        existing
+          ? await updateSupplier(client, companyId, existing.id, details)
+          : await createSupplier(client, companyId, {
+              code: code.trim(),
+              ...details,
+            }),
       );
     } catch (err) {
       if (err instanceof Offline) {
@@ -102,17 +116,31 @@ export function SupplierForm({
   return (
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">New supplier</h2>
+        <h2 className="ds-h3">
+          {existing ? existing.legal_name : 'New supplier'}
+        </h2>
       </div>
 
       <div className="ds-panel__body form__body">
         <FormError message={failure} />
 
         <div className="form__grid">
+          {/* Read-only once set. The code is printed on purchase orders already
+              issued, so renaming it would silently change what those documents
+              refer to — a supplier who has genuinely been replaced is retired
+              and a new one added, which leaves the history readable. */}
           <Field label="Short code" htmlFor="sup-code" required error={fields.code}
-            hint="How you will find them in a list. SKU-style, e.g. ACME.">
-            <TextInput id="sup-code" value={code} onChange={setCode}
-              placeholder="ACME" error={fields.code} autoFocus />
+            hint={
+              existing
+                ? 'Fixed once set: it appears on orders you have already issued.'
+                : 'How you will find them in a list. SKU-style, e.g. ACME.'
+            }>
+            {existing ? (
+              <p className="field__fixed num">{existing.code}</p>
+            ) : (
+              <TextInput id="sup-code" value={code} onChange={setCode}
+                placeholder="ACME" error={fields.code} autoFocus />
+            )}
           </Field>
 
           <Field label="Registered name" htmlFor="sup-name" required
@@ -147,7 +175,11 @@ export function SupplierForm({
           </Field>
         </div>
 
-        <FormActions submitLabel="Add supplier" busy={busy} onCancel={onCancel} />
+        <FormActions
+          submitLabel={existing ? 'Save changes' : 'Add supplier'}
+          busy={busy}
+          onCancel={onCancel}
+        />
       </div>
     </form>
   );

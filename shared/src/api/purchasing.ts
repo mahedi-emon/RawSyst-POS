@@ -33,9 +33,11 @@ export function listSuppliers(
   client: Client,
   companyId: string,
   search = '',
+  includeInactive = false,
 ): Promise<Supplier[]> {
   const query = new URLSearchParams({ company_id: companyId });
   if (search) query.set('search', search);
+  if (includeInactive) query.set('include_inactive', 'true');
   return client
     .send<{ data: Supplier[] }>('GET', `/api/v1/purchasing/suppliers?${query}`)
     .then((b) => b.data ?? []);
@@ -424,5 +426,47 @@ export function updateOrder(
     'PUT',
     `/api/v1/purchasing/orders/${poId}?company_id=${companyId}`,
     body,
+  );
+}
+
+/** Corrects a supplier's details.
+ *
+ * The code is absent on purpose: it appears on purchase orders already issued,
+ * and renaming it would silently change what those documents refer to. The
+ * server ignores one if sent. */
+export function updateSupplier(
+  client: Client,
+  companyId: string,
+  supplierId: string,
+  body: {
+    legal_name: string;
+    payment_terms_days: number;
+    vat_number?: string;
+    phone?: string;
+    email?: string;
+  },
+): Promise<Supplier> {
+  return client.send<Supplier>(
+    'PUT',
+    `/api/v1/purchasing/suppliers/${supplierId}?company_id=${companyId}`,
+    body,
+  );
+}
+
+/** Takes a supplier off the buyer's lists, or puts them back.
+ *
+ * Never a delete: orders, receipts, bills and payments all refer to them, and a
+ * row that vanished would leave that history pointing at nothing. Refused by the
+ * server while money is still owed. */
+export function setSupplierActive(
+  client: Client,
+  companyId: string,
+  supplierId: string,
+  isActive: boolean,
+): Promise<Supplier> {
+  return client.send<Supplier>(
+    'POST',
+    `/api/v1/purchasing/suppliers/${supplierId}/active?company_id=${companyId}`,
+    { is_active: isActive },
   );
 }

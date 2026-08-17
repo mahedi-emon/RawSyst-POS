@@ -709,3 +709,23 @@
   text-align: start;
   min-block-size: var(--tap-pos);
 }
+
+/* --- Supplier list controls ---------------------------------------------- */
+
+.supplier__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.supplier__actions { display: flex; gap: var(--space-1); justify-content: flex-end; }
+
+/* A value that cannot be changed reads as text, not as a disabled input. A
+ * greyed-out box invites somebody to click it and wonder why nothing happens. */
+.field__fixed {
+  margin: 0;
+  padding: var(--space-2) 0;
+  font-weight: 500;
+  text-align: start;
+}

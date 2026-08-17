@@ -803,3 +803,76 @@ func orderFromRequest(req createOrderRequest) (purchasing.NewOrder, error) {
 	}
 	return in, nil
 }
+
+func (s *Server) handleUpdateSupplier(w http.ResponseWriter, r *http.Request) {
+	var req supplierRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := purchaseScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	supplierID, err := parseUUID(chi.URLParam(r, "supplierID"), "supplierID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	in := purchasing.NewSupplier{
+		LegalName: req.LegalName, NameAr: req.NameAr, Contact: req.Contact,
+		Email: req.Email, Phone: req.Phone, VATNumber: req.VATNumber,
+		CRNumber: req.CRNumber, Country: req.Country,
+		TermsDays: req.TermsDays, Notes: req.Notes,
+	}
+	if req.CreditLimit != "" {
+		limit, e := parseAmount(req.CreditLimit, "credit_limit", -1)
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		in.CreditLimit = &limit
+	}
+
+	out, err := s.purchasing.UpdateSupplier(r.Context(), scope, supplierID, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+type supplierActiveRequest struct {
+	IsActive bool `json:"is_active"`
+}
+
+// handleSetSupplierActive takes a supplier off the buyer's lists, or puts them
+// back. Never a delete: they are referenced by orders, receipts, bills and
+// payments, all of which are history.
+func (s *Server) handleSetSupplierActive(w http.ResponseWriter, r *http.Request) {
+	var req supplierActiveRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := purchaseScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	supplierID, err := parseUUID(chi.URLParam(r, "supplierID"), "supplierID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.purchasing.SetSupplierActive(
+		r.Context(), scope, supplierID, req.IsActive)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}

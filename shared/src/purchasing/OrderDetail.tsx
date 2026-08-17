@@ -46,6 +46,7 @@ export function OrderDetail({
   const [deliveryRef, setDeliveryRef] = useState('');
   const [landedCost, setLandedCost] = useState('');
   const [importVat, setImportVat] = useState('');
+  const [basis, setBasis] = useState<'value' | 'quantity'>('value');
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -84,6 +85,7 @@ export function OrderDetail({
         delivery_note_ref: deliveryRef || undefined,
         landed_cost: landedCost.trim() || undefined,
         import_vat: importVat.trim() || undefined,
+        landed_cost_basis: basis,
         lines,
       });
       setReceiving(false);
@@ -343,6 +345,30 @@ export function OrderDetail({
                     onChange={(e) => setImportVat(e.target.value)}
                   />
                 </label>
+
+                {/* Only worth asking once there is something to spread. By
+                    value is right for a mixed delivery; by quantity is right
+                    when the items are alike and the freight is per box. */}
+                {landedCost.trim() !== '' && (
+                  <label className="purchase__field">
+                    <span className="ds-caption">Spread it</span>
+                    <select
+                      className="input"
+                      value={basis}
+                      aria-label="How to spread the freight"
+                      onChange={(e) =>
+                        setBasis(e.target.value === 'quantity' ? 'quantity' : 'value')
+                      }
+                    >
+                      <option value="value">
+                        By value — dearer items carry more
+                      </option>
+                      <option value="quantity">
+                        By quantity — every unit carries the same
+                      </option>
+                    </select>
+                  </label>
+                )}
               </div>
             </section>
           )}

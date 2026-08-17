@@ -21,6 +21,7 @@ import {
   listBills,
   listOrders,
   listSuppliers,
+  setSupplierActive,
   type Bill,
   type Order,
   type Supplier,
@@ -44,6 +45,8 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
   // that scrolls internally on a laptop is a worse place to do real work than
   // the page itself.
   const [creating, setCreating] = useState<null | 'supplier' | 'order' | 'bill'>(null);
+  // The supplier being corrected, if any. Reuses the form that added them.
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
 
   // Bumped after a save so the list underneath refetches. Cheaper and harder
   // to get wrong than threading a refresh callback through every list.
@@ -53,17 +56,24 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
   const mayCreateOrder = can('purchasing.create_order');
   const mayRecordBill = can('purchasing.record_bill');
 
-  if (creating === 'supplier') {
+  if (creating === 'supplier' || editingSupplier) {
+    // One form for both, because they are the same fields — a separate edit
+    // screen would be the same inputs twice and the two would drift.
+    const done = () => {
+      setCreating(null);
+      setEditingSupplier(null);
+    };
     return (
-      <FormPage title="Suppliers" onBack={() => setCreating(null)}>
+      <FormPage title="Suppliers" onBack={done}>
         <SupplierForm
           companyId={companyId}
+          existing={editingSupplier ?? undefined}
           onSaved={() => {
-            setCreating(null);
+            done();
             setTab('suppliers');
             setSaved((n) => n + 1);
           }}
-          onCancel={() => setCreating(null)}
+          onCancel={done}
         />
       </FormPage>
     );
@@ -187,7 +197,14 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
 
       {tab === 'orders' && <Orders key={saved} companyId={companyId} onOpen={setOpenOrder} />}
       {tab === 'bills' && <Bills key={saved} companyId={companyId} onOpen={setOpenBill} />}
-      {tab === 'suppliers' && <Suppliers key={saved} companyId={companyId} />}
+      {tab === 'suppliers' && (
+        <Suppliers
+          key={saved}
+          companyId={companyId}
+          onEdit={setEditingSupplier}
+          onChanged={() => setSaved((n) => n + 1)}
+        />
+      )}
       {tab === 'ageing' && <AgeingView companyId={companyId} />}
     </main>
   );
@@ -316,52 +333,124 @@ function Bills({
   );
 }
 
-function Suppliers({ companyId }: { companyId: string }) {
-  const { client } = useAuth();
-  const load = useCallback(() => listSuppliers(client, companyId), [client, companyId]);
+function Suppliers({
+  companyId,
+  onEdit,
+  onChanged,
+}: {
+  companyId: string;
+  onEdit: (supplier: Supplier) => void;
+  onChanged: () => void;
+}) {
+  const { client, can } = useAuth();
+  // Retired suppliers are shown behind a toggle rather than hidden outright.
+  // They are referenced by orders and bills, so somebody looking one up needs
+  // to be able to find them — but they must not clutter the list a buyer picks
+  // from every day.
+  const [showRetired, setShowRetired] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(
+    () => listSuppliers(client, companyId, '', showRetired),
+    [client, companyId, showRetired],
+  );
   const { remote, reload } = useRemote(load);
+
+  const mayManage = can('purchasing.manage_suppliers');
+
+  async function setActive(supplier: Supplier, active: boolean) {
+    setNotice(null);
+    try {
+      await setSupplierActive(client, companyId, supplier.id, active);
+      reload();
+      onChanged();
+    } catch (err) {
+      // The server refuses to retire a supplier who is still owed money, and
+      // the refusal names the amount. Shown as-is: it says what to do.
+      setNotice(err instanceof Error ? err.message : 'That did not work.');
+    }
+  }
 
   return (
     <RemoteBody remote={remote} onRetry={reload}>
       {(suppliers) => (
-        <div className="ds-panel">
-          <div className="ds-panel__body ds-scroll-x">
-            {suppliers.length === 0 ? (
-              <EmptyState
-                title="No suppliers yet"
-                body="Add the businesses you buy from. Their payment terms set when each bill falls due."
-              />
-            ) : (
-              <table className="ds-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Supplier</th>
-                    <th scope="col">Terms</th>
-                    <th scope="col">VAT number</th>
-                    <th scope="col" className="num">Owed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppliers.map((s) => (
-                    <SupplierRow key={s.id} supplier={s} />
-                  ))}
-                </tbody>
-              </table>
-            )}
+        <>
+          {notice && (
+            <p className="ds-panel purchase__notice" role="alert">
+              {notice}
+            </p>
+          )}
+
+          <div className="ds-panel">
+            <div className="ds-panel__head">
+              <h2 className="ds-h3">Suppliers</h2>
+              <label className="supplier__toggle">
+                <input
+                  type="checkbox"
+                  checked={showRetired}
+                  onChange={(e) => setShowRetired(e.target.checked)}
+                />
+                <span className="ds-caption">Include retired</span>
+              </label>
+            </div>
+
+            <div className="ds-panel__body ds-scroll-x">
+              {suppliers.length === 0 ? (
+                <EmptyState
+                  title="No suppliers yet"
+                  body="Add the businesses you buy from. Their payment terms set when each bill falls due."
+                />
+              ) : (
+                <table className="ds-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Supplier</th>
+                      <th scope="col">Terms</th>
+                      <th scope="col">VAT number</th>
+                      <th scope="col" className="num">Owed</th>
+                      {mayManage && <th scope="col" />}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {suppliers.map((s) => (
+                      <SupplierRow
+                        key={s.id}
+                        supplier={s}
+                        mayManage={mayManage}
+                        onEdit={() => onEdit(s)}
+                        onSetActive={(active) => void setActive(s, active)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </RemoteBody>
   );
 }
-
-function SupplierRow({ supplier }: { supplier: Supplier }) {
+function SupplierRow({
+  supplier,
+  mayManage,
+  onEdit,
+  onSetActive,
+}: {
+  supplier: Supplier;
+  mayManage: boolean;
+  onEdit: () => void;
+  onSetActive: (active: boolean) => void;
+}) {
   const owes = Number(supplier.outstanding) > 0;
   return (
-    <tr>
+    <tr className={supplier.is_active ? undefined : 'detail__row--aside'}>
       <td>
         <span className="detail__strong">{supplier.legal_name}</span>
-        <span className="ds-caption">{supplier.code}</span>
+        <span className="ds-caption">
+          {supplier.code}
+          {!supplier.is_active && ' · retired'}
+        </span>
       </td>
       <td>
         {supplier.payment_terms_days === 0
@@ -374,10 +463,38 @@ function SupplierRow({ supplier }: { supplier: Supplier }) {
       <td className={`num${owes ? '' : ' ds-subtle'}`}>
         {money(supplier.outstanding)}
       </td>
+      {mayManage && (
+        <td>
+          <div className="supplier__actions">
+            <button className="ds-btn ds-btn--quiet" onClick={onEdit}>
+              Edit
+            </button>
+            {/* Retiring is refused by the server while money is owed, so the
+                control is hidden rather than offering something that would be
+                turned down. Never a delete: orders and bills refer to them. */}
+            {supplier.is_active ? (
+              !owes && (
+                <button
+                  className="ds-btn ds-btn--quiet"
+                  onClick={() => onSetActive(false)}
+                >
+                  Retire
+                </button>
+              )
+            ) : (
+              <button
+                className="ds-btn ds-btn--quiet"
+                onClick={() => onSetActive(true)}
+              >
+                Bring back
+              </button>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 }
-
 /** What is owed, and how overdue.
  *
  * Aged from the DUE date, not the bill date — a 60-day invoice raised 45 days

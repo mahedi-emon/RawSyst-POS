@@ -226,6 +226,13 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/purchasing/suppliers", AccessPermission, "purchasing.manage_suppliers",
 			s.handleCreateSupplier, ""},
 
+		{http.MethodPut, "/api/v1/purchasing/suppliers/{supplierID}", AccessPermission, "purchasing.manage_suppliers",
+			s.handleUpdateSupplier,
+			"the code is not editable: it is on orders already issued"},
+		{http.MethodPost, "/api/v1/purchasing/suppliers/{supplierID}/active", AccessPermission, "purchasing.manage_suppliers",
+			s.handleSetSupplierActive,
+			"hides a supplier from the pickers; never a delete, and refused while money is owed"},
+
 		{http.MethodGet, "/api/v1/purchasing/orders", AccessPermission, "purchasing.view",
 			s.handleListOrders, ""},
 		{http.MethodPost, "/api/v1/purchasing/orders", AccessPermission, "purchasing.create_order",
