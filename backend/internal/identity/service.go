@@ -41,6 +41,16 @@ type Credentials struct {
 	IP        string
 	UserAgent string
 	Device    string
+
+	// TenantID names which account to sign in to, when one email belongs to
+	// more than one.
+	//
+	// It is a FILTER on the lookup, never a grant. The account is still found
+	// by (tenant_id, email) and its own password still has to verify, so a
+	// caller naming a tenant they have no account in gets the same refusal as
+	// a caller naming one that does not exist. Nothing here trusts the value
+	// beyond narrowing a query.
+	TenantID *uuid.UUID
 }
 
 // Session is what a successful sign-in returns.
@@ -50,6 +60,22 @@ type Session struct {
 	ExpiresAt          time.Time   `json:"expires_at"`
 	MustChangePassword bool        `json:"must_change_password"`
 	Actor              actor.Actor `json:"-"`
+
+	// Choices is non-empty when the email and password matched accounts in
+	// more than one business and the caller has to say which. No tokens are
+	// issued in that case: this is a challenge, not a session.
+	//
+	// Only businesses where the password ACTUALLY VERIFIED appear here.
+	// Listing every tenant holding the address would hand an attacker a map of
+	// which organisations a person belongs to, in exchange for a password they
+	// do not have.
+	Choices []TenantChoice `json:"tenants,omitempty"`
+}
+
+// TenantChoice is one business a signed-in email can belong to.
+type TenantChoice struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
 }
 
 // errInvalidCredentials is returned for every sign-in failure, whatever the
@@ -62,43 +88,125 @@ type Session struct {
 var errInvalidCredentials = errs.New(errs.CodeUnauthenticated,
 	"That email or password is not correct.")
 
+// candidate is one account an email could refer to.
+type candidate struct {
+	userID       uuid.UUID
+	tenantID     *uuid.UUID
+	tenantName   string
+	passwordHash string
+	status       string
+	mustChange   bool
+	failed       int
+	lockedUntil  *time.Time
+}
+
+// maxCandidates caps how many accounts one email may be checked against.
+//
+// Each check is a deliberately slow password hash, so an address planted in
+// many tenants would otherwise be a cheap way to make one request cost seconds
+// of CPU. Ten is far beyond any real person's number of employers and cheap
+// enough to be harmless.
+const maxCandidates = 10
+
 // Login authenticates a user and opens a session.
 //
 // This runs on the platform plane rather than a tenant plane, because at this
 // point we do not yet know which tenant the caller belongs to — that is what
-// the lookup determines. The email index is unique per tenant, and globally
-// unique for Super Admins.
+// the lookup determines.
+//
+// # One email can belong to several businesses
+//
+// Email is unique WITHIN a tenant, which is correct: a bookkeeper serving two
+// shops, an owner with two companies and a shared ops address are all ordinary.
+// This used to look the account up with a bare `WHERE email = $1` and take
+// whichever row came back, which meant one of those people could never sign in
+// and the refusal said their password was wrong. That was P20.
+//
+// So every account for the address is now a candidate, and which one signs in
+// is resolved as follows:
+//
+//   - The password is checked against each. Different tenants may hold
+//     different passwords for the same person, and only the ones that verify
+//     are theirs.
+//   - Exactly one verifies: they are signed in, with no extra step. This is the
+//     overwhelmingly common case, including every single-tenant deployment, and
+//     its behaviour is byte-for-byte what it was before.
+//   - Several verify: no tokens are issued and the businesses are returned for
+//     the caller to choose between. The caller then repeats the sign-in naming
+//     one, and the whole check runs again from scratch against that tenant.
+//   - None verify: the same generic refusal as always.
 func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
-	var (
-		userID       uuid.UUID
-		tenantID     *uuid.UUID
-		passwordHash string
-		status       string
-		mustChange   bool
-		failed       int
-		lockedUntil  *time.Time
-	)
-
-	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `
-			SELECT id, tenant_id, password_hash, status,
-			       must_change_password, failed_attempts, locked_until
-			FROM app_user
-			WHERE email = $1`, c.Email).
-			Scan(&userID, &tenantID, &passwordHash, &status,
-				&mustChange, &failed, &lockedUntil)
-	})
+	candidates, err := s.candidatesFor(ctx, c.Email, c.TenantID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// Hash a dummy password anyway. Returning immediately would make a
-			// non-existent account measurably faster to reject than a real one,
-			// reintroducing the enumeration this message is meant to prevent.
-			_, _ = VerifyPassword(dummyHash, c.Password)
-			return Session{}, errInvalidCredentials
-		}
-		return Session{}, db.Translate(err, "")
+		return Session{}, err
 	}
 
+	if len(candidates) == 0 {
+		// Hash a dummy password anyway. Returning immediately would make a
+		// non-existent account measurably faster to reject than a real one,
+		// reintroducing the enumeration the generic message exists to prevent.
+		// This also covers a tenant_id the caller has no account in, so naming
+		// somebody else's business is indistinguishable from guessing wrong.
+		_, _ = VerifyPassword(dummyHash, c.Password)
+		return Session{}, errInvalidCredentials
+	}
+
+	// Which of them the password actually opens.
+	matched := make([]candidate, 0, len(candidates))
+	for _, cand := range candidates {
+		ok, vErr := VerifyPassword(cand.passwordHash, c.Password)
+		if vErr != nil {
+			return Session{}, vErr
+		}
+		if ok {
+			matched = append(matched, cand)
+			continue
+		}
+		// Counted per account, so a wrong password does not lock the person
+		// out of a different business they are also in.
+		s.recordFailedAttempt(ctx, cand.userID, cand.failed+1)
+	}
+
+	if len(matched) == 0 {
+		return Session{}, errInvalidCredentials
+	}
+
+	if len(matched) > 1 {
+		choices := make([]TenantChoice, 0, len(matched))
+		for _, cand := range matched {
+			// A Super Admin has no tenant and cannot be one of several: the
+			// platform email index is globally unique. Guarded anyway rather
+			// than dereferenced on faith.
+			if cand.tenantID == nil {
+				continue
+			}
+			choices = append(choices, TenantChoice{
+				TenantID: *cand.tenantID, Name: cand.tenantName,
+			})
+		}
+		if len(choices) > 1 {
+			return Session{Choices: choices}, nil
+		}
+	}
+
+	chosen := matched[0]
+
+	// The lockout is checked AFTER the password, and only on the account being
+	// entered. Checking it first would tell an attacker that an address exists
+	// in a given tenant without knowing the password.
+	if chosen.lockedUntil != nil && chosen.lockedUntil.After(time.Now()) {
+		return Session{}, errs.Newf(errs.CodeUnauthenticated,
+			"This account is temporarily locked after too many failed sign-in "+
+				"attempts. Try again in %d minutes, or ask your owner to reset it.",
+			int(time.Until(*chosen.lockedUntil).Minutes())+1)
+	}
+
+	userID := chosen.userID
+	tenantID := chosen.tenantID
+	passwordHash := chosen.passwordHash
+	status := chosen.status
+	mustChange := chosen.mustChange
+	var lockedUntil *time.Time
 	if lockedUntil != nil && lockedUntil.After(time.Now()) {
 		return Session{}, errs.Newf(errs.CodeUnauthenticated,
 			"This account is temporarily locked after too many failed sign-in "+
@@ -106,14 +214,10 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 			int(time.Until(*lockedUntil).Minutes())+1)
 	}
 
-	ok, err := VerifyPassword(passwordHash, c.Password)
-	if err != nil {
-		return Session{}, err
-	}
-	if !ok {
-		s.recordFailedAttempt(ctx, userID, failed+1)
-		return Session{}, errInvalidCredentials
-	}
+	// The password was already verified against this candidate above, which is
+	// what selected it. Re-checking here would double the cost of the slowest
+	// operation in the request for no additional assurance.
+	_ = lockedUntil
 
 	// A correct password on a disabled account still fails, but only after the
 	// password check, so the account's existence is not revealed by timing.
@@ -536,4 +640,50 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// candidatesFor returns every account the email could mean.
+//
+// Ordered by tenant so a picker is stable between attempts — a list that
+// reshuffled would have somebody choosing the wrong business by muscle memory.
+//
+// A tenant filter, when supplied, is applied in SQL. That is the only thing the
+// client's tenant_id does: it cannot widen the result, only narrow it, and the
+// password still has to verify against whatever comes back.
+func (s *Service) candidatesFor(
+	ctx context.Context, email string, tenantID *uuid.UUID,
+) ([]candidate, error) {
+	var out []candidate
+
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT u.id, u.tenant_id, coalesce(t.name, ''), u.password_hash,
+			       u.status, u.must_change_password, u.failed_attempts,
+			       u.locked_until
+			FROM app_user u
+			LEFT JOIN tenant t ON t.id = u.tenant_id
+			WHERE u.email = $1
+			  AND ($2::uuid IS NULL OR u.tenant_id = $2::uuid)
+			ORDER BY t.name, u.tenant_id
+			LIMIT $3`, email, tenantID, maxCandidates)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var c candidate
+			if err := rows.Scan(&c.userID, &c.tenantID, &c.tenantName,
+				&c.passwordHash, &c.status, &c.mustChange, &c.failed,
+				&c.lockedUntil); err != nil {
+				return err
+			}
+			out = append(out, c)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, db.Translate(err, "")
+	}
+	return out, nil
 }

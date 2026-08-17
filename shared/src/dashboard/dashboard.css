@@ -679,3 +679,33 @@
 @media (min-width: 720px) {
   .form__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* --- The tenant picker ---------------------------------------------------
+ *
+ * The second step of sign-in, shown only when one email opened accounts in more
+ * than one business. Styled as part of the login card rather than as a new
+ * screen, because it is the same task continuing.
+ */
+
+.login__hint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+}
+
+.login__tenants {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Full width and tall, because this may be pressed on a till panel with
+ * gloves on, and because the business name is the whole content. */
+.login__tenant {
+  inline-size: 100%;
+  text-align: start;
+  min-block-size: var(--tap-pos);
+}

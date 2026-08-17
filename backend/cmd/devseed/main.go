@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
@@ -38,15 +39,19 @@ import (
 func main() {
 	email := flag.String("email", "owner@example.test", "the owner's sign-in email")
 	name := flag.String("name", "Demo Retail", "the trading name")
+	// Optional, and there for one specific reason: reproducing an email that
+	// belongs to two businesses with the SAME password, which is the case the
+	// tenant picker exists for and which cannot be set up otherwise.
+	password := flag.String("password", "", "reuse a known password instead of generating one")
 	flag.Parse()
 
-	if err := run(*email, *name); err != nil {
+	if err := run(*email, *name, *password); err != nil {
 		fmt.Fprintf(os.Stderr, "devseed: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(email, name string) error {
+func run(email, name, password string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -86,6 +91,24 @@ func run(email, name string) error {
 
 	if err := seedShop(ctx, pool, out.TenantID, name); err != nil {
 		return fmt.Errorf("seed shop: %w", err)
+	}
+
+	// Overwritten only when asked, and only outside production, which the check
+	// above has already established.
+	if password != "" {
+		hash, hErr := identity.HashPassword(password)
+		if hErr != nil {
+			return hErr
+		}
+		if uErr := pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+			_, e := tx.Exec(ctx, `
+				UPDATE app_user SET password_hash = $2, must_change_password = false
+				WHERE id = $1`, out.OwnerUserID, hash)
+			return e
+		}); uErr != nil {
+			return uErr
+		}
+		out.TemporaryPassword = password
 	}
 
 	fmt.Printf("\n  Seeded %q\n\n", name)

@@ -35,6 +35,9 @@ type shopFixture struct {
 	userID      uuid.UUID
 	sessionID   uuid.UUID
 	token       string
+	// email is carried so a test can sign in as this user through the real
+	// login route rather than only with a minted token.
+	email string
 }
 
 func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
@@ -43,7 +46,7 @@ func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
 
 	email := h.seedUserWithRole(t, roleKey)
 
-	f := &shopFixture{}
+	f := &shopFixture{email: email}
 	err := h.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		if e := tx.QueryRow(ctx,
 			`SELECT id, tenant_id FROM app_user WHERE email = $1`, email).

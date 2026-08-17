@@ -20,7 +20,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { Client, type Me, type Session } from '../api/client';
+import { Client, type Me, type Session, type TenantChoice } from '../api/client';
 
 interface AuthState {
   client: Client;
@@ -28,8 +28,16 @@ interface AuthState {
   status: 'signed_out' | 'signing_in' | 'signed_in' | 'restoring';
   error: string | null;
 
-  signIn(email: string, password: string): Promise<void>;
+  /** Signs in. Resolves having either opened a session or set `tenantChoices`,
+   *  which the login screen turns into a question. */
+  signIn(email: string, password: string, tenantId?: string): Promise<void>;
   signOut(): Promise<void>;
+
+  /** The businesses this email and password opened, when there was more than
+   *  one. Empty in the ordinary case, which is every single-tenant sign-in. */
+  tenantChoices: TenantChoice[];
+  /** Abandons the choice and returns to the email and password. */
+  clearTenantChoices(): void;
 
   /** Whether the signed-in user holds a permission. */
   can(permission: string): boolean;
@@ -74,6 +82,7 @@ export function AuthProvider({
     client.authenticated ? 'restoring' : 'signed_out',
   );
   const [error, setError] = useState<string | null>(null);
+  const [tenantChoices, setTenantChoices] = useState<TenantChoice[]>([]);
 
   // A stored session is not trusted on its own. The token may have expired
   // while the till was switched off, and permissions may have changed since —
@@ -103,12 +112,23 @@ export function AuthProvider({
   }, [client]);
 
   const signIn = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, tenantId?: string) => {
       setStatus('signing_in');
       setError(null);
       try {
-        const session = await client.login(email, password);
-        saveSession(session);
+        const outcome = await client.login(email, password, tenantId);
+
+        // The server needs to know which business. No session exists yet, so
+        // the status goes back to signed_out rather than to some intermediate
+        // state — the login screen simply has one more question to ask.
+        if (outcome.kind === 'choose_tenant') {
+          setTenantChoices(outcome.tenants);
+          setStatus('signed_out');
+          return;
+        }
+
+        setTenantChoices([]);
+        saveSession(outcome.session);
         const profile = await client.me();
         setMe(profile);
         setStatus('signed_in');
@@ -124,10 +144,13 @@ export function AuthProvider({
     [client],
   );
 
+  const clearTenantChoices = useCallback(() => setTenantChoices([]), []);
+
   const signOut = useCallback(async () => {
     await client.logout();
     saveSession(null);
     setMe(null);
+    setTenantChoices([]);
     setStatus('signed_out');
   }, [client]);
 
@@ -137,8 +160,12 @@ export function AuthProvider({
   );
 
   const value = useMemo<AuthState>(
-    () => ({ client, me, status, error, signIn, signOut, can }),
-    [client, me, status, error, signIn, signOut, can],
+    () => ({
+      client, me, status, error, signIn, signOut, can,
+      tenantChoices, clearTenantChoices,
+    }),
+    [client, me, status, error, signIn, signOut, can,
+      tenantChoices, clearTenantChoices],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -41,6 +41,17 @@ export class Offline extends Error {
   }
 }
 
+/** One business a signed-in email can belong to. */
+export interface TenantChoice {
+  tenant_id: string;
+  name: string;
+}
+
+/** What a sign-in attempt produced: a session, or a question. */
+export type LoginOutcome =
+  | { kind: 'signed_in'; session: Session }
+  | { kind: 'choose_tenant'; tenants: TenantChoice[] };
+
 export interface Session {
   accessToken: string;
   refreshToken: string;
@@ -70,19 +81,48 @@ export class Client {
     return this.session !== null;
   }
 
-  async login(email: string, password: string): Promise<Session> {
-    const body = await this.send<{ access_token: string; refresh_token: string }>(
+  /**
+   * Signs in, or reports that the server needs to know which business.
+   *
+   * One email can legitimately belong to several businesses — a bookkeeper
+   * serving two shops, an owner with two companies. When the password opens
+   * accounts in more than one, the server issues no tokens and returns the
+   * choices instead; the caller asks the person and signs in again naming one.
+   *
+   * `tenantId` is only ever a filter on the server's lookup. Naming a business
+   * the account is not in is refused exactly like a wrong password, so nothing
+   * here is trusted on the client's word.
+   */
+  async login(
+    email: string,
+    password: string,
+    tenantId?: string,
+  ): Promise<LoginOutcome> {
+    const body = await this.send<{
+      access_token?: string;
+      refresh_token?: string;
+      tenant_choice_required?: boolean;
+      tenants?: TenantChoice[];
+    }>(
       'POST',
       '/api/v1/auth/login',
-      { email, password },
+      tenantId ? { email, password, tenant_id: tenantId } : { email, password },
       { authenticated: false },
     );
+
+    if (body.tenant_choice_required) {
+      // Deliberately does NOT set this.session: there is no session yet, and a
+      // client left holding a half-authenticated state is how a screen ends up
+      // showing a signed-in shell with no token behind it.
+      return { kind: 'choose_tenant', tenants: body.tenants ?? [] };
+    }
+
     const session = {
-      accessToken: body.access_token,
-      refreshToken: body.refresh_token,
+      accessToken: body.access_token ?? '',
+      refreshToken: body.refresh_token ?? '',
     };
     this.session = session;
-    return session;
+    return { kind: 'signed_in', session };
   }
 
   async me(): Promise<Me> {

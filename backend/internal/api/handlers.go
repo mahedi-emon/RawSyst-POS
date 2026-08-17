@@ -46,6 +46,11 @@ type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Device   string `json:"device,omitempty"`
+
+	// TenantID answers the "which business?" challenge below. Optional, and
+	// only ever a filter on the account lookup — naming a business the caller
+	// has no account in is refused exactly like a wrong password.
+	TenantID string `json:"tenant_id,omitempty"`
 }
 
 type loginResponse struct {
@@ -53,6 +58,15 @@ type loginResponse struct {
 	RefreshToken       string    `json:"refresh_token"`
 	ExpiresAt          time.Time `json:"expires_at"`
 	MustChangePassword bool      `json:"must_change_password"`
+
+	// TenantChoiceRequired means the email and password opened accounts in more
+	// than one business and the caller has to say which. No tokens are issued.
+	//
+	// A 200 rather than an error status, because nothing went wrong: this is a
+	// challenge, the same shape as an MFA step. A client that ignores the flag
+	// finds no access token and cannot proceed regardless.
+	TenantChoiceRequired bool                    `json:"tenant_choice_required,omitempty"`
+	Tenants              []identity.TenantChoice `json:"tenants,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -68,15 +82,35 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := s.auth.Login(r.Context(), identity.Credentials{
+	creds := identity.Credentials{
 		Email:     req.Email,
 		Password:  req.Password,
 		IP:        clientIP(r),
 		UserAgent: r.UserAgent(),
 		Device:    req.Device,
-	})
+	}
+	if req.TenantID != "" {
+		chosen, e := parseUUID(req.TenantID, "tenant_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		creds.TenantID = &chosen
+	}
+
+	session, err := s.auth.Login(r.Context(), creds)
 	if err != nil {
 		httpx.Error(w, r, err)
+		return
+	}
+
+	// The challenge. Returned before the token fields so a reader of the
+	// payload sees immediately that this is not a session.
+	if len(session.Choices) > 0 {
+		httpx.JSON(w, http.StatusOK, loginResponse{
+			TenantChoiceRequired: true,
+			Tenants:              session.Choices,
+		})
 		return
 	}
 

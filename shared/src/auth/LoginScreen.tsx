@@ -11,7 +11,7 @@ import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from './session';
 
 export function LoginScreen() {
-  const { signIn, status } = useAuth();
+  const { signIn, status, tenantChoices, clearTenantChoices } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,9 +21,21 @@ export function LoginScreen() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    await attempt();
+  }
+
+  /** Signs in again, this time naming the business.
+   *
+   * The whole check runs from scratch on the server against that tenant — the
+   * choice is a filter on the lookup, not a token that skips anything. */
+  async function choose(tenantId: string) {
+    await attempt(tenantId);
+  }
+
+  async function attempt(tenantId?: string) {
     setProblem(null);
     try {
-      await signIn(email.trim(), password);
+      await signIn(email.trim(), password, tenantId);
     } catch (err) {
       // The three cases a cashier can actually act on, told apart. "Something
       // went wrong" would leave them retrying a password that was never the
@@ -44,6 +56,64 @@ export function LoginScreen() {
         setProblem('Sign-in did not complete. Try again.');
       }
     }
+  }
+
+  // The second step, and only when the server asked for it.
+  //
+  // One email can belong to several businesses — a bookkeeper serving two
+  // shops, an owner with two companies. The password has already been checked
+  // against every account it could mean; these are the ones it opened, so the
+  // only thing still unknown is which the person meant.
+  //
+  // It is a list of buttons rather than a dropdown and a Continue: there are
+  // two or three of them, and a dropdown would add a press for nothing.
+  if (tenantChoices.length > 0) {
+    return (
+      <main className="login">
+        <div className="login__card">
+          <h1 className="login__title">RawSyst</h1>
+          <p className="login__subtitle">Which business?</p>
+          <p className="login__hint">
+            This email is used by more than one business. Choose the one you
+            want to work in — you can sign out and pick another at any time.
+          </p>
+
+          {problem && (
+            <p className="login__error" role="alert">
+              {problem}
+            </p>
+          )}
+
+          <ul className="login__tenants">
+            {tenantChoices.map((choice) => (
+              <li key={choice.tenant_id}>
+                <button
+                  className="button button--large button--primary login__tenant"
+                  disabled={busy}
+                  onClick={() => void choose(choice.tenant_id)}
+                >
+                  {choice.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <button
+            className="button button--quiet"
+            onClick={() => {
+              clearTenantChoices();
+              setProblem(null);
+              // The password is cleared on the way back. Leaving it in a field
+              // behind a screen the person has navigated away from is the sort
+              // of thing that ends up in a screenshot.
+              setPassword('');
+            }}
+          >
+            Use a different email
+          </button>
+        </div>
+      </main>
+    );
   }
 
   return (

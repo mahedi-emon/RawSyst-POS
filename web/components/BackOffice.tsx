@@ -40,7 +40,18 @@ export function BackOffice() {
 
   const [section, setSection] = useState<Section>('dashboard');
   const [drill, setDrill] = useState<DrillTarget | null>(null);
-  const [companies, setCompanies] = useState<Company[] | null>(null);
+  // The company list carries the tenant it was fetched for.
+  //
+  // Storing them apart was a bug: clearing the selection in an effect still
+  // let one render happen with the NEW session and the OLD company, which
+  // fired a dashboard request for a company the new tenant cannot see and got
+  // a 404. A browser check caught it after switching businesses. Keeping the
+  // two together makes a stale pair unrepresentable rather than merely
+  // short-lived.
+  const [loaded, setLoaded] = useState<{
+    tenant: string | null;
+    companies: Company[];
+  } | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
 
   const may = useMemo(
@@ -50,22 +61,33 @@ export function BackOffice() {
   const mayReadFigures = may('accounting.view');
   const mayBuy = may('purchasing.view');
 
+  // Keyed on the TENANT, not just on being signed in.
+  //
+  // The same person can sign out of one business and into another — that is
+  // the whole point of the tenant picker — and the company they had selected
+  // does not exist in the new one. Keeping it produced a 404 on the dashboard
+  // for the moment between the new session opening and the company list
+  // arriving, which a browser check caught. Clearing on the way in is the fix;
+  // the alternative of clearing on sign-out misses a session that expires.
+  const tenant = me?.tenant_id ?? null;
+
   useEffect(() => {
     if (!me) return;
     let cancelled = false;
+
     listCompanies(client)
       .then((found) => {
         if (cancelled) return;
-        setCompanies(found);
-        setCompanyId((current) => current ?? found[0]?.id ?? null);
+        setLoaded({ tenant, companies: found });
+        setCompanyId(found[0]?.id ?? null);
       })
       .catch(() => {
-        if (!cancelled) setCompanies([]);
+        if (!cancelled) setLoaded({ tenant, companies: [] });
       });
     return () => {
       cancelled = true;
     };
-  }, [client, me]);
+  }, [client, me, tenant]);
 
   // Land on whichever section this person can actually use. An owner opens on
   // the figures; a purchase manager with no accounting.view opens on buying,
@@ -86,6 +108,14 @@ export function BackOffice() {
   if (status !== 'signed_in' || !me) {
     return <LoginScreen />;
   }
+
+  // A list from a previous tenant is not this tenant's list. Treated as still
+  // loading, which is what it is.
+  const companies = loaded && loaded.tenant === tenant ? loaded.companies : null;
+  const activeCompany =
+    companies && companyId && companies.some((c) => c.id === companyId)
+      ? companyId
+      : null;
 
   const sections: Array<{ key: Section; label: string; shown: boolean }> = [
     { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
@@ -149,13 +179,13 @@ export function BackOffice() {
 
       {visible.length === 0 ? (
         <NoSections />
-      ) : !companyId ? (
+      ) : !activeCompany ? (
         <NoCompany loading={companies === null} />
       ) : section === 'buying' && mayBuy ? (
-        <PurchasingScreen companyId={companyId} />
+        <PurchasingScreen companyId={activeCompany} />
       ) : mayReadFigures ? (
         <DashboardArea
-          companyId={companyId}
+          companyId={activeCompany}
           drill={drill}
           onOpen={setDrill}
           onBack={() => setDrill(null)}
