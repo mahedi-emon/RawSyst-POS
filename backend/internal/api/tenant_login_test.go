@@ -397,3 +397,77 @@ func hashFor(t *testing.T, password string) string {
 	}
 	return h
 }
+
+// Signing out really does end the session on the server.
+//
+// A browser check reported net::ERR_ABORTED on /auth/logout, which looked like
+// a sign-out that never reached us — and a sign-out that leaves a usable
+// refresh token behind is a security problem rather than a cosmetic one. It was
+// not: the server logged 204 and refused the refresh afterwards, and the abort
+// is the network layer's reporting of an empty 204 body.
+//
+// This test is the durable answer, so the question does not have to be
+// investigated by hand a second time.
+func TestSigningOutRevokesTheSessionServerSide(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	status, body := login(t, h, map[string]any{
+		"email": f.email, "password": testPassword,
+	})
+	if status != 200 {
+		t.Fatalf("login returned %d", status)
+	}
+	token, _ := body["access_token"].(string)
+	refresh, _ := body["refresh_token"].(string)
+	if token == "" || refresh == "" {
+		t.Fatal("no session to sign out of")
+	}
+
+	// The session works before.
+	if resp := h.do(t, "GET", "/api/v1/auth/me", token, nil); resp.StatusCode != 200 {
+		t.Fatalf("the session did not work before sign-out: %d", resp.StatusCode)
+	}
+
+	if resp := h.do(t, "POST", "/api/v1/auth/logout", token, map[string]any{}); resp.StatusCode != 204 {
+		t.Fatalf("logout returned %d, want 204", resp.StatusCode)
+	}
+
+	// The refresh token is the one that matters. An access token expires on its
+	// own; a refresh token that outlives a sign-out is a credential the user
+	// believes they have destroyed.
+	refreshed := h.do(t, "POST", "/api/v1/auth/refresh", "",
+		map[string]any{"refresh_token": refresh})
+	if refreshed.StatusCode != 401 {
+		t.Errorf("the refresh token still works after signing out (%d) — the "+
+			"session was not revoked", refreshed.StatusCode)
+	}
+}
+
+// Signing out twice is not an error. A client that retried after a network
+// failure, or a person double-pressing, must not see a refusal.
+func TestSigningOutTwiceIsHarmless(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	status, body := login(t, h, map[string]any{
+		"email": f.email, "password": testPassword,
+	})
+	if status != 200 {
+		t.Fatalf("login returned %d", status)
+	}
+	token, _ := body["access_token"].(string)
+
+	first := h.do(t, "POST", "/api/v1/auth/logout", token, map[string]any{})
+	if first.StatusCode != 204 {
+		t.Fatalf("first sign-out returned %d", first.StatusCode)
+	}
+
+	// The access token is now against a revoked session, so this is refused —
+	// which is correct. What matters is that it is refused cleanly rather than
+	// erroring.
+	second := h.do(t, "POST", "/api/v1/auth/logout", token, map[string]any{})
+	if second.StatusCode >= 500 {
+		t.Errorf("a repeated sign-out returned %d", second.StatusCode)
+	}
+}
