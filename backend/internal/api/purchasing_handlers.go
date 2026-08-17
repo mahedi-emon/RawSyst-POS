@@ -293,6 +293,13 @@ type receiveRequest struct {
 	DeliveryNoteRef string               `json:"delivery_note_ref"`
 	Notes           string               `json:"notes"`
 	Lines           []receiveLineRequest `json:"lines"`
+
+	// Freight, duty, handling — spread across the lines and into the cost
+	// layers. Separate from import VAT, which is recoverable and must never be
+	// added to the cost of the stock (E2.5).
+	LandedCost string `json:"landed_cost"`
+	ImportVAT  string `json:"import_vat"`
+	Basis      string `json:"landed_cost_basis"`
 }
 
 // handleReceiveGoods records a delivery. The only route in the product that
@@ -324,6 +331,25 @@ func (s *Server) handleReceiveGoods(w http.ResponseWriter, r *http.Request) {
 	in := purchasing.Delivery{
 		UUID: docUUID, POID: poID,
 		DeliveryNoteRef: req.DeliveryNoteRef, Notes: req.Notes,
+		Basis: req.Basis,
+	}
+	for _, cost := range []struct {
+		raw   string
+		field string
+		dst   *decimal.Decimal
+	}{
+		{req.LandedCost, "landed_cost", &in.LandedCost},
+		{req.ImportVAT, "import_vat", &in.ImportVAT},
+	} {
+		if cost.raw == "" {
+			continue
+		}
+		amount, e := parseAmount(cost.raw, cost.field, -1)
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		*cost.dst = amount
 	}
 	for i, line := range req.Lines {
 		lineID, e := parseUUID(line.POLineID, "po_line_id")

@@ -103,7 +103,14 @@ type MoneyPosition struct {
 	Unsettled   string `json:"unsettled"`
 	Receivable  string `json:"receivable"`
 	StoreCredit string `json:"store_credit"`
-	Total       string `json:"total"`
+	// Accrued is goods on the shelves that no supplier has invoiced yet.
+	//
+	// Reported because it is money the shop is going to owe and has not been
+	// asked for. An owner reading their payables without it would think they
+	// owed less than they do — the invoice is coming, and the stock is already
+	// being sold.
+	Accrued string `json:"accrued_purchases"`
+	Total   string `json:"total"`
 }
 
 type InventoryNow struct {
@@ -348,7 +355,7 @@ func (s *Service) moneyPosition(
 	// Balances by ROLE, so a company that named its cash account something
 	// else still reports correctly. Cumulative to date rather than for the
 	// day: a bank balance is a position, not a flow.
-	var cash, bank, unsettled, receivable, storeCredit string
+	var cash, bank, unsettled, receivable, storeCredit, accrued string
 	if e := tx.QueryRow(ctx, `
 		WITH balances AS (
 		  SELECT m.role,
@@ -366,15 +373,17 @@ func (s *Service) moneyPosition(
 		  coalesce((SELECT balance FROM balances WHERE role = 'accounts_receivable'), 0)::text,
 		  -- A liability: credit-normal, so the sign is flipped to read as
 		  -- "what customers hold", which is how an owner thinks about it.
-		  coalesce(-(SELECT balance FROM balances WHERE role = 'store_credit_liability'), 0)::text`,
+		  coalesce(-(SELECT balance FROM balances WHERE role = 'store_credit_liability'), 0)::text,
+		  -- Also credit-normal, so also flipped to read as "what we will owe".
+		  coalesce(-(SELECT balance FROM balances WHERE role = 'grni'), 0)::text`,
 		scope.CompanyID, asOf,
-	).Scan(&cash, &bank, &unsettled, &receivable, &storeCredit); e != nil {
+	).Scan(&cash, &bank, &unsettled, &receivable, &storeCredit, &accrued); e != nil {
 		return e
 	}
 
 	out.Money = MoneyPosition{
 		Cash: cash, Bank: bank, Unsettled: unsettled,
-		Receivable: receivable, StoreCredit: storeCredit,
+		Receivable: receivable, StoreCredit: storeCredit, Accrued: accrued,
 	}
 	// Cash plus bank plus what the acquirer still holds. Receivables are
 	// deliberately excluded — money a customer owes is not money the shop has,

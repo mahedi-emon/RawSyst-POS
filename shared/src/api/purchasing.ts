@@ -188,6 +188,14 @@ export function receiveGoods(
     po_id: string;
     delivery_note_ref?: string;
     notes?: string;
+    /** Freight, duty and handling. Spread across the lines and carried into
+     *  the cost layers, so a later sale reports the margin it actually earned. */
+    landed_cost?: string;
+    /** Recoverable, and deliberately separate: E2.5 puts duty in inventory
+     *  cost and import VAT in a receivable, and adding them together
+     *  overstates stock while understating the reclaim. */
+    import_vat?: string;
+    landed_cost_basis?: string;
     lines: Array<{
       po_line_id: string;
       qty_received: string;

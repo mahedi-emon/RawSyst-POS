@@ -3,6 +3,7 @@ package purchasing
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -28,10 +29,14 @@ import (
 // a different quantity — and detecting that difference is the entire purpose of
 // the three-way match. Posting on receipt would make the two indistinguishable.
 //
-// Which leaves the well-known gap: between receipt and bill, stock is on the
-// shelf and nothing is owed for it in the ledger. That is Goods Received Not
-// Invoiced, and it is a real accrual a full ERP posts. It is NOT posted here —
-// see the note on the ledger effect below.
+// # It IS posted, as an accrual
+//
+// Stock arrives with a real value, so Dr Inventory / Cr GRNI goes in here; the
+// payable and the input tax wait for the bill, which then discharges the
+// accrual. Without the receipt-side entry the valuation runs ahead of the
+// Inventory control account for the whole window between a delivery and its
+// invoice — by the full value of the receipt — and design 02 §6.6 says that
+// divergence must never exist.
 
 // ReceivedLine is one line of a delivery.
 type ReceivedLine struct {
@@ -53,6 +58,19 @@ type Delivery struct {
 	DeliveryNoteRef string
 	Notes           string
 	Lines           []ReceivedLine
+
+	// LandedCost is freight, duty, handling and insurance — everything that
+	// belongs in the cost of the stock. Allocated across the lines and included
+	// in the cost layers, per 10-catalog-and-inventory.md.
+	LandedCost decimal.Decimal
+	// ImportVAT is recoverable and is NOT part of the cost of the stock. E2.5 is
+	// explicit that duty goes to inventory cost while import VAT is reclaimed,
+	// and it is a separate field so the two cannot be added together by
+	// accident.
+	ImportVAT decimal.Decimal
+	// Basis is value or quantity. Value by default: quantity is wrong the
+	// moment a carton of scarves and a carton of gold share a container.
+	Basis string
 }
 
 type Receipt struct {
@@ -95,6 +113,15 @@ func (s *Service) ReceiveGoods(
 	if in.UUID == uuid.Nil {
 		return Receipt{}, errs.New(errs.CodeInvalidInput,
 			"A delivery must carry an identifier so a retry is not received twice.")
+	}
+
+	basis := in.Basis
+	if basis == "" {
+		basis = "value"
+	}
+	if basis != "value" && basis != "quantity" {
+		return Receipt{}, errs.New(errs.CodeInvalidInput,
+			"Landed cost is spread by value or by quantity.")
 	}
 
 	var out Receipt
@@ -144,11 +171,12 @@ func (s *Service) ReceiveGoods(
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO goods_receipt
 			  (tenant_id, company_id, po_id, warehouse_id, grn_number, uuid,
-			   delivery_note_ref, notes, received_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+			   delivery_note_ref, notes, received_by,
+			   landed_cost, import_vat, landed_cost_basis)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
 			scope.TenantID, scope.CompanyID, in.POID, warehouseID, number,
 			in.UUID, nullText(in.DeliveryNoteRef), nullText(in.Notes),
-			scope.UserID).Scan(&grnID); e != nil {
+			scope.UserID, in.LandedCost, in.ImportVAT, basis).Scan(&grnID); e != nil {
 			return db.Translate(e, "That delivery has already been recorded.")
 		}
 
@@ -156,6 +184,19 @@ func (s *Service) ReceiveGoods(
 			ID: grnID, GRNNumber: number, POID: in.POID, PONumber: poNumber,
 			Lines: []ReceiptLine{},
 		}
+
+		// Resolved in full before anything is written, because allocating
+		// freight by value needs every line's value first — and a line that
+		// turns out not to belong to this order must fail before any stock has
+		// moved rather than halfway through.
+		type resolved struct {
+			line        ReceivedLine
+			variantID   uuid.UUID
+			description string
+			unitCost    decimal.Decimal
+			kept        decimal.Decimal
+		}
+		items := make([]resolved, 0, len(in.Lines))
 
 		for _, line := range in.Lines {
 			if !line.QtyReceived.IsPositive() {
@@ -190,27 +231,63 @@ func (s *Service) ReceiveGoods(
 				return e
 			}
 
+			// Only what was KEPT is costed. Rejected goods are recorded as
+			// having arrived and gone straight back, which is a different fact
+			// from never having come — and the supplier will argue about both.
+			items = append(items, resolved{
+				line: line, variantID: variantID, description: description,
+				unitCost: unitCost, kept: line.QtyReceived.Sub(rejected),
+			})
+		}
+
+		// Freight and duty, spread across what was kept.
+		//
+		// Weighted by value or by quantity as the receipt asked. Rejected goods
+		// carry no share: the shop is not paying to warehouse something it sent
+		// straight back, and loading their freight onto the units it did keep
+		// would overstate those units' cost.
+		weights := make([]decimal.Decimal, len(items))
+		for i, item := range items {
+			switch basis {
+			case "quantity":
+				weights[i] = item.kept
+			default:
+				weights[i] = item.kept.Mul(item.unitCost)
+			}
+		}
+		allocation := allocateLandedCost(in.LandedCost, basis, weights)
+
+		accrued := decimal.Zero
+		for i, item := range items {
+			share := allocation[i]
+
+			// The landed cost raises the UNIT cost, which is what goes into the
+			// cost layers — 10-catalog-and-inventory.md is explicit that
+			// cost_layer.unit_cost includes the allocation. A shop that sold
+			// these units at the pre-freight cost would report a margin it
+			// never earned.
+			unitCost := item.unitCost
+			if item.kept.IsPositive() && share.IsPositive() {
+				unitCost = item.unitCost.Add(share.Div(item.kept)).Round(4)
+			}
+
 			if _, e := tx.Exec(ctx, `
 				INSERT INTO grn_line
 				  (tenant_id, grn_id, po_line_id, variant_id,
-				   qty_received, qty_rejected, reject_reason, unit_cost)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-				scope.TenantID, grnID, line.POLineID, variantID,
-				line.QtyReceived, rejected, nullText(line.RejectReason),
-				unitCost); e != nil {
+				   qty_received, qty_rejected, reject_reason, unit_cost,
+				   landed_cost_alloc)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+				scope.TenantID, grnID, item.line.POLineID, item.variantID,
+				item.line.QtyReceived, item.line.QtyRejected,
+				nullText(item.line.RejectReason), unitCost, share); e != nil {
 				return e
 			}
 
-			// Only what was KEPT goes into stock. Rejected goods are recorded
-			// as having arrived and gone straight back, which is a different
-			// fact from never having come — and the supplier will argue about
-			// both.
-			kept := line.QtyReceived.Sub(rejected)
-			if kept.IsPositive() {
+			if item.kept.IsPositive() {
 				if e := inventory.Receive(ctx, tx, inventory.Receipt{
 					TenantID: scope.TenantID, CompanyID: scope.CompanyID,
-					VariantID: variantID, WarehouseID: warehouseID,
-					Qty: kept, UnitCost: unitCost,
+					VariantID: item.variantID, WarehouseID: warehouseID,
+					Qty: item.kept, UnitCost: unitCost,
 					// The reason migration 0020 already reserved for exactly
 					// this. Naming it anything else would put purchase
 					// receipts outside every stock report that filters on it.
@@ -219,16 +296,25 @@ func (s *Service) ReceiveGoods(
 				}); e != nil {
 					return e
 				}
+				accrued = accrued.Add(item.kept.Mul(unitCost).Round(4))
 			}
 
 			out.Lines = append(out.Lines, ReceiptLine{
-				POLineID: line.POLineID, VariantID: variantID,
-				Description: description,
-				QtyReceived: line.QtyReceived.String(),
-				QtyRejected: rejected.String(),
+				POLineID: item.line.POLineID, VariantID: item.variantID,
+				Description: item.description,
+				QtyReceived: item.line.QtyReceived.String(),
+				QtyRejected: item.line.QtyRejected.String(),
 				UnitCost:    unitCost.String(),
-				Value:       kept.Mul(unitCost).Round(4).String(),
+				Value:       item.kept.Mul(unitCost).Round(4).String(),
 			})
+		}
+
+		// The accrual, for exactly what went into stock. Posted from the value
+		// the costing engine actually recorded rather than from the order, so
+		// the ledger and the valuation cannot disagree.
+		if e := s.postReceiptAccrual(ctx, tx, scope, grnID, time.Now().UTC(),
+			accrued, "Goods received "+number); e != nil {
+			return e
 		}
 
 		status, e := advanceOrderStatus(ctx, tx, in.POID)

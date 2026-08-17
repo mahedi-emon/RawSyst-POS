@@ -44,6 +44,8 @@ export function OrderDetail({
   const [qty, setQty] = useState<Record<string, string>>({});
   const [rejected, setRejected] = useState<Record<string, string>>({});
   const [deliveryRef, setDeliveryRef] = useState('');
+  const [landedCost, setLandedCost] = useState('');
+  const [importVat, setImportVat] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -80,6 +82,8 @@ export function OrderDetail({
       const receipt = await receiveGoods(client, companyId, {
         po_id: order.id,
         delivery_note_ref: deliveryRef || undefined,
+        landed_cost: landedCost.trim() || undefined,
+        import_vat: importVat.trim() || undefined,
         lines,
       });
       setReceiving(false);
@@ -305,6 +309,45 @@ export function OrderDetail({
           </div>
 
           {receiving && (
+            <section className="ds-panel">
+              <div className="ds-panel__head">
+                <h2 className="ds-h3">Costs on this delivery</h2>
+                <span className="ds-caption">optional</span>
+              </div>
+              <div className="ds-panel__body purchase__form">
+                <label className="purchase__field">
+                  <span className="ds-caption">
+                    Freight, duty and handling — spread across the items above
+                    and added to what the stock cost you
+                  </span>
+                  <input
+                    className="input input--narrow"
+                    inputMode="decimal"
+                    value={landedCost}
+                    placeholder="0.00"
+                    aria-label="Freight, duty and handling"
+                    onChange={(e) => setLandedCost(e.target.value)}
+                  />
+                </label>
+                <label className="purchase__field">
+                  <span className="ds-caption">
+                    Import VAT — reclaimed rather than added to the cost of the
+                    stock, so it is kept separate
+                  </span>
+                  <input
+                    className="input input--narrow"
+                    inputMode="decimal"
+                    value={importVat}
+                    placeholder="0.00"
+                    aria-label="Import VAT"
+                    onChange={(e) => setImportVat(e.target.value)}
+                  />
+                </label>
+              </div>
+            </section>
+          )}
+
+          {receiving && (
             <div className="purchase__actions">
               <button
                 className="ds-btn ds-btn--primary"
@@ -321,7 +364,9 @@ export function OrderDetail({
               </button>
               <p className="ds-caption purchase__aside">
                 Recording a delivery puts the goods into stock at the agreed
-                cost. Nothing is owed to the supplier until their bill is entered.
+                cost plus any freight above. The supplier is not owed anything
+                until their bill is entered — until then the value sits as goods
+                received and not invoiced.
               </p>
             </div>
           )}

@@ -60,6 +60,11 @@ var defaultChart = []seedAccount{
 	{"1400", "Inventory", "asset", "inventory", "inventory"},
 
 	{"2100", "Accounts Payable", "liability", "accounts_payable", "payable"},
+	// Goods on the shelf that the supplier has not invoiced yet. Without it the
+	// inventory valuation runs ahead of the Inventory control account for the
+	// whole window between a delivery and its bill, which design 02 §6.6 says
+	// must never happen.
+	{"2150", "Goods Received Not Invoiced", "liability", "grni", ""},
 	{"2200", "Output VAT Payable", "liability", "output_vat", ""},
 	{"2210", "Input VAT Recoverable", "asset", "input_vat", ""},
 	{"2300", "Store Credit Issued", "liability", "store_credit_liability", ""},

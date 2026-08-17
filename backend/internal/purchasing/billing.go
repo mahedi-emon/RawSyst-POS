@@ -265,14 +265,6 @@ func (s *Service) postBill(
 	ctx context.Context, tx pgx.Tx, scope Scope, billID uuid.UUID,
 	billDate time.Time, net, tax, total decimal.Decimal, supplier string,
 ) error {
-	entry := accounting.Entry{
-		TenantID: scope.TenantID, CompanyID: scope.CompanyID,
-		Date: billDate, SourceType: "purchase_bill", SourceID: billID,
-		PostedBy: &scope.UserID,
-		RuleKey:  "purchase.credit",
-		Memo:     "Purchase from " + supplier,
-	}
-
 	var country string
 	if err := tx.QueryRow(ctx,
 		`SELECT country FROM company WHERE id = $1`, scope.CompanyID).
@@ -280,14 +272,49 @@ func (s *Service) postBill(
 		return err
 	}
 
-	result, err := accounting.PostByRule(ctx, tx, entry, country,
-		accounting.Transaction{
-			Amounts: map[string]decimal.Decimal{
-				"net_amount":      net,
-				"tax_amount":      tax,
-				"total_inclusive": total,
-			},
-		})
+	// How much of this bill answers stock already received and accrued.
+	//
+	// Taken from the RECEIPT's own recorded value, not from the bill's, and
+	// capped at what the bill actually claims. A supplier billing a different
+	// price is a discrepancy the three-way match reports; it must not change
+	// how much accrual is discharged, or the accrual would never clear to zero
+	// on the receipt it belongs to.
+	accrued, err := s.accruedFor(ctx, tx, billID)
+	if err != nil {
+		return err
+	}
+	if accrued.GreaterThan(net) {
+		accrued = net
+	}
+
+	// Anything the bill charges beyond what was received and accrued goes
+	// straight to inventory, as it always did. That covers a bill with no
+	// receipt behind it — rent, a utility, a consultant — and the excess on a
+	// bill that overcharges, which is held by the match anyway.
+	unaccrued := net.Sub(accrued)
+
+	rule := "purchase.clear_accrual"
+	if accrued.IsZero() {
+		// Nothing accrued, so nothing to discharge: the original Rule 3, whose
+		// shape is unchanged and whose history stays readable.
+		rule = "purchase.credit"
+	}
+
+	amounts := map[string]decimal.Decimal{
+		"net_amount":       net,
+		"tax_amount":       tax,
+		"total_inclusive":  total,
+		"accrued_amount":   accrued,
+		"unaccrued_amount": unaccrued,
+	}
+
+	result, err := accounting.PostByRule(ctx, tx, accounting.Entry{
+		TenantID: scope.TenantID, CompanyID: scope.CompanyID,
+		Date: billDate, SourceType: "purchase_bill", SourceID: billID,
+		PostedBy: &scope.UserID,
+		RuleKey:  rule,
+		Memo:     "Purchase from " + supplier,
+	}, country, accounting.Transaction{Amounts: amounts})
 	if err != nil {
 		return err
 	}
@@ -481,4 +508,37 @@ func recordMatch(
 		m.Ordered, m.Received, m.Billed, m.Variance, m.VariancePct,
 		m.Outcome, nullText(m.Detail))
 	return err
+}
+
+// accruedFor is how much of a bill answers goods already received and accrued.
+//
+// Per line, by quantity: the receipt's own unit cost — which includes its share
+// of landed cost — times whichever is smaller, what arrived or what is being
+// billed. Using the bill's price instead would let a supplier's overcharge
+// discharge more accrual than was ever raised, and the GRNI balance would drift
+// away from the goods it represents.
+func (s *Service) accruedFor(
+	ctx context.Context, tx pgx.Tx, billID uuid.UUID,
+) (decimal.Decimal, error) {
+	var accrued decimal.Decimal
+	err := tx.QueryRow(ctx, `
+		SELECT coalesce(sum(
+			least(bl.qty_billed, r.received) * r.unit_cost
+		), 0)
+		FROM bill_line bl
+		JOIN (
+			SELECT gl.po_line_id,
+			       sum(gl.qty_received - gl.qty_rejected) AS received,
+			       -- Weighted, because two deliveries against one order line can
+			       -- carry different freight and therefore different unit costs.
+			       CASE WHEN sum(gl.qty_received - gl.qty_rejected) > 0
+			            THEN sum((gl.qty_received - gl.qty_rejected) * gl.unit_cost)
+			                 / sum(gl.qty_received - gl.qty_rejected)
+			            ELSE 0 END AS unit_cost
+			FROM grn_line gl
+			GROUP BY gl.po_line_id
+		) r ON r.po_line_id = bl.po_line_id
+		WHERE bl.bill_id = $1 AND bl.po_line_id IS NOT NULL`,
+		billID).Scan(&accrued)
+	return accrued.Round(4), err
 }

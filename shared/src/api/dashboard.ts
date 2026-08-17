@@ -51,6 +51,9 @@ export interface MoneyPosition {
   unsettled: string;
   receivable: string;
   store_credit: string;
+  /** Goods on the shelves that no supplier has invoiced yet. Money the shop is
+   *  going to owe and has not been asked for. */
+  accrued_purchases: string;
   total: string;
 }
 

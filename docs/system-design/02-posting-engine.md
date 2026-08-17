@@ -194,6 +194,40 @@ Dr  Input VAT Receivable
     Cr  Accounts Payable
 ```
 
+**Rule 3a — Goods received, not yet invoiced** *(added: the documents were silent
+and this was an accounting decision, taken deliberately rather than assumed)*
+
+```
+ON RECEIPT (GRN)
+Dr  Inventory            (net, incl. allocated landed cost)
+    Cr  GRNI accrual
+
+ON THE supplier's BILL
+Dr  GRNI accrual         (what that receipt actually accrued)
+Dr  Input VAT Receivable
+Dr  Inventory            (anything billed beyond what was accrued)
+    Cr  Accounts Payable
+```
+
+**Why this exists.** B5 says only a GRN increases stock; Rule 3 debits Inventory
+on the *bill*. Together they left `inventory_valuation` ahead of the Inventory
+control account for the whole window between a delivery and its invoice — by the
+full value of the receipt, measured at 1600 against 600 on a single ten-unit
+delivery. §6.6 says that divergence must never exist.
+
+**Why it clears on the bill and not at period close.** The accrual then carries a
+real reportable figure at every moment — what is on the shelves and not yet
+invoiced — rather than a balance that is only meaningful after a month-end job
+has run. Clearing at close would also leave Inventory double-counted between the
+bill and the close.
+
+**Discharged from the RECEIPT's value, not the bill's.** A supplier billing a
+different price is a discrepancy the three-way match reports; letting it change
+how much accrual is released would mean the accrual never cleared to zero on the
+receipt it belonged to. Anything billed beyond what was accrued goes to Inventory
+as before, which also covers a bill with no receipt behind it — rent, a utility —
+where `purchase.credit` still applies unchanged.
+
 **Rule 4 — Customer return** — reverses Rules 1 and 2, plus loyalty and commission. See §7.
 
 **Rule 5 — Expense paid in cash**

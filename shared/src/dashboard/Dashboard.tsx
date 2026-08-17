@@ -116,9 +116,16 @@ export function Dashboard({
         </label>
       </header>
 
-      {nothingYet ? (
-        <NoTradingYet date={d.date} />
-      ) : (
+      {/* A quiet day replaces the FIGURES, not the screen.
+       *
+       * It used to replace everything, which meant a shop that had bought
+       * stock and not yet sold any saw "no sales today" and none of its money
+       * position — including what it now owes for the delivery. A browser check
+       * caught it. Cash, stock and what needs attention are all meaningful
+       * before the first sale of the day. */}
+      {nothingYet && <NoTradingYet date={d.date} />}
+
+      {!nothingYet && (
         <>
           <section className="dash__kpis" aria-label="Today at a glance">
             <Kpi
@@ -185,7 +192,10 @@ export function Dashboard({
               }
             />
           </section>
+        </>
+      )}
 
+      <>
           <div className="dash__grid">
             <TenderMix tenders={d.tenders} currency={currency} />
 
@@ -215,6 +225,17 @@ export function Dashboard({
                       label="Store credit held by customers"
                       note="Not counted in the total"
                       amount={d.money.store_credit}
+                      currency={currency}
+                      excluded
+                    />
+                    {/* Not counted either: it is not money the shop holds, it
+                        is money the shop will owe once the invoice arrives.
+                        Shown because an owner reading their payables without it
+                        would think they owed less than they do. */}
+                    <MoneyRow
+                      label="Goods received, not yet invoiced"
+                      note="You will owe this. Not counted in the total"
+                      amount={d.money.accrued_purchases}
                       currency={currency}
                       excluded
                     />
@@ -273,8 +294,7 @@ export function Dashboard({
           </div>
 
           <AttentionList items={d.attention} onOpen={onOpen} />
-        </>
-      )}
+      </>
 
       <NotBuiltYet modules={d.unbuilt} />
     </main>
