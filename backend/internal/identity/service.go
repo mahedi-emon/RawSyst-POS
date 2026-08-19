@@ -51,6 +51,15 @@ type Credentials struct {
 	// a caller naming one that does not exist. Nothing here trusts the value
 	// beyond narrowing a query.
 	TenantID *uuid.UUID
+
+	// DeviceID binds this session to the terminal it was opened on.
+	//
+	// Resolved by the handler from the terminal's own secret, never taken from
+	// the request body — a cashier must not be able to name a till they are not
+	// standing at. Present only when signing in on a paired terminal, and it is
+	// what lets a sale record which till rang it up and which chain it belongs
+	// to.
+	DeviceID uuid.UUID
 }
 
 // Session is what a successful sign-in returns.
@@ -239,6 +248,7 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 	} else {
 		a.IsSuperAdmin = true
 	}
+	a.DeviceID = c.DeviceID
 
 	refreshToken, refreshHash, err := NewRefreshToken()
 	if err != nil {
@@ -252,11 +262,13 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 	err = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO user_session
-			  (id, tenant_id, user_id, device_label, ip, user_agent, expires_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+			  (id, tenant_id, user_id, device_label, ip, user_agent, expires_at,
+			   device_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 			a.SessionID, tenantID, userID, nullIfEmpty(c.Device),
 			nullIfEmpty(c.IP), nullIfEmpty(c.UserAgent),
-			time.Now().Add(s.tokens.RefreshTTL())); err != nil {
+			time.Now().Add(s.tokens.RefreshTTL()),
+			nullDevice(c.DeviceID)); err != nil {
 			return err
 		}
 		// Generation 1 of this session's refresh chain. See migration 0007.
@@ -347,17 +359,21 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (Session, er
 		tokenExp   time.Time
 		usedAt     *time.Time
 		revokedAt  *time.Time
+		// The terminal this session was opened on, so a refresh mid-shift keeps
+		// the binding rather than silently handing the till a token with no
+		// terminal on it.
+		deviceID *uuid.UUID
 	)
 
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			SELECT t.id, t.session_id, s.user_id, s.tenant_id, t.generation,
-			       t.expires_at, t.used_at, s.revoked_at
+			       t.expires_at, t.used_at, s.revoked_at, s.device_id
 			FROM session_refresh_token t
 			JOIN user_session s ON s.id = t.session_id
 			WHERE t.token_hash = $1`, hash).
 			Scan(&tokenID, &sessionID, &userID, &tenantID, &generation,
-				&tokenExp, &usedAt, &revokedAt)
+				&tokenExp, &usedAt, &revokedAt, &deviceID)
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -388,6 +404,9 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (Session, er
 		a.TenantID = *tenantID
 	} else {
 		a.IsSuperAdmin = true
+	}
+	if deviceID != nil {
+		a.DeviceID = *deviceID
 	}
 
 	newToken, newHash, err := NewRefreshToken()
@@ -686,4 +705,13 @@ func (s *Service) candidatesFor(
 		return nil, db.Translate(err, "")
 	}
 	return out, nil
+}
+
+// nullDevice keeps "signed in from a browser" distinct from "signed in on the
+// zero terminal", which is not a terminal at all.
+func nullDevice(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
 }

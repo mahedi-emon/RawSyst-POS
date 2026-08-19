@@ -25,12 +25,34 @@ func GrantsFrom(ctx context.Context) *Grants {
 
 // Middleware carries the dependencies the auth middlewares need.
 type Middleware struct {
-	tokens *TokenService
-	authz  *Authorizer
+	tokens  *TokenService
+	authz   *Authorizer
+	devices DeviceChecker
+}
+
+// DeviceChecker reports whether a paired terminal may still act.
+//
+// An interface rather than a direct dependency because the devices package
+// already imports this one for password hashing, and a cycle would be the
+// price of the convenience. It also keeps the middleware testable without a
+// terminal.
+type DeviceChecker interface {
+	Active(ctx context.Context, deviceID uuid.UUID) error
 }
 
 func NewMiddleware(tokens *TokenService, authz *Authorizer) *Middleware {
 	return &Middleware{tokens: tokens, authz: authz}
+}
+
+// WithDevices makes device-bound tokens subject to the terminal's current
+// status on every request.
+//
+// Without it a token issued to a till keeps working until it expires, which for
+// a terminal revoked because it was stolen is the wrong answer by up to its
+// full lifetime.
+func (m *Middleware) WithDevices(d DeviceChecker) *Middleware {
+	m.devices = d
+	return m
 }
 
 // Authenticate verifies the bearer token and attaches the actor and grants.
@@ -52,6 +74,16 @@ func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 		if err != nil {
 			httpx.Error(w, r, err)
 			return
+		}
+
+		// A device-bound token is only as good as the terminal behind it, right
+		// now. Same reasoning as resolving permissions per request rather than
+		// trusting what the token said when it was minted.
+		if act.DeviceID != uuid.Nil && m.devices != nil {
+			if err := m.devices.Active(r.Context(), act.DeviceID); err != nil {
+				httpx.Error(w, r, err)
+				return
+			}
 		}
 
 		ctx := actor.Into(r.Context(), act)

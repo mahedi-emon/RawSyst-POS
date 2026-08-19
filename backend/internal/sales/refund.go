@@ -128,6 +128,20 @@ func (s *Service) ProcessReturn(
 		return Refunded{}, err
 	}
 
+	// Taking a refund off the account only means something if there is an
+	// account. Allowing it against a cash sale would credit the receivable
+	// control with nobody's balance behind it, and C9.3's tie-out would fail by
+	// exactly that amount.
+	if original.customerID == nil {
+		for _, r := range ret.Refunds {
+			if r.Method == "customer_due" {
+				return Refunded{}, errs.New(errs.CodeInvalidInput,
+					"That sale was not on account, so nothing can be taken off "+
+						"an account. Refund to cash, to the original card, or as store credit.")
+			}
+		}
+	}
+
 	// 1. Inventory restored — quantity AND value. The value is exactly the cost
 	//    being reversed, so the valuation and the Inventory account move
 	//    together.
@@ -234,6 +248,11 @@ type originalInvoice struct {
 	docType  string
 	currency string
 	fxRate   decimal.Decimal
+
+	// customerID is carried onto the credit note so a return appears in the
+	// customer's history, and so a refund taken off the account reduces the
+	// balance of the customer who owes it rather than nobody's.
+	customerID *uuid.UUID
 }
 
 func (s *Service) originalInvoice(
@@ -241,9 +260,9 @@ func (s *Service) originalInvoice(
 ) (originalInvoice, error) {
 	var out originalInvoice
 	err := tx.QueryRow(ctx, `
-		SELECT id, doc_type, currency, fx_rate FROM sales_invoice
+		SELECT id, doc_type, currency, fx_rate, customer_id FROM sales_invoice
 		WHERE id = $1 AND tenant_id = $2`, id, term.TenantID).
-		Scan(&out.id, &out.docType, &out.currency, &out.fxRate)
+		Scan(&out.id, &out.docType, &out.currency, &out.fxRate, &out.customerID)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Under row-level security another tenant's invoice reads as absent,
@@ -340,16 +359,16 @@ func (s *Service) writeCreditNote(
 		  (tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   parent_invoice_id, issue_date, issued_at, currency, fx_rate,
 		   subtotal_net, discount_total, tax_total, total_inclusive, state,
-		   cash_session_id, human_number)
+		   cash_session_id, human_number, customer_id)
 		VALUES ($1,$2,$3,$4,$5,'credit_note',$6,$7,$8,$9,$10,$11,$12,$13,$14,
-		        $15,$16,$17)
+		        $15,$16,$17,$18)
 		RETURNING id`,
 		term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		ret.CreditNoteUUID, original.id, ret.IssuedAt, ret.IssuedAt,
 		original.currency, original.fxRate,
 		computed.SubtotalNet, computed.DiscountTotal,
 		computed.TaxTotal, computed.TotalInclusive, state,
-		term.CashSessionID, humanNumber).Scan(&creditNoteID)
+		term.CashSessionID, humanNumber, original.customerID).Scan(&creditNoteID)
 	if err != nil {
 		return uuid.Nil, db.Translate(err, "That credit note could not be issued.")
 	}

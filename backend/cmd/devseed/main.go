@@ -183,6 +183,34 @@ func seedShop(
 			return err
 		}
 
+		// A till, so a developer can ring up a sale rather than only look at
+		// screens that report sales. Without one the POS routes have no terminal
+		// to resolve, and the whole sell-on-account-then-collect journey cannot
+		// be exercised outside the test suite.
+		//
+		// The EGS unit owns the ZATCA counter and hash chain, which E1.3 puts on
+		// the device itself — so a device without one could not take a sale at
+		// all, and the two are seeded together.
+		var egsUnitID uuid.UUID
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO egs_unit
+			  (tenant_id, company_id, store_id, label, architecture)
+			VALUES ($1, $2, $3, 'till-1', 'smart_pos') RETURNING id`,
+			tenantID, companyID, storeID).Scan(&egsUnitID); err != nil {
+			return err
+		}
+		// PENDING, not active. Since 0037 a terminal earns its status by being
+		// paired: an active device with no credential is a till that looks ready
+		// and cannot authenticate, which is worse than one that plainly needs
+		// setting up. Pair it from Devices in the back office.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO device
+			  (tenant_id, company_id, store_id, terminal_label, status, egs_unit_id)
+			VALUES ($1, $2, $3, 'Till 1', 'pending', $4)`,
+			tenantID, companyID, storeID, egsUnitID); err != nil {
+			return err
+		}
+
 		// A handful of products, so the order form's item search has something
 		// to find. Named plainly rather than with lorem ipsum: somebody looking
 		// at this screen should be able to tell at a glance that it is demo data.

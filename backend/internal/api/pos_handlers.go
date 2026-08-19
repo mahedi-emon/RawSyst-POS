@@ -60,6 +60,11 @@ type createSaleRequest struct {
 	PricesIncludeTax *bool  `json:"prices_include_tax"`
 	InvoiceDiscount  string `json:"invoice_discount"`
 
+	// CustomerID is optional and usually absent — a shop does not ask a name to
+	// sell a bottle of water. It becomes required the moment a tender is
+	// `customer_due`, which the sales service enforces.
+	CustomerID string `json:"customer_id"`
+
 	Lines   []posLineRequest   `json:"lines"`
 	Tenders []posTenderRequest `json:"tenders"`
 }
@@ -131,6 +136,15 @@ func (s *Server) buildSale(
 		docType = "simplified"
 	}
 
+	customerID, err := parseOptionalUUID(req.CustomerID, "customer_id")
+	if err != nil {
+		return sales.Sale{}, err
+	}
+	var customer *uuid.UUID
+	if customerID != uuid.Nil {
+		customer = &customerID
+	}
+
 	// TaxRate and Rules are deliberately left unset. The service resolves them
 	// from the Regulatory Rule Registry against the company's country at the
 	// transaction date — a till does not get to state a legal value, and a
@@ -195,10 +209,11 @@ func (s *Server) buildSale(
 		IssuedAt:    issuedAt,
 		// Currency is left unset for the same reason as the tax rate: it is the
 		// company's base currency, not the till's choice.
-		Input:     in,
-		Lines:     refs,
-		Tenders:   tenders,
-		CashierID: &userID,
+		Input:      in,
+		Lines:      refs,
+		Tenders:    tenders,
+		CustomerID: customer,
+		CashierID:  &userID,
 		// StockPolicy is deliberately left unset. Whether a till may sell past
 		// what is on hand belongs to the company (C13), and the service reads
 		// it from there — a handler that supplied a default would let a request

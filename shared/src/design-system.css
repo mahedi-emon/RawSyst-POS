@@ -467,3 +467,41 @@ body {
  * is flipped back to keep "later" on the side the eye expects after mirroring
  * the surrounding layout. */
 [dir='rtl'] .ds-sparkline { transform: scaleX(-1); }
+
+/* --- Labels only a screen reader needs ------------------------------------
+ *
+ * A control whose purpose is obvious from its placeholder or its position still
+ * needs a name in the accessibility tree, and `aria-label` cannot always carry
+ * it — a <label> element is what associates text with an input for every
+ * assistive technology, not only the ones that read ARIA well.
+ *
+ * Clipped rather than `display: none` or `visibility: hidden`, both of which
+ * remove the element from the tree entirely and so defeat the purpose.
+ */
+.ds-visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: -1px;
+}
+
+/* A destructive action that sits INSIDE a row.
+ *
+ * `ds-btn--danger` is the filled button a confirmation dialog ends with; this
+ * is its quiet relative, for the control that OPENS that dialog. A row of
+ * filled red buttons makes a list look like a list of problems, and a
+ * destructive action that looks identical to Edit gets pressed by accident.
+ */
+.ds-btn--warn {
+  color: var(--danger);
+}
+
+.ds-btn--warn:hover:not(:disabled) {
+  background: var(--danger-subtle);
+  border-color: var(--danger);
+}

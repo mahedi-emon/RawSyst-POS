@@ -89,6 +89,24 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		UserAgent: r.UserAgent(),
 		Device:    req.Device,
 	}
+
+	// Signing in ON a paired terminal binds the session to it, so every sale
+	// records which till rang it up and which ZATCA chain it belongs to.
+	//
+	// Resolved from the terminal's own secret, never from anything the request
+	// body says — otherwise a cashier could name a till they are not standing
+	// at, and the chain would be wrong in a way nothing downstream could catch.
+	// A bad secret refuses the sign-in outright rather than quietly falling back
+	// to an unbound session: a till that has lost its pairing must say so, not
+	// carry on looking normal until the first sale fails.
+	if secret := r.Header.Get(DeviceSecretHeader); secret != "" {
+		id, e := s.devices.Authenticate(r.Context(), secret)
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		creds.DeviceID = id.DeviceID
+	}
 	if req.TenantID != "" {
 		chosen, e := parseUUID(req.TenantID, "tenant_id")
 		if e != nil {

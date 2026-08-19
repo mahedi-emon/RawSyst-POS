@@ -27,7 +27,9 @@ The three most volatile items. Each blocks a phase from shipping.
 
 | # | Item | Registry key | Tier 1 source | Blocks | Why it's dangerous |
 |---|---|---|---|---|---|
-| A1 | 🚫 **ZATCA XML / QR schema version** | `SA.ZATCA.XML_SCHEMA_VERSION`, `SA.ZATCA.QR_TLV_FIELDS` | ZATCA **XML Implementation Standard** + **Security Features Implementation Standard** | **Phase 1** | Must match the schema ZATCA currently accepts. Wrong bytes = invoices rejected at scale. The system records which version each archived invoice was signed under |
+| A1 | 🚫 **ZATCA XML / QR schema version** | `SA.ZATCA.QR_TLV_FIELDS`, `SA.ZATCA.UBL_FIELD_SET`, `SA.ZATCA.XML_CANONICALIZATION` | ZATCA **XML Implementation Standard** + **Security Features Implementation Standard** | **Phase 1** | Must match the schema ZATCA currently accepts. Wrong bytes = invoices rejected at scale. The system records which version each archived invoice was signed under |
+
+A1 was originally one row against `SA.ZATCA.XML_SCHEMA_VERSION` and `SA.ZATCA.HASH_ALGORITHM`. Migration 0012 verified part of each — that submission is XML only under standard v1.2, and that the hash is SHA-256 with half-up rounding — and in doing so stamped `verified_on` on both, which removed them from `registry.Health`'s blocking list along with the parts nobody had read. Migration 0044 split the unanswered halves back out under their own keys, which are the ones named above. The two partly-verified rules stay verified for what they actually establish.
 | A2 | 🚫 **Mudad wage-file format** | `SA.WPS.WAGE_FILE_FORMAT_SPEC` | Mudad live specification (`mudad.com.sa`) | **Phase 3** | *"File layouts change without publicity."* Pull immediately before build **and re-check before every payroll release** |
 | A3 | 🚫 **GOSI rate schedule** | `SA.GOSI.RATES` | GOSI current schedule (`gosi.gov.sa`) | **Phase 3** | On a legislated upward path. Must be a **complete dated schedule through 2028**, not one current figure |
 
@@ -70,12 +72,19 @@ Every one of these currently sits in the registry with `verified_on = NULL`.
 - [ ] **Input VAT recoverability** restrictions — entertainment, certain vehicles, fuel
 
 ### ZATCA
-- [ ] 🚫 XML schema version currently accepted
-- [ ] 🚫 QR TLV field set and byte layout
-- [ ] 🚫 Hash algorithm and canonicalization method
-- [ ] Simplified reporting window — **24 hours**
-- [ ] **Whether any offline tolerance exists for Standard invoices** — blueprint E1.3 line 855 flags this as explicitly unverified and it constrains the B2B offline policy
-- [ ] CSID renewal interval
+
+A desk verification on **2026-08-15** closed several of these; see §F for what was
+read and by whom. The boxes below are ticked only where the registry rule now
+carries a `verified_on` AND the finding covers the whole of the item.
+
+- [x] Submission format and standard version — XML only, v1.2; PDF/A-3 is not accepted for submission (`SA.ZATCA.XML_SCHEMA_VERSION`)
+- [ ] 🚫 Mandatory UBL 2.1 field set, cardinality and business rules (`SA.ZATCA.UBL_FIELD_SET`)
+- [ ] 🚫 QR TLV field set and byte layout (`SA.ZATCA.QR_TLV_FIELDS`)
+- [x] Hash algorithm and rounding — SHA-256, half-up on the third decimal (`SA.ZATCA.HASH_ALGORITHM`)
+- [ ] 🚫 Canonicalization method applied before hashing (`SA.ZATCA.XML_CANONICALIZATION`)
+- [x] Simplified reporting window — **24 hours** (`SA.ZATCA.REPORTING_WINDOW_HOURS`)
+- [x] **Whether any offline tolerance exists for Standard invoices** — there is an official extended-outage route: an *uncleared* invoice, with three obligations attached (`SA.ZATCA.STANDARD_OFFLINE_TOLERANCE`, schema change in 0013)
+- [x] CSID renewal interval — no fixed term is published; the certificate's own `NotAfter` governs, capped at 60 months (`SA.ZATCA.CSID_RENEWAL_DAYS`)
 - [ ] Current wave definitions and deadlines
 
 ### PDPL
@@ -145,6 +154,9 @@ Three specific framings the blueprint mandates:
 
 | Date | Item(s) | Verified by | Source document + version | Notes / discrepancies found |
 |---|---|---|---|---|
-| | | | | |
+| 2026-08-15 | ZATCA submission format and standard version; hash algorithm and rounding; CSID validity; simplified reporting window; standard-invoice offline route; VAT record retention; mandatory registration threshold | Founder desk verification. **Not** a tax advisor or legal counsel — §D remains open | XML Implementation Standard v1.2 (2023-05-19) §7.3; Detailed Guideline V2 §4.1.2(b), §4.2.2(c), §6.5, §10; Technical Guideline V2 §3.2.2, §3.3.3, §3.5, §4.3; Security Features Implementation Standard v1.2 (2023-05-19) §2.2.2 | Six design assumptions were wrong and were corrected: PDF/A-3 is not accepted for submission; the CSID belongs to an EGS unit and not to a device (schema change, 0013); there is an official uncleared-invoice route for an extended B2B outage (0013); no fixed CSID term is published; unit price carries no decimal limit while line totals do; the CSR requires nine specific fields. Recorded in migration 0012 and in `ZATCA E-Invoicing Phase 2.md`. The primary PDFs are **not** archived in this repository, so the citations are re-checkable only against ZATCA's published copies |
+| 2026-08-19 | Correction to the above, not a new verification | Founder | — | 0012 stamped `verified_on` on `SA.ZATCA.XML_SCHEMA_VERSION` and `SA.ZATCA.HASH_ALGORITHM` while answering only part of each, which silently removed both from `registry.Health`'s blocking list. Migration 0044 split the unanswered halves into `SA.ZATCA.UBL_FIELD_SET` and `SA.ZATCA.XML_CANONICALIZATION`, both unverified blockers. Nothing was verified on this date |
 
 Keep this table filled in. It is the evidence that verification actually happened — useful in an audit, and the only way to know what is safe to rely on.
+
+A row here is not professional sign-off. §D is a separate gate and no row in this table closes it: reading a standard establishes what it says, and a Saudi tax advisor accepting responsibility for the reading is a different act.

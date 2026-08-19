@@ -1,0 +1,355 @@
+// Creating an e-invoicing unit, and correcting one.
+//
+// The form is in two parts, and the split is the point. The top part is what a
+// shop must decide — a name, how signing works, which branch — and it is short
+// because those are the only choices that cannot be put off. The bottom part is
+// the nine fields ZATCA asks for when the unit is registered, and every one of
+// them is optional here, because a till that cannot be set up until somebody
+// has found the business's industry classification is a till that does not
+// trade today.
+//
+// # The architecture is chosen once
+//
+// It decides where the private signing key lives (Technical Guideline V2 §3.5),
+// and moving that under a chain that already exists is not a correction. So it
+// is offered on creation and shown as a fact afterwards.
+//
+// # Nothing here claims a certificate
+//
+// There is no field for a CSID, because the server has no route that accepts
+// one. The unit's certification state is reported, never entered.
+
+import { useState } from 'react';
+
+import { Offline, RequestFailed } from '../api/client';
+import {
+  amendEgsUnit,
+  createEgsUnit,
+  emptyCsr,
+  type Architecture,
+  type Csr,
+  type EgsUnit,
+} from '../api/egs';
+import type { DeviceStore } from '../api/devices';
+import { useAuth } from '../auth/session';
+import {
+  Field,
+  FormActions,
+  FormError,
+  SelectInput,
+  TextInput,
+  type FieldErrors,
+} from '../ui/Form';
+import {
+  architectures,
+  architectureName,
+  invoiceTypes,
+  organizationUnitProblem,
+  vatNumberProblem,
+} from './egs';
+
+export function EgsUnitForm({
+  companyId,
+  stores,
+  existing,
+  onSaved,
+  onCancel,
+}: {
+  companyId: string;
+  stores: DeviceStore[];
+  /** The unit being corrected. Absent when creating one. */
+  existing?: EgsUnit;
+  onSaved: (unit: EgsUnit) => void;
+  onCancel: () => void;
+}) {
+  const { client } = useAuth();
+
+  const [label, setLabel] = useState(existing?.label ?? '');
+  const [architecture, setArchitecture] = useState<Architecture>(
+    existing?.architecture ?? 'smart_pos',
+  );
+  const [storeId, setStoreId] = useState(
+    existing?.store_id ?? (stores.length === 1 ? stores[0]!.id : ''),
+  );
+  const [csr, setCsr] = useState<Csr>(existing?.csr ?? emptyCsr);
+
+  const [fields, setFields] = useState<FieldErrors>({});
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const central = architecture === 'centralized_server';
+  const set = (key: keyof Csr) => (v: string) => setCsr((c) => ({ ...c, [key]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+
+    // Cheap checks to save a round trip, never the only ones: the same rules
+    // run in Go and, for the two formats, in the database.
+    const local: FieldErrors = {};
+    if (!label.trim()) local.label = 'Give this unit a name, like "Main branch".';
+    if (!central && !storeId) local.store_id = 'Say which branch this unit is in.';
+
+    const vat = vatNumberProblem(csr.organization_identifier);
+    if (vat) local['csr.organization_identifier'] = vat;
+    const member = organizationUnitProblem(csr);
+    if (member) local['csr.organization_unit'] = member;
+
+    if (Object.keys(local).length > 0) {
+      setFields(local);
+      setFailure(null);
+      return;
+    }
+
+    setBusy(true);
+    setFields({});
+    setFailure(null);
+    try {
+      const body = { label: label.trim(), store_id: central ? undefined : storeId, csr };
+      onSaved(
+        existing
+          ? await amendEgsUnit(client, companyId, existing.id, body)
+          : await createEgsUnit(client, companyId, { ...body, architecture }),
+      );
+    } catch (err) {
+      if (err instanceof Offline) {
+        setFailure(
+          'This device cannot reach the server, so nothing was saved. ' +
+            'Try again when the connection is back.',
+        );
+      } else if (err instanceof RequestFailed) {
+        if (err.fields) setFields(err.fields);
+        setFailure(err.fields ? null : err.message);
+      } else {
+        setFailure(err instanceof Error ? err.message : 'That did not save.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
+      <div className="ds-panel__head">
+        <h2 className="ds-h3">{existing ? existing.label : 'New e-invoicing unit'}</h2>
+      </div>
+
+      <div className="ds-panel__body form__body">
+        <FormError message={failure} />
+
+        <div className="form__grid">
+          <Field
+            label="Name"
+            htmlFor="egs-label"
+            required
+            error={fields.label}
+            hint="What you call this unit. It appears wherever a terminal names the unit it signs under."
+          >
+            <TextInput
+              id="egs-label"
+              value={label}
+              onChange={setLabel}
+              placeholder="Main branch"
+              error={fields.label}
+              autoFocus
+            />
+          </Field>
+
+          {existing ? (
+            <Field
+              label="How it signs"
+              htmlFor="egs-arch-fixed"
+              required
+              hint="Chosen when the unit was created. It decides where the signing key is held, so it cannot be changed afterwards."
+            >
+              <p className="ds-panel__body" id="egs-arch-fixed">
+                {architectureName(existing.architecture)}
+              </p>
+            </Field>
+          ) : (
+            <Field
+              label="How it signs"
+              htmlFor="egs-arch"
+              required
+              error={fields.architecture}
+              hint={architectures.find((a) => a.id === architecture)?.description}
+            >
+              <SelectInput
+                id="egs-arch"
+                value={architecture}
+                onChange={(v) => setArchitecture(v as Architecture)}
+                options={architectures}
+                label={(a) => a.name}
+                error={fields.architecture}
+              />
+            </Field>
+          )}
+
+          {!central && (
+            <Field
+              label="Branch"
+              htmlFor="egs-store"
+              required
+              error={fields.store_id}
+              hint="This unit signs for the tills in this branch."
+            >
+              <SelectInput
+                id="egs-store"
+                value={storeId}
+                onChange={setStoreId}
+                options={stores}
+                label={(s) => s.name}
+                placeholder="Choose a branch"
+                error={fields.store_id}
+              />
+            </Field>
+          )}
+        </div>
+
+        <div className="ds-panel__head">
+          <h3 className="ds-h3">Registration details</h3>
+          <p className="ds-caption">
+            ZATCA asks for all nine of these when the unit is registered. You can
+            save now and fill them in later — the unit will say what is still
+            outstanding.
+          </p>
+        </div>
+
+        <div className="form__grid">
+          <Field
+            label="Unit name for the certificate"
+            htmlFor="csr-cn"
+            error={fields['csr.common_name']}
+            hint="The name this unit is identified by on its certificate."
+          >
+            <TextInput
+              id="csr-cn"
+              value={csr.common_name}
+              onChange={set('common_name')}
+              error={fields['csr.common_name']}
+            />
+          </Field>
+
+          <Field
+            label="Serial number"
+            htmlFor="csr-serial"
+            error={fields['csr.egs_serial_number']}
+            hint="Who made this unit, which version it is, and its serial — written as 1-Manufacturer|2-Model|3-Serial."
+          >
+            <TextInput
+              id="csr-serial"
+              value={csr.egs_serial_number}
+              onChange={set('egs_serial_number')}
+              placeholder="1-RawSyst|2-POS|3-000001"
+              error={fields['csr.egs_serial_number']}
+            />
+          </Field>
+
+          <Field
+            label="VAT number"
+            htmlFor="csr-vat"
+            error={fields['csr.organization_identifier']}
+            hint="Your 15-digit Saudi VAT registration number."
+          >
+            <TextInput
+              id="csr-vat"
+              value={csr.organization_identifier}
+              onChange={set('organization_identifier')}
+              inputMode="numeric"
+              placeholder="300000000000003"
+              error={fields['csr.organization_identifier']}
+            />
+          </Field>
+
+          <Field
+            label="Branch or group member"
+            htmlFor="csr-ou"
+            error={fields['csr.organization_unit']}
+            hint="Normally the branch name. If your VAT number belongs to a VAT group, use the 10-digit tax number of the member being registered instead."
+          >
+            <TextInput
+              id="csr-ou"
+              value={csr.organization_unit}
+              onChange={set('organization_unit')}
+              error={fields['csr.organization_unit']}
+            />
+          </Field>
+
+          <Field
+            label="Registered business name"
+            htmlFor="csr-org"
+            error={fields['csr.organization_name']}
+            hint="As it appears on your VAT certificate."
+          >
+            <TextInput
+              id="csr-org"
+              value={csr.organization_name}
+              onChange={set('organization_name')}
+              error={fields['csr.organization_name']}
+            />
+          </Field>
+
+          <Field label="Country" htmlFor="csr-country" error={fields['csr.country']}>
+            <TextInput
+              id="csr-country"
+              value={csr.country}
+              onChange={set('country')}
+              placeholder="SA"
+              error={fields['csr.country']}
+            />
+          </Field>
+
+          <Field
+            label="Invoices issued"
+            htmlFor="csr-type"
+            error={fields['csr.invoice_type']}
+            hint="Standard invoices go to business customers and are cleared before you hand them over. Simplified invoices are the receipts a walk-in customer takes."
+          >
+            <SelectInput
+              id="csr-type"
+              value={csr.invoice_type}
+              onChange={set('invoice_type')}
+              options={invoiceTypes}
+              label={(t) => t.name}
+              placeholder="Choose"
+              error={fields['csr.invoice_type']}
+            />
+          </Field>
+
+          <Field
+            label="Address"
+            htmlFor="csr-location"
+            error={fields['csr.location']}
+            hint="Where this unit is."
+          >
+            <TextInput
+              id="csr-location"
+              value={csr.location}
+              onChange={set('location')}
+              error={fields['csr.location']}
+            />
+          </Field>
+
+          <Field
+            label="Industry"
+            htmlFor="csr-industry"
+            error={fields['csr.industry']}
+            hint="What the business does, such as Retail or Restaurant."
+          >
+            <TextInput
+              id="csr-industry"
+              value={csr.industry}
+              onChange={set('industry')}
+              error={fields['csr.industry']}
+            />
+          </Field>
+        </div>
+
+        <FormActions
+          submitLabel={existing ? 'Save changes' : 'Add unit'}
+          busy={busy}
+          onCancel={onCancel}
+        />
+      </div>
+    </form>
+  );
+}

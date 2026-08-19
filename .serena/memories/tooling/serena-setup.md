@@ -55,5 +55,33 @@ Serena is launched as `serena start-mcp-server --context claude-code --project-f
 1. **Memories** — work regardless of language servers. The 148 KB blueprint is distilled into `blueprint/*`, so no session re-reads it. This has been working since the beginning.
 2. **Symbolic code tools** — need the above to be right. Reading one function body instead of a 400-line file.
 
+## Cursor launches it differently from Claude Code
+
+Both clients are supported; only the launch line differs.
+
+| Client | Launch |
+|---|---|
+| Claude Code | `serena start-mcp-server --context claude-code --project-from-cwd` |
+| Cursor | `~/.cursor/mcp.json`, `--context ide-assistant --project "D:\RawSyst POS"` |
+
+Three things learned wiring up Cursor on 2026-08-19:
+
+1. **Cursor reads the GLOBAL `~/.cursor/mcp.json`, not the project's `.cursor/mcp.json`.** A project-level file was written first and silently ignored — other MCP servers reloaded while Serena never appeared. Keep exactly one entry, in the global file, or a future Cursor version that does read project config will register the server twice.
+2. **The server must be enabled by hand** in Settings > MCP & Integrations. An agent cannot toggle it on, so "config written" is not "server available".
+3. **`--context ide-assistant` exposes 19 tools, not 26.** `read_file`, `list_dir`, `find_file`, `search_for_pattern` and `execute_shell_command` are dropped because the IDE supplies them. The symbolic tools and the memories — the two things that actually save tokens — are all present.
+
+### The health check exits 1 even when it passes
+`serena project health-check` ends with `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'`. That is the CLI failing to print a tick to a cp1252 console **after** the check already succeeded. Read the log, not the exit code:
+
+```powershell
+# want: view_type="GoWork"  and  'Health check completed successfully'
+# bad:  view_type="AdHoc"
+Select-String -Path (Get-ChildItem .serena\logs\health-checks\*.log |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName `
+  -Pattern 'view_type|Health check completed'
+```
+
+`PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` are set in the mcp.json `env` block so the same encoding fault cannot take down the server's logging mid-session.
+
 ## Related
 [[design/index]] · [[code/backend-state]] · [[architecture/decisions]]

@@ -32,11 +32,25 @@ const (
 	saltLen      = 16
 )
 
-// HashPassword returns an encoded argon2id hash.
+// HashPassword returns an encoded argon2id hash, enforcing the password policy.
 func HashPassword(plain string) (string, error) {
 	if err := ValidatePasswordStrength(plain); err != nil {
 		return "", err
 	}
+	return HashSecret(plain)
+}
+
+// HashSecret hashes a MACHINE credential with the same parameters and none of
+// the password policy.
+//
+// A terminal enrolment code is eight characters because a person has to read it
+// off one screen and type it into another; a device secret is thirty-two
+// because nobody ever types it. Neither is a human password, and running them
+// through a rule written for one — "at least 12 characters, a phrase you can
+// remember" — would reject the first and give misleading advice about the
+// second. What they share with a password is that a database copy must not
+// yield working credentials, which is what the hash is for.
+func HashSecret(plain string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", errs.Wrap(err, errs.CodeInternal, "Could not secure the password.")

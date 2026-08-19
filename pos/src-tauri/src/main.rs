@@ -10,6 +10,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod enrolment;
 mod keystore;
 mod signing;
 
@@ -45,7 +46,18 @@ fn sign_invoice(payload: String) -> Result<signing::SignedDocument, signing::Sig
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![terminal_capabilities, sign_invoice])
+        .invoke_handler(tauri::generate_handler![
+            terminal_capabilities,
+            sign_invoice,
+            // Terminal credential custody (H3). None of these returns the
+            // device secret — see enrolment.rs.
+            enrolment::terminal_keystore_available,
+            enrolment::terminal_is_paired,
+            enrolment::terminal_pair,
+            enrolment::terminal_identity,
+            enrolment::terminal_sign_in,
+            enrolment::terminal_forget,
+        ])
         .run(tauri::generate_context!())
         .expect("the RawSyst POS terminal failed to start");
 }

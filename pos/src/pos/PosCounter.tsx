@@ -37,6 +37,14 @@ import {
 } from './cart';
 import type { OfflineSalePayload } from '../offline/queue';
 import type { HeldCart } from './held';
+import { CustomerPicker } from './CustomerPicker';
+import {
+  accountTender,
+  creditVerdict,
+  mayOfferAccount,
+  type CounterCustomer,
+} from './customer';
+import { major, minor } from '@rawsyst/shared/receivables/receivables';
 import { buildReceipt, renderReceipt, type Receipt } from './receipt';
 
 /** The VAT rate shown while ringing up.
@@ -61,10 +69,37 @@ export function PosCounter() {
   const [parked, setParked] = useState<HeldCart[]>([]);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
+  // Who the sale is for. Absent for the overwhelming majority of sales — a
+  // shop does not ask a name to sell a bottle of water — and REQUIRED the
+  // moment any part of it goes on account.
+  const [customer, setCustomer] = useState<CounterCustomer | null>(null);
+  const [picking, setPicking] = useState(false);
+
   const totals = useMemo(() => totalCart(lines, DISPLAY_RATE), [lines]);
   const owed = outstanding(totals.totalInclusive, tenders);
   const canFinish =
     lines.length > 0 && settled(totals.totalInclusive, tenders) && !busy;
+
+  // What this sale would put on the customer's account, across however many
+  // tenders. Only this part draws down the limit: a sale half in cash and
+  // half on account owes the second half, and checking the total would
+  // refuse sales that are perfectly affordable.
+  //
+  // BigInt minor units, never `Number(x) * 100` — float64 cannot hold 0.15,
+  // and a credit check that drifted would eventually refuse a sale that
+  // exactly reaches the limit, the commonest case in a shop with round
+  // limits.
+  const onAccount = useMemo(
+    () =>
+      tenders
+        .filter((t) => t.method === 'customer_due')
+        .reduce((sum, t) => sum + minor(t.amount), 0n),
+    [tenders],
+  );
+  const accountOffer = accountTender(customer, owed, major(onAccount));
+  // Judged against the whole on-account portion, so a second tender cannot
+  // slip past a check that only looked at the first.
+  const verdict = creditVerdict(customer, major(onAccount));
 
   // The scan path. Local cache FIRST, network only as a fallback.
   //
@@ -185,10 +220,21 @@ export function PosCounter() {
 
   async function finishSale() {
     if (!canFinish || !me) return;
+
+    // Refused HERE so the goods do not leave before anybody finds out. The
+    // server checks again under a row lock on the customer and is the
+    // authority — 11-pos-and-sales.md §5 says a breach is refused, not
+    // warned about — but a cashier who only discovered it on sync would
+    // already have handed the bag over.
+    if (onAccount > 0n && verdict.kind !== 'ok') {
+      setNotice(verdict.message);
+      return;
+    }
+
     setBusy(true);
     setNotice(null);
     try {
-      const payload = buildPayload(lines, tenders, me.user_id);
+      const payload = buildPayload(lines, tenders, me.user_id, customer);
       await terminal.record(payload);
       // The sale is durable at this point. Whether it has reached the server
       // is a separate question the queue answers on its own.
@@ -216,7 +262,12 @@ export function PosCounter() {
       );
       setLines([]);
       setTenders([]);
-      setNotice('Sale complete.');
+      setCustomer(null);
+      setNotice(
+        onAccount > 0n && customer
+          ? `Sale complete. ${major(onAccount)} added to the account of ${customer.name}.`
+          : 'Sale complete.',
+      );
     } catch (err) {
       setNotice(
         err instanceof Error
@@ -250,6 +301,56 @@ export function PosCounter() {
             aria-label="Scan a barcode"
           />
         </form>
+
+        {/* Who the sale is for. Always present, so a cashier never has to
+            hunt for it mid-sale, and never insistent — the overwhelming
+            majority of sales have no customer and the row stays quiet
+            about it. */}
+        <div className="who">
+          {customer ? (
+            <>
+              <span className="who__name">{customer.name}</span>
+              <span className="who__meta">
+                {customer.creditLimit ? (
+                  <>
+                    <span className="num">{customer.available || '0.00'}</span>
+                    {' available'}
+                    {customer.stale && ' (as at last sync)'}
+                  </>
+                ) : (
+                  'Pays at the till'
+                )}
+              </span>
+              <button
+                className="button button--quiet"
+                onClick={() => setPicking(true)}
+              >
+                Change
+              </button>
+              <button
+                className="button button--quiet"
+                onClick={() => {
+                  setCustomer(null);
+                  // Any on-account tender belonged to the customer who has
+                  // just been removed. Leaving it would attach their debt
+                  // to whoever is chosen next, or to nobody at all.
+                  setTenders((prev) =>
+                    prev.filter((t) => t.method !== 'customer_due'),
+                  );
+                }}
+              >
+                Remove
+              </button>
+            </>
+          ) : (
+            <button
+              className="button button--quiet who__choose"
+              onClick={() => setPicking(true)}
+            >
+              Add a customer
+            </button>
+          )}
+        </div>
 
         {notice && (
           <p className="counter__notice" role="status" aria-live="polite">
@@ -371,7 +472,71 @@ export function PosCounter() {
               {method === 'cash' ? 'Cash' : 'Mada'}
             </button>
           ))}
+
+          {/* Offered only to a customer who actually has an account,
+              because a button that always refuses teaches a cashier to
+              distrust the rest of them. It fills in whichever is SMALLER —
+              what is still owed on the sale, or what is left on the account
+              — so a part payment on account is one press rather than a
+              calculation. */}
+          {mayOfferAccount(customer) && (
+            <button
+              className="button button--large tenders__account"
+              disabled={
+                lines.length === 0 || owed === '0.00' || accountOffer === '0.00'
+              }
+              onClick={() =>
+                setTenders((prev) => [
+                  ...prev,
+                  { method: 'customer_due', amount: accountOffer },
+                ])
+              }
+              title={
+                accountOffer === '0.00'
+                  ? 'Nothing further can go on this account.'
+                  : undefined
+              }
+            >
+              On account
+              <span className="tenders__hint num">{accountOffer}</span>
+            </button>
+          )}
         </div>
+
+        {/* The credit position, stated whenever any part of the sale is
+            going on account. A cashier must be able to read the reason out
+            to the customer rather than saying "the computer says no". */}
+        {onAccount > 0n && (
+          <p
+            className={`credit${verdict.kind === 'ok' ? '' : ' credit--bad'}`}
+            role="status"
+            aria-live="polite"
+          >
+            {verdict.message}
+          </p>
+        )}
+
+        {/* What has been taken so far, so a mistake can be undone before
+            the sale is finished rather than reversed after it. */}
+        {tenders.length > 0 && (
+          <ul className="taken" aria-label="Payments taken">
+            {tenders.map((t, i) => (
+              <li key={`${t.method}-${i}`} className="taken__row">
+                <span>{tenderLabel(t.method)}</span>
+                <span className="num">{t.amount}</span>
+                <button
+                  className="button button--quiet"
+                  onClick={() =>
+                    setTenders((prev) => prev.filter((_, j) => j !== i))
+                  }
+                  aria-label={`Remove the ${tenderLabel(t.method)} payment`}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* Shown only to a cashier who holds the permission. The server
             refuses it regardless of what this screen offered. */}
@@ -407,11 +572,24 @@ export function PosCounter() {
           onClick={() => {
             setLines([]);
             setTenders([]);
+            setCustomer(null);
             setNotice(null);
           }}
         >
           Clear
         </button>
+
+        {picking && (
+          <CustomerPicker
+            customers={terminal.customers}
+            onChoose={(chosen) => {
+              setCustomer(chosen);
+              setPicking(false);
+              setNotice(null);
+            }}
+            onClose={() => setPicking(false)}
+          />
+        )}
 
         {receipt && (
           <section className="receipt" aria-label="Receipt">
@@ -450,12 +628,17 @@ function buildPayload(
   lines: CartLine[],
   tenders: CartTender[],
   cashierId: string,
+  customer: CounterCustomer | null,
 ): OfflineSalePayload {
   return {
     invoice_uuid: crypto.randomUUID(),
     doc_type: 'simplified',
     issued_at: new Date().toISOString(),
     cashier_id: cashierId,
+    // Sent only when there is one. An empty string would be a malformed
+    // identifier rather than an absent customer, and the server rightly
+    // refuses to guess which was meant.
+    ...(customer ? { customer_id: customer.id } : {}),
     prices_include_tax: true,
     lines: lines.map((l) => ({
       variant_id: l.variantId,
@@ -467,4 +650,18 @@ function buildPayload(
     })),
     tenders: tenders.map((t) => ({ method: t.method, amount: t.amount })),
   };
+}
+
+/** A tender method in the words a cashier uses for it. */
+function tenderLabel(method: string): string {
+  switch (method) {
+    case 'cash':
+      return 'Cash';
+    case 'mada':
+      return 'Mada';
+    case 'customer_due':
+      return 'On account';
+    default:
+      return method.replace(/_/g, ' ');
+  }
 }

@@ -14,6 +14,26 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Terminal credential custody (H3). The OS secure store — Windows Credential
+# Manager, the macOS Keychain, the Secret Service on Linux — so the device
+# secret is never in the SQLite file, in a config file, or in the web layer.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+
+# Used only by enrolment.rs, for the two calls that must carry the device
+# secret. Everything else the terminal does goes through the web layer.
+#
+# native-tls rather than rustls, deliberately. On Windows that is schannel — the
+# same OS trust store the rest of the machine uses, so a shop that installs a
+# corporate root certificate does not have to install it twice, and there is no
+# second TLS stack to keep patched. It also avoids pulling a C/assembly crypto
+# build into a terminal that otherwise needs no C toolchain.
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+
+[dev-dependencies]
+# Only for tests/pairing.rs, the by-hand verification harness. The commands
+# themselves run under the runtime Tauri brings.
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+
 [features]
 # Production builds carry no development affordances. Listed explicitly so a
 # release cannot pick one up by accident.

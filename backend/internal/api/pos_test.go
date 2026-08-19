@@ -30,6 +30,7 @@ type shopFixture struct {
 	companyID   uuid.UUID
 	storeID     uuid.UUID
 	warehouseID uuid.UUID
+	egsUnitID   uuid.UUID
 	deviceID    uuid.UUID
 	variantID   uuid.UUID
 	userID      uuid.UUID
@@ -76,18 +77,17 @@ func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
 			return e
 		}
 
-		var egsUnitID uuid.UUID
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO egs_unit (tenant_id, company_id, store_id, label, architecture)
 			VALUES ($1,$2,$3,'till-1','smart_pos') RETURNING id`,
-			f.tenantID, f.companyID, f.storeID).Scan(&egsUnitID); e != nil {
+			f.tenantID, f.companyID, f.storeID).Scan(&f.egsUnitID); e != nil {
 			return e
 		}
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO device
 			  (tenant_id, company_id, store_id, terminal_label, status, egs_unit_id)
 			VALUES ($1,$2,$3,'Till 1','active',$4) RETURNING id`,
-			f.tenantID, f.companyID, f.storeID, egsUnitID).Scan(&f.deviceID); e != nil {
+			f.tenantID, f.companyID, f.storeID, f.egsUnitID).Scan(&f.deviceID); e != nil {
 			return e
 		}
 

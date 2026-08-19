@@ -11,6 +11,8 @@ import { App } from './App';
 import { AuthProvider } from '@rawsyst/shared/auth/session';
 // The design system first: it defines the tokens everything else consumes.
 import '@rawsyst/shared/design-system.css';
+import { signIn as signInOnTerminal } from './offline/credential';
+
 import './styles.css';
 import '@rawsyst/shared/dashboard/dashboard.css';
 
@@ -21,8 +23,13 @@ if (!root) throw new Error('the application root is missing from the page');
 
 createRoot(root).render(
   <React.StrictMode>
-    <AuthProvider baseUrl={baseUrl}>
-      <App />
+    <AuthProvider
+      baseUrl={baseUrl}
+      // A till signs in through the shell so the device secret can be attached
+      // without ever entering this layer. See offline/credential.ts.
+      signInWith={(email, password) => signInOnTerminal(baseUrl, email, password)}
+    >
+      <App apiBaseUrl={baseUrl} />
     </AuthProvider>
   </React.StrictMode>,
 );

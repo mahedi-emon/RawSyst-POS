@@ -32,8 +32,11 @@ import { ExpensesDetailScreen } from '@rawsyst/shared/dashboard/ExpensesDetailSc
 import { ComplianceScreen } from '@rawsyst/shared/dashboard/ComplianceScreen';
 import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
 import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
+import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
+import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
+import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 
-type Section = 'dashboard' | 'buying';
+type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing';
 
 export function BackOffice() {
   const { status, me, signOut, client } = useAuth();
@@ -60,6 +63,17 @@ export function BackOffice() {
   );
   const mayReadFigures = may('accounting.view');
   const mayBuy = may('purchasing.view');
+  // A Cashier holds customers.view, so this section is reachable from a till
+  // login as well as from an owner's. What each of them may DO inside it is
+  // decided by the routes, not by the nav.
+  const maySeeCustomers = may('customers.view');
+  // A store manager holds this too: a till that dies mid-trade cannot wait for
+  // an owner to answer their phone.
+  const maySeeDevices = may('devices.view');
+  // Separate from devices.view: an EGS unit carries the VAT registration the
+  // invoice chain hangs from, so an accountant reads it and a store manager
+  // sees it without being able to create one.
+  const maySeeEInvoicing = may('einvoicing.view');
 
   // Keyed on the TENANT, not just on being signed in.
   //
@@ -94,8 +108,12 @@ export function BackOffice() {
   // rather than on a permission-denied panel they have to navigate out of.
   useEffect(() => {
     if (!me) return;
-    if (!mayReadFigures && mayBuy) setSection('buying');
-  }, [me, mayReadFigures, mayBuy]);
+    if (mayReadFigures) return;
+    if (mayBuy) setSection('buying');
+    else if (maySeeCustomers) setSection('customers');
+    else if (maySeeDevices) setSection('devices');
+    else if (maySeeEInvoicing) setSection('einvoicing');
+  }, [me, mayReadFigures, mayBuy, maySeeCustomers, maySeeDevices, maySeeEInvoicing]);
 
   if (status === 'restoring') {
     return (
@@ -120,6 +138,9 @@ export function BackOffice() {
   const sections: Array<{ key: Section; label: string; shown: boolean }> = [
     { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
     { key: 'buying', label: 'Buying', shown: mayBuy },
+    { key: 'customers', label: 'Customers', shown: maySeeCustomers },
+    { key: 'devices', label: 'Terminals', shown: maySeeDevices },
+    { key: 'einvoicing', label: 'E-invoicing', shown: maySeeEInvoicing },
   ];
   const visible = sections.filter((s) => s.shown);
 
@@ -183,6 +204,12 @@ export function BackOffice() {
         <NoCompany loading={companies === null} />
       ) : section === 'buying' && mayBuy ? (
         <PurchasingScreen companyId={activeCompany} />
+      ) : section === 'customers' && maySeeCustomers ? (
+        <CustomersScreen companyId={activeCompany} />
+      ) : section === 'devices' && maySeeDevices ? (
+        <DevicesScreen companyId={activeCompany} />
+      ) : section === 'einvoicing' && maySeeEInvoicing ? (
+        <EgsUnitsScreen companyId={activeCompany} />
       ) : mayReadFigures ? (
         <DashboardArea
           companyId={activeCompany}

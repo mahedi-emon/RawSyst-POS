@@ -729,3 +729,203 @@
   font-weight: 500;
   text-align: start;
 }
+
+/* --- Customer accounts ---------------------------------------------------- */
+
+/* An input holding a value the form already knows is wrong. Mirrors
+ * `.field--bad .input` for the case where the input is a table cell rather than
+ * a labelled field, so the two look the same to a reader. */
+.input--bad { border-color: var(--danger); }
+
+.customer__filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.customer__search { inline-size: min(20rem, 100%); }
+
+/* Owed, limit and available, side by side.
+ *
+ * Three figures rather than one, because "owed" alone leaves a cashier at the
+ * counter doing the subtraction in their head — and getting it wrong there is
+ * how a shop discovers it has extended credit it never agreed to. */
+.customer__standing {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.customer__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 8rem;
+}
+
+.customer__amount {
+  font-size: 1.35rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* The sentence that says what the three figures mean together. Sits beside them
+ * rather than under, so it is read as part of the same statement. */
+.customer__standingnote {
+  margin: 0;
+  flex: 1 1 14rem;
+  align-self: center;
+  font-size: 0.93rem;
+  color: var(--text-muted);
+}
+
+/* Anything other than "credit available" is worth reading, so it stops being
+ * grey. Not coloured red — an account near its limit is normal business, not an
+ * error — just no longer recessive. */
+.customer__standingnote--flag {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.customer__limitform {
+  border-block-start: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.customer__limitrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.customer__limitrow .input { inline-size: min(12rem, 100%); }
+
+/* --- Allocating a receipt ------------------------------------------------- */
+
+.receipt__caption {
+  text-align: start;
+  padding-block: var(--space-3);
+  caption-side: top;
+}
+
+.receipt__alloc {
+  inline-size: 8rem;
+  text-align: end;
+  font-family: var(--font-mono);
+}
+
+/* On a phone the standing figures stack rather than shrinking to unreadable
+ * widths, and the note goes underneath where a stacked layout reads it. */
+@media (max-width: 40rem) {
+  .customer__standing { gap: var(--space-4); }
+  .customer__figure { min-inline-size: 6rem; }
+  .customer__standingnote { flex-basis: 100%; align-self: flex-start; }
+}
+
+/* --- Pairing a terminal ---------------------------------------------------
+ *
+ * One job: get eight characters from this screen onto a keyboard across the
+ * shop, correctly, before they expire.
+ */
+.pairing { display: grid; gap: var(--space-4); }
+
+.pairing__steps {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+
+/* Large, monospaced, and split into the groups it was issued in. Somebody is
+ * reading this aloud or carrying it in their head to another machine. */
+.pairing__code {
+  margin: 0;
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pairing__group {
+  font-family: var(--font-mono);
+  font-size: clamp(1.75rem, 6vw, 2.75rem);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  /* The trailing letter-space would otherwise push the group off centre. */
+  padding: var(--space-3) var(--space-4) var(--space-3)
+    calc(var(--space-4) + 0.18em);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  /* A code is Latin characters in both directions of script. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.pairing__code--dead .pairing__group {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  border-style: dashed;
+}
+
+.pairing__expiry { margin: 0; color: var(--text-muted); }
+.pairing__expiry--soon { color: var(--danger); font-weight: 500; }
+
+.pairing__expiry--dead {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border-inline-start: 3px solid var(--danger);
+}
+
+/* Said once, quietly, and not dressed up as a warning banner. A shop owner who
+ * sees a red box every time stops reading them. */
+.pairing__note {
+  margin: 0;
+  font-size: 0.93rem;
+  color: var(--text-muted);
+}
+
+/* --- A confirmation that interrupts --------------------------------------
+ *
+ * Only for the irreversible one. Everything else in this product changes state
+ * inline, because an interruption that appears for reversible actions trains
+ * people to dismiss it.
+ */
+.dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(17 20 26 / 45%);
+}
+
+.dialog {
+  inline-size: min(30rem, 100%);
+  max-block-size: 86vh;
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgb(17 20 26 / 24%);
+}
+
+.dialog__body { margin: 0; color: var(--text); }
+.dialog .ds-h3 { margin: 0; }
+
+@media (max-width: 40rem) {
+  .dialog { padding: var(--space-4); }
+  .pairing__group { letter-spacing: 0.12em; }
+}

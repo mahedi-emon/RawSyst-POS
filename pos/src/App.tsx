@@ -14,7 +14,7 @@
 // M7 proves it. But it matters for usability — a nav full of items that refuse
 // you teaches people to distrust the whole bar.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
 import { useAuth } from '@rawsyst/shared/auth/session';
@@ -29,18 +29,72 @@ import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
 import { TerminalBanner } from './pos/TerminalBanner';
 import { terminalCapabilities, type Capabilities } from './pos/terminal';
+import { PairingScreen, TerminalBlocked } from './pos/PairingScreen';
+import {
+  available as keystoreAvailable,
+  faultFrom,
+  identify,
+  isPaired,
+  type PairingFault,
+  type TerminalIdentity,
+} from './offline/credential';
 
 type Screen = 'dashboard' | 'sell' | 'return' | 'buying';
 
-export function App() {
+/** Where this machine stands with the server, before anybody signs in. */
+type Pairing =
+  | { state: 'checking' }
+  | { state: 'unpaired' }
+  | { state: 'blocked'; fault: PairingFault }
+  | { state: 'ready'; identity: TerminalIdentity }
+  /** Not a till at all — a browser during development, where there is no
+   *  keystore to hold a credential. The counter still works against the live
+   *  API; nothing is durable and nothing can be paired. */
+  | { state: 'not_a_terminal' };
+
+export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { status, me, signOut, client } = useAuth();
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [pairing, setPairing] = useState<Pairing>({ state: 'checking' });
   const [companies, setCompanies] = useState<Company[] | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
 
   useEffect(() => {
     terminalCapabilities().then(setCaps).catch(() => setCaps(null));
   }, []);
+
+  // Asked on startup and re-asked on demand. The server is the authority on
+  // whether this terminal may work, and it answers with WHICH state it is in —
+  // revoked, switched off, or unrecognised — so the screen can say the right
+  // thing rather than a generic failure.
+  const checkPairing = useCallback(async () => {
+    setPairing({ state: 'checking' });
+    if (!(await keystoreAvailable())) {
+      setPairing({ state: 'not_a_terminal' });
+      return;
+    }
+    if (!(await isPaired())) {
+      setPairing({ state: 'unpaired' });
+      return;
+    }
+    try {
+      setPairing({ state: 'ready', identity: await identify(apiBaseUrl) });
+    } catch (err) {
+      const fault = faultFrom(err);
+      // Offline is not blocked. A till that has been paired must keep trading
+      // through a dead connection — that is the whole offline-first design —
+      // so an unreachable server leaves it working on what it already knows.
+      setPairing(
+        fault.kind === 'offline'
+          ? { state: 'ready', identity: { device_id: '', terminal_label: '', store_id: '', company_id: '' } }
+          : { state: 'blocked', fault },
+      );
+    }
+  }, [apiBaseUrl]);
+
+  useEffect(() => {
+    void checkPairing();
+  }, [checkPairing]);
 
   const may = useMemo(
     () => (permission: string) => me?.permissions.includes(permission) ?? false,
@@ -92,11 +146,46 @@ export function App() {
     };
   }, [client, me, mayReadFigures, mayBuy]);
 
-  if (status === 'restoring') {
+  // Pairing is decided BEFORE sign-in, and that order matters. A cashier who
+  // signed in first and only then learned the till was revoked would have given
+  // their password to a machine that cannot trade — and on a revoked terminal,
+  // possibly to somebody else's machine entirely.
+  if (pairing.state === 'checking' || status === 'restoring') {
     return (
       <main className="splash" aria-busy="true">
         <p>Checking this terminal…</p>
       </main>
+    );
+  }
+
+  if (pairing.state === 'unpaired') {
+    return (
+      <PairingScreen
+        apiBaseUrl={apiBaseUrl}
+        onPaired={() => void checkPairing()}
+      />
+    );
+  }
+
+  if (pairing.state === 'blocked') {
+    const { fault } = pairing;
+    return (
+      <TerminalBlocked
+        title={
+          fault.kind === 'revoked'
+            ? 'This terminal has been revoked'
+            : fault.kind === 'paused'
+              ? 'This terminal is switched off'
+              : 'This terminal is not recognised'
+        }
+        message={
+          'message' in fault
+            ? fault.message
+            : 'Ask an owner to check it under Terminals in the back office.'
+        }
+        onRetry={() => void checkPairing()}
+        busy={false}
+      />
     );
   }
 

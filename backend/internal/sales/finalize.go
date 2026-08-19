@@ -14,6 +14,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
@@ -93,6 +94,12 @@ type Sale struct {
 	Input   SaleInput
 	Lines   []SaleLineRef
 	Tenders []Tender
+
+	// CustomerID names who this was sold to. Optional for a cash sale — a shop
+	// does not ask for a name to sell a bottle of water — and REQUIRED the
+	// moment any part of the sale goes on account, because a receivable nobody
+	// owes cannot be collected and would break C9.3's tie-out.
+	CustomerID *uuid.UUID
 
 	CashierID *uuid.UUID
 
@@ -196,6 +203,13 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 	if err := checkTendersCoverTheSale(computed.TotalInclusive, sale.Tenders); err != nil {
+		return Finalized{}, err
+	}
+
+	// Credit is checked BEFORE the chain is touched. A refused sale must not
+	// consume an ICV: the counter cannot be handed back and a gap in the ZATCA
+	// chain is permanent, so every reason to refuse has to be found first.
+	if err := s.checkCredit(ctx, tx, sale); err != nil {
 		return Finalized{}, err
 	}
 
@@ -385,14 +399,14 @@ func (s *Service) writeInvoice(
 		  (id, tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   issue_date, issued_at, currency, fx_rate,
 		   subtotal_net, discount_total, tax_total, total_inclusive, state,
-		   cash_session_id, human_number)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		   cash_session_id, human_number, customer_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 		invoiceID, term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		sale.InvoiceUUID, sale.DocType,
 		sale.IssuedAt, sale.IssuedAt, sale.Currency, rate,
 		computed.SubtotalNet, computed.DiscountTotal,
 		computed.TaxTotal, computed.TotalInclusive, initialState(sale.DocType),
-		term.CashSessionID, humanNumber); err != nil {
+		term.CashSessionID, humanNumber, sale.CustomerID); err != nil {
 		return db.Translate(err, "That sale could not be recorded.")
 	}
 
@@ -537,6 +551,47 @@ func (s *Service) post(
 		return revenue, cogs, err
 	}
 	return revenue, cogs, nil
+}
+
+// checkCredit refuses a sale that puts more on a customer's account than they
+// are allowed to owe.
+//
+// 11-pos-and-sales.md §5 is explicit that customer_due "is refused when it would
+// breach the customer's credit limit (B16)" — refused, not warned about, so
+// there is no override at the till. An owner who wants the sale raises the limit,
+// which is a separate permission and leaves a record of who decided.
+//
+// The policy itself lives in the receivables package, which owns the customer
+// record and the balance. Asking it rather than reimplementing the rule here
+// keeps one answer to "may they owe this?" — the same reason costing lives in
+// the inventory package rather than at the till.
+func (s *Service) checkCredit(ctx context.Context, tx pgx.Tx, sale Sale) error {
+	onAccount := decimal.Zero
+	for _, t := range sale.Tenders {
+		if t.Method == "customer_due" {
+			onAccount = onAccount.Add(t.Amount)
+		}
+	}
+	if !onAccount.IsPositive() {
+		return nil
+	}
+
+	if sale.CustomerID == nil {
+		return errs.New(errs.CodeInvalidInput,
+			"A sale on account has to say who owes it. Choose a customer, or take payment now.")
+	}
+
+	decision, err := receivables.CheckCredit(ctx, tx, *sale.CustomerID, onAccount)
+	if err != nil {
+		return err
+	}
+	if !decision.Allowed {
+		// CodeConflict rather than CodeInvalidInput: nothing the till sent is
+		// malformed. The state of the account is what refuses the sale, and a
+		// cashier needs to be told the numbers, not that they mistyped.
+		return errs.New(errs.CodeConflict, decision.Reason)
+	}
+	return nil
 }
 
 // tenderRole says which account a payment method lands in.

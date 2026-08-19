@@ -71,9 +71,24 @@ function saveSession(s: Session | null) {
 export function AuthProvider({
   baseUrl,
   children,
+  signInWith,
 }: {
   baseUrl: string;
   children: ReactNode;
+  /**
+   * How to exchange a password for a session, when the ordinary way will not do.
+   *
+   * The POS passes one. A till has to sign in with its device secret attached
+   * so the session is bound to the terminal and every sale records which one
+   * rang it up — and that secret lives in the OS keystore where this layer
+   * cannot reach it, so the exchange happens in the Tauri shell instead.
+   *
+   * Absent everywhere else, which is every browser: the back office has no
+   * terminal to bind to.
+   */
+  /** Returning null means "not a terminal after all" — sign in the ordinary
+   *  way. That is a browser during development, never a real till. */
+  signInWith?: (email: string, password: string) => Promise<Session | null>;
 }) {
   const client = useMemo(() => new Client(baseUrl, loadSession()), [baseUrl]);
 
@@ -116,6 +131,22 @@ export function AuthProvider({
       setStatus('signing_in');
       setError(null);
       try {
+        // On a terminal the exchange happens in the shell, because the device
+        // secret it must carry is not reachable from here. A till belongs to
+        // one business through its pairing, so the tenant-choice branch below
+        // cannot arise on this path.
+        const bound = signInWith ? await signInWith(email, password) : null;
+        if (bound) {
+          const session = bound;
+          setTenantChoices([]);
+          client.setSession(session);
+          saveSession(session);
+          const profile = await client.me();
+          setMe(profile);
+          setStatus('signed_in');
+          return;
+        }
+
         const outcome = await client.login(email, password, tenantId);
 
         // The server needs to know which business. No session exists yet, so
@@ -152,7 +183,7 @@ export function AuthProvider({
     setMe(null);
     setTenantChoices([]);
     setStatus('signed_out');
-  }, [client]);
+  }, [client, signInWith]);
 
   const can = useCallback(
     (permission: string) => me?.permissions.includes(permission) ?? false,

@@ -66,6 +66,9 @@ export interface OfflineSalePayload {
   issued_at: string;
   cashier_id?: string;
   warehouse_id?: string;
+  /** Who owes it, when any part of the sale went on account. Absent on a cash
+   *  sale, which is the overwhelming majority. */
+  customer_id?: string;
   prices_include_tax?: boolean;
   invoice_discount?: string;
   lines: Array<{

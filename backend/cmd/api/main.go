@@ -15,6 +15,8 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/api"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
@@ -22,6 +24,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
@@ -98,7 +101,12 @@ func run() error {
 	syncEngine := sync.NewEngine(pool)
 	syncEngine.Register("sales_invoice", sales.NewSaleApplier(salesSvc))
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool),
+	deviceSvc := devices.NewService(pool)
+	// Device-bound tokens become subject to the terminal's CURRENT status, so a
+	// revoked till stops working immediately rather than when its token expires.
+	mw = mw.WithDevices(deviceSvc)
+
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool),
 		func() error { return pool.Health(ctx) }, version)
 
 	handler := srv.Handler(

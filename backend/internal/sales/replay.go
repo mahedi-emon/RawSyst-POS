@@ -73,6 +73,12 @@ type offlineSale struct {
 	WarehouseID string `json:"warehouse_id"`
 	CashierID   string `json:"cashier_id"`
 
+	// CustomerID is who owes it, when any part of the sale went on account.
+	// Carried through the queue because the credit-limit check and the
+	// receivable both need it, and a sale that arrived without it would post to
+	// the control account with nobody's balance behind it.
+	CustomerID string `json:"customer_id"`
+
 	PricesIncludeTax *bool  `json:"prices_include_tax"`
 	InvoiceDiscount  string `json:"invoice_discount"`
 
@@ -171,6 +177,15 @@ func (a *SaleApplier) build(p offlineSale, item sync.Item) (Sale, uuid.UUID, err
 		return Sale{}, uuid.Nil, err
 	}
 
+	customerID, err := optionalUUID(p.CustomerID, "customer")
+	if err != nil {
+		return Sale{}, uuid.Nil, err
+	}
+	var customer *uuid.UUID
+	if customerID != uuid.Nil {
+		customer = &customerID
+	}
+
 	docType := p.DocType
 	if docType == "" {
 		docType = "simplified"
@@ -180,6 +195,7 @@ func (a *SaleApplier) build(p offlineSale, item sync.Item) (Sale, uuid.UUID, err
 		InvoiceUUID: invoiceUUID,
 		DocType:     docType,
 		IssuedAt:    issuedAt,
+		CustomerID:  customer,
 		Input: SaleInput{
 			PricesIncludeTax: p.PricesIncludeTax == nil || *p.PricesIncludeTax,
 		},

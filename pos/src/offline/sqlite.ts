@@ -24,6 +24,11 @@ import type {
   CatalogueCursor,
   CatalogueStore,
 } from './catalogue';
+import type {
+  CachedCustomer,
+  CustomerCursor,
+  CustomerStore,
+} from './customers';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS queued_sale (
@@ -83,6 +88,44 @@ CREATE TABLE IF NOT EXISTS catalogue_cursor (
 );
 INSERT OR IGNORE INTO catalogue_cursor (id) VALUES (1);
 
+-- The customers this terminal can attach a sale to with no network.
+--
+-- A cache, like the catalogue, and the balance in it is stale by design: it
+-- moves with every sale and receipt rather than with the customer's own
+-- updated_at, so a delta cannot keep it current. The till uses it to decide
+-- what to OFFER; the server re-reads the real figure under a row lock and is
+-- the authority on whether a sale may go on account.
+--
+-- No address, no email, no notes. A cache on every till in the shop holds what
+-- selling needs and nothing more, for the same reason this one holds no cost
+-- price.
+CREATE TABLE IF NOT EXISTS cached_customer (
+  id                 TEXT PRIMARY KEY,
+  code               TEXT NOT NULL,
+  name               TEXT NOT NULL,
+  name_ar            TEXT NOT NULL DEFAULT '',
+  customer_type      TEXT NOT NULL DEFAULT 'retail',
+  phone              TEXT NOT NULL DEFAULT '',
+  payment_terms_days INTEGER NOT NULL DEFAULT 0,
+  credit_limit       TEXT NOT NULL DEFAULT '',
+  balance            TEXT NOT NULL DEFAULT '0.00',
+  available          TEXT NOT NULL DEFAULT '',
+  is_active          INTEGER NOT NULL DEFAULT 1,
+  updated_at         TEXT NOT NULL
+);
+
+-- A counter looks a customer up by phone more than by anything else.
+CREATE INDEX IF NOT EXISTS cached_customer_phone
+  ON cached_customer (phone) WHERE phone <> '';
+CREATE INDEX IF NOT EXISTS cached_customer_name ON cached_customer (name);
+
+CREATE TABLE IF NOT EXISTS customer_cursor (
+  id       INTEGER PRIMARY KEY CHECK (id = 1),
+  since    TEXT,
+  since_id TEXT
+);
+INSERT OR IGNORE INTO customer_cursor (id) VALUES (1);
+
 -- Carts parked mid-sale. NOT sales: no invoice UUID, no ICV, no stock, no
 -- journal entry. A held cart is a note about what somebody was buying, which
 -- is why it never leaves the terminal.
@@ -117,6 +160,7 @@ export async function openLocalStore(): Promise<LocalStores> {
   return {
     queue: new SqliteQueueStore(db),
     catalogue: new SqliteCatalogueStore(db),
+    customers: new SqliteCustomerStore(db),
     held: new SqliteHeldCartStore(db),
   };
 }
@@ -127,6 +171,7 @@ export async function openLocalStore(): Promise<LocalStores> {
 export interface LocalStores {
   queue: SqliteQueueStore;
   catalogue: SqliteCatalogueStore;
+  customers: SqliteCustomerStore;
   held: SqliteHeldCartStore;
 }
 
@@ -424,5 +469,127 @@ function toHeld(row: HeldRow): HeldCart {
     total: row.total,
     itemCount: row.item_count,
     heldAt: row.held_at,
+  };
+}
+
+/** The cached customer book, in SQLite.
+ *
+ * Small next to the catalogue — a shop sells to everybody but extends credit to
+ * a few — so the search is a plain LIKE over the three things a cashier types:
+ * a name, a code, or the phone number the customer reads out.
+ */
+export class SqliteCustomerStore implements CustomerStore {
+  constructor(private readonly db: Database) {}
+
+  /** Upsert, for the same reason the catalogue's is: a customer arrives again
+   *  every time their details or their terms change, and a page re-downloaded
+   *  after a crash must not fail on the primary key. */
+  async upsert(customers: CachedCustomer[]): Promise<void> {
+    for (const c of customers) {
+      await this.db.execute(
+        `INSERT INTO cached_customer
+           (id, code, name, name_ar, customer_type, phone, payment_terms_days,
+            credit_limit, balance, available, is_active, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT(id) DO UPDATE SET
+           code = excluded.code,
+           name = excluded.name,
+           name_ar = excluded.name_ar,
+           customer_type = excluded.customer_type,
+           phone = excluded.phone,
+           payment_terms_days = excluded.payment_terms_days,
+           credit_limit = excluded.credit_limit,
+           balance = excluded.balance,
+           available = excluded.available,
+           is_active = excluded.is_active,
+           updated_at = excluded.updated_at`,
+        [
+          c.id, c.code, c.name, c.nameAr, c.customerType, c.phone,
+          c.paymentTermsDays, c.creditLimit, c.balance, c.available,
+          c.isActive ? 1 : 0, c.updatedAt,
+        ],
+      );
+    }
+  }
+
+  /** Active customers only: this is a cashier choosing who to sell to, not
+   *  identifying somebody already in front of them. A retired customer must
+   *  not appear in a picker — the server would refuse the sale anyway. */
+  async search(term: string, limit: number): Promise<CachedCustomer[]> {
+    const like = `%${term}%`;
+    const rows = await this.db.select<CustomerRow[]>(
+      `SELECT * FROM cached_customer
+       WHERE is_active = 1
+         AND (name LIKE $1 OR name_ar LIKE $1 OR code LIKE $1 OR phone LIKE $1)
+       ORDER BY name LIMIT $2`,
+      [like, limit],
+    );
+    return rows.map(toCustomer);
+  }
+
+  /** By id, INCLUDING retired — a sale in progress may already name somebody
+   *  who was retired since, and the counter has to be able to say so. */
+  async find(id: string): Promise<CachedCustomer | null> {
+    const rows = await this.db.select<CustomerRow[]>(
+      `SELECT * FROM cached_customer WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    const row = rows[0];
+    return row ? toCustomer(row) : null;
+  }
+
+  async cursor(): Promise<CustomerCursor | null> {
+    const rows = await this.db.select<Array<{ since: string | null; since_id: string | null }>>(
+      `SELECT since, since_id FROM customer_cursor WHERE id = 1`,
+    );
+    const row = rows[0];
+    if (!row?.since || !row.since_id) return null;
+    return { since: row.since, sinceId: row.since_id };
+  }
+
+  async setCursor(cursor: CustomerCursor): Promise<void> {
+    await this.db.execute(
+      `UPDATE customer_cursor SET since = $1, since_id = $2 WHERE id = 1`,
+      [cursor.since, cursor.sinceId],
+    );
+  }
+
+  async count(): Promise<number> {
+    const rows = await this.db.select<Array<{ n: number }>>(
+      `SELECT COUNT(*) AS n FROM cached_customer`,
+    );
+    return rows[0]?.n ?? 0;
+  }
+}
+
+interface CustomerRow {
+  id: string;
+  code: string;
+  name: string;
+  name_ar: string;
+  customer_type: string;
+  phone: string;
+  payment_terms_days: number;
+  credit_limit: string;
+  balance: string;
+  available: string;
+  is_active: number;
+  updated_at: string;
+}
+
+function toCustomer(row: CustomerRow): CachedCustomer {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    nameAr: row.name_ar,
+    customerType: row.customer_type,
+    phone: row.phone,
+    paymentTermsDays: row.payment_terms_days,
+    creditLimit: row.credit_limit,
+    balance: row.balance,
+    available: row.available,
+    isActive: row.is_active === 1,
+    updatedAt: row.updated_at,
   };
 }

@@ -20,9 +20,12 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
@@ -75,6 +78,9 @@ type Server struct {
 	catalog      *catalog.Service
 	sync         *sync.Engine
 	purchasing   *purchasing.Service
+	receivables  *receivables.Service
+	devices      *devices.Service
+	egs          *egs.Service
 	health       func() error
 	version      string
 }
@@ -90,6 +96,9 @@ func NewServer(
 	catalogSvc *catalog.Service,
 	syncEngine *sync.Engine,
 	purchasingSvc *purchasing.Service,
+	receivablesSvc *receivables.Service,
+	devicesSvc *devices.Service,
+	egsSvc *egs.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -104,6 +113,9 @@ func NewServer(
 		catalog:      catalogSvc,
 		sync:         syncEngine,
 		purchasing:   purchasingSvc,
+		receivables:  receivablesSvc,
+		devices:      devicesSvc,
+		egs:          egsSvc,
 		health:       health,
 		version:      version,
 	}
@@ -268,6 +280,91 @@ func (s *Server) Routes() []Route {
 			s.handlePaySupplier, ""},
 		{http.MethodGet, "/api/v1/purchasing/ageing", AccessPermission, "accounting.view",
 			s.handleSupplierAgeing, "what is owed to whom, aged from the due date"},
+
+		// --- Customers and receivables (B16, C9.3) ---
+		//
+		// customers.view is deliberately held by a Cashier: a till has to be able
+		// to find the customer standing in front of it. Everything that changes a
+		// balance needs more.
+		// --- Terminals (H3) ---
+		//
+		// Enrolment is PUBLIC, and has to be: a terminal being paired has no
+		// credential yet. What makes it safe is the code — single use, fifteen
+		// minutes, attempt-limited — not a token.
+		{http.MethodPost, "/api/v1/devices/enrol", AccessPublic, "", s.handleEnrol,
+			"a terminal claims itself with a code an owner issued; returns its secret once"},
+		{http.MethodGet, "/api/v1/devices/identity", AccessPublic, "",
+			s.handleTerminalIdentity,
+			"a paired terminal asks who it is, presenting its secret; also how it learns it was revoked"},
+
+		{http.MethodGet, "/api/v1/devices/stores", AccessPermission, "devices.view",
+			s.handleListDeviceStores, "the branches a terminal can be registered in"},
+		{http.MethodGet, "/api/v1/devices", AccessPermission, "devices.view",
+			s.handleListTerminals, "the tills in this business, most in need of attention first"},
+		{http.MethodPost, "/api/v1/devices", AccessPermission, "devices.manage",
+			s.handleRegisterTerminal, "registers a terminal in `pending`; it can do nothing until paired"},
+		{http.MethodGet, "/api/v1/devices/{deviceID}", AccessPermission, "devices.view",
+			s.handleReadTerminal, ""},
+		{http.MethodPut, "/api/v1/devices/{deviceID}", AccessPermission, "devices.manage",
+			s.handleAmendTerminal,
+			"rename or move between stores of the SAME company; the ZATCA chain continues unbroken"},
+		{http.MethodPost, "/api/v1/devices/{deviceID}/enrolment-code", AccessPermission, "devices.manage",
+			s.handleIssueEnrolmentCode,
+			"shows the code once and supersedes any outstanding one"},
+		{http.MethodPost, "/api/v1/devices/{deviceID}/active", AccessPermission, "devices.manage",
+			s.handleSetTerminalActive, "pauses or resumes a till; takes effect on its next request"},
+		{http.MethodPost, "/api/v1/devices/{deviceID}/revoke", AccessPermission, "devices.manage",
+			s.handleRevokeTerminal,
+			"permanent: clears the secret and ends the terminal, leaving its chain intact and archived"},
+
+		// --- e-invoicing units ---
+		//
+		// A unit owns one ICV/PIH chain and carries the VAT registration that
+		// chain hangs from, so managing one is not the same act as pairing a
+		// till and does not use devices.manage. There is deliberately no route
+		// to onboard a unit or set a CSID: those need formats P1 has not
+		// verified, and the columns are read-only until it has.
+		{http.MethodGet, "/api/v1/einvoicing/units", AccessPermission, "einvoicing.view",
+			s.handleListEGSUnits,
+			"the signing units in this business, and how many tills and invoices each carries"},
+		{http.MethodPost, "/api/v1/einvoicing/units", AccessPermission, "einvoicing.manage",
+			s.handleCreateEGSUnit,
+			"creates a unit and captures the nine CSR fields; asserts no CSID"},
+		{http.MethodGet, "/api/v1/einvoicing/units/{unitID}", AccessPermission, "einvoicing.view",
+			s.handleReadEGSUnit, ""},
+		{http.MethodPut, "/api/v1/einvoicing/units/{unitID}", AccessPermission, "einvoicing.manage",
+			s.handleAmendEGSUnit,
+			"corrects the name, branch and CSR details; the architecture is fixed at creation"},
+
+		{http.MethodGet, "/api/v1/customers", AccessPermission, "customers.view",
+			s.handleListCustomers, "customers, with what each owes and what is left of their limit"},
+		{http.MethodGet, "/api/v1/customers/snapshot", AccessPermission, "customers.view",
+			s.handleCustomerSnapshot,
+			"the delta a till caches so it can attach a sale to somebody with the network down"},
+		{http.MethodPost, "/api/v1/customers", AccessPermission, "customers.manage",
+			s.handleCreateCustomer, ""},
+		{http.MethodGet, "/api/v1/customers/{customerID}", AccessPermission, "customers.view",
+			s.handleReadCustomer, ""},
+		{http.MethodPut, "/api/v1/customers/{customerID}", AccessPermission, "customers.manage",
+			s.handleUpdateCustomer,
+			"the code is not editable: it is on invoices already issued and signed"},
+		{http.MethodPost, "/api/v1/customers/{customerID}/credit-limit", AccessPermission, "customers.set_credit_limit",
+			s.handleSetCreditLimit,
+			"deciding how much a customer may owe is its own permission, not part of managing their details"},
+		{http.MethodPost, "/api/v1/customers/{customerID}/active", AccessPermission, "customers.manage",
+			s.handleSetCustomerActive,
+			"hides a customer from the pickers; never a delete, and refused while they owe money"},
+
+		{http.MethodGet, "/api/v1/customers/{customerID}/ledger", AccessPermission, "customers.view",
+			s.handleCustomerLedger, "the khata: every charge and receipt with a running balance"},
+		{http.MethodGet, "/api/v1/customers/{customerID}/open-invoices", AccessPermission, "customers.view",
+			s.handleCustomerOpenInvoices, "what a receipt can be allocated against"},
+
+		{http.MethodPost, "/api/v1/receivables/receipts", AccessPermission, "sales.receive_payment",
+			s.handleTakeCustomerPayment,
+			"taking money in is separate from managing the customer record; idempotent on a client-assigned uuid"},
+		{http.MethodGet, "/api/v1/receivables/ageing", AccessPermission, "accounting.view",
+			s.handleCustomerAgeing, "who owes what, aged from the due date"},
 
 		{http.MethodGet, "/api/v1/companies", AccessAuthenticated, "", s.handleListCompanies,
 			"every signed-in user needs to know which companies they are in before asking about one; scoped by RLS and the token"},

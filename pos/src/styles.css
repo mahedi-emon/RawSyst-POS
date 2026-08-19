@@ -391,3 +391,315 @@ body {
   .app__brand { flex-basis: 100%; }
   .app__nav { order: 3; flex-basis: 100%; }
 }
+
+/* --- Who the sale is for -------------------------------------------------
+ *
+ * A quiet row above the cart rather than a field in a form. The overwhelming
+ * majority of sales have no customer, so this must not read as something the
+ * cashier has failed to fill in — but it has to be in the same place every
+ * time, because the one sale in twenty that needs it needs it in a hurry.
+ *
+ * Logical properties throughout. The counter mirrors wholly in Arabic and a
+ * hard-coded left is a bug that only appears in the market this is built for.
+ */
+.who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.who__name { font-weight: 600; }
+
+.who__meta {
+  color: var(--ink-quiet);
+  font-size: 14px;
+  /* Takes the slack so the two buttons stay together at the end of the row,
+   * in both directions of script. */
+  margin-inline-end: auto;
+}
+
+/* Nothing chosen: no border, no box, no implication that something is
+ * missing. Just an offer, where the name will be if one is made. */
+.who:has(.who__choose) {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* --- Paying on account ---------------------------------------------------- */
+
+.tenders__account {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* What pressing it would put on the account. Shown on the button because the
+ * amount is the thing a cashier is deciding about, and a button that silently
+ * filled in a different number than expected is one they stop trusting. */
+.tenders__hint {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.credit {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-inline-start: 3px solid var(--accent);
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* A refusal is not an error in the software — it is the shop's own credit
+ * policy working. Marked clearly, but not as a fault. */
+.credit--bad {
+  border-inline-start-color: var(--warn-line);
+  background: var(--warn-bg);
+  font-weight: 500;
+}
+
+/* --- What has been taken so far ------------------------------------------ */
+
+.taken {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.taken__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-block-end: 1px solid var(--line);
+}
+
+/* --- Choosing a customer -------------------------------------------------
+ *
+ * A dialog rather than a panel, because it takes the keyboard: a cashier types
+ * a name and presses Enter, and anything else on screen that could also take a
+ * keystroke would make that unreliable.
+ */
+.picker__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: start center;
+  padding: 6vh 16px 16px;
+  background: rgb(20 24 31 / 45%);
+}
+
+.picker {
+  inline-size: min(560px, 100%);
+  max-block-size: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(20 24 31 / 22%);
+}
+
+.picker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.picker__title { margin: 0; font-size: 18px; }
+
+.picker__search {
+  inline-size: 100%;
+  min-block-size: var(--tap);
+  padding-inline: 12px;
+  font: inherit;
+  font-size: 17px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.picker__stale {
+  margin: 0;
+  padding: 8px 10px;
+  border-inline-start: 3px solid var(--warn-line);
+  background: var(--warn-bg);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.picker__failure {
+  margin: 0;
+  padding: 8px 10px;
+  border-inline-start: 3px solid var(--danger);
+  background: var(--bg);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.picker__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.picker__hint {
+  padding: 12px 4px;
+  color: var(--ink-quiet);
+}
+
+.picker__row {
+  inline-size: 100%;
+  min-block-size: var(--tap);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* One highlight, driven by the same state whether it was reached by arrow key
+ * or by mouse. Two independent hover and keyboard highlights is how a list
+ * ends up showing a cashier two different "selected" rows at once. */
+.picker__row--on { background: var(--bg); outline: 2px solid var(--accent); }
+
+.picker__who { display: grid; gap: 2px; }
+.picker__name { font-weight: 600; }
+.picker__meta { color: var(--ink-quiet); font-size: 13px; }
+
+.picker__credit { display: grid; gap: 2px; justify-items: end; text-align: end; }
+.picker__available { font-weight: 600; }
+.picker__available--none { color: var(--danger); }
+.picker__nocredit { color: var(--ink-quiet); font-size: 14px; }
+
+/* On a phone the dialog fills the screen: a cashier holding a handheld has no
+ * spare width for a backdrop margin, and the search box must stay reachable
+ * with a thumb. */
+@media (max-width: 560px) {
+  .picker__backdrop { padding: 0; }
+  .picker {
+    inline-size: 100%;
+    max-block-size: 100vh;
+    block-size: 100vh;
+    border-radius: 0;
+  }
+  .picker__row { flex-wrap: wrap; }
+  .picker__credit { justify-items: start; text-align: start; }
+}
+
+/* --- Setting this machine up as a till -----------------------------------
+ *
+ * The first screen on a new terminal, and possibly the first anybody sees of
+ * RawSyst. It says one thing, asks for one thing, and uses none of the words a
+ * shop owner has no reason to know.
+ *
+ * Shares the login card's proportions on purpose: the two are the same moment
+ * in a person's day, and a second visual language for "before you can work"
+ * would make the till feel like two products.
+ */
+.setup {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.setup__card {
+  inline-size: min(30rem, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.setup__title { margin: 0; font-size: 24px; }
+
+.setup__lede {
+  margin: 0;
+  color: var(--ink-quiet);
+  line-height: 1.5;
+}
+
+.setup__label { font-weight: 600; }
+
+/* One large box. A code typed under time pressure on a touchscreen needs the
+ * biggest target on the screen, and the letter-spacing is what makes eight
+ * characters checkable against another screen a metre away. */
+.setup__code {
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: clamp(24px, 7vw, 34px);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+  min-block-size: var(--tap-pos, 64px);
+  padding-inline: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.setup__code:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.setup__code::placeholder { color: var(--line); letter-spacing: 0.14em; }
+.setup__code:disabled { background: var(--bg); color: var(--ink-quiet); }
+
+.setup__help { margin: 0; font-size: 14px; color: var(--ink-quiet); }
+
+.setup__failure {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--danger);
+  background: var(--warn-bg);
+  border-radius: 8px;
+}
+
+.setup__failure p { margin: 0; }
+
+/* What to try next, and why it is quieter than the refusal: the refusal is what
+ * happened, this is what to do, and a reader needs them in that order. */
+.setup__advice { font-size: 14px; color: var(--ink-quiet); }
+
+.setup__go { inline-size: 100%; }
+
+.setup__foot {
+  margin: 0;
+  padding-block-start: 4px;
+  font-size: 14px;
+  color: var(--ink-quiet);
+  border-block-start: 1px solid var(--line);
+}

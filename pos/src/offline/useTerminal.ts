@@ -27,6 +27,7 @@ import { useAuth } from '@rawsyst/shared/auth/session';
 import { pushBatch } from '../api/pos';
 import { SaleQueue, type OfflineSalePayload, type QueueCounts } from './queue';
 import { Catalogue } from './catalogue';
+import { Customers } from './customers';
 import { HeldCarts } from '../pos/held';
 import {
   ConnectivityMonitor,
@@ -64,6 +65,8 @@ export interface TerminalState {
   syncingCatalogue: boolean;
 
   catalogue: Catalogue | null;
+  /** The customer book, so a sale can be attached to somebody offline. */
+  customers: Customers | null;
   /** Carts parked mid-sale. Local only and never synced. */
   held: HeldCarts | null;
 
@@ -79,6 +82,7 @@ export function useTerminal(
 
   const [queue, setQueue] = useState<SaleQueue | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [customers, setCustomers] = useState<Customers | null>(null);
   const [held, setHeld] = useState<HeldCarts | null>(null);
   const [counts, setCounts] = useState<QueueCounts>({ pending: 0, failed: 0 });
   const [sending, setSending] = useState(false);
@@ -116,6 +120,7 @@ export function useTerminal(
         const c = new Catalogue(stores.catalogue, client);
         setQueue(q);
         setCatalogue(c);
+        setCustomers(new Customers(stores.customers, client));
 
         const h = new HeldCarts(stores.held);
         setHeld(h);
@@ -160,6 +165,19 @@ export function useTerminal(
     try {
       await catalogue.sync();
       setCached(await catalogue.size());
+
+      // The customer book rides along on the same schedule and the same
+      // reconnect trigger. Its own timer would be a second thing to reason
+      // about, and a till whose prices were fresh but whose credit figures
+      // were a day old is a worse position than having both equally current.
+      //
+      // Awaited separately so a customer pull that fails does not discard a
+      // catalogue pull that succeeded.
+      try {
+        await customers?.sync();
+      } catch {
+        // Same bargain as below: the book the till already holds is untouched.
+      }
     } catch {
       // Offline, or the server refused. The cache the till already holds is
       // untouched and still sellable, which is the entire point of holding it.
@@ -167,7 +185,7 @@ export function useTerminal(
       pulling.current = false;
       setSyncing(false);
     }
-  }, [catalogue]);
+  }, [catalogue, customers]);
 
   // Both callbacks live in a ref so the monitor can be built once and still
   // call the current versions. Rebuilding the monitor whenever a callback
@@ -255,6 +273,7 @@ export function useTerminal(
     cached,
     syncingCatalogue,
     catalogue,
+    customers,
     held,
     record,
     flushNow,

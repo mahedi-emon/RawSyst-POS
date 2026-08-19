@@ -158,7 +158,7 @@ func (s *Service) OverviewFor(
 		Attention: []Attention{},
 		// Named plainly so the screen can say what is coming rather than
 		// showing an empty widget that looks broken.
-		Unbuilt: []string{"customers", "employees"},
+		Unbuilt: []string{"employees"},
 	}
 
 	from := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)

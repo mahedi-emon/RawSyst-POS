@@ -80,6 +80,14 @@ func TestPublicRoutesAreOnlyTheExpectedOnes(t *testing.T) {
 		"GET /api/v1/meta/version":  true,
 		"POST /api/v1/auth/login":   true,
 		"POST /api/v1/auth/refresh": true,
+
+		// Pairing a terminal, H3. Both are unauthenticated because a terminal
+		// being paired has no credential yet — that is the problem being
+		// solved. What stands in for a token is the enrolment code on the
+		// first, and the device secret on the second; neither is a bearer
+		// token for anything else, and both are covered by devices_test.go.
+		"POST /api/v1/devices/enrol":   true,
+		"GET /api/v1/devices/identity": true,
 	}
 
 	s := &Server{}

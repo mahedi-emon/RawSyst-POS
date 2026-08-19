@@ -332,6 +332,12 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		// platform health dashboard, which is the same reason `device` carries
 		// the predicate. It exposes certificate state, never invoice content.
 		"egs_unit": true,
+		// Pairing a terminal, H3. The predicate is here not so Super Admin can
+		// browse enrolments but because redeeming a code is made by a caller
+		// with NO tenant to scope by — a terminal being paired has no
+		// credential yet, so the lookup runs on the platform plane. A row holds
+		// a selector, a hash and an expiry; it never holds a usable code.
+		"device_enrolment": true,
 		// Sync queue depth, which A4 names explicitly for the platform health
 		// dashboard. Both carry counts and timings only — sync_item, which holds
 		// the actual payload, is deliberately tenant-only (migration 0017).
@@ -657,6 +663,39 @@ func TestReleaseBlockersAreFlagged(t *testing.T) {
 		}
 		if !blocker {
 			t.Fatalf("rule %s is not flagged as a release blocker", key)
+		}
+	}
+}
+
+// A release blocker only blocks while it is UNVERIFIED: registry.Health reports
+// `release_blocker AND verified_on IS NULL`. 0012 verified two rules in part and
+// set verified_on on both, which took the whole of each off that list — including
+// the halves it had not answered. 0044 gave those halves their own rules, and
+// this is what stops the same thing happening again.
+func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
+	pool := testPool(t)
+
+	want := []string{
+		"SA.ZATCA.QR_TLV_FIELDS",        // never verified; byte layout
+		"SA.ZATCA.XML_CANONICALIZATION", // split out of HASH_ALGORITHM by 0044
+		"SA.ZATCA.UBL_FIELD_SET",        // split out of XML_SCHEMA_VERSION by 0044
+	}
+	for _, key := range want {
+		var blocker bool
+		var verified *time.Time
+		err := pool.Raw().QueryRow(context.Background(),
+			`SELECT release_blocker, verified_on FROM regulatory_rule
+			 WHERE rule_key = $1 AND effective_to IS NULL`, key).
+			Scan(&blocker, &verified)
+		if err != nil {
+			t.Fatalf("rule %s missing from the registry: %v", key, err)
+		}
+		if !blocker {
+			t.Errorf("rule %s is not flagged as a release blocker", key)
+		}
+		if verified != nil {
+			t.Errorf("rule %s claims to be verified on %s; nothing in this "+
+				"repository has read it from the ZATCA standard", key, verified)
 		}
 	}
 }
