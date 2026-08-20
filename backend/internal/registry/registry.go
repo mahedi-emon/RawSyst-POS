@@ -47,6 +47,22 @@ const (
 	KeyZATCAOfflineTolerance = "SA.ZATCA.STANDARD_OFFLINE_TOLERANCE"
 	KeyZATCACSIDRenewal      = "SA.ZATCA.CSID_RENEWAL_DAYS"
 
+	// Onboarding: turning the nine captured CSR inputs into a CSID. Recorded by
+	// 0045. The subject layout and the request format are release blockers, so
+	// resolving either refuses in production until it has been read from the
+	// official Fatoora SDK and Swagger files.
+	KeyZATCACSRKeyParameters    = "SA.ZATCA.CSR_KEY_PARAMETERS"
+	KeyZATCACSRCertTemplate     = "SA.ZATCA.CSR_CERTIFICATE_TEMPLATE"
+	KeyZATCACSRSubjectLayout    = "SA.ZATCA.CSR_SUBJECT_LAYOUT"
+	KeyZATCAOnboardingEndpoints = "SA.ZATCA.ONBOARDING_ENDPOINTS"
+	KeyZATCAOnboardingRequest   = "SA.ZATCA.ONBOARDING_REQUEST_FORMAT"
+	KeyZATCAOnboardingOTP       = "SA.ZATCA.ONBOARDING_OTP"
+
+	// Split out of KeyZATCAQRFields by 0046. The QR framing and its nine tags are
+	// verified; how tags 6 to 9 encode their values is answered two different
+	// ways by the standard, so it stays a blocker.
+	KeyZATCAQRTagValueEncoding = "SA.ZATCA.QR_TAG_VALUE_ENCODING"
+
 	KeyPDPLDSRResponseDays = "SA.PDPL.DSR_RESPONSE_DAYS"
 	KeyPDPLBreachHours     = "SA.PDPL.BREACH_NOTIFICATION_HOURS"
 

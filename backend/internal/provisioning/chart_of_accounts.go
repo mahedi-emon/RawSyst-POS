@@ -83,7 +83,14 @@ var defaultChart = []seedAccount{
 	{"5100", "Cost of Goods Sold", "expense", "cogs", ""},
 	// Where a standard-costing difference lands, and where an allow_warn
 	// shortfall's provisional cost is corrected (C13).
-	{"5150", "Inventory Cost Variance", "expense", "inventory_variance", ""},
+	//
+	// The role is cost_variance because that is the name the posting rules
+	// resolve — rules 11 and 11a, seeded by 0025 and 0026. This account was
+	// mapped to inventory_variance until 0048, which meant every variance the
+	// engine tried to post failed on an unmapped role in any company created
+	// through the product. The tests that covered rule 11 mapped the role by
+	// hand and so never saw it.
+	{"5150", "Inventory Cost Variance", "expense", "cost_variance", ""},
 	{"5200", "Stock Write-off", "expense", "stock_writeoff", ""},
 	{"5900", "Rounding Differences", "expense", "rounding", ""},
 }

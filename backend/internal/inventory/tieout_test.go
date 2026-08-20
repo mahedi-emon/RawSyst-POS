@@ -41,8 +41,8 @@ type books struct {
 	// to express.
 	method Method
 
-	inventory, cogs, payable, revenue uuid.UUID
-	entryNo                           int64
+	inventory, cogs, payable, revenue, variance uuid.UUID
+	entryNo                                     int64
 }
 
 func newBooks(t *testing.T, method Method) *books {
@@ -125,6 +125,9 @@ func newBooks(t *testing.T, method Method) *books {
 			{"5100", "Cost of Goods Sold", "expense", &b.cogs},
 			{"2100", "Accounts Payable", "liability", &b.payable},
 			{"4100", "Sales Revenue", "revenue", &b.revenue},
+			// Where a provisional cost is put right (C13). Not a control
+			// account: it holds corrections, not a subsidiary balance.
+			{"5150", "Inventory Cost Variance", "expense", &b.variance},
 		} {
 			if e := tx.QueryRow(ctx, `
 				INSERT INTO account (tenant_id, company_id, code, name, type)
@@ -224,6 +227,15 @@ func (b *books) sell(t *testing.T, qty string) CostResult {
 		})
 		if e != nil {
 			return e
+		}
+
+		if result.TotalCost.IsZero() {
+			// Nothing to post, exactly as finalize.go decides: rule 2 is
+			// checked on a positive cost. Selling an item the system has never
+			// received costs nothing until the goods arrive and the shortfall
+			// is corrected, and a journal line of zero is refused by
+			// journal_line_one_side anyway.
+			return nil
 		}
 
 		// Rule 2: COGS posts simultaneously with the sale.

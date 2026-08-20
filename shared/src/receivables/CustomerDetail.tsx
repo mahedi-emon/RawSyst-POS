@@ -22,11 +22,12 @@ import { useRemote } from '../dashboard/useRemote';
 import { money, shortDate } from '../ui/format';
 import {
   readLedger,
+  reversePayment,
   setCreditLimit,
   type Customer,
   type LedgerRow,
 } from '../api/receivables';
-import { creditStanding } from './receivables';
+import { canReversePayment, creditStanding } from './receivables';
 import { ReceiptForm } from './ReceiptForm';
 
 export function CustomerDetail({
@@ -42,6 +43,9 @@ export function CustomerDetail({
 }) {
   const { client, can } = useAuth();
   const [taking, setTaking] = useState(false);
+  const [confirming, setConfirming] = useState<{ id: string; uuid: string } | null>(null);
+  const [reverseBusy, setReverseBusy] = useState(false);
+  const [reverseFailure, setReverseFailure] = useState<string | null>(null);
 
   const load = useCallback(
     () => readLedger(client, companyId, customerId),
@@ -127,6 +131,11 @@ export function CustomerDetail({
                   </span>
                 </div>
                 <div className="ds-panel__body ds-scroll-x">
+                  {reverseFailure && (
+                    <p className="form__error" role="alert">
+                      {reverseFailure}
+                    </p>
+                  )}
                   {ledger.rows.length === 0 ? (
                     <EmptyState
                       title="Nothing on this account yet"
@@ -148,6 +157,9 @@ export function CustomerDetail({
                           <th scope="col" className="num">
                             Balance
                           </th>
+                          <th scope="col">
+                            <span className="ds-visually-hidden">Actions</span>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -156,6 +168,49 @@ export function CustomerDetail({
                             key={`${row.kind}-${row.reference}-${i}`}
                             row={row}
                             currency={ledger.base_currency}
+                            confirming={confirming?.id === row.source_id}
+                            busy={reverseBusy}
+                            mayReverse={mayTakePayment && canReversePayment(row)}
+                            onAsk={() => {
+                              if (!row.source_id) return;
+                              setReverseFailure(null);
+                              setConfirming({
+                                id: row.source_id,
+                                uuid: crypto.randomUUID(),
+                              });
+                            }}
+                            onCancel={() => setConfirming(null)}
+                            onConfirm={() => {
+                              if (!row.source_id || !confirming) return;
+                              setReverseBusy(true);
+                              setReverseFailure(null);
+                              void reversePayment(
+                                client,
+                                companyId,
+                                row.source_id,
+                                confirming.uuid,
+                              )
+                                .then(() => {
+                                  setConfirming(null);
+                                  reload();
+                                })
+                                .catch((err: unknown) => {
+                                  if (err instanceof Offline) {
+                                    setReverseFailure(
+                                      'This device cannot reach the server, so the payment was not reversed.',
+                                    );
+                                  } else if (err instanceof RequestFailed) {
+                                    setReverseFailure(err.message);
+                                  } else {
+                                    setReverseFailure(
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'That payment could not be reversed.',
+                                    );
+                                  }
+                                })
+                                .finally(() => setReverseBusy(false));
+                            }}
                           />
                         ))}
                       </tbody>
@@ -165,6 +220,7 @@ export function CustomerDetail({
                           <td className="num">
                             {money(ledger.closing, { currency: ledger.base_currency })}
                           </td>
+                          <td />
                         </tr>
                       </tfoot>
                     </table>
@@ -319,7 +375,25 @@ function AccountStanding({
   );
 }
 
-function LedgerLine({ row, currency }: { row: LedgerRow; currency: string }) {
+function LedgerLine({
+  row,
+  currency,
+  confirming,
+  busy,
+  mayReverse,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  row: LedgerRow;
+  currency: string;
+  confirming: boolean;
+  busy: boolean;
+  mayReverse: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <tr>
       <td className="num">{shortDate(row.date)}</td>
@@ -337,6 +411,23 @@ function LedgerLine({ row, currency }: { row: LedgerRow; currency: string }) {
         {row.received ? money(row.received, { currency }) : <span className="ds-subtle">—</span>}
       </td>
       <td className="num">{money(row.balance, { currency })}</td>
+      <td>
+        {mayReverse && !confirming && (
+          <button className="ds-btn ds-btn--quiet" disabled={busy} onClick={onAsk}>
+            Reverse
+          </button>
+        )}
+        {mayReverse && confirming && (
+          <>
+            <button className="ds-btn ds-btn--primary" disabled={busy} onClick={onConfirm}>
+              {busy ? 'Reversing…' : 'Confirm reverse'}
+            </button>
+            <button className="ds-btn ds-btn--quiet" disabled={busy} onClick={onCancel}>
+              Cancel
+            </button>
+          </>
+        )}
+      </td>
     </tr>
   );
 }
@@ -350,6 +441,8 @@ function kindLabel(kind: LedgerRow['kind']): string {
     // payment they never made.
     case 'credit':
       return 'Returned — credited';
+    case 'reversal':
+      return 'Payment reversed';
     default:
       return 'Payment received';
   }

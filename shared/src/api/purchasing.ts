@@ -165,6 +165,17 @@ export interface Receipt {
   received_on: string;
   order_status: string;
   already_received: boolean;
+
+  /** What this delivery put right on earlier sales that went below zero,
+   *  signed. Positive means those goods cost more than the till estimated, so
+   *  the margin already reported on them was too generous (C13). "0.00" when
+   *  nothing was owed, which is the ordinary case. */
+  cost_correction: string;
+  /** How many previously uncovered units this delivery re-costed. Reported
+   *  alongside the money because a large correction over one unit and a small
+   *  one over hundreds are different problems. */
+  units_recosted: string;
+
   lines: Array<{
     po_line_id: string;
     description: string;
@@ -321,6 +332,11 @@ export interface Payment {
   amount: string;
   currency: string;
   already_paid: boolean;
+  /** The payment this one undoes, when it undoes one. */
+  reverses_id?: string;
+  /** True once something else has undone this payment, so a screen strikes it
+   *  through rather than offering to reverse it twice. */
+  reversed?: boolean;
   settled: Array<{
     bill_id: string;
     supplier_ref: string;
@@ -468,5 +484,24 @@ export function setSupplierActive(
     'POST',
     `/api/v1/purchasing/suppliers/${supplierId}/active?company_id=${companyId}`,
     { is_active: isActive },
+  );
+}
+
+/** Posts a new payment that undoes an existing one. The original is not edited.
+ *
+ * The AP mirror of receivables.reversePayment. `uuid` is assigned by the caller
+ * BEFORE the call, the same way a payment is: a network failure after the server
+ * committed would otherwise reverse the same payment twice.
+ */
+export function reverseSupplierPayment(
+  client: Client,
+  companyId: string,
+  paymentId: string,
+  uuid: string,
+): Promise<Payment> {
+  return client.send<Payment>(
+    'POST',
+    `/api/v1/purchasing/payments/${paymentId}/reverse?company_id=${companyId}`,
+    { uuid },
   );
 }

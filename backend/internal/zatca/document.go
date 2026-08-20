@@ -68,6 +68,18 @@ func RecordSignedDocument(
 			"A signed document upload must include the terminal's stamp.")
 	}
 
+	// The QR is optional here only because signing is not available yet. When one
+	// does arrive it is checked before it is stored: this payload is printed on a
+	// customer's receipt and sent to ZATCA, and a malformed one is far cheaper to
+	// refuse now than to discover on a till roll. The check is structural — it
+	// says nothing about whether tags 6 to 9 carry the right values, which is
+	// still an open question.
+	if doc.QRTLV != "" {
+		if err := ValidateQR(doc.QRTLV); err != nil {
+			return err
+		}
+	}
+
 	var existing *string
 	err := tx.QueryRow(ctx,
 		`SELECT xml FROM zatca_invoice WHERE invoice_id = $1 FOR UPDATE`,

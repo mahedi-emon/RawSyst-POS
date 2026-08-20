@@ -72,6 +72,11 @@ type Entry struct {
 	Memo     string
 	PostedBy *uuid.UUID
 
+	// ReversesID is set when this entry exists to put another one right.
+	// Design 02 §2: corrections happen only by posting a reversing entry, never
+	// by editing posted history. The original stays; this row is the audit trail.
+	ReversesID *uuid.UUID
+
 	// StoreID is the dimension the whole entry belongs to. Applied to every
 	// line that does not name its own, because a dimension describes WHERE the
 	// transaction happened rather than a property of one leg — and a rule,
@@ -230,6 +235,24 @@ func usableLines(in []Line) ([]Line, error) {
 	return out, nil
 }
 
+// FlipSides swaps every debit for a credit and every credit for a debit.
+//
+// That is what a reversing entry is: the same rule, the same amounts, the
+// opposite sign. A negative debit is not a credit — journal_line_one_side
+// refuses it — so the sides move, not the amounts.
+func FlipSides(lines []Line) []Line {
+	out := make([]Line, len(lines))
+	for i, l := range lines {
+		out[i] = l
+		if l.Side == Debit {
+			out[i].Side = Credit
+		} else {
+			out[i].Side = Debit
+		}
+	}
+	return out
+}
+
 func sideTotals(lines []Line) (debits, credits decimal.Decimal) {
 	debits, credits = decimal.Zero, decimal.Zero
 	for _, l := range lines {
@@ -344,12 +367,13 @@ func insertEntry(
 	err = tx.QueryRow(ctx, `
 		INSERT INTO journal_entry
 		  (tenant_id, company_id, period_id, entry_no, entry_date,
-		   source_type, source_id, rule_key, rule_version, memo, posted_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		   source_type, source_id, rule_key, rule_version, memo, posted_by,
+		   reverses_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING id`,
 		e.TenantID, e.CompanyID, periodID, no, e.Date,
 		e.SourceType, e.SourceID, nullText(e.RuleKey), nullInt(e.RuleVersion),
-		nullText(e.Memo), e.PostedBy).Scan(&id)
+		nullText(e.Memo), e.PostedBy, e.ReversesID).Scan(&id)
 	if err != nil {
 		return uuid.Nil, 0, false, db.Translate(err,
 			"That accounting entry could not be posted.")

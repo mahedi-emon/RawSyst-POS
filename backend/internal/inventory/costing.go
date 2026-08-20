@@ -85,6 +85,16 @@ type CostResult struct {
 	// stock policy — it is not this package's business to block a sale.
 	ShortBy decimal.Decimal
 
+	// ShortUnitCost is what the uncovered units were charged at: the estimate
+	// each method fell back on when it ran out of stock to cost against.
+	//
+	// Reported rather than left implicit because C13 calls that figure
+	// PROVISIONAL and requires it to be corrected on the next receipt. The
+	// correction is actual cost less this, so a caller that could not see it
+	// would have nothing to compare against and the shortfall would stay
+	// mis-costed forever, which is exactly what used to happen.
+	ShortUnitCost decimal.Decimal
+
 	// PoolQtyAfter and PoolValueAfter are what the weighted-average pool must
 	// be written back as. Only weighted average produces them: it holds one
 	// pooled cost rather than identifiable layers.
@@ -142,6 +152,7 @@ func ConsumeFIFO(layers []Layer, qty decimal.Decimal) (CostResult, error) {
 		}
 		out.TotalCost = out.TotalCost.Add(remaining.Mul(fallback).Round(costScale))
 		out.ShortBy = remaining
+		out.ShortUnitCost = fallback
 	}
 
 	return out, nil
@@ -183,6 +194,7 @@ func ConsumeWAC(pool Pool, qty decimal.Decimal) (CostResult, error) {
 			// the best estimate available.
 			average := pool.TotalValue.Div(pool.QtyOnHand).Round(costScale)
 			out.TotalCost = out.TotalCost.Add(out.ShortBy.Mul(average).Round(costScale))
+			out.ShortUnitCost = average
 		}
 		out.PoolQtyAfter = decimal.Zero
 		out.PoolValueAfter = decimal.Zero
@@ -260,6 +272,12 @@ func ConsumeStandard(
 		TotalCost: qty.Mul(standardCost).Round(costScale),
 		Consumed:  actual.Consumed,
 		ShortBy:   actual.ShortBy,
+	}
+	if out.ShortBy.IsPositive() {
+		// Standard costing charges every unit at standard, uncovered ones
+		// included, so that — not the FIFO fallback — is what the correction
+		// has to be measured against.
+		out.ShortUnitCost = standardCost
 	}
 	out.Variance = actual.TotalCost.Sub(out.TotalCost)
 	return out, nil

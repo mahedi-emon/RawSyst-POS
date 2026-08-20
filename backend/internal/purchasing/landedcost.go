@@ -94,3 +94,51 @@ func (s *Service) postReceiptAccrual(
 	})
 	return err
 }
+
+// postCostCorrection books what this delivery put right on earlier sales that
+// sold below zero (C13).
+//
+// The amount is the difference between what those units really cost and the
+// provisional figure already charged to cost of goods sold. It moves the
+// Inventory account, because the arriving stock has just been drawn down again
+// by units that were sold before it landed, and the difference is an expense
+// that was mis-stated rather than a new one.
+//
+// Two rules, one per direction, and the amount is passed as its absolute value.
+// A single rule taking a signed figure would write a negative debit where a
+// credit belongs, and a trial balance carrying negative debits is one an
+// accountant cannot read.
+func (s *Service) postCostCorrection(
+	ctx context.Context, tx pgx.Tx, scope Scope,
+	grnID uuid.UUID, receivedOn time.Time, value decimal.Decimal, memo string,
+) error {
+	if value.IsZero() {
+		// Either nothing was owed, or the goods arrived at exactly the price
+		// the till guessed. Both are the ordinary case and neither is an entry.
+		return nil
+	}
+
+	// Unfavourable: the goods cost more than the estimate, so the expense rises
+	// and the stock just received is worth less than its invoice suggested.
+	ruleKey := "inventory.variance"
+	if value.IsNegative() {
+		ruleKey = "inventory.variance_favourable"
+	}
+
+	var country string
+	if err := tx.QueryRow(ctx,
+		`SELECT country FROM company WHERE id = $1`, scope.CompanyID).
+		Scan(&country); err != nil {
+		return err
+	}
+
+	_, err := accounting.PostByRule(ctx, tx, accounting.Entry{
+		TenantID: scope.TenantID, CompanyID: scope.CompanyID,
+		Date: receivedOn, SourceType: "goods_receipt", SourceID: grnID,
+		PostedBy: &scope.UserID, RuleKey: ruleKey,
+		Memo: memo,
+	}, country, accounting.Transaction{
+		Amounts: map[string]decimal.Decimal{"variance": value.Abs()},
+	})
+	return err
+}

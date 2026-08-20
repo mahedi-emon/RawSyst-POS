@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AgeingRow, Customer, OpenInvoice } from '../api/receivables';
+import type { AgeingRow, Customer, LedgerRow, OpenInvoice } from '../api/receivables';
 import {
   ageingTone,
   ageingTotals,
   allocateOldestFirst,
+  canReversePayment,
   checkAllocation,
   creditStanding,
   major,
@@ -238,5 +239,40 @@ describe('reading an ageing row', () => {
 
   it('foots an empty table as zero rather than as nothing', () => {
     expect(ageingTotals([]).total).toBe('0.00');
+  });
+});
+
+describe('which statement rows can be reversed', () => {
+  const row = (over: Partial<LedgerRow> = {}): LedgerRow => ({
+    date: '2026-08-16',
+    kind: 'receipt',
+    reference: 'RCT-2026-000001',
+    received: '115.00',
+    balance: '0.00',
+    source_id: 'r1',
+    ...over,
+  });
+
+  it('offers a reverse on a live payment', () => {
+    expect(canReversePayment(row())).toBe(true);
+  });
+
+  it('does not offer a reverse on a sale, a credit or a reversal', () => {
+    // A sale is put right by a credit note; a reversal is already the
+    // correcting document. Offering either would invent a second way to edit
+    // history.
+    expect(canReversePayment(row({ kind: 'sale', source_id: 'i1' }))).toBe(false);
+    expect(canReversePayment(row({ kind: 'credit', source_id: 'c1' }))).toBe(false);
+    expect(canReversePayment(row({ kind: 'reversal', reverses_id: 'r1' }))).toBe(
+      false,
+    );
+  });
+
+  it('does not offer a reverse on a payment that has already been put right', () => {
+    expect(canReversePayment(row({ reversed: true }))).toBe(false);
+  });
+
+  it('does not offer a reverse when the row has no source id', () => {
+    expect(canReversePayment(row({ source_id: undefined }))).toBe(false);
   });
 });

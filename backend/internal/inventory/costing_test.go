@@ -249,6 +249,70 @@ func TestSellingBeyondStockIsCostedAndReported(t *testing.T) {
 	if !got.TotalCost.Equal(dec("250")) {
 		t.Fatalf("cost = %s, want 250", got.TotalCost)
 	}
+	// And it says WHICH estimate it used. C13 calls that figure provisional and
+	// requires the next receipt to correct it, so a caller that could not see
+	// it would have nothing to measure the correction against.
+	if !got.ShortUnitCost.Equal(dec("50.00")) {
+		t.Fatalf("the uncovered units were charged at %s, want the last known "+
+			"cost of 50", got.ShortUnitCost)
+	}
+}
+
+// The estimate FIFO falls back on is the LAST layer's cost, not the first.
+//
+// With two layers at different prices the older one is exhausted first, so by
+// the time the sale runs out of stock the most recent cost is the closest thing
+// to what the next delivery will charge.
+func TestTheFIFOFallbackIsTheMostRecentCost(t *testing.T) {
+	layers := []Layer{layer("2", "50.00"), layer("2", "80.00")}
+
+	got, err := ConsumeFIFO(layers, dec("6"))
+	if err != nil {
+		t.Fatalf("ConsumeFIFO: %v", err)
+	}
+	if !got.ShortBy.Equal(dec("2")) {
+		t.Fatalf("short by %s, want 2", got.ShortBy)
+	}
+	if !got.ShortUnitCost.Equal(dec("80.00")) {
+		t.Fatalf("the uncovered units were charged at %s, want 80",
+			got.ShortUnitCost)
+	}
+	// 2 x 50 + 2 x 80 covered, then 2 x 80 uncovered.
+	if !got.TotalCost.Equal(dec("420")) {
+		t.Fatalf("cost = %s, want 420", got.TotalCost)
+	}
+}
+
+// Standard costing charges every unit at standard, uncovered ones included, so
+// that is what the correction must be measured against — not the FIFO fallback
+// the actual-cost pass happened to use underneath.
+func TestAStandardCostedShortfallIsProvisionalAtStandard(t *testing.T) {
+	layers := []Layer{layer("2", "50.00")}
+
+	got, err := ConsumeStandard(layers, dec("5"), dec("45.00"))
+	if err != nil {
+		t.Fatalf("ConsumeStandard: %v", err)
+	}
+	if !got.ShortBy.Equal(dec("3")) {
+		t.Fatalf("short by %s, want 3", got.ShortBy)
+	}
+	if !got.ShortUnitCost.Equal(dec("45.00")) {
+		t.Fatalf("the uncovered units were charged at %s, want the standard "+
+			"cost of 45", got.ShortUnitCost)
+	}
+}
+
+// A sale that stock covers reports no provisional cost at all. A non-zero
+// figure here would have the settlement correcting units nobody guessed at.
+func TestACoveredSaleReportsNoProvisionalCost(t *testing.T) {
+	got, err := ConsumeFIFO([]Layer{layer("10", "50.00")}, dec("4"))
+	if err != nil {
+		t.Fatalf("ConsumeFIFO: %v", err)
+	}
+	if !got.ShortUnitCost.IsZero() {
+		t.Fatalf("a fully covered sale reported a provisional cost of %s",
+			got.ShortUnitCost)
+	}
 }
 
 func TestSellingFromEmptyStock(t *testing.T) {
@@ -263,6 +327,12 @@ func TestSellingFromEmptyStock(t *testing.T) {
 	// is told the whole quantity was uncovered.
 	if !got.TotalCost.IsZero() {
 		t.Fatalf("cost = %s from an empty pool, want 0", got.TotalCost)
+	}
+	// Provisionally zero, which is the largest correction there is: the whole
+	// cost of those goods is recognised only when they arrive.
+	if !got.ShortUnitCost.IsZero() {
+		t.Fatalf("charged %s per unit against an empty pool, want 0",
+			got.ShortUnitCost)
 	}
 }
 
@@ -283,6 +353,10 @@ func TestWACBeyondStockIsCostedAndReported(t *testing.T) {
 	}
 	if !got.PoolValueAfter.IsZero() {
 		t.Fatalf("the exhausted pool still holds %s", got.PoolValueAfter)
+	}
+	if !got.ShortUnitCost.Equal(dec("50")) {
+		t.Fatalf("the uncovered units were charged at %s, want the pool average "+
+			"of 50", got.ShortUnitCost)
 	}
 }
 

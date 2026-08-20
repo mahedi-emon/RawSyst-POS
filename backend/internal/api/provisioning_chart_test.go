@@ -34,7 +34,7 @@ func TestANewCompanyGetsAChartItCanPostTo(t *testing.T) {
 	required := []string{
 		"cash", "bank", "card_clearing", "accounts_receivable", "inventory",
 		"output_vat", "store_credit_liability", "exchange_clearing",
-		"sales_revenue", "cogs", "inventory_variance",
+		"sales_revenue", "cogs", "cost_variance",
 	}
 
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
@@ -48,6 +48,99 @@ func TestANewCompanyGetsAChartItCanPostTo(t *testing.T) {
 			if e != nil {
 				t.Errorf("role %q is not mapped, so posting to it fails: %v", role, e)
 			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("read roles: %v", err)
+	}
+}
+
+// The list above is written by hand, and that is exactly how the chart and the
+// posting rules came to disagree without anybody noticing.
+//
+// Account 5150 was mapped to `inventory_variance` while rules 11 and 11a asked
+// for `cost_variance`, so every variance the engine tried to post failed on an
+// unresolvable role in any company whose chart came from provisioning — which is
+// every real one. The test that covered rule 11 created its own variance account
+// and mapped the role by hand before selling, proving the rule and the engine
+// while stepping over the wiring between them. Migration 0048 renamed the
+// mapping.
+//
+// So this asks the rules instead of a person. Every role any seeded rule names
+// must be mapped, and the only accepted answer to "why is this one missing" is
+// that the module owning it does not exist yet.
+func TestEveryRoleThePostingRulesNameIsInTheChart(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	ctx := t.Context()
+
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		return provisioning.SeedChartOfAccounts(ctx, tx, f.tenantID, f.companyID)
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Roles belonging to modules that are not built. A rule for them is seeded
+	// and never called, so an unmapped role cannot fail anything today — but it
+	// will on the first day that module posts, which is why they are named here
+	// rather than skipped silently.
+	//
+	// `expense` and `owner_capital` also read as chart design decisions nobody
+	// has taken: which account a generic cash expense hits is the accountant's
+	// call, and the chart offers `owners_equity` where equity.contribution asks
+	// for `owner_capital`. Both are recorded in PROJECT-STATUS.
+	deferred := map[string]string{
+		"expense":       "cash expenses are not built",
+		"owner_capital": "equity contributions are not built",
+	}
+
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		// posting_rule is global rather than per tenant, so it carries the rules
+		// other tests insert too. Those use a `test.` prefix and are not part of
+		// the seeded C9.2 set.
+		rows, e := tx.Query(ctx, `
+			SELECT DISTINCT line->>'role'
+			FROM posting_rule, jsonb_array_elements(lines) AS line
+			WHERE line->>'role' IS NOT NULL
+			  AND rule_key NOT LIKE 'test.%'
+			ORDER BY 1`)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		var roles []string
+		for rows.Next() {
+			var role string
+			if e := rows.Scan(&role); e != nil {
+				return e
+			}
+			roles = append(roles, role)
+		}
+		if e := rows.Err(); e != nil {
+			return e
+		}
+		if len(roles) == 0 {
+			t.Fatal("no posting rules are seeded, so this proves nothing")
+		}
+
+		for _, role := range roles {
+			var code string
+			e := tx.QueryRow(ctx, `
+				SELECT a.code FROM account_role_map m
+				JOIN account a ON a.id = m.account_id
+				WHERE m.company_id = $1 AND m.role = $2`,
+				f.companyID, role).Scan(&code)
+			if e == nil {
+				continue
+			}
+			if reason, ok := deferred[role]; ok {
+				t.Logf("role %q is unmapped, accepted: %s", role, reason)
+				continue
+			}
+			t.Errorf("a seeded posting rule names role %q and the chart does "+
+				"not map it, so that rule cannot post in a real company: %v",
+				role, e)
 		}
 		return nil
 	}); err != nil {

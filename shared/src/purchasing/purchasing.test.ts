@@ -8,12 +8,31 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canReverseSupplierPayment,
   matchSummary,
   payable,
+  paymentKind,
+  receiptNotice,
   receivedFraction,
   receivingDefaults,
 } from './purchasing';
-import type { Bill, MatchLine, OrderLine } from '../api/purchasing';
+import type { Bill, MatchLine, OrderLine, Receipt } from '../api/purchasing';
+
+function receipt(over: Partial<Receipt> = {}): Receipt {
+  return {
+    id: 'g1',
+    grn_number: 'GRN-0007',
+    po_id: 'p1',
+    po_number: 'PO-0003',
+    received_on: '2026-08-16',
+    order_status: 'received',
+    already_received: false,
+    cost_correction: '0.00',
+    units_recosted: '0',
+    lines: [],
+    ...over,
+  };
+}
 
 function line(over: Partial<OrderLine> = {}): OrderLine {
   return {
@@ -194,5 +213,116 @@ describe('how much of an order has arrived', () => {
   it('reports nothing for an empty order rather than dividing by zero', () => {
     expect(receivedFraction([])).toBe(0);
     expect(receivedFraction([line({ qty_ordered: '0', qty_received: '0' })])).toBe(0);
+  });
+});
+
+describe('what a storeman is told after a delivery', () => {
+  it('says the stock landed and stops there when nothing was corrected', () => {
+    const notice = receiptNotice(receipt());
+    expect(notice).toBe('Recorded as GRN-0007. Stock has been updated.');
+    // Nothing about costs. The overwhelmingly common delivery corrects nothing,
+    // and an explanation of a correction that did not happen is noise.
+    expect(notice).not.toContain('cost of goods sold');
+  });
+
+  it('recognises a delivery it has already recorded', () => {
+    expect(receiptNotice(receipt({ already_received: true }))).toBe(
+      'That delivery was already recorded as GRN-0007.',
+    );
+  });
+
+  it('explains a correction that raised cost of goods sold', () => {
+    // C13: two units sold before the delivery were costed at an estimate, and
+    // the goods turned out dearer. Cost of goods sold on a sale already reported
+    // moves, and a figure changing on last week's numbers unannounced is how
+    // people stop trusting a system.
+    const notice = receiptNotice(
+      receipt({ cost_correction: '80.00', units_recosted: '2' }),
+    );
+    expect(notice).toContain('Recorded as GRN-0007.');
+    expect(notice).toContain('2 units');
+    expect(notice).toContain('cost of goods sold rose by 80.00');
+  });
+
+  it('explains a correction the other way without a double negative', () => {
+    const notice = receiptNotice(
+      receipt({ cost_correction: '-60.00', units_recosted: '2' }),
+    );
+    expect(notice).toContain('cost of goods sold fell by 60.00');
+    // money() renders a negative in parentheses, which after "fell by" would
+    // read as a correction in the opposite direction to the one described.
+    expect(notice).not.toContain('(');
+  });
+
+  it('counts a single unit in the singular', () => {
+    const notice = receiptNotice(
+      receipt({ cost_correction: '12.50', units_recosted: '1' }),
+    );
+    expect(notice).toContain('1 unit sold');
+    expect(notice).not.toContain('1 units');
+  });
+
+  it('trims the trailing zeroes a numeric quantity arrives with', () => {
+    const notice = receiptNotice(
+      receipt({ cost_correction: '80.00', units_recosted: '2.0000' }),
+    );
+    expect(notice).toContain('2 units');
+    expect(notice).not.toContain('2.0000');
+  });
+
+  it('groups a large correction so it can be read at a glance', () => {
+    const notice = receiptNotice(
+      receipt({ cost_correction: '12345.60', units_recosted: '400' }),
+    );
+    expect(notice).toContain('12,345.60');
+  });
+
+  it('says nothing about costs when the figure is not a number', () => {
+    // A server that sent something unexpected must not produce "rose by NaN" on
+    // a screen a storeman is meant to act on.
+    expect(receiptNotice(receipt({ cost_correction: 'oops' }))).toBe(
+      'Recorded as GRN-0007. Stock has been updated.',
+    );
+    expect(receiptNotice(receipt({ cost_correction: '' }))).toBe(
+      'Recorded as GRN-0007. Stock has been updated.',
+    );
+  });
+});
+
+describe('reversing a supplier payment', () => {
+  // The AP mirror of the receipt-reversal rules. A button that always refuses
+  // teaches a buyer to distrust the rest of them, so the ones the server would
+  // turn down are not drawn.
+
+  it('offers the action on a live payment', () => {
+    expect(canReverseSupplierPayment({ id: 'p1' })).toBe(true);
+  });
+
+  it('does not offer it on a payment already reversed', () => {
+    expect(canReverseSupplierPayment({ id: 'p1', reversed: true })).toBe(false);
+  });
+
+  it('does not offer it on a reversal', () => {
+    // Undoing a reversal means paying again, which leaves both facts on the
+    // record. Reversing one would let a clerk walk a balance anywhere.
+    expect(canReverseSupplierPayment({ id: 'p2', reverses_id: 'p1' })).toBe(false);
+  });
+
+  it('does not offer it on something with no identifier', () => {
+    expect(canReverseSupplierPayment({})).toBe(false);
+  });
+
+  it('tells the three kinds of row apart', () => {
+    // What a buyer needs at a glance: money that stayed out, money that came
+    // back, and the document that brought it back.
+    expect(paymentKind({})).toBe('payment');
+    expect(paymentKind({ reversed: true })).toBe('reversed');
+    expect(paymentKind({ reverses_id: 'p1' })).toBe('reversal');
+  });
+
+  it('reads a reversal as a reversal even if it were somehow marked reversed', () => {
+    // The server refuses to reverse a reversal, so this cannot arise — but if
+    // the flags ever disagreed, being a reversal is the more specific fact.
+    expect(paymentKind({ reverses_id: 'p1', reversed: true })).toBe('reversal');
   });
 });

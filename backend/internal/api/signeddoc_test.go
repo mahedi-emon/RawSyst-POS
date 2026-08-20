@@ -8,13 +8,16 @@
 // upload existed, the server held chain positions with nothing attached and
 // had nothing to submit.
 //
-// Nothing here asserts anything about ZATCA's format. The placeholders below
-// are obviously not real documents; what is under test is the handoff, the
-// write-once guarantee and which of the three artefacts reaches the submitter.
+// The XML and stamp below assert nothing about ZATCA's format and are obviously
+// not real documents. The QR is real, because the upload now checks the TLV
+// framing before storing it. What is under test is the handoff, the write-once
+// guarantee, which of the three artefacts reaches the submitter, and that a
+// malformed QR is turned away.
 package api
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"testing"
@@ -24,13 +27,17 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
-// A stand-in for what a terminal produces. Deliberately not shaped like real
-// UBL: inventing a plausible document is what the verification gate exists to
-// prevent, and this test does not need one.
+// Stand-ins for what a terminal produces. The document is deliberately not
+// shaped like real UBL: inventing a plausible one is what the verification gate
+// exists to prevent, and these tests do not need one.
 const (
 	placeholderXML   = "<placeholder-signed-document/>"
 	placeholderStamp = "placeholder-terminal-stamp"
-	placeholderQR    = "placeholder-qr-tlv"
+	// Not a placeholder: the upload path validates the TLV framing, so this is
+	// ZATCA's own worked payload from Technical Guideline V2 p.64 — tags 1 to 5,
+	// which are the ones required since 2021.
+	placeholderQR = "ARVCb2JzIEJhc2VtZW50IFJlY29yZHMCDzEwMDAyNTkwNjcwMDAwMwMU" +
+		"MjAyMi0wNC0yNVQxNTozMDowMFoECjIxMDAxMDAuOTkFCTMxNTAxNS4xNQ=="
 )
 
 func (h *harness) uploadDocument(
@@ -320,6 +327,54 @@ func TestAnUploadMissingItsStampIsRefused(t *testing.T) {
 			defer resp.Body.Close()
 			if resp.StatusCode != 400 {
 				t.Errorf("status = %d, want 400", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// A malformed QR is refused at the upload rather than stored. The payload ends
+// up on a customer's receipt and in a submission to ZATCA, so the boundary is
+// the right place to stop it.
+func TestAnUploadWithAMalformedQRIsRefused(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	for _, tc := range []struct{ name, qr string }{
+		{"not base64", "placeholder-qr-tlv"},
+		{"truncated field", base64.StdEncoding.EncodeToString([]byte{0x01, 0x09, 0x41})},
+		{"tag outside the nine", base64.StdEncoding.EncodeToString([]byte{0x0a, 0x01, 0x41})},
+		{"missing the VAT total", func() string {
+			qr, err := zatca.EncodeQR(
+				zatca.QRText(zatca.QRSellerName, "Bobs Basement Records"),
+				zatca.QRText(zatca.QRSellerVAT, "100025906700003"),
+				zatca.QRText(zatca.QRTimestamp, "2022-04-25T15:30:00Z"),
+				zatca.QRText(zatca.QRInvoiceTotal, "2100100.99"),
+			)
+			if err != nil {
+				t.Fatalf("build the short payload: %v", err)
+			}
+			return qr
+		}()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// A fresh invoice each time: a refused upload must leave the invoice
+			// free to receive a good document afterwards.
+			invoiceID := h.sellOne(t, f)
+
+			resp := h.uploadDocument(t, f, invoiceID,
+				placeholderXML, placeholderStamp, tc.qr)
+			defer resp.Body.Close()
+			if resp.StatusCode != 400 {
+				t.Fatalf("status = %d, want 400: %s", resp.StatusCode, readBody(t, resp))
+			}
+
+			// Nothing was written, so the good payload still goes in.
+			good := h.uploadDocument(t, f, invoiceID,
+				placeholderXML, placeholderStamp, placeholderQR)
+			defer good.Body.Close()
+			if good.StatusCode != 200 {
+				t.Errorf("the refused upload left the invoice unusable: %d %s",
+					good.StatusCode, readBody(t, good))
 			}
 		})
 	}

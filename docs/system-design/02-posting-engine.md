@@ -373,6 +373,16 @@ This is a deliberate trade-off. The alternative — blocking offline sales until
 - **BLOCK** — the sale is refused when stock is insufficient.
 - **ALLOW_WARN** — the sale proceeds with a warning; cost is provisional and **auto-corrected on the next receipt** of that item.
 
+**How the correction works** (`inventory/shortfall.go`, migrations 0047–0048).
+
+The uncovered quantity is recorded in `cost_shortfall` together with the estimate it was charged at — the last known layer cost under FIFO, the pool's average under weighted average, the standard cost under standard costing, and **zero** for an item the system has never received, which is the case that overstates margin most. The next receipt of that variant settles the open shortfalls oldest-first, drawing the units out of the arriving stock through the ordinary costing engine and posting the difference through rule 11 (`inventory.variance`) or 11a (`inventory.variance_favourable`) as its own entry on the goods receipt. A delivery smaller than the hole settles what it covers and leaves the rest open.
+
+The settlement draws stock oldest-first rather than pricing itself at the arriving delivery, and that matters in one specific case: if the customer returned the goods before the supplier delivered, the returned layer is the oldest and is priced at exactly what was charged out, so the correction is correctly **zero** rather than a variance invented out of a purchase price that had nothing to do with those units.
+
+Nothing is written to `stock_movement`. The goods left at the sale and that movement was recorded then, quantity and provisional value together; what was wrong was the value on it, and a movement is immutable. The correction is carried on the shortfall row and in the journal entry, which is the same shape as any other accounting correction.
+
+**Negative stock and the tie-out.** Selling five units from a shelf holding two credits the Inventory account for all five, because that is what went to cost of goods sold, while the layers empty and value nothing. §6.6's invariant therefore requires the valuation to carry the negative position: `inventory_valuation` deducts the value of open shortfalls. Settling one removes its deduction and draws the same quantity out of the new stock at actual cost, so the valuation moves by exactly the variance the journal posts and the two never part company. A negative `cost_layer.qty_remaining` would have been the obvious alternative and is forbidden by `cost_layer_remaining_sane`, deliberately — a receipt of minus three units is not a fact about anything that happened, and negative rows would be skipped by every FIFO query, which reads `qty_remaining > 0`.
+
 ### 6.6 The tie-out invariant
 
 **C13:** *"Inventory valuation report must always tie exactly to the Inventory account balance in the General Ledger — any divergence is flagged as an exception."*

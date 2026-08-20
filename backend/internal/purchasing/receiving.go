@@ -86,6 +86,17 @@ type Receipt struct {
 	// OrderStatus is what the PO became: receiving if more is expected,
 	// received once every line is complete.
 	OrderStatus string `json:"order_status"`
+
+	// CostCorrection is what this delivery put right on earlier sales that went
+	// below zero, signed: positive means those goods cost more than the till
+	// estimated, so the margin already reported on them was too generous
+	// (C13). Zero when nothing was owed, which is the ordinary case.
+	CostCorrection string `json:"cost_correction"`
+
+	// UnitsRecosted is how many previously uncovered units this delivery
+	// settled. Reported alongside the money because a large correction over one
+	// unit and a small one over hundreds are different problems.
+	UnitsRecosted string `json:"units_recosted"`
 }
 
 type ReceiptLine struct {
@@ -258,6 +269,7 @@ func (s *Service) ReceiveGoods(
 		allocation := allocateLandedCost(in.LandedCost, basis, weights)
 
 		accrued := decimal.Zero
+		correction, recosted := decimal.Zero, decimal.Zero
 		for i, item := range items {
 			share := allocation[i]
 
@@ -297,6 +309,20 @@ func (s *Service) ReceiveGoods(
 					return e
 				}
 				accrued = accrued.Add(item.kept.Mul(unitCost).Round(4))
+
+				// The stock is on the shelf, so any earlier sale of this
+				// variant that went below zero can stop guessing what it cost.
+				// C13 requires this to happen on the NEXT receipt, which is
+				// this one — a correction deferred to a month-end job would
+				// leave the books wrong for the whole month, and the layers it
+				// needs may have been consumed by then.
+				settled, e := inventory.SettleShortfalls(ctx, tx,
+					scope.CompanyID, item.variantID, warehouseID)
+				if e != nil {
+					return e
+				}
+				correction = correction.Add(settled.Adjustment)
+				recosted = recosted.Add(settled.QtySettled)
 			}
 
 			out.Lines = append(out.Lines, ReceiptLine{
@@ -316,6 +342,18 @@ func (s *Service) ReceiveGoods(
 			accrued, "Goods received "+number); e != nil {
 			return e
 		}
+
+		// The correction to earlier sales, as its own entry rather than folded
+		// into the accrual. They are two different facts — what this delivery
+		// cost, and what an earlier one was mis-costed by — and an auditor
+		// asking why cost of goods sold moved needs to see the second on its
+		// own, attributed to the rule that produced it.
+		if e := s.postCostCorrection(ctx, tx, scope, grnID, time.Now().UTC(),
+			correction, "Cost correction on goods received "+number); e != nil {
+			return e
+		}
+		out.CostCorrection = correction.StringFixed(2)
+		out.UnitsRecosted = recosted.String()
 
 		status, e := advanceOrderStatus(ctx, tx, in.POID)
 		out.OrderStatus = status
@@ -384,6 +422,11 @@ func (s *Service) alreadyReceived(
 	}
 	defer rows.Close()
 
+	// Any correction this delivery made was posted by the call that created it.
+	// Reporting it again would read as a second one having happened.
+	out.CostCorrection = "0.00"
+	out.UnitsRecosted = "0"
+
 	out.Lines = []ReceiptLine{}
 	for rows.Next() {
 		var l ReceiptLine
@@ -415,7 +458,10 @@ func (s *Service) ListReceipts(
 		defer rows.Close()
 
 		for rows.Next() {
-			var r Receipt
+			// A correction is reported by the receipt that made it, not by a
+			// later listing, which is a summary of what arrived rather than of
+			// what it put right.
+			r := Receipt{CostCorrection: "0.00", UnitsRecosted: "0"}
 			if e := rows.Scan(&r.ID, &r.GRNNumber, &r.POID, &r.PONumber,
 				&r.ReceivedOn); e != nil {
 				return e

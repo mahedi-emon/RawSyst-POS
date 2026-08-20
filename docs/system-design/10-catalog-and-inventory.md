@@ -198,10 +198,28 @@ The alternative — blocking offline sales until cost is known — violates the 
 offline-first requirement. Provisional-then-reconciled keeps the till running and
 the books exact, at the cost of an auditable variance line.
 
+> **As built, this is not what happens, and the difference matters.** The till
+> sends quantities, not costs. `sales.Finalize` costs every line itself against
+> the real layers, and replay puts an offline sale through that same finalizer,
+> so the authoritative figure is the only one ever posted and there is no
+> difference to book. Implementing the paragraph above literally would now
+> double-count: the difference would be posted on top of a cost of goods sold
+> that is already correct. What is genuinely missing is visibility of how far a
+> terminal's cached costs have drifted. Tracked as P10.
+
 ### Negative stock
 
 `BLOCK` refuses the sale. `ALLOW_WARN` proceeds with a warning and auto-corrects
 cost on the next receipt (C13).
+
+The correction is built. The uncovered units are recorded in `cost_shortfall`
+with the estimate they were charged at, and the next receipt of that variant
+settles them oldest-first at what the arriving stock actually cost, posting the
+difference to Cost Variance as its own entry on the goods receipt. The stock
+valuation deducts open shortfalls, so C13's tie-out holds while a shop is
+trading below zero rather than only when its stock is positive. See
+`02-posting-engine.md` §6.5 for the mechanism and why a negative cost layer was
+not the answer.
 
 ### The tie-out invariant
 

@@ -676,9 +676,17 @@ func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
 	pool := testPool(t)
 
 	want := []string{
-		"SA.ZATCA.QR_TLV_FIELDS",        // never verified; byte layout
 		"SA.ZATCA.XML_CANONICALIZATION", // split out of HASH_ALGORITHM by 0044
 		"SA.ZATCA.UBL_FIELD_SET",        // split out of XML_SCHEMA_VERSION by 0044
+
+		// 0045. Both are onboarding rather than invoice format: without them a
+		// CSR cannot be built or sent, however well the nine inputs are captured.
+		"SA.ZATCA.CSR_SUBJECT_LAYOUT",
+		"SA.ZATCA.ONBOARDING_REQUEST_FORMAT",
+
+		// 0046. The QR framing is verified; how tags 6 to 9 encode their values is
+		// answered two different ways by the standard, so it stays open.
+		"SA.ZATCA.QR_TAG_VALUE_ENCODING",
 	}
 	for _, key := range want {
 		var blocker bool
@@ -696,6 +704,126 @@ func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
 		if verified != nil {
 			t.Errorf("rule %s claims to be verified on %s; nothing in this "+
 				"repository has read it from the ZATCA standard", key, verified)
+		}
+	}
+}
+
+// The other half of 0045: what the ZATCA documents DO publish about onboarding.
+// An implementation will be built on these four values, so a silent edit to any
+// of them should fail here rather than at a taxpayer's first onboarding attempt.
+func TestTheVerifiedZATCAOnboardingRulesAreRecorded(t *testing.T) {
+	pool := testPool(t)
+
+	for _, key := range []string{
+		"SA.ZATCA.CSR_KEY_PARAMETERS",
+		"SA.ZATCA.CSR_CERTIFICATE_TEMPLATE",
+		"SA.ZATCA.ONBOARDING_ENDPOINTS",
+		"SA.ZATCA.ONBOARDING_OTP",
+	} {
+		var blocker bool
+		var verified *time.Time
+		err := pool.Raw().QueryRow(context.Background(),
+			`SELECT release_blocker, verified_on FROM regulatory_rule
+			 WHERE rule_key = $1 AND effective_to IS NULL`, key).
+			Scan(&blocker, &verified)
+		if err != nil {
+			t.Fatalf("rule %s missing from the registry: %v", key, err)
+		}
+		if verified == nil {
+			t.Errorf("rule %s was read from the ZATCA documents but is not "+
+				"recorded as verified, so it would block release", key)
+		}
+		if blocker {
+			t.Errorf("rule %s is verified, so it should not also block release", key)
+		}
+	}
+
+	// The curve is the value most likely to be quietly "corrected" to P-256 by
+	// someone reaching for crypto/elliptic, which does not carry secp256k1.
+	var curve, sig string
+	err := pool.Raw().QueryRow(context.Background(),
+		`SELECT payload->>'curve', payload->>'csr_signature_algorithm'
+		   FROM regulatory_rule
+		  WHERE rule_key = 'SA.ZATCA.CSR_KEY_PARAMETERS' AND effective_to IS NULL`).
+		Scan(&curve, &sig)
+	if err != nil {
+		t.Fatalf("read the CSR key parameters: %v", err)
+	}
+	if curve != "secp256k1" {
+		t.Errorf("curve = %q, want secp256k1 (Technical Guideline V2 p.57)", curve)
+	}
+	if sig != "ecdsa-with-SHA256" {
+		t.Errorf("CSR signature algorithm = %q, want ecdsa-with-SHA256", sig)
+	}
+}
+
+// 0046 verified the QR field set and byte layout. Like XML_SCHEMA_VERSION it
+// keeps release_blocker = true as a permanent mark of a release-critical value —
+// the gate is `release_blocker AND verified_on IS NULL`, so the flag alone does
+// not block. The layout is pinned here because getting a length or the base64
+// wrapping wrong produces a QR that scans into nonsense on a printed receipt.
+func TestTheQRByteLayoutIsRecordedAsVerified(t *testing.T) {
+	pool := testPool(t)
+
+	var verified *time.Time
+	var blocker bool
+	var tagBytes, lengthBytes, maxChars int
+	var lengthCounts, separators string
+	err := pool.Raw().QueryRow(context.Background(),
+		`SELECT verified_on, release_blocker,
+		        (payload->>'tag_bytes')::int, (payload->>'length_bytes')::int,
+		        (payload->>'max_base64_chars')::int,
+		        payload->>'length_counts', payload->>'separators'
+		   FROM regulatory_rule
+		  WHERE rule_key = 'SA.ZATCA.QR_TLV_FIELDS' AND effective_to IS NULL`).
+		Scan(&verified, &blocker, &tagBytes, &lengthBytes, &maxChars,
+			&lengthCounts, &separators)
+	if err != nil {
+		t.Fatalf("read the QR rule: %v", err)
+	}
+
+	if verified == nil {
+		t.Error("the QR field set and byte layout were read from §6 of the " +
+			"Technical Guideline but the rule is not recorded as verified")
+	}
+	if !blocker {
+		t.Error("the QR rule stopped being marked release-critical")
+	}
+	if tagBytes != 1 || lengthBytes != 1 {
+		t.Errorf("tag/length are %d/%d bytes, want 1/1", tagBytes, lengthBytes)
+	}
+	if maxChars != 700 {
+		t.Errorf("max base64 characters = %d, want 700", maxChars)
+	}
+	if lengthCounts != "bytes_of_the_utf8_encoded_value" {
+		t.Errorf("length_counts = %q; counting characters rather than bytes "+
+			"truncates every Arabic value", lengthCounts)
+	}
+	if separators != "none" {
+		t.Errorf("separators = %q, want none", separators)
+	}
+
+	// All nine tags, in ZATCA's order.
+	for tag, want := range map[string]string{
+		"1": "seller_name",
+		"2": "seller_vat_registration_number",
+		"3": "invoice_timestamp",
+		"4": "invoice_total_including_vat",
+		"5": "vat_total",
+		"6": "hash_of_the_xml_invoice",
+		"7": "ecdsa_signature",
+		"8": "ecdsa_public_key",
+		"9": "zatca_ca_signature_over_that_public_key",
+	} {
+		var got string
+		if e := pool.Raw().QueryRow(context.Background(),
+			`SELECT payload->'fields'->>$1 FROM regulatory_rule
+			  WHERE rule_key = 'SA.ZATCA.QR_TLV_FIELDS' AND effective_to IS NULL`,
+			tag).Scan(&got); e != nil {
+			t.Fatalf("read tag %s: %v", tag, e)
+		}
+		if got != want {
+			t.Errorf("tag %s = %q, want %q", tag, got, want)
 		}
 	}
 }

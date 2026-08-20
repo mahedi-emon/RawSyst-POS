@@ -278,6 +278,9 @@ func (s *Server) Routes() []Route {
 
 		{http.MethodPost, "/api/v1/purchasing/payments", AccessPermission, "purchasing.pay_supplier",
 			s.handlePaySupplier, ""},
+		{http.MethodPost, "/api/v1/purchasing/payments/{paymentID}/reverse", AccessPermission, "purchasing.pay_supplier",
+			s.handleReverseSupplierPayment,
+			"a new payment that undoes one; the original is not edited. Idempotent on a client-assigned uuid"},
 		{http.MethodGet, "/api/v1/purchasing/ageing", AccessPermission, "accounting.view",
 			s.handleSupplierAgeing, "what is owed to whom, aged from the due date"},
 
@@ -363,6 +366,9 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/receivables/receipts", AccessPermission, "sales.receive_payment",
 			s.handleTakeCustomerPayment,
 			"taking money in is separate from managing the customer record; idempotent on a client-assigned uuid"},
+		{http.MethodPost, "/api/v1/receivables/receipts/{receiptID}/reverse", AccessPermission, "sales.receive_payment",
+			s.handleReverseCustomerPayment,
+			"a new receipt that undoes one; the original is not edited. Idempotent on a client-assigned uuid"},
 		{http.MethodGet, "/api/v1/receivables/ageing", AccessPermission, "accounting.view",
 			s.handleCustomerAgeing, "who owes what, aged from the due date"},
 

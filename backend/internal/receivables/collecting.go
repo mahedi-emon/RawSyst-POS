@@ -113,6 +113,9 @@ type Receipt struct {
 	Currency      string           `json:"currency"`
 	Settled       []SettledInvoice `json:"settled"`
 	AlreadyTaken  bool             `json:"already_taken"`
+	// ReversesID is set when this document exists to put another receipt right.
+	// Empty on a live payment. The original is not edited.
+	ReversesID *uuid.UUID `json:"reverses_id,omitempty"`
 }
 
 type SettledInvoice struct {
@@ -323,13 +326,13 @@ func (s *Service) alreadyTaken(
 	err := tx.QueryRow(ctx, `
 		SELECT cr.id, cr.receipt_number, cr.customer_id, c.name,
 		       cr.received_on::text, cr.method, coalesce(cr.reference,''),
-		       round(cr.amount, 2)::text, cr.currency
+		       round(cr.amount, 2)::text, cr.currency, cr.reverses_id
 		FROM customer_receipt cr
 		JOIN customer c ON c.id = cr.customer_id
 		WHERE cr.tenant_id = $1 AND cr.uuid = $2`,
 		scope.TenantID, docUUID,
 	).Scan(&r.ID, &r.ReceiptNumber, &r.CustomerID, &r.Customer, &r.ReceivedOn,
-		&r.Method, &r.Reference, &r.Amount, &r.Currency)
+		&r.Method, &r.Reference, &r.Amount, &r.Currency, &r.ReversesID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Receipt{}, false, nil
 	}
@@ -372,6 +375,13 @@ type LedgerRow struct {
 	// statement can see how they got where they are rather than only where.
 	Balance string `json:"balance"`
 	DueDate string `json:"due_date,omitempty"`
+	// SourceID is the receipt or invoice this row is. Needed to reverse a
+	// payment from the statement without a second lookup.
+	SourceID   string `json:"source_id,omitempty"`
+	ReversesID string `json:"reverses_id,omitempty"`
+	// Reversed is true once another receipt has put this one right. The
+	// original row stays; the button to reverse it does not.
+	Reversed bool `json:"reversed,omitempty"`
 }
 
 type Ledger struct {
@@ -414,12 +424,15 @@ func (s *Service) LedgerFor(
 		// what they owe.
 		rows, e := tx.Query(ctx, `
 			SELECT d.happened_at::date::text, d.kind, d.reference,
-			       d.charged::text, d.received::text, coalesce(d.due,'')
+			       d.charged::text, d.received::text, coalesce(d.due,''),
+			       coalesce(d.source_id::text,''), coalesce(d.reverses_id::text,''),
+			       d.reversed
 			FROM (
 			  SELECT i.issued_at AS happened_at, 1 AS seq, 'sale' AS kind,
 			         coalesce(i.human_number, left(i.id::text, 8)) AS reference,
 			         o.on_account AS charged, 0::numeric AS received,
-			         o.due_date::text AS due
+			         o.due_date::text AS due,
+			         i.id AS source_id, NULL::uuid AS reverses_id, false AS reversed
 			  FROM customer_open_invoices($1) o
 			  JOIN sales_invoice i ON i.id = o.invoice_id
 			  WHERE o.customer_id = $2
@@ -432,7 +445,8 @@ func (s *Service) LedgerFor(
 			  -- payment they never made.
 			  SELECT cn.issued_at, 2, 'credit',
 			         coalesce(cn.human_number, left(cn.id::text, 8)),
-			         0::numeric, f.amount, NULL
+			         0::numeric, f.amount, NULL,
+			         cn.id, NULL::uuid, false
 			  FROM sales_invoice cn
 			  JOIN sales_refund f ON f.credit_note_id = cn.id
 			  WHERE cn.company_id = $1 AND cn.doc_type = 'credit_note'
@@ -444,8 +458,16 @@ func (s *Service) LedgerFor(
 
 			  UNION ALL
 
-			  SELECT cr.created_at, 3, 'receipt',
-			         cr.receipt_number, 0::numeric, cr.amount, NULL
+			  SELECT cr.created_at, 3,
+			         CASE WHEN cr.reverses_id IS NULL THEN 'receipt' ELSE 'reversal' END,
+			         cr.receipt_number,
+			         CASE WHEN cr.reverses_id IS NULL THEN 0::numeric ELSE cr.amount END,
+			         CASE WHEN cr.reverses_id IS NULL THEN cr.amount ELSE 0::numeric END,
+			         NULL,
+			         cr.id, cr.reverses_id,
+			         EXISTS (
+			           SELECT 1 FROM customer_receipt r WHERE r.reverses_id = cr.id
+			         )
 			  FROM customer_receipt cr
 			  WHERE cr.customer_id = $2 AND cr.company_id = $1
 			) d
@@ -458,9 +480,10 @@ func (s *Service) LedgerFor(
 		running := decimal.Zero
 		for rows.Next() {
 			var r LedgerRow
-			var charged, received, due string
+			var charged, received, due, sourceID, reversesID string
+			var reversed bool
 			if e := rows.Scan(&r.Date, &r.Kind, &r.Reference,
-				&charged, &received, &due); e != nil {
+				&charged, &received, &due, &sourceID, &reversesID, &reversed); e != nil {
 				return e
 			}
 
@@ -476,6 +499,9 @@ func (s *Service) LedgerFor(
 			}
 			r.Balance = running.StringFixed(2)
 			r.DueDate = due
+			r.SourceID = sourceID
+			r.ReversesID = reversesID
+			r.Reversed = reversed
 			out.Rows = append(out.Rows, r)
 		}
 		if e := rows.Err(); e != nil {

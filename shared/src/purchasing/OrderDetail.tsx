@@ -18,7 +18,7 @@ import { DetailScreen, EmptyState, RemoteBody } from '../dashboard/DetailScreen'
 import { useRemote } from '../dashboard/useRemote';
 import { money } from '../ui/format';
 import { trimQuantity } from '../dashboard/drilldown';
-import { receivingDefaults } from './purchasing';
+import { receiptNotice, receivingDefaults } from './purchasing';
 import { issueOrder, readOrder, receiveGoods, type Order } from '../api/purchasing';
 import { OrderStatus } from './PurchasingScreen';
 import { OrderForm } from './OrderForm';
@@ -89,11 +89,7 @@ export function OrderDetail({
         lines,
       });
       setReceiving(false);
-      setNotice(
-        receipt.already_received
-          ? `That delivery was already recorded as ${receipt.grn_number}.`
-          : `Recorded as ${receipt.grn_number}. Stock has been updated.`,
-      );
+      setNotice(receiptNotice(receipt));
       reload();
     } catch (err) {
       setNotice(explain(err, 'That delivery could not be recorded.'));

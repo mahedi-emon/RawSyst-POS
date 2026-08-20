@@ -379,6 +379,44 @@ func (s *Server) handleTakeCustomerPayment(w http.ResponseWriter, r *http.Reques
 	httpx.JSON(w, status, out)
 }
 
+func (s *Server) handleReverseCustomerPayment(w http.ResponseWriter, r *http.Request) {
+	receiptID, err := parseUUID(chi.URLParam(r, "receiptID"), "receiptID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req struct {
+		UUID string `json:"uuid"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := s.customerScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	docUUID, err := parseUUID(req.UUID, "uuid")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.receivables.ReversePayment(r.Context(), scope, receivables.ReverseReceipt{
+		UUID: docUUID, ReceiptID: receiptID,
+	})
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	status := http.StatusCreated
+	if out.AlreadyTaken {
+		status = http.StatusOK
+	}
+	httpx.JSON(w, status, out)
+}
+
 // --- Ageing --------------------------------------------------------------
 
 func (s *Server) handleCustomerAgeing(w http.ResponseWriter, r *http.Request) {

@@ -27,7 +27,7 @@ The three most volatile items. Each blocks a phase from shipping.
 
 | # | Item | Registry key | Tier 1 source | Blocks | Why it's dangerous |
 |---|---|---|---|---|---|
-| A1 | 🚫 **ZATCA XML / QR schema version** | `SA.ZATCA.QR_TLV_FIELDS`, `SA.ZATCA.UBL_FIELD_SET`, `SA.ZATCA.XML_CANONICALIZATION` | ZATCA **XML Implementation Standard** + **Security Features Implementation Standard** | **Phase 1** | Must match the schema ZATCA currently accepts. Wrong bytes = invoices rejected at scale. The system records which version each archived invoice was signed under |
+| A1 | 🚫 **ZATCA XML / QR schema version** | `SA.ZATCA.QR_TAG_VALUE_ENCODING`, `SA.ZATCA.UBL_FIELD_SET`, `SA.ZATCA.XML_CANONICALIZATION` | ZATCA **XML Implementation Standard** + **Security Features Implementation Standard** | **Phase 1** | Must match the schema ZATCA currently accepts. Wrong bytes = invoices rejected at scale. The system records which version each archived invoice was signed under |
 
 A1 was originally one row against `SA.ZATCA.XML_SCHEMA_VERSION` and `SA.ZATCA.HASH_ALGORITHM`. Migration 0012 verified part of each — that submission is XML only under standard v1.2, and that the hash is SHA-256 with half-up rounding — and in doing so stamped `verified_on` on both, which removed them from `registry.Health`'s blocking list along with the parts nobody had read. Migration 0044 split the unanswered halves back out under their own keys, which are the ones named above. The two partly-verified rules stay verified for what they actually establish.
 | A2 | 🚫 **Mudad wage-file format** | `SA.WPS.WAGE_FILE_FORMAT_SPEC` | Mudad live specification (`mudad.com.sa`) | **Phase 3** | *"File layouts change without publicity."* Pull immediately before build **and re-check before every payroll release** |
@@ -79,13 +79,25 @@ carries a `verified_on` AND the finding covers the whole of the item.
 
 - [x] Submission format and standard version — XML only, v1.2; PDF/A-3 is not accepted for submission (`SA.ZATCA.XML_SCHEMA_VERSION`)
 - [ ] 🚫 Mandatory UBL 2.1 field set, cardinality and business rules (`SA.ZATCA.UBL_FIELD_SET`)
-- [ ] 🚫 QR TLV field set and byte layout (`SA.ZATCA.QR_TLV_FIELDS`)
+- [x] QR TLV field set and byte layout — nine tags, one byte of tag, one byte of length counting UTF-8 **bytes**, no separators, whole stream base64 to at most 700 characters (`SA.ZATCA.QR_TLV_FIELDS`)
+- [ ] 🚫 How tags 6 to 9 encode their values — the standard answers this two different ways (`SA.ZATCA.QR_TAG_VALUE_ENCODING`)
 - [x] Hash algorithm and rounding — SHA-256, half-up on the third decimal (`SA.ZATCA.HASH_ALGORITHM`)
 - [ ] 🚫 Canonicalization method applied before hashing (`SA.ZATCA.XML_CANONICALIZATION`)
 - [x] Simplified reporting window — **24 hours** (`SA.ZATCA.REPORTING_WINDOW_HOURS`)
 - [x] **Whether any offline tolerance exists for Standard invoices** — there is an official extended-outage route: an *uncleared* invoice, with three obligations attached (`SA.ZATCA.STANDARD_OFFLINE_TOLERANCE`, schema change in 0013)
 - [x] CSID renewal interval — no fixed term is published; the certificate's own `NotAfter` governs, capped at 60 months (`SA.ZATCA.CSID_RENEWAL_DAYS`)
 - [ ] Current wave definitions and deadlines
+
+Onboarding was read on **2026-08-19** from the four official PDFs; migration 0045
+records the result. The split is deliberate: what a CSR is made of is verified,
+how it is laid out and sent is not.
+
+- [x] CSR key parameters — EC on **secp256k1**, CSR signed `ecdsa-with-SHA256`, public key in **compressed** point form, extensions from `v3_req` (`SA.ZATCA.CSR_KEY_PARAMETERS`)
+- [x] Certificate template name — `ZATCA-Code-Signing` for production, `PREZATCA-Code-Signing` for simulation; the sandbox value is unpublished (`SA.ZATCA.CSR_CERTIFICATE_TEMPLATE`)
+- [x] Onboarding endpoints and authentication — three URLs per environment, `Authorization: Basic base64(CSID:Secret)`, `accept-version: v2` (`SA.ZATCA.ONBOARDING_ENDPOINTS`)
+- [x] OTP — exactly six numeric digits, valid one hour, portal-only with no API, up to 100 per request, bound to the VAT number (`SA.ZATCA.ONBOARDING_OTP`)
+- [ ] 🚫 CSR subject layout — which X.509 attribute carries each of the nine inputs, the SAN entries, and the OID carrying `certificateTemplateName` (`SA.ZATCA.CSR_SUBJECT_LAYOUT`)
+- [ ] 🚫 Onboarding request format — HTTP verbs, the OTP header name, the CSR body field and its encoding, the compliance-request-ID field, response schema and status codes (`SA.ZATCA.ONBOARDING_REQUEST_FORMAT`)
 
 ### PDPL
 - [ ] DSR response deadline — **30 days, extendable by a further 30**
@@ -156,6 +168,8 @@ Three specific framings the blueprint mandates:
 |---|---|---|---|---|
 | 2026-08-15 | ZATCA submission format and standard version; hash algorithm and rounding; CSID validity; simplified reporting window; standard-invoice offline route; VAT record retention; mandatory registration threshold | Founder desk verification. **Not** a tax advisor or legal counsel — §D remains open | XML Implementation Standard v1.2 (2023-05-19) §7.3; Detailed Guideline V2 §4.1.2(b), §4.2.2(c), §6.5, §10; Technical Guideline V2 §3.2.2, §3.3.3, §3.5, §4.3; Security Features Implementation Standard v1.2 (2023-05-19) §2.2.2 | Six design assumptions were wrong and were corrected: PDF/A-3 is not accepted for submission; the CSID belongs to an EGS unit and not to a device (schema change, 0013); there is an official uncleared-invoice route for an extended B2B outage (0013); no fixed CSID term is published; unit price carries no decimal limit while line totals do; the CSR requires nine specific fields. Recorded in migration 0012 and in `ZATCA E-Invoicing Phase 2.md`. The primary PDFs are **not** archived in this repository, so the citations are re-checkable only against ZATCA's published copies |
 | 2026-08-19 | Correction to the above, not a new verification | Founder | — | 0012 stamped `verified_on` on `SA.ZATCA.XML_SCHEMA_VERSION` and `SA.ZATCA.HASH_ALGORITHM` while answering only part of each, which silently removed both from `registry.Health`'s blocking list. Migration 0044 split the unanswered halves into `SA.ZATCA.UBL_FIELD_SET` and `SA.ZATCA.XML_CANONICALIZATION`, both unverified blockers. Nothing was verified on this date |
+| 2026-08-19 | QR TLV field set and byte layout | Founder desk verification. **Not** a tax advisor or legal counsel — §D remains open | Technical Guideline V2 §6 pp.58-64, including both worked payloads | The nine tags, the one-byte tag and length, the "no padding or separators", the 700-character base64 ceiling, and that the length counts **bytes** of the UTF-8 value rather than characters — §6.4 names Arabic text as the common mistake here. Both published payloads are now golden tests and are reproduced byte for byte. Two problems found in the source and recorded rather than smoothed over: the length table on p.60 disagrees with its own payload on five of nine tags (6/45/192/48/144 against 7/5/96/88/72) and states tag 5 as `114.90` where the payload says `144.9`; and §6.1 says a value is the UTF-8 encoding of the field value while the payload carries tags 8 and 9 as raw DER, which is not UTF-8. The second is now `SA.ZATCA.QR_TAG_VALUE_ENCODING`, an open blocker |
+| 2026-08-19 | CSR key parameters; certificate template names; onboarding endpoints and authentication; onboarding OTP | Founder desk verification. **Not** a tax advisor or legal counsel — §D remains open | Technical Guideline V2 (Nov 2022) p.57 for the OpenSSL commands, pp.26–29 for the CSR inputs, pp.21–25 and p.30 and pp.76–77 for the OTP, p.60 and p.63 for corroboration; FATOORA Portal User Manual V3 §3.A–3.B pp.30–31; Developer Portal Manual V3 §3 p.68 | The curve is **secp256k1**, not the NIST P-256 that most libraries default to, corroborated twice inside the same document — the QR worked example on p.60 carries OID `1.3.132.0.10`, and p.63 reads `ecdsa-with-SHA256` off the issued PCSID. Consequence: Go's standard library cannot generate this key. Two gaps opened as blockers in 0045 rather than guessed: the CSR **subject layout** (the guideline invokes `-config config.cnf` and never prints the file; the Developer Portal Manual shows the sample CSR as a screenshot) and the onboarding **request format** (verbs, OTP header name, body field names and CSR encoding, all deferred to Swagger files reachable only from the Integration Sandbox). One conflict between two official documents: Technical Guideline p.28 maps the functionality-map digits to `TSXY`, Developer Portal Manual p.90 maps them to `TSCZ`; the three values we act on are identical under either reading. The four primary PDFs are **not** archived in this repository |
 
 Keep this table filled in. It is the evidence that verification actually happened — useful in an audit, and the only way to know what is safe to rely on.
 

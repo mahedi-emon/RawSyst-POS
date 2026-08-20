@@ -10,7 +10,7 @@
 // and a receipt form that quietly drifts by a fraction of a halala is a receipt
 // form that will one day refuse a payment that exactly settles an invoice.
 
-import type { AgeingRow, Customer, OpenInvoice } from '../api/receivables';
+import type { AgeingRow, Customer, LedgerRow, OpenInvoice } from '../api/receivables';
 
 /** Two decimal places, as minor units. Anything else came from a bug. */
 export function minor(amount: string): bigint {
@@ -225,4 +225,16 @@ export function ageingTotals(rows: AgeingRow[]): {
     days_90_plus: sum((r) => r.days_90_plus),
     total: sum((r) => r.total),
   };
+}
+
+/**
+ * Whether this statement row can be reversed from the screen.
+ *
+ * Only a live payment. A sale is reversed by a credit note, a credit note is
+ * not a receipt, and a reversal is itself a document — reversing that would
+ * be editing history by another name. An already-reversed payment stays on
+ * the statement; the control does not.
+ */
+export function canReversePayment(row: LedgerRow): boolean {
+  return row.kind === 'receipt' && !row.reversed && Boolean(row.source_id);
 }

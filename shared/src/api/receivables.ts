@@ -143,7 +143,7 @@ export function setCustomerActive(
 
 export interface LedgerRow {
   date: string;
-  kind: 'sale' | 'credit' | 'receipt';
+  kind: 'sale' | 'credit' | 'receipt' | 'reversal';
   reference: string;
   charged?: string;
   received?: string;
@@ -151,6 +151,11 @@ export interface LedgerRow {
    *  and not only where they are. */
   balance: string;
   due_date?: string;
+  source_id?: string;
+  reverses_id?: string;
+  /** True once another receipt has put this payment right. The original row
+   *  stays on the statement; the control to reverse it does not. */
+  reversed?: boolean;
 }
 
 export interface Ledger {
@@ -220,6 +225,8 @@ export interface Receipt {
   /** True when the server recognised this uuid and did NOT take the money a
    *  second time. */
   already_taken: boolean;
+  /** Set when this document exists to put another receipt right. */
+  reverses_id?: string;
 }
 
 export interface ReceiptBody {
@@ -242,6 +249,24 @@ export function takePayment(
     'POST',
     `/api/v1/receivables/receipts?company_id=${companyId}`,
     body,
+  );
+}
+
+/** Posts a new receipt that undoes an existing one. The original is not edited.
+ *
+ * `uuid` is assigned by the caller BEFORE the call, the same way a receipt is.
+ * A network failure after the server committed would otherwise reverse the
+ * same payment twice. */
+export function reversePayment(
+  client: Client,
+  companyId: string,
+  receiptId: string,
+  uuid: string,
+): Promise<Receipt> {
+  return client.send<Receipt>(
+    'POST',
+    `/api/v1/receivables/receipts/${receiptId}/reverse?company_id=${companyId}`,
+    { uuid },
   );
 }
 

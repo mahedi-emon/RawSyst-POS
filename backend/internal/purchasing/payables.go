@@ -277,6 +277,15 @@ type Payment struct {
 	Currency      string        `json:"currency"`
 	Settled       []SettledBill `json:"settled"`
 	AlreadyPaid   bool          `json:"already_paid"`
+
+	// ReversesID names the payment this one undoes, when it undoes one. A
+	// screen shows a reversal differently from a payment, and a payment that
+	// has been reversed differently again — see the supplier_payment_effect
+	// view in migration 0050.
+	ReversesID *uuid.UUID `json:"reverses_id,omitempty"`
+	// Reversed is true once something else has undone this payment, so a
+	// screen can strike it through rather than offer to reverse it twice.
+	Reversed bool `json:"reversed,omitempty"`
 }
 
 type SettledBill struct {
@@ -414,11 +423,16 @@ func (s *Service) PaySupplier(
 					ref, outstanding.StringFixed(2), a.Amount.StringFixed(2))
 			}
 
+			// `status` is captured as it was BEFORE this allocation touched
+			// the bill, so a reversal can put back exactly what it found.
+			// Guessing between 'matched' and 'approved' would invent a rule
+			// and quietly rewrite whether the three-way match agreed — see
+			// migration 0050.
 			if _, e := tx.Exec(ctx, `
 				INSERT INTO supplier_payment_allocation
-				  (tenant_id, payment_id, bill_id, amount)
-				VALUES ($1,$2,$3,$4)`,
-				scope.TenantID, paymentID, a.BillID, a.Amount); e != nil {
+				  (tenant_id, payment_id, bill_id, amount, bill_status_before)
+				VALUES ($1,$2,$3,$4,$5)`,
+				scope.TenantID, paymentID, a.BillID, a.Amount, status); e != nil {
 				return db.Translate(e,
 					"That bill is allocated twice on the same payment.")
 			}
@@ -491,13 +505,15 @@ func (s *Service) alreadyPaid(
 	err := tx.QueryRow(ctx, `
 		SELECT sp.id, sp.payment_number, sp.supplier_id, s.legal_name,
 		       sp.paid_on::text, sp.method, coalesce(sp.reference,''),
-		       sp.amount::text, sp.currency
+		       sp.amount::text, sp.currency, sp.reverses_id,
+		       EXISTS (SELECT 1 FROM supplier_payment r WHERE r.reverses_id = sp.id)
 		FROM supplier_payment sp
 		JOIN supplier s ON s.id = sp.supplier_id
 		WHERE sp.tenant_id = $1 AND sp.uuid = $2`,
 		scope.TenantID, docUUID,
 	).Scan(&p.ID, &p.PaymentNumber, &p.SupplierID, &p.Supplier, &p.PaidOn,
-		&p.Method, &p.Reference, &p.Amount, &p.Currency)
+		&p.Method, &p.Reference, &p.Amount, &p.Currency, &p.ReversesID,
+		&p.Reversed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Payment{}, false, nil
 	}

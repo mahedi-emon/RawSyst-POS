@@ -876,3 +876,49 @@ func (s *Server) handleSetSupplierActive(w http.ResponseWriter, r *http.Request)
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// handleReverseSupplierPayment posts a new payment that undoes an existing one.
+//
+// The AP mirror of handleReverseCustomerPayment, gated on the same permission
+// as paying: whoever may send money to a supplier may take it back. Splitting
+// them would mean a shop could pay but never correct, which is how a wrong
+// payment becomes a permanent wrong balance.
+func (s *Server) handleReverseSupplierPayment(w http.ResponseWriter, r *http.Request) {
+	paymentID, err := parseUUID(chi.URLParam(r, "paymentID"), "paymentID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req struct {
+		UUID string `json:"uuid"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := purchaseScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	docUUID, err := parseUUID(req.UUID, "uuid")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.purchasing.ReversePayment(r.Context(), scope,
+		purchasing.ReversePaymentRequest{UUID: docUUID, PaymentID: paymentID})
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// A recognised retry is not a creation. 200 rather than 201 so a client can
+	// tell "we reversed it" from "we already had".
+	status := http.StatusCreated
+	if out.AlreadyPaid {
+		status = http.StatusOK
+	}
+	httpx.JSON(w, status, out)
+}

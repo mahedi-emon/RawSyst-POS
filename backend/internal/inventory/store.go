@@ -309,6 +309,28 @@ func Consume(ctx context.Context, tx pgx.Tx, iss Issue) (CostResult, error) {
 		return CostResult{}, err
 	}
 
+	// C13: the cost of units no layer covered is PROVISIONAL and corrects on
+	// the next receipt. Recording it is what makes that correction possible —
+	// the estimate used to be charged to cost of goods sold and then forgotten,
+	// so nothing could ever revisit it.
+	//
+	// Written whatever the negative-stock policy says. Under block the caller
+	// refuses the sale and rolls the transaction back, taking this row with it,
+	// so there is no need to guess the policy here — and guessing it wrong is
+	// how the record would come to disagree with the movement beside it.
+	if result.ShortBy.IsPositive() {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO cost_shortfall
+			  (tenant_id, company_id, variant_id, warehouse_id, qty,
+			   provisional_unit_cost, source_type, source_id, device_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+			iss.TenantID, iss.CompanyID, iss.VariantID, iss.WarehouseID,
+			result.ShortBy, result.ShortUnitCost,
+			nullText(iss.SourceType), iss.SourceID, iss.DeviceID); err != nil {
+			return CostResult{}, err
+		}
+	}
+
 	return result, nil
 }
 
