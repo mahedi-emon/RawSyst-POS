@@ -849,3 +849,162 @@
 }
 
 .matrix__total strong { font-size: 1.35rem; }
+
+/* --- template blocks on a document (I2 / P35) ----------------------------- */
+
+/* What a shop writes for itself: header lines, payment terms, a return policy,
+ * a closing line. Quieter than the document's own figures, because they are
+ * standing text rather than facts about this transaction. */
+.inv__block {
+  margin: 0;
+  font-size: 0.87rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+.inv__seller .inv__block { max-inline-size: 42ch; }
+
+.inv__foot {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.inv__blockgroup { display: grid; gap: var(--space-1); }
+
+/* The closing line sits centred and apart, the way a "thank you for your
+ * custom" reads on paper. */
+.inv__blockgroup--closing {
+  justify-items: center;
+  text-align: center;
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--line, var(--border));
+}
+
+/* ---------------------------------------------------------------------------
+ * Document text (I2 / P35)
+ *
+ * Under the logo panel, because it answers the same question: what do my
+ * documents look like. One type at a time, both languages side by side.
+ * ------------------------------------------------------------------------- */
+
+.tmpl { inline-size: min(620px, 100%); }
+.tmpl__lede { margin-block: 0 var(--space-4); }
+
+.tmpl__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block-end: var(--space-5);
+}
+
+.tmpl__tab {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.87rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tmpl__tab--on {
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+/* Which types a client has written for themselves, at a glance. A dot rather
+ * than a word: the tab already carries the name it needs. */
+.tmpl__dot {
+  margin-inline-start: 4px;
+  color: var(--success);
+  font-weight: 700;
+}
+
+.tmpl__purpose { margin-block: 0 var(--space-4); }
+
+.tmpl__block { margin-block-end: var(--space-4); }
+
+.tmpl__blocklabel {
+  margin: 0 0 var(--space-2);
+  display: grid;
+  gap: 2px;
+  font-weight: 600;
+}
+
+/* Both languages side by side rather than behind a switch: a Saudi invoice
+ * needs both, and a switch hides the half somebody forgot to fill in. */
+.tmpl__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.tmpl__area {
+  inline-size: 100%;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.tmpl__toggles {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-5);
+}
+
+.tmpl__check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tmpl__check input { inline-size: 20px; block-size: 20px; margin-block-start: 2px; }
+.tmpl__check span { display: grid; gap: 2px; }
+
+.tmpl__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+
+.tmpl__saved {
+  margin-block: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--success);
+  background: var(--success-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.tmpl__readonly,
+.tmpl__note {
+  margin-block: var(--space-4) 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.87rem;
+}
+
+.tmpl__readonly {
+  border-inline-start: 3px solid var(--border-strong);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+/* The reassurance that makes the screen usable at all. A client who suspects
+ * editing a footer might alter last quarter's invoices will never touch it. */
+.tmpl__note {
+  border-inline-start: 3px solid var(--info);
+  background: var(--info-subtle);
+}

@@ -445,6 +445,26 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/companies/{companyID}/logo/image",
 			AccessAuthenticated, "", s.handleGetLogoImage,
 			"the shop's own mark, destined for its receipts; scoped to the caller's tenant by RLS"},
+
+		// --- document templates (I2 / P35) ---
+		//
+		// What a client writes on their own documents: header, footer, return
+		// policy, payment terms, and whether the logo and tax numbers appear.
+		// Presentation only — nothing here can reach a figure, a party or a
+		// date, which is what makes it safe to change after a document has
+		// been issued.
+		//
+		// Reading is merely authenticated, like the logo image and for the same
+		// reason: every document surface needs the stationery, so a cashier
+		// looking at an invoice must be able to fetch it. Writing carries the
+		// settings permission the rest of company configuration carries.
+		{http.MethodGet, "/api/v1/companies/{companyID}/templates",
+			AccessAuthenticated, "", s.handleListTemplates,
+			"the shop's own stationery, needed by every surface that renders a document"},
+		{http.MethodPut, "/api/v1/companies/{companyID}/templates/{docType}",
+			AccessPermission, "identity.edit", s.handleSaveTemplate, ""},
+		{http.MethodDelete, "/api/v1/companies/{companyID}/templates/{docType}",
+			AccessPermission, "identity.edit", s.handleResetTemplate, ""},
 		{http.MethodGet, "/api/v1/dashboard/overview", AccessPermission, "accounting.view",
 			s.handleDashboardOverview,
 			"the Owner Dashboard in one call; every figure computed from the journal"},

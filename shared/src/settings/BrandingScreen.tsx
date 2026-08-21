@@ -4,14 +4,14 @@
 // RawSyst and puts their own mark on it, and nobody edits source to do it for
 // them.
 //
-// # What this screen does not claim
+// # Where it appears, stated exactly
 //
-// Nothing prints the logo yet. The only document surface that exists is the
-// thermal receipt, which is 42 columns of plain text by deliberate design and
-// cannot carry an image, and there is no A4 or PDF surface at all. So the panel
-// says where the logo will and will not appear rather than implying it is
-// already on every receipt — a settings screen that quietly overstates what it
-// changed is worse than one that admits the gap.
+// The logo now prints: UI spec §5's invoice detail carries it, and P35 added
+// the words around it. It still does NOT reach the thermal receipt, which is 42
+// columns of plain text by deliberate design so it prints on every counter
+// printer, and text cannot hold an image. The panel says which is which — a
+// settings screen that quietly overstates what it changed is worse than one
+// that admits the gap.
 //
 // # The preview is a blob, not a src
 //
@@ -33,6 +33,7 @@ import {
   type Logo,
 } from '../api/branding';
 import { FormError } from '../ui/Form';
+import { TemplatePanel } from './TemplatePanel';
 
 /** Mirrors the server's own limits so the copy can state them before a client
  *  picks a file. The server is still the authority — these numbers exist to
@@ -312,13 +313,18 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
               that implied otherwise would have a client wondering why their
               receipts had not changed. */}
           <p className="brand__scope ds-body-sm" role="note">
-            <strong>Where this appears.</strong> Your logo is stored and ready
-            for the documents that can carry a picture. It does not appear on
-            the till receipt: that is printed as plain text so it works on every
-            counter printer, and text cannot hold an image.
+            <strong>Where this appears.</strong> Your logo heads the invoices,
+            credit notes and debit notes you open in the back office, and any
+            copy you print from there. It does not appear on the till receipt:
+            that is printed as plain text so it works on every counter printer,
+            and text cannot hold an image.
           </p>
         </div>
       </div>
+
+      {/* The words, under the picture. Same screen because it is the same
+          question a client is answering: what do my documents look like. */}
+      <TemplatePanel companyId={companyId} />
     </main>
   );
 }

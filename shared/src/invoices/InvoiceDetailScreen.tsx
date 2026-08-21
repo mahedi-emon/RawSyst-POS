@@ -29,7 +29,12 @@ import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
 import { fetchInvoice, reprintInvoice, type Invoice } from '../api/invoice';
 import { listCompanies } from '../api/companies';
-import { logoObjectURL } from '../api/branding';
+import {
+  fetchTemplates,
+  logoObjectURL,
+  type DocType,
+  type DocumentTemplate,
+} from '../api/branding';
 import { InvoiceState, invoiceStateHint } from '../dashboard/InvoiceState';
 import { money } from '../ui/format';
 import {
@@ -73,6 +78,12 @@ export function InvoiceDetailScreen({
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [logo, setLogo] = useState<string | null>(null);
   const [seller, setSeller] = useState<string | null>(null);
+  // The shop's stationery (I2 / P35). All four types are fetched together and
+  // the right one is picked at render, so this does not have to wait for the
+  // invoice to know its own document type. Empty while it loads and after a
+  // failure: a document reads correctly without it, so a failure here is silent
+  // rather than a panel somebody has to dismiss.
+  const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [reprinting, setReprinting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -122,6 +133,12 @@ export function InvoiceDetailScreen({
         url = made;
         if (cancelled) URL.revokeObjectURL(made);
         else setLogo(made);
+      })
+      .catch(() => undefined);
+
+    fetchTemplates(client, companyId)
+      .then((all) => {
+        if (!cancelled) setTemplates(all);
       })
       .catch(() => undefined);
 
@@ -184,6 +201,8 @@ export function InvoiceDetailScreen({
 
   const { invoice } = load;
   const credit = isCreditNote(invoice);
+  const template =
+    templates.find((t) => t.doc_type === (invoice.doc_type as DocType)) ?? null;
   const payment = paymentSummary(invoice);
   const showDiscount = hasAnyDiscount(invoice);
   const mayRefund = can('sales.refund');
@@ -243,8 +262,22 @@ export function InvoiceDetailScreen({
       <article className="ds-panel inv__doc" aria-label={documentTitle(invoice.doc_type)}>
         <header className="inv__head">
           <div className="inv__seller">
-            {logo && <img className="inv__logo" src={logo} alt="" />}
+            {/* The client's own mark, unless this document type is set to go
+                without one. A shop with a logo that wants a plain credit note
+                should not have to delete the logo to get one. */}
+            {logo && template?.show_logo !== false && (
+              <img className="inv__logo" src={logo} alt="" />
+            )}
             {seller && <p className="inv__sellername">{seller}</p>}
+            {/* What the shop wrote for the head of this document type. */}
+            {template?.header_text && (
+              <p className="inv__block">{template.header_text}</p>
+            )}
+            {template?.header_text_ar && (
+              <p className="inv__block" lang="ar" dir="rtl">
+                {template.header_text_ar}
+              </p>
+            )}
           </div>
 
           <div className="inv__ident">
@@ -402,6 +435,59 @@ export function InvoiceDetailScreen({
             </p>
           )}
         </section>
+
+        {/* --- what the shop writes at the foot of this document ---------- */}
+        {/*
+          I2's remaining blocks. Presentation only: none of this can reach a
+          figure, a party or a date, which is why a template may be changed
+          after a document has been issued without touching what it recorded.
+          A reprint carries today's stationery, and that is a copy on new
+          letterhead rather than a reissue of the record.
+        */}
+        {template && hasFooterBlocks(template) && (
+          <footer className="inv__foot">
+            {(template.payment_terms || template.payment_terms_ar) && (
+              <div className="inv__blockgroup">
+                <h2 className="ds-caption">Payment</h2>
+                {template.payment_terms && (
+                  <p className="inv__block">{template.payment_terms}</p>
+                )}
+                {template.payment_terms_ar && (
+                  <p className="inv__block" lang="ar" dir="rtl">
+                    {template.payment_terms_ar}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(template.return_policy || template.return_policy_ar) && (
+              <div className="inv__blockgroup">
+                <h2 className="ds-caption">Returns</h2>
+                {template.return_policy && (
+                  <p className="inv__block">{template.return_policy}</p>
+                )}
+                {template.return_policy_ar && (
+                  <p className="inv__block" lang="ar" dir="rtl">
+                    {template.return_policy_ar}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(template.footer_text || template.footer_text_ar) && (
+              <div className="inv__blockgroup inv__blockgroup--closing">
+                {template.footer_text && (
+                  <p className="inv__block">{template.footer_text}</p>
+                )}
+                {template.footer_text_ar && (
+                  <p className="inv__block" lang="ar" dir="rtl">
+                    {template.footer_text_ar}
+                  </p>
+                )}
+              </div>
+            )}
+          </footer>
+        )}
       </article>
 
       {/* --- what cannot be done, and what can --------------------------- */}
@@ -610,6 +696,19 @@ function tenderLabel(method: string): string {
     tamara: 'Tamara',
   };
   return named[method] ?? method.replace(/_/g, ' ');
+}
+
+/** Whether a template has anything to print at the foot of a document. An
+ *  empty footer element would draw a rule under nothing. */
+function hasFooterBlocks(t: DocumentTemplate): boolean {
+  return Boolean(
+    t.footer_text ||
+      t.footer_text_ar ||
+      t.return_policy ||
+      t.return_policy_ar ||
+      t.payment_terms ||
+      t.payment_terms_ar,
+  );
 }
 
 function explain(err: unknown): string {

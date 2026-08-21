@@ -105,3 +105,76 @@ export async function readFileAsBase64(file: Blob): Promise<string> {
   }
   return btoa(binary);
 }
+
+// --- document templates (I2 / P35) ----------------------------------------
+
+/** The document types a client may write their own stationery for.
+ *
+ *  I2 names nine. The other five are documents this product does not issue
+ *  yet, and a template for one of those would be configuration for nothing. */
+export type DocType = 'standard' | 'simplified' | 'credit_note' | 'debit_note';
+
+/** What a client writes on one kind of document.
+ *
+ *  Presentation only. Nothing here reaches a figure, a party, a tax number or
+ *  a date — those come off the document row, which is immutable. That is what
+ *  makes a template safe to change after a document has been issued. */
+export interface DocumentTemplate {
+  doc_type: DocType;
+
+  header_text: string;
+  header_text_ar: string;
+  footer_text: string;
+  footer_text_ar: string;
+  return_policy: string;
+  return_policy_ar: string;
+  payment_terms: string;
+  payment_terms_ar: string;
+
+  show_logo: boolean;
+  show_tax_number: boolean;
+
+  /** False for a type nobody has touched, so the screen shows it as the
+   *  default rather than as an empty form somebody has to fill in. */
+  configured: boolean;
+  updated_at?: string;
+}
+
+export async function fetchTemplates(
+  client: Client,
+  companyId: string,
+): Promise<DocumentTemplate[]> {
+  const body = await client.send<{ data: DocumentTemplate[] }>(
+    'GET',
+    `/api/v1/companies/${companyId}/templates`,
+  );
+  return body.data ?? [];
+}
+
+export function saveTemplate(
+  client: Client,
+  companyId: string,
+  template: DocumentTemplate,
+): Promise<DocumentTemplate> {
+  const { doc_type, configured, updated_at, ...body } = template;
+  void configured;
+  void updated_at;
+  return client.send<DocumentTemplate>(
+    'PUT',
+    `/api/v1/companies/${companyId}/templates/${doc_type}`,
+    body,
+  );
+}
+
+/** Returns the type to the RawSyst default. Resetting one that was never
+ *  customised succeeds: the client asked for the default and has it. */
+export function resetTemplate(
+  client: Client,
+  companyId: string,
+  docType: DocType,
+): Promise<void> {
+  return client.send<void>(
+    'DELETE',
+    `/api/v1/companies/${companyId}/templates/${docType}`,
+  );
+}
