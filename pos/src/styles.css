@@ -703,3 +703,280 @@ body {
   color: var(--ink-quiet);
   border-block-start: 1px solid var(--line);
 }
+
+/* ---------------------------------------------------------------------------
+ * The cash drawer (UI spec §7)
+ *
+ * Logical properties throughout, like the rest of this sheet, so the screen
+ * mirrors in Arabic without a second set of rules. Amounts stay LTR wherever
+ * they sit — `.num` carries `unicode-bidi: isolate` from the design system, so
+ * digits never reorder next to Arabic text.
+ * ------------------------------------------------------------------------- */
+
+.shift {
+  padding: var(--space-5);
+  display: grid;
+  justify-content: center;
+  align-content: start;
+}
+
+/* Wide enough for a twelve-row denomination pad in two columns, narrow enough
+ * that the Short/Over/Exact verdict is not stranded in whitespace. */
+.shift__panel { inline-size: min(640px, 100%); }
+
+.shift__lede { margin-block: 0 var(--space-4); }
+
+.shift__figures {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.shift__figure { display: grid; gap: 2px; }
+.shift__figure dt { margin: 0; }
+.shift__figure dd { margin: 0; font-size: 1.05rem; font-weight: 600; }
+
+.shift__figures--z {
+  margin-block-end: var(--space-4);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--line);
+}
+
+/* Said plainly rather than styled as a warning. A blind close is the shop
+ * working correctly, and colouring it as a problem teaches cashiers that the
+ * control is a fault. */
+.shift__blind {
+  margin-block: var(--space-4) 0;
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--border-strong);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.shift__actions {
+  margin-block-start: var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* POS touch target. A drawer is counted standing up, often in a hurry. */
+.shift__actions .ds-btn,
+.shift__go { min-block-size: var(--tap-pos); }
+
+.shift__go { inline-size: 100%; margin-block-start: var(--space-5); }
+
+.shift__form,
+.shift__xray {
+  margin-block-start: var(--space-5);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.shift__xrayhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.shift__expected {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--line);
+}
+
+.shift__expected strong { font-size: 1.3rem; }
+
+.shift__formactions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.shift__hint { margin-block: -6px 0; }
+
+.shift__direction,
+.shift__running {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+.shift__check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: start;
+  margin-block-start: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.shift__check input { inline-size: 20px; block-size: 20px; margin-block-start: 2px; }
+.shift__check span { display: grid; gap: 2px; }
+
+.shift__confirm {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--warn-line);
+  background: var(--warn-bg);
+  border-radius: var(--radius-sm);
+}
+
+.shift__confirm p { margin: 0; }
+
+.shift__variance {
+  margin-block: var(--space-4) 0;
+  color: var(--text-muted);
+}
+
+.shift__toggle {
+  display: flex;
+  gap: var(--space-2);
+  margin-block-end: var(--space-4);
+}
+
+.shift__toggle--on {
+  background: var(--brand-subtle);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+/* --- the verdict ---------------------------------------------------------
+ *
+ * The largest type on the screen, because it is the one thing the cashier is
+ * being told. Colour is never the only signal: the word carries the meaning,
+ * which is what makes this readable in showroom lighting and to anyone who
+ * cannot distinguish the two tints.
+ */
+
+.shift__outcome {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  text-align: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.shift__outcome--exact {
+  background: var(--success-subtle);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.shift__outcome--short {
+  background: var(--danger-subtle);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Over is not styled as success. A drawer with too much in it is as much an
+ * unexplained difference as one with too little, and colouring it green would
+ * teach a cashier that only one direction matters. */
+.shift__outcome--over {
+  background: var(--warning-subtle);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.shift__outcome--unknown {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+/* --- the count pad ------------------------------------------------------- */
+
+.denom { display: grid; gap: var(--space-3); }
+
+.denom__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-2);
+}
+
+.denom__row {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.denom__face {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+/* Notes and coins look different in the hand, so they look different here.
+ * A cashier scanning the pad for "the fifties" should not have to read. */
+.denom__face--coin { border-radius: var(--radius-full); }
+
+.denom__count {
+  min-block-size: var(--tap);
+  inline-size: 100%;
+  padding: 6px 8px;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.denom__line {
+  min-inline-size: 5.5rem;
+  text-align: end;
+  font-size: 0.87rem;
+  color: var(--text-muted);
+}
+
+.denom__total {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+/* --- the counter's shift line -------------------------------------------- */
+
+.counter__shift {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-quiet);
+}
+
+/* The one state at the counter that stops a sale. Styled as a refusal rather
+ * than as a hint, because the pay button is disabled and the cashier needs to
+ * know why without hunting for it. */
+.counter__shift--none {
+  padding: 10px 12px;
+  color: var(--ink);
+  border-inline-start: 3px solid var(--danger);
+  background: var(--warn-bg);
+  border-radius: 8px;
+}

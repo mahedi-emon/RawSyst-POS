@@ -19,11 +19,13 @@
 // is a courtesy — the server refuses whatever the screen offered, and QA gate
 // M7 proves it. Blueprint A6.2: a hidden button is never real security.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { scan } from '../api/pos';
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
+import { currentShift, type ShiftSession } from '@rawsyst/shared/api/shift';
+import { openedAtTime } from './shift';
 import { useTerminal } from '../offline/useTerminal';
 import { describeVariant, type CachedVariant } from '../offline/catalogue';
 import { QueueStatus } from './QueueStatus';
@@ -75,10 +77,45 @@ export function PosCounter() {
   const [customer, setCustomer] = useState<CounterCustomer | null>(null);
   const [picking, setPicking] = useState(false);
 
+  // Whether this till has a drawer somebody has counted into.
+  //
+  // Asked because the alternative is worse than a round trip. Every sale goes
+  // into the local queue first and reaches the server later, and the server
+  // refuses a sale from a till with no open session — so without this a
+  // cashier takes the money, hands over the goods, and the sale surfaces as a
+  // failed queue item at the end of the day with the customer long gone.
+  //
+  // `undefined` means not yet known, and is treated as permissive: a till that
+  // cannot reach the server must keep trading, which is the whole offline
+  // design. The check is a courtesy to catch the ordinary case — nobody opened
+  // the till this morning — not a second gate.
+  const [shift, setShift] = useState<ShiftSession | null | undefined>(undefined);
+
+  const checkShift = useCallback(() => {
+    currentShift(client)
+      .then(setShift)
+      .catch(() => setShift(undefined));
+  }, [client]);
+
+  useEffect(() => {
+    checkShift();
+  }, [checkShift]);
+
+  // Re-asked when the till regains the network, because "no session" may have
+  // been answered while it was offline, or a supervisor may have closed the
+  // shift from elsewhere.
+  useEffect(() => {
+    if (terminal.network.reachable) checkShift();
+  }, [terminal.network.reachable, checkShift]);
+
   const totals = useMemo(() => totalCart(lines, DISPLAY_RATE), [lines]);
   const owed = outstanding(totals.totalInclusive, tenders);
+  // `shift === null` is the one refusal here: the server has answered, and the
+  // answer was that this till has no open session. `undefined` — unasked or
+  // unreachable — does not block, because an offline till must keep trading.
+  const tillIsOpen = shift !== null;
   const canFinish =
-    lines.length > 0 && settled(totals.totalInclusive, tenders) && !busy;
+    lines.length > 0 && settled(totals.totalInclusive, tenders) && !busy && tillIsOpen;
 
   // What this sale would put on the customer's account, across however many
   // tenders. Only this part draws down the limit: a sale half in cash and
@@ -352,6 +389,25 @@ export function PosCounter() {
           )}
         </div>
 
+        {/* The drawer this sale would go into. Blueprint C8 ties every sale to
+            a counted session, so a till with none cannot take money — and
+            saying so before the cart is full is the difference between a
+            cashier opening the till and a customer standing at the counter
+            while somebody works out what went wrong. */}
+        {shift === null ? (
+          <p className="counter__shift counter__shift--none" role="alert">
+            <strong>This till is not open.</strong> Count the float into the
+            drawer under <em>Till</em> before ringing up sales — a sale has to
+            belong to a shift somebody can reconcile.
+          </p>
+        ) : (
+          shift && (
+            <p className="counter__shift" role="status">
+              Shift {shift.session_no} · open since {openedAtTime(shift.opened_at)}
+            </p>
+          )
+        )}
+
         {notice && (
           <p className="counter__notice" role="status" aria-live="polite">
             {notice}
@@ -551,7 +607,11 @@ export function PosCounter() {
           disabled={!canFinish}
           onClick={() => void finishSale()}
           title={
-            canFinish ? undefined : 'The payments must settle the sale exactly.'
+            !tillIsOpen
+              ? 'This till has no open session.'
+              : canFinish
+                ? undefined
+                : 'The payments must settle the sale exactly.'
           }
         >
           {busy ? 'Recording…' : 'Finish sale'}

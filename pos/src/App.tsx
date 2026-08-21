@@ -27,6 +27,7 @@ import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
 import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
+import { ShiftScreen } from './pos/ShiftScreen';
 import { TerminalBanner } from './pos/TerminalBanner';
 import { terminalCapabilities, type Capabilities } from './pos/terminal';
 import { PairingScreen, TerminalBlocked } from './pos/PairingScreen';
@@ -39,7 +40,7 @@ import {
   type TerminalIdentity,
 } from './offline/credential';
 
-type Screen = 'dashboard' | 'sell' | 'return' | 'buying';
+type Screen = 'dashboard' | 'sell' | 'return' | 'buying' | 'shift';
 
 /** Where this machine stands with the server, before anybody signs in. */
 type Pairing =
@@ -105,6 +106,10 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   const maySell = may('sales.create');
   const mayRefund = may('sales.refund');
   const mayBuy = may('purchasing.view');
+  // Opening and closing a till carries the permission the design assigns to
+  // taking payment: blueprint A6.1 gives the Cashier "shift open/close" as one
+  // capability alongside billing.
+  const mayRunTill = may('sales.receive_payment');
 
   // The dashboard opens first for whoever can read the figures — that is what
   // an owner signs in for. A cashier lands on the till.
@@ -197,6 +202,7 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
     { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
     { key: 'sell', label: 'Sell', shown: maySell },
     { key: 'return', label: 'Returns', shown: mayRefund },
+    { key: 'shift', label: 'Till', shown: mayRunTill },
     { key: 'buying', label: 'Buying', shown: mayBuy },
   ];
   const visible = destinations.filter((d) => d.shown);
@@ -277,6 +283,12 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
         )
       ) : screen === 'return' && mayRefund ? (
         <ReturnsScreen />
+      ) : screen === 'shift' && mayRunTill ? (
+        // Landing back on the counter after a Z report is deliberate: the till
+        // is closed, and the next thing that happens is either a new shift or
+        // the end of the day. Leaving the cashier on a closed-shift screen with
+        // nothing to do teaches them to navigate away from it.
+        <ShiftScreen onClosed={() => setScreen(maySell ? 'sell' : null)} />
       ) : maySell ? (
         <PosCounter />
       ) : (
