@@ -100,10 +100,21 @@ func TestWACChargesTheAverage(t *testing.T) {
 	}
 }
 
-// The guarantee that makes the tie-out hold: what leaves the pool equals what
-// is charged to the ledger. This is the exact defect the integration tie-out
-// caught — the two used to move by different amounts, and the balance sheet
-// disagreed with the stock report by 25 on the first sale.
+// The guarantee that makes the tie-out hold: what the REPORTED valuation gives
+// up equals what is charged to the ledger.
+//
+// It used to be stated as "what leaves the pool", and that was right until the
+// ledger's precision was taken into account. The pool moves at cost precision,
+// because design 02 §335 makes the total authoritative and the average derived
+// from it — nudging the total to make a journal amount convenient is what that
+// warning is about. The valuation reports that pool at MONEY precision, and the
+// ledger holds money, so the figure charged is the difference between the
+// rounded value before and after (P34).
+//
+// The distinction is not academic. Charging the rounded cost instead left a
+// residue on every sale whose value did not land on a hallala, and the residues
+// accumulated: a pool built from 33.3333, 16.6667 and 99.9999 parted company
+// with its ledger on the second sale.
 func TestWACPoolGivesUpExactlyWhatIsCharged(t *testing.T) {
 	for _, tc := range []struct{ name, qty, value, take string }{
 		{"even", "20", "1100", "15"},
@@ -119,11 +130,21 @@ func TestWACPoolGivesUpExactlyWhatIsCharged(t *testing.T) {
 				t.Fatalf("ConsumeWAC: %v", err)
 			}
 
-			released := p.TotalValue.Sub(got.PoolValueAfter)
+			// What the valuation reports before and after, which is what
+			// inventory_valuation sums and what the tie-out compares.
+			released := p.TotalValue.Round(2).Sub(got.PoolValueAfter.Round(2))
 			if !released.Equal(got.TotalCost) {
-				t.Fatalf("the pool gave up %s but %s was charged to the ledger; "+
-					"the valuation and the balance sheet would part company by %s",
+				t.Fatalf("the reported valuation gave up %s but %s was charged "+
+					"to the ledger; the balance sheet would part company with "+
+					"the stock report by %s",
 					released, got.TotalCost, released.Sub(got.TotalCost))
+			}
+
+			// And the pool itself keeps its precision, so the next sale's
+			// average is computed from an untouched total.
+			if got.PoolValueAfter.Exponent() > -4 && !got.PoolValueAfter.IsZero() {
+				t.Errorf("the pool was rounded to %s; the average derived from "+
+					"it would drift", got.PoolValueAfter)
 			}
 			if !got.PoolQtyAfter.Equal(p.QtyOnHand.Sub(dec(tc.take))) {
 				t.Fatalf("quantity left = %s, want %s",

@@ -38,15 +38,19 @@ import (
 func (b *books) deliver(t *testing.T, qty, unitCost string) Settlement {
 	t.Helper()
 	ctx := context.Background()
-	value := dec(qty).Mul(dec(unitCost))
 
 	var settled Settlement
 	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
-		if e := Receive(ctx, tx, Receipt{
+		// What the ENGINE says the valuation rose by. Multiplying it out here
+		// instead would round a second time — 10 at 16.6667 is 166.667, which
+		// the ledger holds as 166.67 — and the harness would tie out against
+		// its own arithmetic rather than against the books.
+		value, e := Receive(ctx, tx, Receipt{
 			TenantID: b.tenantID, CompanyID: b.companyID,
 			VariantID: b.variantID, WarehouseID: b.warehouseID,
 			Qty: dec(qty), UnitCost: dec(unitCost), Reason: "grn",
-		}); e != nil {
+		})
+		if e != nil {
 			return e
 		}
 		if e := b.entry(ctx, tx, "purchase",
@@ -54,7 +58,6 @@ func (b *books) deliver(t *testing.T, qty, unitCost string) Settlement {
 			return e
 		}
 
-		var e error
 		settled, e = SettleShortfalls(ctx, tx,
 			b.companyID, b.variantID, b.warehouseID)
 		if e != nil {

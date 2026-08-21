@@ -296,7 +296,7 @@ func (s *Service) ReceiveGoods(
 			}
 
 			if item.kept.IsPositive() {
-				if e := inventory.Receive(ctx, tx, inventory.Receipt{
+				posted, e := inventory.Receive(ctx, tx, inventory.Receipt{
 					TenantID: scope.TenantID, CompanyID: scope.CompanyID,
 					VariantID: item.variantID, WarehouseID: warehouseID,
 					Qty: item.kept, UnitCost: unitCost,
@@ -305,10 +305,16 @@ func (s *Service) ReceiveGoods(
 					// receipts outside every stock report that filters on it.
 					Reason: "grn", SourceType: "goods_receipt",
 					SourceID: &grnID,
-				}); e != nil {
+				})
+				if e != nil {
 					return e
 				}
-				accrued = accrued.Add(item.kept.Mul(unitCost).Round(4))
+				// What the valuation actually rose by, from the engine that
+				// moved it — not `kept * unitCost` computed again here. A
+				// caller doing its own arithmetic rounds a second time, and the
+				// second rounding is what parted the stock report from the
+				// balance sheet (P34).
+				accrued = accrued.Add(posted)
 
 				// The stock is on the shelf, so any earlier sale of this
 				// variant that went below zero can stop guessing what it cost.

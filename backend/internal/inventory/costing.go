@@ -37,6 +37,37 @@ import (
 // loses real money on any line of more than a few units.
 const costScale int32 = 4
 
+// moneyScale is the precision the LEDGER holds an amount at, mirrored from the
+// posting engine. Costs are computed at costScale and become journal amounts at
+// this one, and the gap between the two is what P34 was: the valuation reported
+// four decimals of stock while the ledger carried two of money, and
+// `inventory_gl_difference` compared them directly.
+//
+// Every figure this package hands a caller to post is therefore the DELTA OF
+// THE ROUNDED VALUATION rather than the rounded cost — see `valuationDelta`.
+const moneyScale int32 = 2
+
+// valuationDelta is what a movement changes the reported valuation by.
+//
+// This is the whole of the P34 fix, in three lines. The valuation is a sum of
+// amounts rounded to money precision, so the amount posted against a movement
+// has to be the difference between the rounded value before it and the rounded
+// value after — never the rounded difference, which is a different number.
+//
+// Charging the rounded cost instead leaves a residue every time a value does
+// not land on a hallala, and the residues accumulate: three receipts at
+// 33.3333, 16.6667 and 99.9999 value at 716.6663 against a ledger of 716.67,
+// and two sales off that pool part the two by a further hallala. Taking the
+// delta makes the postings telescope, so their sum is the valuation by
+// construction rather than by luck.
+//
+// It is the rounding-remainder rule the rest of this product already applies in
+// five places, stated for stock: when a whole is split, the parts must add back
+// to it.
+func valuationDelta(before, after decimal.Decimal) decimal.Decimal {
+	return before.Round(moneyScale).Sub(after.Round(moneyScale))
+}
+
 // Method is how a company values its stock.
 type Method string
 
@@ -129,7 +160,15 @@ func ConsumeFIFO(layers []Layer, qty decimal.Decimal) (CostResult, error) {
 		}
 
 		take := decimal.Min(remaining, l.QtyRemaining)
-		cost := take.Mul(l.UnitCost).Round(costScale)
+
+		// The layer's rounded value before and after this draw. `qty_remaining
+		// * unit_cost` is what the valuation reports for this layer, so the
+		// cost charged is exactly what the valuation loses — which is not the
+		// same as rounding `take * unit_cost`, and the difference is the drift.
+		cost := valuationDelta(
+			l.QtyRemaining.Mul(l.UnitCost),
+			l.QtyRemaining.Sub(take).Mul(l.UnitCost),
+		)
 
 		out.Consumed = append(out.Consumed, Consumption{
 			LayerID: l.ID, Qty: take, Cost: cost,
@@ -150,7 +189,10 @@ func ConsumeFIFO(layers []Layer, qty decimal.Decimal) (CostResult, error) {
 		if len(layers) > 0 {
 			fallback = layers[len(layers)-1].UnitCost
 		}
-		out.TotalCost = out.TotalCost.Add(remaining.Mul(fallback).Round(costScale))
+		// The uncovered units never touched a layer, so there is no valuation
+		// to difference. They are charged at money precision directly, which is
+		// what the shortfall record will later be settled against.
+		out.TotalCost = out.TotalCost.Add(remaining.Mul(fallback).Round(moneyScale))
 		out.ShortBy = remaining
 		out.ShortUnitCost = fallback
 	}
@@ -184,16 +226,19 @@ func ConsumeWAC(pool Pool, qty decimal.Decimal) (CostResult, error) {
 	}
 
 	if qty.GreaterThanOrEqual(pool.QtyOnHand) {
-		// Taking everything: charge exactly what the pool holds, so it empties
-		// to precisely zero rather than to a rounding residue that would sit on
-		// the balance sheet as stock that does not exist.
-		out.TotalCost = pool.TotalValue
+		// Taking everything: charge exactly what the pool is REPORTED to hold,
+		// so it empties to precisely zero on both sides rather than leaving a
+		// rounding residue sitting on the balance sheet as stock that does not
+		// exist.
+		out.TotalCost = valuationDelta(pool.TotalValue, decimal.Zero)
 		if qty.GreaterThan(pool.QtyOnHand) {
 			out.ShortBy = qty.Sub(pool.QtyOnHand)
 			// The uncovered units are valued at the pool's own average, which is
-			// the best estimate available.
+			// the best estimate available. They never sat in the pool, so there
+			// is no valuation to difference and they are charged at money
+			// precision directly.
 			average := pool.TotalValue.Div(pool.QtyOnHand).Round(costScale)
-			out.TotalCost = out.TotalCost.Add(out.ShortBy.Mul(average).Round(costScale))
+			out.TotalCost = out.TotalCost.Add(out.ShortBy.Mul(average).Round(moneyScale))
 			out.ShortUnitCost = average
 		}
 		out.PoolQtyAfter = decimal.Zero
@@ -202,10 +247,20 @@ func ConsumeWAC(pool Pool, qty decimal.Decimal) (CostResult, error) {
 	}
 
 	average := pool.TotalValue.Div(pool.QtyOnHand).Round(costScale)
-	out.TotalCost = qty.Mul(average).Round(costScale)
 
+	// The pool moves by the cost at COST precision, because that is what keeps
+	// the average honest for the next sale — design 02 §335: the total is
+	// authoritative and the average is derived from it, so the total must not
+	// be nudged to make a journal amount convenient.
+	drawn := qty.Mul(average).Round(costScale)
 	out.PoolQtyAfter = pool.QtyOnHand.Sub(qty)
-	out.PoolValueAfter = pool.TotalValue.Sub(out.TotalCost)
+	out.PoolValueAfter = pool.TotalValue.Sub(drawn)
+
+	// The LEDGER moves by what the valuation actually lost, which is the
+	// difference between the rounded value before and after. The two differ by
+	// under a hallala per sale and never accumulate, because the next sale
+	// differences from the same rounded figure this one left behind.
+	out.TotalCost = valuationDelta(pool.TotalValue, out.PoolValueAfter)
 
 	return out, nil
 }

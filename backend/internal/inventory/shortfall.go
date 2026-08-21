@@ -138,9 +138,21 @@ func SettleShortfalls(
 		c := Correction{
 			ShortfallID: sf.id,
 			Qty:         settleQty,
-			Provisional: settleQty.Mul(sf.provisionalUnitCost).Round(costScale),
-			Actual:      actual,
-			Settled:     settleQty.Equal(sf.outstanding),
+			// The provisional cost this settlement RELIEVES, taken as the
+			// difference between the rounded shortfall deduction before and
+			// after — not `settleQty * provisional` rounded, which is a
+			// different number. `inventory_valuation` subtracts each open
+			// shortfall at money precision, so relieving one has to move that
+			// deduction by exactly what the valuation will stop deducting
+			// (P34). Rounding the product instead left a residue that survived
+			// the shortfall closing, and it could never be cleared afterwards
+			// because the row was gone.
+			Provisional: valuationDelta(
+				sf.outstanding.Mul(sf.provisionalUnitCost),
+				sf.outstanding.Sub(settleQty).Mul(sf.provisionalUnitCost),
+			),
+			Actual:  actual,
+			Settled: settleQty.Equal(sf.outstanding),
 		}
 
 		if _, err := tx.Exec(ctx, `

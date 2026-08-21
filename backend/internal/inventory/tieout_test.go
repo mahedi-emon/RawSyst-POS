@@ -158,19 +158,24 @@ func newBooks(t *testing.T, method Method) *books {
 func (b *books) receive(t *testing.T, qty, unitCost string) {
 	t.Helper()
 	ctx := context.Background()
-	value := dec(qty).Mul(dec(unitCost))
+	var value decimal.Decimal
 
 	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		// The production receipt path, not a reimplementation of it. A harness
 		// that maintained the cost stores itself would prove only that the
 		// harness ties out.
-		if e := Receive(ctx, tx, Receipt{
+		posted, e := Receive(ctx, tx, Receipt{
 			TenantID: b.tenantID, CompanyID: b.companyID,
 			VariantID: b.variantID, WarehouseID: b.warehouseID,
 			Qty: dec(qty), UnitCost: dec(unitCost), Reason: "grn",
-		}); e != nil {
+		})
+		if e != nil {
 			return e
 		}
+		// What the ENGINE says the valuation rose by, not a figure recomputed
+		// here. A harness that multiplied it out again would round a second
+		// time and would tie out against itself rather than against the books.
+		value = posted
 
 		var entryID uuid.UUID
 		if e := tx.QueryRow(ctx, `
@@ -188,7 +193,7 @@ func (b *books) receive(t *testing.T, qty, unitCost string) {
 			b.tenantID, entryID, b.inventory, value); e != nil {
 			return e
 		}
-		_, e := tx.Exec(ctx, `
+		_, e = tx.Exec(ctx, `
 			INSERT INTO journal_line
 			  (tenant_id, entry_id, line_no, account_id, currency,
 			   debit, credit, base_debit, base_credit)
@@ -573,5 +578,97 @@ func TestConsumeReportsAShortfallRatherThanRefusing(t *testing.T) {
 	}
 	if err := CheckAvailability(PolicyAllowWarn, got, "Abaya"); err != nil {
 		t.Errorf("allow_warn blocked a sale: %v", err)
+	}
+}
+
+// P34, as a regression: the exact figures that used to part the two.
+//
+// Three receipts whose values do not land on a hallala — 3 x 33.3333,
+// 7 x 16.6667, 5 x 99.9999 — value at 716.6663 while a ledger of rounded
+// postings reads 716.67. Under weighted average that drift was 0.0007 after
+// the receipts and grew with every sale; rounding the reported total instead of
+// differencing it made it 0.01.
+//
+// Each assertion is after EVERY movement rather than only at the end, because a
+// tie-out that only holds when the dust settles is not the invariant C13 asks
+// for: an owner reads the balance sheet on an ordinary Tuesday.
+func TestTheTieOutHoldsOnTheFiguresThatUsedToBreakIt(t *testing.T) {
+	for _, method := range []Method{MethodWAC, MethodFIFO} {
+		t.Run(string(method), func(t *testing.T) {
+			b := newBooks(t, method)
+
+			for _, r := range []struct{ qty, cost string }{
+				{"3", "33.3333"},
+				{"7", "16.6667"},
+				{"5", "99.9999"},
+			} {
+				b.receive(t, r.qty, r.cost)
+				if diff := b.tieOutDifference(t); !diff.IsZero() {
+					t.Fatalf("after receiving %s at %s the valuation is out by %s",
+						r.qty, r.cost, diff)
+				}
+			}
+
+			// Repeated partial sales, which is where the residue used to
+			// accumulate one hallala at a time.
+			for i := 0; i < 7; i++ {
+				b.sell(t, "2")
+				if diff := b.tieOutDifference(t); !diff.IsZero() {
+					t.Fatalf("after sale %d the valuation is out by %s", i+1, diff)
+				}
+			}
+
+			// And the reported valuation is money, not a fraction of one: a
+			// balance sheet cannot carry four decimals of a riyal.
+			var valuation decimal.Decimal
+			if err := b.pool.TxAsTenant(context.Background(), b.tenantID,
+				func(tx pgx.Tx) error {
+					return tx.QueryRow(context.Background(),
+						`SELECT inventory_valuation($1)`, b.companyID).Scan(&valuation)
+				}); err != nil {
+				t.Fatalf("read valuation: %v", err)
+			}
+			if !valuation.Equal(valuation.Round(2)) {
+				t.Errorf("the reported valuation is %s, which is not an amount of "+
+					"money anybody can put on a balance sheet", valuation)
+			}
+		})
+	}
+}
+
+// The same figures with stock going NEGATIVE, so the shortfall path is included.
+//
+// P11 records an uncovered sale at a provisional cost and deducts it from the
+// valuation until the goods land. That deduction is rounded per shortfall for
+// the same reason everything else is, and the settlement on the next receipt
+// posts a variance — three moving parts that all have to agree at money
+// precision or the tie-out breaks in the one case a shop least wants it to.
+func TestTheTieOutHoldsThroughAShortfallOnAwkwardCosts(t *testing.T) {
+	b := newBooks(t, MethodFIFO)
+
+	b.receive(t, "2", "33.3333")
+	if diff := b.tieOutDifference(t); !diff.IsZero() {
+		t.Fatalf("after the receipt the valuation is out by %s", diff)
+	}
+
+	// Sell more than exists: two units are covered, three are not.
+	b.sell(t, "5")
+	if diff := b.tieOutDifference(t); !diff.IsZero() {
+		t.Fatalf("with three units uncovered the valuation is out by %s", diff)
+	}
+
+	// The goods arrive at a different awkward price and the shortfall settles.
+	settled := b.deliver(t, "10", "16.6667")
+	if !settled.Posted() {
+		t.Fatal("the delivery settled nothing; the shortfall path was not exercised")
+	}
+	if diff := b.tieOutDifference(t); !diff.IsZero() {
+		t.Fatalf("after settling the shortfall the valuation is out by %s", diff)
+	}
+
+	// Sell the rest, and both sides must land on exactly zero.
+	b.sell(t, "9")
+	if diff := b.tieOutDifference(t); !diff.IsZero() {
+		t.Fatalf("after selling out the valuation is out by %s", diff)
 	}
 }

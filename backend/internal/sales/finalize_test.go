@@ -198,7 +198,7 @@ func (s *shop) stock(t *testing.T, qty, unitCost string) {
 	ctx := context.Background()
 
 	err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
-		if e := inventory.Receive(ctx, tx, inventory.Receipt{
+		if _, e := inventory.Receive(ctx, tx, inventory.Receipt{
 			TenantID: s.tenantID, CompanyID: s.companyID,
 			VariantID: s.variantID, WarehouseID: s.warehouseID,
 			Qty: dec(qty), UnitCost: dec(unitCost), Reason: "opening",

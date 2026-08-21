@@ -71,17 +71,42 @@ type Issue struct {
 // cannot be back-filled from the other afterwards — layers no longer hold the
 // costs a pool would need, and a pool never held the receipt identities layers
 // need.
-func Receive(ctx context.Context, tx pgx.Tx, r Receipt) error {
+//
+// It returns WHAT TO POST: the amount the reported valuation rose by, which is
+// not always the rounded receipt value. Under weighted average the receipt lands
+// in a pool that already holds a fraction of a hallala, so the valuation moves
+// by the difference between the pool's rounded value before and after — the
+// same rule `Consume` follows on the way out. Returning it rather than leaving
+// the caller to multiply is the point: a caller doing its own arithmetic rounds
+// a second time, and P34 was exactly that.
+func Receive(ctx context.Context, tx pgx.Tx, r Receipt) (decimal.Decimal, error) {
 	if !r.Qty.IsPositive() {
-		return errs.New(errs.CodeInvalidInput,
+		return decimal.Zero, errs.New(errs.CodeInvalidInput,
 			"A stock receipt must be for a positive quantity.")
 	}
 	if r.UnitCost.IsNegative() {
-		return errs.New(errs.CodeInvalidInput,
+		return decimal.Zero, errs.New(errs.CodeInvalidInput,
 			"A stock receipt cannot have a negative cost.")
 	}
 
 	value := r.Qty.Mul(r.UnitCost).Round(costScale)
+
+	method, err := companyMethod(ctx, tx, r.CompanyID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// The pool's value BEFORE this receipt, needed to difference the rounded
+	// valuation. Read only under weighted average: a fresh cost layer starts
+	// from nothing, so its rounded value is the whole of the movement.
+	var poolBefore decimal.Decimal
+	if method == MethodWAC {
+		pool, e := readPool(ctx, tx, r.VariantID, r.WarehouseID)
+		if e != nil {
+			return decimal.Zero, e
+		}
+		poolBefore = pool.TotalValue
+	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO stock_movement
@@ -90,7 +115,7 @@ func Receive(ctx context.Context, tx pgx.Tx, r Receipt) error {
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID, r.Qty, r.Reason,
 		nullText(r.SourceType), r.SourceID, value, nullText(r.Note)); err != nil {
-		return err
+		return decimal.Zero, err
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -100,21 +125,28 @@ func Receive(ctx context.Context, tx pgx.Tx, r Receipt) error {
 		VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8)`,
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID,
 		r.Qty, r.UnitCost, nullText(r.SourceType), r.SourceID); err != nil {
-		return err
+		return decimal.Zero, err
 	}
 
 	// The pool takes the receipt's total value, not its unit cost. Blending
 	// averages instead of summing totals compounds each receipt's rounding into
 	// every later one, and the drift can never be reconciled back to anything.
-	_, err := tx.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO stock_valuation
 		  (tenant_id, company_id, variant_id, warehouse_id, qty_on_hand, total_value)
 		VALUES ($1,$2,$3,$4,$5,$6)
 		ON CONFLICT (variant_id, warehouse_id) DO UPDATE SET
 		  qty_on_hand = stock_valuation.qty_on_hand + EXCLUDED.qty_on_hand,
 		  total_value = stock_valuation.total_value + EXCLUDED.total_value`,
-		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID, r.Qty, value)
-	return err
+		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID, r.Qty, value); err != nil {
+		return decimal.Zero, err
+	}
+
+	// What the valuation actually rose by, which is what the ledger is told.
+	if method == MethodWAC {
+		return valuationDelta(poolBefore.Add(value), poolBefore), nil
+	}
+	return valuationDelta(value, decimal.Zero), nil
 }
 
 // Restoration is stock coming back: a customer return, a cancelled transfer.
