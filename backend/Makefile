@@ -23,10 +23,71 @@ help: ## Show this help
 build: ## Build all binaries into ./bin
 	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
 
-# The race detector needs cgo and a 64-bit C toolchain. That is reliably
-# present on the Linux CI runner but often not on a Windows dev machine, so it
-# is opt-in locally and always on in CI.
+# The race detector needs cgo and a 64-bit C toolchain, and on Windows that is
+# a real obstacle rather than a formality: the compiler answering to `gcc` is
+# often a 32-bit MinGW, which fails with
+#
+#   cc1.exe: sorry, unimplemented: 64-bit mode not compiled in
+#
+# which says nothing at all about what to install. So this looks for a usable
+# compiler rather than assuming one, and says plainly what is wrong when there
+# is none.
+#
+# P16: the detector was opt-out locally and CI was the only place it ever ran,
+# which makes CI the first place anybody would ever see a data race. It runs
+# here now.
 RACE ?= -race
+
+# `default` matters as much as `undefined`. Make defines CC = cc out of the box,
+# so testing only for undefined never fires and then hands cgo a compiler that
+# does not exist on this machine. Only an explicit CC — environment, command
+# line, or set in this file — is left alone, because somebody who set one had a
+# reason.
+RACE_CC := $(CC)
+ifneq ($(filter default undefined,$(origin CC)),)
+  RACE_CC := gcc
+  CC_TARGET := $(shell gcc -dumpmachine 2>/dev/null)
+
+  ifeq ($(findstring x86_64,$(CC_TARGET)),)
+    # The compiler on PATH cannot build 64-bit objects. Look where a 64-bit
+    # mingw-w64 usually lands on Windows: the winget package, MSYS2, or a
+    # plainly unpacked WinLibs. First hit wins.
+    #
+    # LOCALAPPDATA arrives with backslashes, which $(wildcard) will not match
+    # against a forward-slash pattern — it fails silently, which is the worst
+    # way for a path to be wrong.
+    LOCAL_APP := $(subst \,/,$(LOCALAPPDATA))
+    CC_FOUND := $(firstword $(wildcard $(LOCAL_APP)/Microsoft/WinGet/Packages/BrechtSanders.WinLibs*/mingw64/bin/gcc.exe C:/msys64/mingw64/bin/gcc.exe C:/mingw64/bin/gcc.exe))
+
+    ifneq ($(CC_FOUND),)
+      # Pointed at, not prepended to PATH: a 32-bit MinGW that other tools on
+      # this machine depend on keeps working exactly as it did.
+      RACE_CC := $(CC_FOUND)
+      export CC := $(CC_FOUND)
+    endif
+  endif
+endif
+
+.PHONY: race-doctor
+race-doctor: ## Say whether the race detector can run here, and what to install
+	@target="$$("$(RACE_CC)" -dumpmachine 2>/dev/null)"; \
+	if [ -z "$$target" ]; then \
+	  echo "No C compiler found. The race detector needs one:"; \
+	  echo "  winget install BrechtSanders.WinLibs.POSIX.UCRT"; \
+	  exit 1; \
+	fi; \
+	case "$$target" in \
+	  *x86_64*) \
+	    echo "Race detector ready."; \
+	    echo "  compiler: $(RACE_CC)"; \
+	    echo "  target:   $$target" ;; \
+	  *) \
+	    echo "The C compiler targets $$target and cannot build 64-bit objects,"; \
+	    echo "which is what the race detector needs. Install one:"; \
+	    echo "  winget install BrechtSanders.WinLibs.POSIX.UCRT"; \
+	    echo "or set CC to a 64-bit compiler you already have."; \
+	    exit 1 ;; \
+	esac
 
 .PHONY: test
 test: ## Run unit tests (RACE= to disable the race detector)
