@@ -24,6 +24,7 @@ import { SalesDetailScreen } from '@rawsyst/shared/dashboard/SalesDetailScreen';
 import { ExpensesDetailScreen } from '@rawsyst/shared/dashboard/ExpensesDetailScreen';
 import { ComplianceScreen } from '@rawsyst/shared/dashboard/ComplianceScreen';
 import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
+import { InvoiceDetailScreen } from '@rawsyst/shared/invoices/InvoiceDetailScreen';
 import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
@@ -322,7 +323,23 @@ function DashboardArea({
 
   switch (drill.screen) {
     case 'sales':
-      return <SalesDetailScreen companyId={companyId} date={drill.date} onBack={onBack} />;
+      return (
+        <SalesDetailScreen
+          companyId={companyId}
+          date={drill.date}
+          onBack={onBack}
+          onOpenInvoice={(invoiceId) => onOpen({ screen: 'invoice', invoiceId })}
+        />
+      );
+    case 'invoice':
+      return (
+        <InvoiceDetailScreen
+          invoiceId={drill.invoiceId}
+          companyId={companyId}
+          onBack={onBack}
+          onOpenInvoice={(invoiceId) => onOpen({ screen: 'invoice', invoiceId })}
+        />
+      );
     case 'expenses':
       return <ExpensesDetailScreen companyId={companyId} date={drill.date} onBack={onBack} />;
     case 'compliance':

@@ -2,6 +2,7 @@ package sales
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/google/uuid"
@@ -35,6 +36,16 @@ type InvoiceView struct {
 	Tenders []InvoiceTenderView `json:"tenders"`
 
 	ZATCA *InvoiceChainView `json:"zatca"`
+
+	// Who the invoice was raised for. Absent on the overwhelming majority of
+	// sales — a shop does not ask a name to sell a bottle of water — and
+	// present whenever any part of it went on account.
+	Customer *InvoiceCustomerView `json:"customer"`
+
+	// What has happened to this document since it was issued. UI spec §5 names
+	// the audit trail as part of the screen, because the answer to "who
+	// reprinted this and when" is the first thing asked in a dispute.
+	Audit []InvoiceAuditView `json:"audit"`
 
 	// ParentInvoiceID is set on a credit or debit note. A note without the
 	// invoice it corrects has no meaning, and ZATCA requires the reference.
@@ -75,6 +86,37 @@ type InvoiceChainView struct {
 	PIH           string `json:"pih"`
 	InvoiceHash   string `json:"invoice_hash"`
 	SchemaVersion string `json:"schema_version"`
+
+	// The QR payload the terminal produced, base64 TLV. Null until the
+	// terminal has signed and handed the document back, which is the ordinary
+	// state while the byte-level format is still an unverified release
+	// blocker. The screen says "not signed yet" rather than showing a blank
+	// code, because a QR that does not scan is worse than none.
+	QRTLV *string `json:"qr_tlv"`
+
+	// Submission, as far as it has gone. All null while reporting is gated.
+	SubmittedAt  *string `json:"submitted_at"`
+	ResponseCode *int    `json:"response_code"`
+	RejectReason *string `json:"reject_reason"`
+}
+
+// InvoiceCustomerView names the buyer. Only the name and the id: a screen
+// showing one invoice does not need the credit limit and the ledger with it,
+// and the customer screen already answers those.
+type InvoiceCustomerView struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// InvoiceAuditView is one thing that happened to this document.
+//
+// `actor_label` is denormalised in the audit log on purpose — it survives the
+// user being deleted, so a trail does not become a list of missing people.
+type InvoiceAuditView struct {
+	Action     string  `json:"action"`
+	ActorLabel *string `json:"actor_label"`
+	OccurredAt string  `json:"occurred_at"`
+	Device     *string `json:"device_label"`
 }
 
 // Read returns one finalised invoice.
@@ -124,7 +166,13 @@ func (s *Service) Read(
 		if e := readInvoiceTenders(ctx, tx, invoiceID, &out); e != nil {
 			return e
 		}
-		return readInvoiceChain(ctx, tx, invoiceID, &out)
+		if e := readInvoiceChain(ctx, tx, invoiceID, &out); e != nil {
+			return e
+		}
+		if e := readInvoiceCustomer(ctx, tx, invoiceID, &out); e != nil {
+			return e
+		}
+		return readInvoiceAudit(ctx, tx, invoiceID, &out)
 	})
 	return out, err
 }
@@ -184,9 +232,12 @@ func readInvoiceTenders(ctx context.Context, tx pgx.Tx, invoiceID uuid.UUID, out
 func readInvoiceChain(ctx context.Context, tx pgx.Tx, invoiceID uuid.UUID, out *InvoiceView) error {
 	var c InvoiceChainView
 	err := tx.QueryRow(ctx, `
-		SELECT icv, pih, invoice_hash, schema_version
+		SELECT icv, pih, invoice_hash, schema_version, qr_tlv,
+		       to_char(submitted_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'),
+		       response_code, reject_reason
 		FROM zatca_invoice WHERE invoice_id = $1`, invoiceID).
-		Scan(&c.ICV, &c.PIH, &c.InvoiceHash, &c.SchemaVersion)
+		Scan(&c.ICV, &c.PIH, &c.InvoiceHash, &c.SchemaVersion, &c.QRTLV,
+			&c.SubmittedAt, &c.ResponseCode, &c.RejectReason)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		// A draft has no chain position, which is correct: an ICV is consumed
@@ -198,6 +249,55 @@ func readInvoiceChain(ctx context.Context, tx pgx.Tx, invoiceID uuid.UUID, out *
 	}
 	out.ZATCA = &c
 	return nil
+}
+
+// readInvoiceCustomer names the buyer, when there is one.
+func readInvoiceCustomer(ctx context.Context, tx pgx.Tx, invoiceID uuid.UUID, out *InvoiceView) error {
+	var c InvoiceCustomerView
+	err := tx.QueryRow(ctx, `
+		SELECT c.id, c.name
+		FROM sales_invoice i JOIN customer c ON c.id = i.customer_id
+		WHERE i.id = $1`, invoiceID).Scan(&c.ID, &c.Name)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A walk-in. The common case, and not a gap.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	out.Customer = &c
+	return nil
+}
+
+// readInvoiceAudit reads what has happened to this document.
+//
+// Newest first, and capped: a document reprinted two hundred times has a
+// problem the screen cannot solve by listing all of them, and the cap keeps one
+// pathological invoice from dominating the response.
+func readInvoiceAudit(ctx context.Context, tx pgx.Tx, invoiceID uuid.UUID, out *InvoiceView) error {
+	out.Audit = []InvoiceAuditView{}
+
+	rows, err := tx.Query(ctx, `
+		SELECT action, actor_label,
+		       to_char(occurred_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'), device_label
+		FROM audit_log
+		WHERE entity_type = 'sales_invoice' AND entity_id = $1
+		ORDER BY occurred_at DESC, id DESC
+		LIMIT 50`, invoiceID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var a InvoiceAuditView
+		if e := rows.Scan(&a.Action, &a.ActorLabel, &a.OccurredAt, &a.Device); e != nil {
+			return e
+		}
+		out.Audit = append(out.Audit, a)
+	}
+	return rows.Err()
 }
 
 // ReturnableLine is one line of an invoice, with how much of it is still
@@ -274,4 +374,76 @@ func (s *Service) Returnable(
 		return rows.Err()
 	})
 	return out, err
+}
+
+// Reprint records that a copy of an invoice was printed.
+//
+// UI spec §5: "Reprint is available and logged — reprinting is not reissuing."
+// That sentence is the whole feature. A reprint produces no new document, no
+// new number and no new ICV; it is a copy of something already issued, and the
+// only thing that changes in the system is that somebody now knows a copy went
+// out and who asked for it.
+//
+// The audit row is written directly rather than through identity's helper,
+// which is unexported — provisioning already does the same for tenant creation.
+// Blueprint D4 fixes the six fields, so the shape is not this function's to
+// choose.
+func (s *Service) Reprint(
+	ctx context.Context, tenantID, invoiceID, userID uuid.UUID,
+) error {
+	if s.pool == nil {
+		return errs.New(errs.CodeInternal,
+			"The sales service was built without a database connection.")
+	}
+
+	return s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		// Read first, in the same transaction. Logging a reprint of an invoice
+		// that does not exist would put a fiction in the audit trail, and an
+		// audit trail that can be written to about nothing is not evidence.
+		var humanNumber *string
+		e := tx.QueryRow(ctx,
+			`SELECT human_number FROM sales_invoice WHERE id = $1`, invoiceID).
+			Scan(&humanNumber)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That invoice was not found.")
+		}
+		if e != nil {
+			return e
+		}
+
+		// The label is read here rather than passed in, because audit_log
+		// denormalises it on purpose: it has to survive the user being
+		// deleted, so the trail does not become a list of missing people.
+		var actorLabel string
+		if e := tx.QueryRow(ctx,
+			`SELECT coalesce(nullif(btrim(full_name), ''), email)
+			 FROM app_user WHERE id = $1`, userID).Scan(&actorLabel); e != nil &&
+			!errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
+
+		after := map[string]any{}
+		if humanNumber != nil {
+			after["human_number"] = *humanNumber
+		}
+		payload, e := json.Marshal(after)
+		if e != nil {
+			return e
+		}
+
+		_, e = tx.Exec(ctx, `
+			INSERT INTO audit_log
+			  (tenant_id, actor_id, actor_label, action, entity_type, entity_id,
+			   after_value)
+			VALUES ($1,$2,$3,'invoice_reprinted','sales_invoice',$4,$5)`,
+			tenantID, userID, nullIfBlank(actorLabel), invoiceID, payload)
+		return e
+	})
+}
+
+func nullIfBlank(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

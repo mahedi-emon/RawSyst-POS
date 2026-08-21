@@ -18,10 +18,14 @@ export function SalesDetailScreen({
   companyId,
   date,
   onBack,
+  onOpenInvoice,
 }: {
   companyId: string;
   date: string;
   onBack: () => void;
+  /** Opens one invoice (UI spec §5). Absent leaves the numbers as plain text,
+   *  which is what a surface with nowhere to navigate to should show. */
+  onOpenInvoice?: (invoiceId: string) => void;
 }) {
   const { client } = useAuth();
   const load = useCallback(
@@ -76,7 +80,12 @@ export function SalesDetailScreen({
                     </thead>
                     <tbody>
                       {d.rows.map((row) => (
-                        <Row key={row.id} row={row} currency={d.base_currency} />
+                        <Row
+                          key={row.id}
+                          row={row}
+                          currency={d.base_currency}
+                          onOpen={onOpenInvoice}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -97,14 +106,31 @@ export function SalesDetailScreen({
   );
 }
 
-function Row({ row, currency }: { row: SaleRow; currency: string }) {
+function Row({
+  row,
+  currency,
+  onOpen,
+}: {
+  row: SaleRow;
+  currency: string;
+  onOpen?: (invoiceId: string) => void;
+}) {
   return (
     <tr className={row.is_credit_note ? 'detail__row--credit' : undefined}>
       <td className="num">{row.issued_at}</td>
       <td>
-        <span className="detail__strong">
-          {row.human_number || row.id.slice(0, 8)}
-        </span>
+        {/* The number is the handle people quote, so it is the thing that
+            opens the document. A whole clickable row would swallow selecting
+            text, which is what somebody reading a figure out loud does. */}
+        {onOpen ? (
+          <button className="detail__open" onClick={() => onOpen(row.id)}>
+            {row.human_number || row.id.slice(0, 8)}
+          </button>
+        ) : (
+          <span className="detail__strong">
+            {row.human_number || row.id.slice(0, 8)}
+          </span>
+        )}
         <span className="ds-caption">
           {row.is_credit_note ? 'Credit note' : `${row.line_count} item${row.line_count === 1 ? '' : 's'}`}
           {row.store_name ? ` · ${row.store_name}` : ''}

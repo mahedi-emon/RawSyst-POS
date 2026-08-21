@@ -929,3 +929,27 @@
   .dialog { padding: var(--space-4); }
   .pairing__group { letter-spacing: 0.12em; }
 }
+
+/* The invoice number in a day's list, which opens the document (UI spec §5).
+ *
+ * A button rather than a whole clickable row: selecting a row of text is what
+ * somebody reading a figure down a telephone does, and a row-wide click target
+ * swallows that. Styled as the strong cell it replaces, with the affordance
+ * coming from the underline on hover rather than from permanent link colour —
+ * a table where every number is blue reads as a table of links. */
+.detail__open {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.detail__open:hover,
+.detail__open:focus-visible {
+  color: var(--brand);
+  text-decoration: underline;
+}

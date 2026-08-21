@@ -210,6 +210,12 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/pos/exchanges", AccessPermission, "sales.exchange",
 			s.handleCreateExchange,
 			"a credit note and a replacement invoice in one transaction; the server states the difference"},
+		// UI spec §5: reprint is available and logged, and reprinting is not
+		// reissuing — no new document, no new number, no new ICV. Gated on
+		// sales.view per design 11 §10: looking a sale up and handing the
+		// customer another copy of it are the same privilege.
+		{http.MethodPost, "/api/v1/pos/sales/{invoiceID}/reprint", AccessPermission, "sales.view",
+			s.handleReprintSale, ""},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}/returnable", AccessPermission, "sales.refund",
 			s.handleReturnableLines,
 			"what is still owed back on an invoice; a till must never work this out itself"},

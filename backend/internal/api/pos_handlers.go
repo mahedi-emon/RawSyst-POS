@@ -739,3 +739,29 @@ func (s *Server) handleCreateExchange(w http.ResponseWriter, r *http.Request) {
 		"customer_paid": out.Difference.IsPositive(),
 	})
 }
+
+// --- POST /api/v1/pos/sales/{invoiceID}/reprint -------------------------
+
+// handleReprintSale records that a copy went out.
+//
+// UI spec §5: reprint is available and logged, and reprinting is not
+// reissuing. No new document, no new number, no new ICV — the only thing that
+// changes is that the audit trail now says a copy was printed and who asked.
+//
+// Gated on sales.view rather than sales.create, per design 11 §10: looking a
+// sale up and taking a copy of it are the same privilege, and a cashier who may
+// read an invoice may hand the customer another copy of it.
+func (s *Server) handleReprintSale(w http.ResponseWriter, r *http.Request) {
+	invoiceID, err := parseUUID(chi.URLParam(r, "invoiceID"), "invoiceID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	if err := s.sales.Reprint(r.Context(), a.TenantID, invoiceID, a.UserID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.NoContent(w)
+}

@@ -323,3 +323,339 @@
   background: var(--info-subtle);
   border-radius: var(--radius-sm);
 }
+
+/* ---------------------------------------------------------------------------
+ * Invoice detail (UI spec §5)
+ *
+ * Laid out as a DOCUMENT, not as a dashboard of cards. The person reading this
+ * usually has the paper version in their hand, or a customer on the phone
+ * quoting a number from it, so the shapes match: a header block with the seller
+ * on one side and the identity on the other, a ruled line table, a right-aligned
+ * totals stack, and the supporting panels beneath rather than competing
+ * alongside.
+ *
+ * Colour is information only. The document itself is neutral; the state badge,
+ * the credit-note direction and the immutability panel are the only colour on
+ * the page.
+ *
+ * Logical properties throughout, so the whole thing mirrors in Arabic.
+ * ------------------------------------------------------------------------- */
+
+.inv {
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  justify-content: center;
+  align-content: start;
+  inline-size: 100%;
+}
+
+.inv > * { inline-size: min(900px, 100%); }
+
+.inv__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.inv__baractions { display: flex; gap: var(--space-3); }
+
+.inv__notice,
+.inv__problem {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.87rem;
+}
+
+.inv__notice {
+  border-inline-start: 3px solid var(--success);
+  background: var(--success-subtle);
+}
+
+.inv__problem {
+  border-inline-start: 3px solid var(--danger);
+  background: var(--danger-subtle);
+}
+
+/* --- the document -------------------------------------------------------- */
+
+.inv__doc { padding: var(--space-6); }
+
+@media (max-width: 640px) {
+  .inv__doc { padding: var(--space-4); }
+}
+
+.inv__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-block-end: var(--space-4);
+  /* The heavier rule under the header is the one piece of document furniture
+   * worth keeping: it separates who issued this from what it is. */
+  border-block-end: 2px solid var(--text);
+}
+
+.inv__seller { display: grid; gap: var(--space-2); align-content: start; }
+
+/* Bounded, so a tall mark and a wide one both sit on the same baseline as the
+ * document title opposite. */
+.inv__logo {
+  max-block-size: 56px;
+  max-inline-size: 220px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+[dir='rtl'] .inv__logo { object-position: right center; }
+
+.inv__sellername {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+/* The identity block aligns to the inline end, so it mirrors automatically. */
+.inv__ident {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: end;
+  text-align: end;
+}
+
+.inv__title {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+/* The number is the handle everybody quotes down a telephone, so it is the
+ * largest thing in the header. */
+.inv__number {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.inv__statehint { margin-block: var(--space-3) 0; }
+
+.inv__parties {
+  margin: var(--space-4) 0 var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--border);
+}
+
+.inv__parties div { display: grid; gap: 2px; }
+.inv__parties dt { margin: 0; }
+.inv__parties dd { margin: 0; font-weight: 500; }
+
+/* A link that is a button, because it navigates within the app rather than to
+ * a URL. Styled as a link so it reads as one. */
+.inv__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- the lines ----------------------------------------------------------- */
+
+.inv__lines { inline-size: 100%; }
+.inv__lines th { white-space: nowrap; }
+
+.inv__lineno {
+  inline-size: 2.5rem;
+  color: var(--text-subtle);
+}
+
+.inv__desc { display: block; }
+
+/* Arabic sits under the English rather than replacing it: a Saudi tax invoice
+ * carries both, and the reader may want either. */
+.inv__descar {
+  display: block;
+  font-family: var(--font-arabic);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.inv__tax { display: block; white-space: nowrap; }
+
+/* --- totals -------------------------------------------------------------- */
+
+.inv__totals {
+  margin-block-start: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  /* Pinned to the inline end, as on paper, and narrow enough that labels and
+   * figures stay adjacent rather than separated by a field of white. */
+  justify-content: end;
+}
+
+.inv__total {
+  display: grid;
+  grid-template-columns: 1fr minmax(8rem, auto);
+  gap: var(--space-5);
+  align-items: baseline;
+}
+
+.inv__total span:first-child { color: var(--text-muted); }
+
+/* The one number the customer will ask about. */
+.inv__total--grand {
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-3);
+  border-block-start: 2px solid var(--text);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.inv__total--grand span:first-child { color: var(--text); }
+
+/* --- tenders ------------------------------------------------------------- */
+
+.inv__tenders {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border);
+}
+
+.inv__tenderlist {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inv__tenderlist li {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(7rem, auto) 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.inv__tendername { font-weight: 500; }
+.inv__pending { color: var(--warning); }
+
+.inv__outstanding {
+  margin-block: var(--space-4) 0;
+  padding: var(--space-3);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--warning-subtle);
+  border-inline-start: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+}
+
+/* --- the immutability panel ---------------------------------------------- */
+
+/* Spec section 5's teaching moment. Informational rather than a warning: the
+ * rule is the system working correctly, and colouring it as an error would tell
+ * the reader they had done something wrong by looking for Edit. */
+.inv__immutable {
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  border: 1px solid var(--info);
+  border-inline-start-width: 4px;
+  background: var(--info-subtle);
+  border-radius: var(--radius-md);
+}
+
+.inv__immutable p { margin: 0; }
+
+/* --- side panels --------------------------------------------------------- */
+
+.inv__side {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.inv__panel { block-size: 100%; }
+
+.inv__facts {
+  margin: 0 0 var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.inv__facts div { display: grid; gap: 2px; }
+.inv__facts dt { margin: 0; }
+.inv__facts dd { margin: 0; font-weight: 600; font-size: 1.05rem; }
+
+.inv__hashlabel { margin-block: var(--space-3) 2px; }
+
+/* A hash is 44 characters of base64 nobody reads in full, but which somebody
+ * occasionally has to compare against another system. Wrapped rather than
+ * truncated: a truncated hash cannot be checked, which is all it is for. */
+.inv__hash {
+  margin: 0;
+  padding: var(--space-2);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: start;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.inv__unsigned { margin-block-start: var(--space-3); }
+
+.inv__reject {
+  margin-block-start: var(--space-3);
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--danger);
+  background: var(--danger-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.87rem;
+}
+
+/* --- the trail ----------------------------------------------------------- */
+
+.inv__trail {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.inv__trail li {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, auto) 1fr;
+  gap: var(--space-1) var(--space-3);
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--border);
+}
+
+.inv__trail li:last-child { border-block-end: 0; padding-block-end: 0; }
+
+.inv__trailwhen {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  text-align: start;
+}
+
+.inv__trailwhat { font-weight: 500; }
+
+/* The actor sits under the action, in the action's column. */
+.inv__trail li .ds-caption { grid-column: 2; }

@@ -31,6 +31,7 @@ import { SalesDetailScreen } from '@rawsyst/shared/dashboard/SalesDetailScreen';
 import { ExpensesDetailScreen } from '@rawsyst/shared/dashboard/ExpensesDetailScreen';
 import { ComplianceScreen } from '@rawsyst/shared/dashboard/ComplianceScreen';
 import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
+import { InvoiceDetailScreen } from '@rawsyst/shared/invoices/InvoiceDetailScreen';
 import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
@@ -272,7 +273,26 @@ function DashboardArea({
 
   switch (drill.screen) {
     case 'sales':
-      return <SalesDetailScreen companyId={companyId} date={drill.date} onBack={onBack} />;
+      return (
+        <SalesDetailScreen
+          companyId={companyId}
+          date={drill.date}
+          onBack={onBack}
+          onOpenInvoice={(invoiceId) => onOpen({ screen: 'invoice', invoiceId })}
+        />
+      );
+    case 'invoice':
+      return (
+        <InvoiceDetailScreen
+          invoiceId={drill.invoiceId}
+          companyId={companyId}
+          // Back goes to the dashboard rather than to the day it was opened
+          // from: this screen is reachable from more than one place, and a
+          // Back that guesses wrong is worse than one that is predictable.
+          onBack={onBack}
+          onOpenInvoice={(invoiceId) => onOpen({ screen: 'invoice', invoiceId })}
+        />
+      );
     case 'expenses':
       return <ExpensesDetailScreen companyId={companyId} date={drill.date} onBack={onBack} />;
     case 'compliance':

@@ -47,7 +47,11 @@ export type DrillTarget =
   | { screen: 'sales'; date: string }
   | { screen: 'expenses'; date: string }
   | { screen: 'compliance' }
-  | { screen: 'stock'; filter: 'low' | 'out' };
+  | { screen: 'stock'; filter: 'low' | 'out' }
+  // UI spec §5. Reached from a row in the sales drill-through rather than from
+  // the dashboard itself: nobody opens an invoice without first knowing which
+  // one, and the day's list is where they find out.
+  | { screen: 'invoice'; invoiceId: string };
 
 export function Dashboard({
   companyId,
