@@ -78,6 +78,98 @@ type VariantSummary struct {
 	IsActive   bool              `json:"is_active"`
 }
 
+// MatrixCell is one square of the grid a shop actually reads, UI spec §4.
+//
+// The variant, plus the three facts that decide how the cell is drawn. All
+// three are read here rather than derived on the client, because two of them
+// need the whole company: quantity is summed ACROSS warehouses — comparing per
+// warehouse reports a shop as low while a full box sits in the back room — and
+// the last sale is the last one anywhere, not the last one on the till asking.
+type MatrixCell struct {
+	VariantSummary
+
+	// OnHand is summed across the company's warehouses, as a decimal string.
+	OnHand string `json:"on_hand"`
+
+	// ReorderLevel is what "low" means for this variant. Empty when nobody has
+	// set one, which is not the same as zero: a variant with no reorder level
+	// is never low, it is only ever in stock or out.
+	ReorderLevel string `json:"reorder_level,omitempty"`
+
+	// LastSoldAt is when this variant last moved through a sale. Empty when it
+	// never has — which reads as dead stock only if it has stock, since a
+	// variant that has never sold and holds nothing is simply new.
+	LastSoldAt string `json:"last_sold_at,omitempty"`
+}
+
+// ReadMatrixGrid returns the grid with the stock facts §4 needs.
+//
+// Separate from readGrid, which GenerateMatrix uses to find the cells that
+// already exist: generation asks "which combinations are taken" and has no use
+// for quantities, and joining stock into it would make creating a 200-cell grid
+// pay for a report nobody asked for.
+func (s *Service) ReadMatrixGrid(
+	ctx context.Context, tenantID, productID uuid.UUID,
+) ([]MatrixCell, error) {
+	out := []MatrixCell{}
+
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		// Two independent aggregates, as scalar subqueries rather than joins.
+		// Joining both would multiply the rows — every warehouse against every
+		// sale — and the quantity would come back inflated by however many
+		// times the line had sold, which is a wrong number that looks plausible.
+		rows, e := tx.Query(ctx, `
+			SELECT v.id, v.sku, v.attributes, v.price_retail, v.is_active,
+			       coalesce((
+			         SELECT sum(stock_on_hand(v.id, w.id))
+			         FROM warehouse w WHERE w.company_id = v.company_id
+			       ), 0)::text,
+			       coalesce(v.reorder_level::text, ''),
+			       -- Sales only, and dated when the sale HAPPENED rather than
+			       -- when the row was written: an offline sale reaches the
+			       -- server days later and is not a fresh sale then. A transfer
+			       -- or an adjustment moves stock without anybody buying it,
+			       -- and counting those would hide the dead line this column
+			       -- exists to surface.
+			       coalesce((
+			         SELECT to_char(max(m.occurred_at), 'YYYY-MM-DD')
+			         FROM stock_movement m
+			         WHERE m.variant_id = v.id AND m.reason = 'sale'
+			       ), '')
+			FROM variant v
+			WHERE v.product_id = $1`, productID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var c MatrixCell
+			var attrs []byte
+			var price decimal.Decimal
+			if e := rows.Scan(&c.ID, &c.SKU, &attrs, &price, &c.IsActive,
+				&c.OnHand, &c.ReorderLevel, &c.LastSoldAt); e != nil {
+				return e
+			}
+			if e := json.Unmarshal(attrs, &c.Attributes); e != nil {
+				return e
+			}
+			c.Price = price.String()
+			out = append(out, c)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Sorted by SKU so a grid reads the same way twice. Map iteration order in
+	// Go is deliberately random, and a product page whose rows shuffle on every
+	// refresh is unusable.
+	sort.Slice(out, func(i, j int) bool { return out[i].SKU < out[j].SKU })
+	return out, nil
+}
+
 // GenerateMatrix creates the missing cells of a product's grid.
 func (s *Service) GenerateMatrix(
 	ctx context.Context, tenantID uuid.UUID, req MatrixRequest,

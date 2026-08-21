@@ -38,8 +38,9 @@ import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
+import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
 
-type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing' | 'setup' | 'branding';
+type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing' | 'setup' | 'branding' | 'inventory';
 
 export function BackOffice() {
   const { status, me, signOut, client } = useAuth();
@@ -85,6 +86,10 @@ export function BackOffice() {
   // permission: an onboarding-only verb would mean every tenant's custom roles
   // needed updating before anybody could finish setup.
   const maySeeSetup = may('identity.view');
+  // UI spec §4. catalog.view is what the matrix route requires, and a store
+  // manager and an inventory keeper both hold it — the two people who actually
+  // reorder stock.
+  const maySeeInventory = may('catalog.view');
 
   // Keyed on the TENANT, not just on being signed in.
   //
@@ -150,6 +155,7 @@ export function BackOffice() {
     { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
     { key: 'buying', label: 'Buying', shown: mayBuy },
     { key: 'customers', label: 'Customers', shown: maySeeCustomers },
+    { key: 'inventory', label: 'Inventory', shown: maySeeInventory },
     { key: 'devices', label: 'Terminals', shown: maySeeDevices },
     { key: 'einvoicing', label: 'E-invoicing', shown: maySeeEInvoicing },
     { key: 'setup', label: 'Setup', shown: maySeeSetup },
@@ -238,6 +244,8 @@ export function BackOffice() {
         <EgsUnitsScreen companyId={activeCompany} />
       ) : section === 'branding' && maySeeSetup ? (
         <BrandingScreen companyId={activeCompany} />
+      ) : section === 'inventory' && maySeeInventory ? (
+        <VariantMatrixScreen companyId={activeCompany} />
       ) : mayReadFigures ? (
         <DashboardArea
           companyId={activeCompany}

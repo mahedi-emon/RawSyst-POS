@@ -659,3 +659,193 @@
 
 /* The actor sits under the action, in the action's column. */
 .inv__trail li .ds-caption { grid-column: 2; }
+
+/* ---------------------------------------------------------------------------
+ * Inventory and variant matrix (UI spec section 4)
+ *
+ * A dense grid, read at a glance. The cell states are the only colour on the
+ * screen and each one carries a word as well as a tint, because roughly one man
+ * in twelve has a colour vision deficiency and a till is used by whoever is on
+ * shift.
+ *
+ * The tints are the design system's own semantic subtles rather than new
+ * values: amber for low, red for out, neutral grey for dead. Dead is
+ * deliberately NOT a warning colour — stock that has not moved is a decision to
+ * make, not a fault to fix, and spending a warning tint on it would leave
+ * nothing louder for the line that is actually out.
+ *
+ * Logical properties throughout, so the grid mirrors in Arabic.
+ * ------------------------------------------------------------------------- */
+
+.matrix {
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  inline-size: 100%;
+}
+
+.matrix__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.matrix__picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.matrix__search,
+.matrix__select {
+  display: grid;
+  gap: 4px;
+}
+
+/* The search box is the widest control: it is the one a shop with forty
+ * thousand SKUs reaches for first. */
+.matrix__search { grid-column: span 2; }
+
+@media (max-width: 640px) {
+  .matrix__search { grid-column: auto; }
+}
+
+.matrix__problem {
+  margin: 0;
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--danger);
+  background: var(--danger-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.87rem;
+}
+
+/* --- the grid ------------------------------------------------------------ */
+
+.matrix__grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  /* Sized by content rather than stretched: a two-column grid stretched across
+   * a wide monitor puts a metre between the label and its figure. */
+  inline-size: auto;
+  min-inline-size: 100%;
+}
+
+.matrix__grid th,
+.matrix__grid td {
+  border-block-end: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
+}
+
+.matrix__grid tr > *:last-child { border-inline-end: 0; }
+.matrix__grid tbody tr:last-child > * { border-block-end: 0; }
+
+/* The corner cell names both axes, so a reader who arrived from a link knows
+ * what they are looking at without hunting for a legend. */
+.matrix__corner {
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  background: var(--surface-sunken);
+}
+
+.matrix__colhead {
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.87rem;
+  white-space: nowrap;
+  background: var(--surface-sunken);
+}
+
+/* Row headings stick while the grid scrolls sideways: losing which colour a row
+ * is halfway across twelve sizes makes the whole grid unreadable. */
+.matrix__rowhead {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  font-weight: 600;
+  font-size: 0.87rem;
+  white-space: nowrap;
+  background: var(--surface);
+  border-inline-end: 1px solid var(--border-strong);
+}
+
+.matrix__cell {
+  padding: var(--space-2) var(--space-3);
+  min-inline-size: 5.5rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.matrix__qty {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* The word, which is the signal. Uppercase and small so it reads as a status
+ * rather than as another number competing with the figure above it. */
+.matrix__label {
+  display: block;
+  margin-block-start: 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A combination the product does not have. Shown as a quiet dot rather than a
+ * zero: zero means "none left", and this means "never stocked". */
+.matrix__none {
+  display: block;
+  color: var(--text-subtle);
+  font-size: 1.05rem;
+}
+
+.matrix__cell--empty { background: var(--surface-sunken); }
+
+.matrix__cell--low {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+.matrix__cell--out {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+/* Grey, per spec section 4, and not a warning tint. Stock that has not moved is
+ * a decision to make rather than a fault to fix. */
+.matrix__cell--dead {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+/* --- what the grid is not showing ---------------------------------------- */
+
+.matrix__note {
+  margin: 0;
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--info);
+  background: var(--info-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.87rem;
+}
+
+.matrix__summary p { margin: 0; }
+
+.matrix__total {
+  margin-block-end: var(--space-2) !important;
+  font-size: 1.05rem;
+}
+
+.matrix__total strong { font-size: 1.35rem; }

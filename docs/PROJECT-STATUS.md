@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Last updated** | 2026-08-21 |
-| **Branch** | `main` @ `f32174f` |
-| **Backend** | 144 Go files, ~46,800 lines, 892 integration tests + 240 unit tests, 55 migrations |
+| **Branch** | `main` @ `3bf289e` |
+| **Backend** | 145 Go files, ~47,100 lines, 897 integration tests + 240 unit tests, 55 migrations |
 | **HTTP routes live** | 97 — auth, invoice reprint (logged), branding (company logo upload/replace/remove/serve), onboarding, platform, POS (incl. signed-document upload), sync, shifts (open, current, peek, X-report, cash drop, Z-report close), statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, payment reversal, ageing, supplier edit/retire), customers and receivables (accounts, credit limits, ledger, open invoices, receipts, receipt reversal, ageing, till snapshot), terminals (register, enrol, identity, branches, rename/reassign, pause, revoke), companies, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
 | **Front ends** | Next.js back-office (dashboard, drill-through, buying) + Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor, hold/resume, returns, exchanges, receipt, Owner Dashboard with A8 drill-through, Buying, Customers (accounts, credit standing, ledger, receipt allocation, receipt reversal, ageing), POS customer picker and credit sales with an offline customer cache, Terminals management and POS pairing (403 tests across shared/pos) |

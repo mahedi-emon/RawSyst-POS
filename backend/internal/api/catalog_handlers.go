@@ -211,7 +211,10 @@ func (s *Server) handleReadMatrix(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := actor.From(r.Context())
-	grid, err := s.catalog.ReadMatrix(r.Context(), a.TenantID, productID)
+	// The read path carries the stock facts UI spec §4 draws each cell from.
+	// Generation uses a leaner query: it asks which combinations are taken and
+	// has no use for quantities.
+	grid, err := s.catalog.ReadMatrixGrid(r.Context(), a.TenantID, productID)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
