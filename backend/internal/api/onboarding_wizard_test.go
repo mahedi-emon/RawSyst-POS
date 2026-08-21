@@ -18,9 +18,10 @@
 package api
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -98,15 +99,19 @@ func businessAnswers() map[string]any {
 }
 
 // A Saudi VAT number is 15 digits starting and ending with 3.
+//
+// The thirteen in between come from the uuid's BITS, not from hunting its hex
+// text for digit characters. The first version did the latter and walked off
+// the end of the string whenever a uuid happened to contain fewer than
+// thirteen digits among its thirty-two hex chars — which is 0.24% of uuids,
+// and so roughly one full integration run in seventy died on an index-out-of-
+// range panic a long way from anything that explained it.
 func uniqueSaudiVAT() string {
-	digits := strings.ReplaceAll(uuid.NewString(), "-", "")
-	out := []byte("3")
-	for i := 0; len(out) < 14; i++ {
-		if digits[i] >= '0' && digits[i] <= '9' {
-			out = append(out, digits[i])
-		}
-	}
-	return string(out) + "3"
+	id := uuid.New()
+	// 10^13 is the number of thirteen-digit values; the modulo keeps the
+	// padding below honest rather than truncating a longer number.
+	n := binary.BigEndian.Uint64(id[:8]) % 10_000_000_000_000
+	return fmt.Sprintf("3%013d3", n)
 }
 
 // The wave and the deadline reach the company record.
