@@ -216,6 +216,15 @@ func (s *Server) Routes() []Route {
 		// customer another copy of it are the same privilege.
 		{http.MethodPost, "/api/v1/pos/sales/{invoiceID}/reprint", AccessPermission, "sales.view",
 			s.handleReprintSale, ""},
+
+		// The shop's own stationery, for the receipt a customer walks out with.
+		// Device-resolved like the catalogue snapshot: a till that could name
+		// its own company could print another company's letterhead, and both
+		// belong to the same tenant so RLS would not notice. Gated on
+		// sales.create because printing a receipt is part of making a sale.
+		{http.MethodGet, "/api/v1/pos/stationery", AccessPermission, "sales.create",
+			s.handleTillStationery,
+			"the words a till prints a receipt on; cached so it still prints offline"},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}/returnable", AccessPermission, "sales.refund",
 			s.handleReturnableLines,
 			"what is still owed back on an invoice; a till must never work this out itself"},

@@ -19,6 +19,7 @@ package branding
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -278,4 +279,32 @@ func validateTemplate(t Template) error {
 		return e
 	}
 	return nil
+}
+
+// Seller is the business a document is issued by, as it heads itself.
+type Seller struct {
+	// The trading name if there is one, because that is what the shop calls
+	// itself and what a customer expects to read on a receipt; the legal name
+	// otherwise. Never blank: a receipt with no seller on it is not a document.
+	Name      string
+	VATNumber string
+}
+
+// ReadSeller names the business, for the surfaces that print one.
+func (s *Service) ReadSeller(ctx context.Context, scope Scope) (Seller, error) {
+	var out Seller
+	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT coalesce(nullif(btrim(trade_name), ''), legal_name),
+			       coalesce(vat_number, '')
+			FROM company WHERE id = $1`, scope.CompanyID).
+			Scan(&out.Name, &out.VATNumber)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Seller{}, errs.New(errs.CodeNotFound, "That business was not found.")
+	}
+	if err != nil {
+		return Seller{}, db.Translate(err, "That business could not be read.")
+	}
+	return out, nil
 }

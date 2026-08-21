@@ -129,6 +129,36 @@ INSERT OR IGNORE INTO customer_cursor (id) VALUES (1);
 -- Carts parked mid-sale. NOT sales: no invoice UUID, no ICV, no stock, no
 -- journal entry. A held cart is a note about what somebody was buying, which
 -- is why it never leaves the terminal.
+-- The shop's own stationery, so the till can print its receipt with no network.
+--
+-- The last of I2. The Back Office writes the words and the terminal has to be
+-- holding them before the connection goes, because the receipt a customer walks
+-- out with is printed at the counter and cannot wait for a round trip.
+--
+-- One row, replaced wholesale on every refresh. There is no delta to take: it
+-- is a handful of short strings, and a cursor over four fields would be more
+-- machinery than the thing it manages.
+--
+-- No logo. The receipt is 42 columns of plain text so it prints on every
+-- counter printer, and text cannot hold an image.
+CREATE TABLE IF NOT EXISTS cached_stationery (
+  id              INTEGER PRIMARY KEY CHECK (id = 1),
+  store_name      TEXT NOT NULL DEFAULT '',
+  vat_number      TEXT NOT NULL DEFAULT '',
+  header_text     TEXT NOT NULL DEFAULT '',
+  header_text_ar  TEXT NOT NULL DEFAULT '',
+  footer_text     TEXT NOT NULL DEFAULT '',
+  footer_text_ar  TEXT NOT NULL DEFAULT '',
+  return_policy   TEXT NOT NULL DEFAULT '',
+  return_policy_ar TEXT NOT NULL DEFAULT '',
+  show_tax_number INTEGER NOT NULL DEFAULT 1,
+  -- When it was last pulled. A till printing a month-old policy is doing the
+  -- right thing; one that never pulled at all is a different situation, and
+  -- the difference is worth being able to see.
+  fetched_at      TEXT
+);
+INSERT OR IGNORE INTO cached_stationery (id) VALUES (1);
+
 CREATE TABLE IF NOT EXISTS held_cart (
   id          TEXT PRIMARY KEY,
   label       TEXT NOT NULL DEFAULT '',
@@ -162,6 +192,7 @@ export async function openLocalStore(): Promise<LocalStores> {
     catalogue: new SqliteCatalogueStore(db),
     customers: new SqliteCustomerStore(db),
     held: new SqliteHeldCartStore(db),
+    stationery: new SqliteStationeryStore(db),
   };
 }
 
@@ -173,6 +204,69 @@ export interface LocalStores {
   catalogue: SqliteCatalogueStore;
   customers: SqliteCustomerStore;
   held: SqliteHeldCartStore;
+  stationery: SqliteStationeryStore;
+}
+
+/** The shop's own words, held on the terminal so a receipt still prints with
+ *  no network. */
+export class SqliteStationeryStore {
+  constructor(private readonly db: Database) {}
+
+  async read(): Promise<CachedStationery | null> {
+    const rows = await this.db.select<Array<Record<string, unknown>>>(
+      `SELECT store_name, vat_number, header_text, header_text_ar, footer_text,
+              footer_text_ar, return_policy, return_policy_ar, show_tax_number,
+              fetched_at
+       FROM cached_stationery WHERE id = 1`,
+    );
+    const row = rows[0];
+    // Never fetched. Not an error: a till that has never been online prints on
+    // the RawSyst default, which is what it should do.
+    if (!row || !row.fetched_at) return null;
+
+    return {
+      storeName: String(row.store_name ?? ''),
+      vatNumber: String(row.vat_number ?? ''),
+      headerText: String(row.header_text ?? ''),
+      headerTextAr: String(row.header_text_ar ?? ''),
+      footerText: String(row.footer_text ?? ''),
+      footerTextAr: String(row.footer_text_ar ?? ''),
+      returnPolicy: String(row.return_policy ?? ''),
+      returnPolicyAr: String(row.return_policy_ar ?? ''),
+      showTaxNumber: Number(row.show_tax_number ?? 1) !== 0,
+      fetchedAt: String(row.fetched_at),
+    };
+  }
+
+  async write(s: CachedStationery): Promise<void> {
+    await this.db.execute(
+      `UPDATE cached_stationery SET
+         store_name = $1, vat_number = $2, header_text = $3,
+         header_text_ar = $4, footer_text = $5, footer_text_ar = $6,
+         return_policy = $7, return_policy_ar = $8, show_tax_number = $9,
+         fetched_at = $10
+       WHERE id = 1`,
+      [
+        s.storeName, s.vatNumber, s.headerText, s.headerTextAr,
+        s.footerText, s.footerTextAr, s.returnPolicy, s.returnPolicyAr,
+        s.showTaxNumber ? 1 : 0, s.fetchedAt,
+      ],
+    );
+  }
+}
+
+/** What the till holds to print a receipt with. */
+export interface CachedStationery {
+  storeName: string;
+  vatNumber: string;
+  headerText: string;
+  headerTextAr: string;
+  footerText: string;
+  footerTextAr: string;
+  returnPolicy: string;
+  returnPolicyAr: string;
+  showTaxNumber: boolean;
+  fetchedAt: string;
 }
 
 export class SqliteQueueStore implements QueueStore {

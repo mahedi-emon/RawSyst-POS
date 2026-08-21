@@ -37,6 +37,7 @@ import {
   type ConnectivityState,
 } from './connectivity';
 import { openLocalStore } from './sqlite';
+import { Stationery, receiptStationery, type ReceiptStationery } from './stationery';
 
 /** The backstop flush. The connectivity monitor triggers a drain the moment
  *  the server returns, so this only covers the case where a push failed for a
@@ -65,6 +66,11 @@ export interface TerminalState {
   syncingCatalogue: boolean;
 
   catalogue: Catalogue | null;
+
+  /** The shop's own words for a receipt (I2), as the till currently holds
+   *  them. Always usable: a terminal that has never been online gets the
+   *  RawSyst default rather than nothing. */
+  stationery: ReceiptStationery;
   /** The customer book, so a sale can be attached to somebody offline. */
   customers: Customers | null;
   /** Carts parked mid-sale. Local only and never synced. */
@@ -82,6 +88,10 @@ export function useTerminal(
 
   const [queue, setQueue] = useState<SaleQueue | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [stationery, setStationery] = useState<Stationery | null>(null);
+  const [receiptWords, setReceiptWords] = useState<ReceiptStationery>(
+    receiptStationery(null),
+  );
   const [customers, setCustomers] = useState<Customers | null>(null);
   const [held, setHeld] = useState<HeldCarts | null>(null);
   const [counts, setCounts] = useState<QueueCounts>({ pending: 0, failed: 0 });
@@ -121,6 +131,14 @@ export function useTerminal(
         setQueue(q);
         setCatalogue(c);
         setCustomers(new Customers(stores.customers, client));
+
+        // Loaded before any network is attempted, so the first receipt of the
+        // day prints on the shop's own words even on a till that opened with
+        // no connection.
+        const st = new Stationery(stores.stationery);
+        await st.load();
+        setStationery(st);
+        setReceiptWords(receiptStationery(st.current()));
 
         const h = new HeldCarts(stores.held);
         setHeld(h);
@@ -177,6 +195,19 @@ export function useTerminal(
         await customers?.sync();
       } catch {
         // Same bargain as below: the book the till already holds is untouched.
+      }
+
+      // The stationery rides along too. A failure leaves what the terminal was
+      // already holding, which is the point: a till that loses the network
+      // mid-shift keeps printing the shop's words rather than reverting to the
+      // default in the middle of a queue of customers.
+      try {
+        if (stationery) {
+          await stationery.refresh(client);
+          setReceiptWords(receiptStationery(stationery.current()));
+        }
+      } catch {
+        // Kept as held.
       }
     } catch {
       // Offline, or the server refused. The cache the till already holds is
@@ -273,6 +304,7 @@ export function useTerminal(
     cached,
     syncingCatalogue,
     catalogue,
+    stationery: receiptWords,
     customers,
     held,
     record,

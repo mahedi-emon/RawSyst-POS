@@ -37,6 +37,13 @@ export interface ReceiptHeader {
    *  till does not compose or validate it. */
   vatNumber: string;
   addressLines: string[];
+
+  /** What the shop wrote for its returns policy (I2). Blank when they have
+   *  written none, which is the ordinary state and prints nothing. */
+  returnPolicy?: string;
+  /** The last line on the page. Defaults to the line the receipt has always
+   *  ended with, so a shop that writes nothing gets what it had before. */
+  closing?: string;
 }
 
 export interface Receipt {
@@ -191,9 +198,63 @@ export function renderReceipt(receipt: Receipt, width = 42): string {
     out.push(centre('Recorded on this terminal.', width));
   }
 
+  // What the shop wrote, if anything (I2). After the honest statement above
+  // rather than before it: that statement is about what this document IS, and
+  // burying it under a returns policy would be the wrong order.
+  if (receipt.header.returnPolicy) {
+    out.push('');
+    for (const line of wrap(receipt.header.returnPolicy, width)) {
+      out.push(centre(line, width));
+    }
+  }
+
   out.push('');
-  out.push(centre('Thank you', width));
+  out.push(centre(receipt.header.closing || 'Thank you', width));
   return out.join('\n');
+}
+
+/**
+ * Breaks a block onto lines that fit the roll.
+ *
+ * A returns policy is written in a box on a wide screen and printed on 42
+ * columns of paper. Without this the last two thirds of every sentence would be
+ * cut off, which is worse than not printing it at all — a policy a customer
+ * cannot read is one they will argue was never given.
+ *
+ * Line breaks a shop wrote are kept: three short rules on three lines means
+ * three lines.
+ */
+export function wrap(text: string, width: number): string[] {
+  const out: string[] = [];
+
+  for (const paragraph of text.split('\n')) {
+    const words = paragraph.trim().split(/\s+/).filter((w) => w !== '');
+    if (words.length === 0) {
+      out.push('');
+      continue;
+    }
+
+    let line = '';
+    for (const word of words) {
+      if (line === '') {
+        line = word;
+      } else if (line.length + 1 + word.length <= width) {
+        line += ' ' + word;
+      } else {
+        out.push(line);
+        line = word;
+      }
+    }
+    if (line !== '') out.push(line);
+  }
+
+  // A single word longer than the roll — a URL, usually — is broken rather
+  // than left for the printer to truncate, which loses its end silently.
+  return out.flatMap((line) =>
+    line.length <= width
+      ? [line]
+      : (line.match(new RegExp(`.{1,${width}}`, 'g')) ?? [line]),
+  );
 }
 
 function label(method: string): string {

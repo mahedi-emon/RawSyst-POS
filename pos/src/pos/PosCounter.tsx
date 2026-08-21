@@ -282,12 +282,14 @@ export function PosCounter() {
       // now.
       setReceipt(
         buildReceipt({
-          // The seller's trading name and VAT number are not yet known to the
-          // terminal; nothing here invents them. See the gap noted in the POS
-          // README — a receipt cannot become a simplified tax invoice until
-          // both that and the P1 signing gate are resolved, and it prints
-          // "this is not a tax invoice" in the meantime.
-          header: { storeName: 'RawSyst', vatNumber: '', addressLines: [] },
+          // The shop's own stationery (I2), held on the terminal so it prints
+          // with no network. A till that has never been online falls back to
+          // the RawSyst default rather than to nothing.
+          //
+          // Knowing the seller's name and VAT number does not make this a
+          // simplified tax invoice — that waits on the P1 signing gate — and
+          // it still prints "this is not a tax invoice" in the meantime.
+          header: terminal.stationery,
           reference: payload.invoice_uuid.slice(0, 8),
           issuedAt: payload.issued_at,
           cashier: me.user_id,
