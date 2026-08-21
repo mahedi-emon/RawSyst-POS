@@ -74,7 +74,13 @@ var defaultChart = []seedAccount{
 	{"2350", "Exchange Clearing", "liability", "exchange_clearing", ""},
 	{"2400", "Loyalty Points Liability", "liability", "loyalty_liability", ""},
 
-	{"3100", "Owner's Equity", "equity", "owners_equity", ""},
+	// The role is owner_capital because that is the name rule 12 resolves, and
+	// the label is the one design 12 §1 gives account 3100. This was seeded as
+	// "Owner's Equity" with a matching role until 0053, which meant every
+	// capital contribution the engine tried to post would have failed on an
+	// unmapped role — the same shape of defect as the cost_variance mapping
+	// 0048 had to correct, caught this time while the module is still dormant.
+	{"3100", "Owner Capital", "equity", "owner_capital", ""},
 	{"3200", "Retained Earnings", "equity", "retained_earnings", ""},
 
 	{"4100", "Sales Revenue", "revenue", "sales_revenue", ""},

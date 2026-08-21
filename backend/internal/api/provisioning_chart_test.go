@@ -85,13 +85,22 @@ func TestEveryRoleThePostingRulesNameIsInTheChart(t *testing.T) {
 	// will on the first day that module posts, which is why they are named here
 	// rather than skipped silently.
 	//
-	// `expense` and `owner_capital` also read as chart design decisions nobody
-	// has taken: which account a generic cash expense hits is the accountant's
-	// call, and the chart offers `owners_equity` where equity.contribution asks
-	// for `owner_capital`. Both are recorded in PROJECT-STATUS.
+	// `owner_capital` is no longer among them. It was never a design decision
+	// nobody had taken — design 12 §1 names account 3100 "Owner Capital" and
+	// the chart had simply drifted to `owners_equity`, so 0053 renamed the
+	// mapping and the rule now resolves.
+	//
+	// `expense` stays, and for a different reason than "the module is not
+	// built". Design 02 rule 5 says "Dr Expense Account", meaning whichever
+	// head the transaction is for, and design 12 §1 offers Rent, Utilities,
+	// Salaries, Marketing and Bank Charges as separate heads with no generic
+	// account among them. A fixed role cannot name the one a user picked, so
+	// this is a rule that needs a `for_each` rather than a mapping that needs
+	// an account — and choosing one account for every cash expense would be
+	// inventing an accounting rule rather than recording one.
 	deferred := map[string]string{
-		"expense":       "cash expenses are not built",
-		"owner_capital": "equity contributions are not built",
+		"expense": "design 02 rule 5 debits the expense HEAD, which a fixed " +
+			"role cannot name; the rule needs a for_each, not a mapping",
 	}
 
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
