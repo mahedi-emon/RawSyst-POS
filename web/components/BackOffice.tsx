@@ -35,8 +35,9 @@ import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
+import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
 
-type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing';
+type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing' | 'setup';
 
 export function BackOffice() {
   const { status, me, signOut, client } = useAuth();
@@ -56,6 +57,9 @@ export function BackOffice() {
     companies: Company[];
   } | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  // Bumped when setup creates a company, so the list is re-fetched rather than
+  // leaving the owner looking at the empty state they just resolved.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const may = useMemo(
     () => (permission: string) => me?.permissions.includes(permission) ?? false,
@@ -74,6 +78,11 @@ export function BackOffice() {
   // invoice chain hangs from, so an accountant reads it and a store manager
   // sees it without being able to create one.
   const maySeeEInvoicing = may('einvoicing.view');
+  // Setup reads with identity.view and writes with identity.edit, which is
+  // what the four onboarding routes require. It is deliberately not its own
+  // permission: an onboarding-only verb would mean every tenant's custom roles
+  // needed updating before anybody could finish setup.
+  const maySeeSetup = may('identity.view');
 
   // Keyed on the TENANT, not just on being signed in.
   //
@@ -101,7 +110,7 @@ export function BackOffice() {
     return () => {
       cancelled = true;
     };
-  }, [client, me, tenant]);
+  }, [client, me, tenant, reloadKey]);
 
   // Land on whichever section this person can actually use. An owner opens on
   // the figures; a purchase manager with no accounting.view opens on buying,
@@ -141,6 +150,7 @@ export function BackOffice() {
     { key: 'customers', label: 'Customers', shown: maySeeCustomers },
     { key: 'devices', label: 'Terminals', shown: maySeeDevices },
     { key: 'einvoicing', label: 'E-invoicing', shown: maySeeEInvoicing },
+    { key: 'setup', label: 'Setup', shown: maySeeSetup },
   ];
   const visible = sections.filter((s) => s.shown);
 
@@ -200,8 +210,19 @@ export function BackOffice() {
 
       {visible.length === 0 ? (
         <NoSections />
+      ) : section === 'setup' && maySeeSetup ? (
+        <OnboardingWizard onFinished={() => setReloadKey((n) => n + 1)} />
       ) : !activeCompany ? (
-        <NoCompany loading={companies === null} />
+        // A tenant with no company used to dead-end here on a panel that told
+        // them to finish setup and gave them no way to do it. The wizard IS
+        // that way, so it is what they land on.
+        companies === null ? (
+          <NoCompany loading />
+        ) : maySeeSetup ? (
+          <OnboardingWizard onFinished={() => setReloadKey((n) => n + 1)} />
+        ) : (
+          <NoCompany loading={false} />
+        )
       ) : section === 'buying' && mayBuy ? (
         <PurchasingScreen companyId={activeCompany} />
       ) : section === 'customers' && maySeeCustomers ? (

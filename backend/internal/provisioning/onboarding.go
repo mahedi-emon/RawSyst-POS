@@ -327,6 +327,7 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 		VATRegistered bool   `json:"vat_registered"`
 		VATNumber     string `json:"vat_number"`
 		ZATCAWave     string `json:"zatca_wave"`
+		ZATCADeadline string `json:"zatca_deadline"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return uuid.Nil, errs.New(errs.CodeInvalidInput,
@@ -334,6 +335,31 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 	}
 	if v.Timezone == "" {
 		v.Timezone = "Asia/Riyadh"
+	}
+
+	// The ZATCA obligation belongs to the Tax step, which is where UI spec §6
+	// puts it and where an Owner expects to be asked. It is read from there in
+	// preference to the business step, which still answers so that answers
+	// recorded before the wizard existed are not dropped on the floor.
+	//
+	// `zatca_deadline` had no home at all until now: 0002 has carried the
+	// column since the beginning and this commit never wrote it, so a shop
+	// could be asked for the date ZATCA gave them and have it silently
+	// discarded — which is worse than not asking, because they would believe
+	// the product knew.
+	if tax, ok := payload[StepTax]; ok {
+		var t struct {
+			ZATCAWave     string `json:"zatca_wave"`
+			ZATCADeadline string `json:"zatca_deadline"`
+		}
+		if err := json.Unmarshal(tax, &t); err == nil {
+			if strings.TrimSpace(t.ZATCAWave) != "" {
+				v.ZATCAWave = t.ZATCAWave
+			}
+			if strings.TrimSpace(t.ZATCADeadline) != "" {
+				v.ZATCADeadline = t.ZATCADeadline
+			}
+		}
 	}
 
 	a := actor.From(ctx)
@@ -361,12 +387,14 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO company
 			  (tenant_id, legal_name, legal_name_ar, trade_name, country,
-			   base_currency, timezone, cr_number, vat_registered, vat_number, zatca_wave)
-			VALUES ($1,$2,$3,$4,lower($5),upper($6),$7,$8,$9,$10,$11)
+			   base_currency, timezone, cr_number, vat_registered, vat_number,
+			   zatca_wave, zatca_deadline)
+			VALUES ($1,$2,$3,$4,lower($5),upper($6),$7,$8,$9,$10,$11,$12::date)
 			RETURNING id`,
 			a.TenantID, v.LegalName, nullIfBlank(v.LegalNameAr), nullIfBlank(v.TradeName),
 			v.Country, v.BaseCurrency, v.Timezone, nullIfBlank(v.CRNumber),
-			v.VATRegistered, nullIfBlank(v.VATNumber), nullIfBlank(v.ZATCAWave)).
+			v.VATRegistered, nullIfBlank(v.VATNumber),
+			nullIfBlank(v.ZATCAWave), nullIfBlank(v.ZATCADeadline)).
 			Scan(&companyID); err != nil {
 			return err
 		}

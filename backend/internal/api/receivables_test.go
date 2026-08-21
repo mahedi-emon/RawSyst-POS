@@ -682,7 +682,16 @@ func chainCount(t *testing.T, h *harness, f *arFixture) int {
 // seedUserIn adds a second user, with a different role, to a shop that already
 // exists. seedUserWithRole builds a whole new tenant, which is the wrong tool
 // for testing that two roles in the SAME company see different things.
+// seedUserIn adds a user with a role to the fixture's tenant and signs them in.
 func (h *harness) seedUserIn(t *testing.T, f *shopFixture, roleKey string) string {
+	t.Helper()
+	return h.seedUserInTenant(t, f.tenantID, roleKey)
+}
+
+// seedUserInTenant is the same, for a tenant that has no shop behind it — the
+// setup wizard runs before any company exists, so there is no shopFixture to
+// take one from.
+func (h *harness) seedUserInTenant(t *testing.T, tenantID uuid.UUID, roleKey string) string {
 	t.Helper()
 	ctx := t.Context()
 
@@ -697,20 +706,20 @@ func (h *harness) seedUserIn(t *testing.T, f *shopFixture, roleKey string) strin
 		return tx.QueryRow(ctx, `
 			INSERT INTO app_user (tenant_id, email, full_name, password_hash, status)
 			VALUES ($1,$2,'Second User',$3,'active') RETURNING id`,
-			f.tenantID, email, hash).Scan(&userID)
+			tenantID, email, hash).Scan(&userID)
 	}); err != nil {
 		t.Fatalf("add a %s to the shop: %v", roleKey, err)
 	}
 
 	// The role clone runs in tenant context: roles belong to the tenant and are
 	// deliberately unreachable from the platform plane.
-	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+	if err := h.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
 		var roleID uuid.UUID
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO role (tenant_id, key, name, cloned_from)
 			SELECT $1, key, name, id FROM role
 			WHERE tenant_id IS NULL AND key = $2
-			RETURNING id`, f.tenantID, roleKey).Scan(&roleID); e != nil {
+			RETURNING id`, tenantID, roleKey).Scan(&roleID); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(ctx, `
@@ -722,7 +731,7 @@ func (h *harness) seedUserIn(t *testing.T, f *shopFixture, roleKey string) strin
 		}
 		_, e := tx.Exec(ctx, `
 			INSERT INTO user_role_assignment (tenant_id, user_id, role_id)
-			VALUES ($1,$2,$3)`, f.tenantID, userID, roleID)
+			VALUES ($1,$2,$3)`, tenantID, userID, roleID)
 		return e
 	}); err != nil {
 		t.Fatalf("assign %s: %v", roleKey, err)

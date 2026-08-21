@@ -46,3 +46,177 @@
   .bo__brand { flex-basis: 100%; }
   .bo__bar .app__nav { order: 3; flex-basis: 100%; }
 }
+
+/* ---------------------------------------------------------------------------
+ * The setup wizard (UI spec §6)
+ *
+ * One column, because a wizard is a sequence and a two-column layout invites
+ * the reader to answer things out of order. Logical properties throughout, so
+ * the whole flow mirrors in Arabic without a second set of rules.
+ * ------------------------------------------------------------------------- */
+
+.setupw {
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  justify-content: center;
+  align-content: start;
+  inline-size: 100%;
+}
+
+.setupw > * { inline-size: min(680px, 100%); }
+
+.setupw__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.setupw__count { margin: 0; }
+.setupw__purpose { margin-block: var(--space-1) var(--space-5); }
+
+/* The step rail. Scrolls sideways on a narrow screen rather than wrapping into
+ * a block that pushes the form off the fold. */
+.rail {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+}
+
+.rail__item { flex: 0 0 auto; }
+
+.rail__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.87rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rail__step:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rail__step--on {
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+/* A finished step is marked with a tick as well as a colour, so the state is
+ * readable to anyone who cannot tell the two tints apart. */
+.rail__step--done { color: var(--success); border-color: var(--success); }
+
+.rail__no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.4rem;
+  block-size: 1.4rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  font-variant-numeric: tabular-nums;
+}
+
+.setupw__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.setupw__row {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding-block-end: var(--space-3);
+  margin-block-end: var(--space-3);
+  border-block-end: 1px solid var(--line);
+}
+
+.setupw__drop { align-self: center; }
+
+.setupw__check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: start;
+  margin-block: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.setupw__check input { inline-size: 20px; block-size: 20px; margin-block-start: 2px; }
+.setupw__check span { display: grid; gap: 2px; }
+
+/* What the registry already answers, so an owner is not asked for a VAT rate
+ * the server resolves per sale. */
+.setupw__loaded {
+  padding: var(--space-4);
+  margin-block-end: var(--space-4);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+.setupw__facts {
+  margin: var(--space-2) 0 0;
+  padding-inline-start: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  font-size: 0.87rem;
+  color: var(--text-muted);
+}
+
+/* Where the copy has to be unmistakable: the wave and the deadline come from
+ * the taxpayer's own notification, never from this product. Styled as a note
+ * rather than a warning — it is not an error, it is a boundary. */
+.setupw__notice {
+  margin-block: var(--space-3);
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--info);
+  background: var(--info-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.87rem;
+}
+
+.setupw__readonly {
+  margin-block: 0 var(--space-4);
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--border-strong);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.setupw__skip { margin-block: var(--space-2) var(--space-4); }
+
+.setupw__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-block-start: var(--space-5);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--line);
+}
+
+.setupw__review {
+  margin: 0 0 var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.setupw__review div { display: grid; gap: 2px; }
+.setupw__review dt { margin: 0; }
+.setupw__review dd { margin: 0; font-weight: 600; }
