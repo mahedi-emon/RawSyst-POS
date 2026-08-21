@@ -40,11 +40,6 @@ func (b *books) deliver(t *testing.T, qty, unitCost string) Settlement {
 	ctx := context.Background()
 	value := dec(qty).Mul(dec(unitCost))
 
-	receiptNo := b.entryNo
-	b.entryNo++
-	correctionNo := b.entryNo
-	b.entryNo++
-
 	var settled Settlement
 	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		if e := Receive(ctx, tx, Receipt{
@@ -54,7 +49,7 @@ func (b *books) deliver(t *testing.T, qty, unitCost string) Settlement {
 		}); e != nil {
 			return e
 		}
-		if e := b.entry(ctx, tx, receiptNo, "purchase",
+		if e := b.entry(ctx, tx, "purchase",
 			b.inventory, b.payable, value); e != nil {
 			return e
 		}
@@ -76,7 +71,7 @@ func (b *books) deliver(t *testing.T, qty, unitCost string) Settlement {
 		if settled.Adjustment.IsNegative() {
 			debit, credit = b.inventory, b.variance
 		}
-		return b.entry(ctx, tx, correctionNo, "goods_receipt",
+		return b.entry(ctx, tx, "goods_receipt",
 			debit, credit, settled.Adjustment.Abs())
 	})
 	if err != nil {
@@ -87,15 +82,15 @@ func (b *books) deliver(t *testing.T, qty, unitCost string) Settlement {
 
 // entry writes one balanced two-line journal entry.
 func (b *books) entry(
-	ctx context.Context, tx pgx.Tx, entryNo int64, source string,
+	ctx context.Context, tx pgx.Tx, source string,
 	debit, credit uuid.UUID, amount decimal.Decimal,
 ) error {
 	var entryID uuid.UUID
 	if e := tx.QueryRow(ctx, `
 		INSERT INTO journal_entry
 		  (tenant_id, company_id, period_id, entry_no, entry_date, source_type)
-		VALUES ($1,$2,$3,$4,'2026-08-15',$5) RETURNING id`,
-		b.tenantID, b.companyID, b.periodID, entryNo, source).Scan(&entryID); e != nil {
+		VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15',$4) RETURNING id`,
+		b.tenantID, b.companyID, b.periodID, source).Scan(&entryID); e != nil {
 		return e
 	}
 	if _, e := tx.Exec(ctx, `
@@ -365,8 +360,6 @@ func TestAReturnBeforeTheDeliveryLeavesNothingToCorrect(t *testing.T) {
 	b.sell(t, "5")
 
 	// Three come back, at the value they left at.
-	entryNo := b.entryNo
-	b.entryNo++
 	ctx := context.Background()
 	if err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		if e := Restore(ctx, tx, Restoration{
@@ -376,7 +369,7 @@ func TestAReturnBeforeTheDeliveryLeavesNothingToCorrect(t *testing.T) {
 		}); e != nil {
 			return e
 		}
-		return b.entry(ctx, tx, entryNo, "return",
+		return b.entry(ctx, tx, "return",
 			b.inventory, b.cogs, dec("150"))
 	}); err != nil {
 		t.Fatalf("restore: %v", err)

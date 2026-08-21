@@ -32,7 +32,6 @@ type books struct {
 	cash      uuid.UUID
 	revenue   uuid.UUID
 	outputVAT uuid.UUID
-	nextEntry int64
 }
 
 func newBooks(t *testing.T) *books {
@@ -53,7 +52,7 @@ func newBooks(t *testing.T) *books {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	b := &books{pool: pool, nextEntry: 1}
+	b := &books{pool: pool}
 
 	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx,
@@ -114,16 +113,13 @@ type line struct {
 // post writes an entry with its lines in one transaction, which is where the
 // deferred balance check fires.
 func (b *books) post(ctx context.Context, memo string, lines ...line) error {
-	entryNo := b.nextEntry
-	b.nextEntry++
-
 	return b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		var entryID uuid.UUID
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO journal_entry
 			  (tenant_id, company_id, period_id, entry_no, entry_date, source_type, memo)
-			VALUES ($1,$2,$3,$4,'2026-08-15','test',$5) RETURNING id`,
-			b.tenantID, b.companyID, b.periodID, entryNo, memo).Scan(&entryID); err != nil {
+			VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15','test',$4) RETURNING id`,
+			b.tenantID, b.companyID, b.periodID, memo).Scan(&entryID); err != nil {
 			return err
 		}
 
@@ -328,7 +324,7 @@ func TestEntryDateMustFallInsideItsPeriod(t *testing.T) {
 		return tx.QueryRow(ctx, `
 			INSERT INTO journal_entry
 			  (tenant_id, company_id, period_id, entry_no, entry_date, source_type)
-			VALUES ($1,$2,$3,900,'2026-09-15','test') RETURNING id`,
+			VALUES ($1,$2,$3,claim_entry_no($2),'2026-09-15','test') RETURNING id`,
 			b.tenantID, b.companyID, b.periodID).Scan(&entryID)
 	})
 	if err == nil {
@@ -354,8 +350,8 @@ func TestPostingIsIdempotentPerSource(t *testing.T) {
 				INSERT INTO journal_entry
 				  (tenant_id, company_id, period_id, entry_no, entry_date,
 				   source_type, source_id, rule_key)
-				VALUES ($1,$2,$3,$4,'2026-08-15','sale',$5,'sale.cash') RETURNING id`,
-				b.tenantID, b.companyID, b.periodID, entryNo, saleID).Scan(&entryID); err != nil {
+				VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15','sale',$4,'sale.cash') RETURNING id`,
+				b.tenantID, b.companyID, b.periodID, saleID).Scan(&entryID); err != nil {
 				return err
 			}
 			for i, l := range []line{
@@ -399,7 +395,7 @@ func TestForeignCurrencyEntryBalancesInBaseCurrency(t *testing.T) {
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO journal_entry
 			  (tenant_id, company_id, period_id, entry_no, entry_date, source_type)
-			VALUES ($1,$2,$3,500,'2026-08-15','test') RETURNING id`,
+			VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15','test') RETURNING id`,
 			b.tenantID, b.companyID, b.periodID).Scan(&entryID); err != nil {
 			return err
 		}
@@ -436,7 +432,7 @@ func TestSidesMustAgreeAcrossCurrencies(t *testing.T) {
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO journal_entry
 			  (tenant_id, company_id, period_id, entry_no, entry_date, source_type)
-			VALUES ($1,$2,$3,600,'2026-08-15','test') RETURNING id`,
+			VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15','test') RETURNING id`,
 			b.tenantID, b.companyID, b.periodID).Scan(&entryID); err != nil {
 			return err
 		}

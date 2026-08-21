@@ -42,7 +42,6 @@ type books struct {
 	method Method
 
 	inventory, cogs, payable, revenue, variance uuid.UUID
-	entryNo                                     int64
 }
 
 func newBooks(t *testing.T, method Method) *books {
@@ -63,7 +62,7 @@ func newBooks(t *testing.T, method Method) *books {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	b := &books{pool: pool, entryNo: 1, method: method}
+	b := &books{pool: pool, method: method}
 
 	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		if e := tx.QueryRow(ctx,
@@ -160,8 +159,6 @@ func (b *books) receive(t *testing.T, qty, unitCost string) {
 	t.Helper()
 	ctx := context.Background()
 	value := dec(qty).Mul(dec(unitCost))
-	entryNo := b.entryNo
-	b.entryNo++
 
 	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		// The production receipt path, not a reimplementation of it. A harness
@@ -179,8 +176,8 @@ func (b *books) receive(t *testing.T, qty, unitCost string) {
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO journal_entry
 			  (tenant_id, company_id, period_id, entry_no, entry_date, source_type)
-			VALUES ($1,$2,$3,$4,'2026-08-15','purchase') RETURNING id`,
-			b.tenantID, b.companyID, b.periodID, entryNo).Scan(&entryID); e != nil {
+			VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15','purchase') RETURNING id`,
+			b.tenantID, b.companyID, b.periodID).Scan(&entryID); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(ctx, `
@@ -214,9 +211,6 @@ func (b *books) sell(t *testing.T, qty string) CostResult {
 	t.Helper()
 	ctx := context.Background()
 
-	entryNo := b.entryNo
-	b.entryNo++
-
 	var result CostResult
 	err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		var e error
@@ -243,8 +237,8 @@ func (b *books) sell(t *testing.T, qty string) CostResult {
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO journal_entry
 			  (tenant_id, company_id, period_id, entry_no, entry_date, source_type)
-			VALUES ($1,$2,$3,$4,'2026-08-15','sale') RETURNING id`,
-			b.tenantID, b.companyID, b.periodID, entryNo).Scan(&entryID); e != nil {
+			VALUES ($1,$2,$3,claim_entry_no($2),'2026-08-15','sale') RETURNING id`,
+			b.tenantID, b.companyID, b.periodID).Scan(&entryID); e != nil {
 			return e
 		}
 		if _, e := tx.Exec(ctx, `
