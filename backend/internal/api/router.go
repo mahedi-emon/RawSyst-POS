@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
@@ -82,6 +83,7 @@ type Server struct {
 	receivables  *receivables.Service
 	devices      *devices.Service
 	egs          *egs.Service
+	branding     *branding.Service
 	shift        *shift.Service
 	health       func() error
 	version      string
@@ -101,6 +103,7 @@ func NewServer(
 	receivablesSvc *receivables.Service,
 	devicesSvc *devices.Service,
 	egsSvc *egs.Service,
+	brandingSvc *branding.Service,
 	shiftSvc *shift.Service,
 	health func() error,
 	version string,
@@ -119,6 +122,7 @@ func NewServer(
 		receivables:  receivablesSvc,
 		devices:      devicesSvc,
 		egs:          egsSvc,
+		branding:     brandingSvc,
 		shift:        shiftSvc,
 		health:       health,
 		version:      version,
@@ -411,6 +415,30 @@ func (s *Server) Routes() []Route {
 
 		{http.MethodGet, "/api/v1/companies", AccessAuthenticated, "", s.handleListCompanies,
 			"every signed-in user needs to know which companies they are in before asking about one; scoped by RLS and the token"},
+
+		// --- branding (I2) ---
+		//
+		// Setting a logo is a settings change, so it carries the permission the
+		// rest of company setup carries. There is deliberately no branding.*
+		// verb: a new permission would have to be granted to every tenant's
+		// cloned roles before anybody could use the feature, which is the trap
+		// 0032 and 0033 fell into.
+		{http.MethodGet, "/api/v1/companies/{companyID}/logo",
+			AccessPermission, "identity.view", s.handleGetLogo,
+			"what is set, without the bytes; a settings screen does not need the image to say one exists"},
+		{http.MethodPut, "/api/v1/companies/{companyID}/logo",
+			AccessPermission, "identity.edit", s.handlePutLogo, ""},
+		{http.MethodDelete, "/api/v1/companies/{companyID}/logo",
+			AccessPermission, "identity.edit", s.handleDeleteLogo, ""},
+
+		// The file itself, merely authenticated. A logo is the shop's public
+		// mark and is destined for every receipt it prints, so a till that
+		// could not read it could not print one — and gating it behind a
+		// settings permission would put that gate in the wrong place. RLS is
+		// what confines it to the caller's own tenant.
+		{http.MethodGet, "/api/v1/companies/{companyID}/logo/image",
+			AccessAuthenticated, "", s.handleGetLogoImage,
+			"the shop's own mark, destined for its receipts; scoped to the caller's tenant by RLS"},
 		{http.MethodGet, "/api/v1/dashboard/overview", AccessPermission, "accounting.view",
 			s.handleDashboardOverview,
 			"the Owner Dashboard in one call; every figure computed from the journal"},

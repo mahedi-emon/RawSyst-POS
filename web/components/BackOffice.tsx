@@ -36,8 +36,9 @@ import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
+import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
 
-type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing' | 'setup';
+type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing' | 'setup' | 'branding';
 
 export function BackOffice() {
   const { status, me, signOut, client } = useAuth();
@@ -151,6 +152,9 @@ export function BackOffice() {
     { key: 'devices', label: 'Terminals', shown: maySeeDevices },
     { key: 'einvoicing', label: 'E-invoicing', shown: maySeeEInvoicing },
     { key: 'setup', label: 'Setup', shown: maySeeSetup },
+    // I2. Reads with identity.view and writes with identity.edit, the same
+    // pair the rest of company settings carries.
+    { key: 'branding', label: 'Branding', shown: maySeeSetup },
   ];
   const visible = sections.filter((s) => s.shown);
 
@@ -231,6 +235,8 @@ export function BackOffice() {
         <DevicesScreen companyId={activeCompany} />
       ) : section === 'einvoicing' && maySeeEInvoicing ? (
         <EgsUnitsScreen companyId={activeCompany} />
+      ) : section === 'branding' && maySeeSetup ? (
+        <BrandingScreen companyId={activeCompany} />
       ) : mayReadFigures ? (
         <DashboardArea
           companyId={activeCompany}

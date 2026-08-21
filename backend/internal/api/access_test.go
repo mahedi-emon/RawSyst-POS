@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
@@ -109,7 +110,7 @@ func newHarness(t *testing.T) *harness {
 	// exactly how the shift module stayed unreachable while its tests passed.
 	shiftSvc := shift.NewService(pool)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), shiftSvc,
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc,
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 

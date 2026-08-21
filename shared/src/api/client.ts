@@ -183,6 +183,52 @@ export class Client {
   }
 
   /**
+   * Fetches a binary response — today, a company's logo.
+   *
+   * Separate from `send` because that method assumes JSON and would throw on an
+   * image. Kept on the Client for the same reason `ping` is: the access token
+   * never leaves this object, and a caller building its own fetch would need it
+   * in hand.
+   *
+   * This is why a logo cannot simply be an `<img src>` pointing at the route —
+   * a browser does not attach an Authorization header to an image request, so
+   * the bytes are fetched here and handed on as a blob.
+   */
+  async sendBlob(method: string, path: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (this.session) {
+      headers.Authorization = `Bearer ${this.session.accessToken}`;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(this.baseUrl + path, { method, headers });
+    } catch {
+      throw new Offline();
+    }
+
+    if (!response.ok) {
+      // The error envelope is still JSON even when the success path is not, so
+      // a refusal reads the same way it does everywhere else.
+      const text = await response.text();
+      let payload: { error?: ApiError } = {};
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        payload = {};
+      }
+      throw new RequestFailed(
+        response.status,
+        payload.error ?? {
+          code: 'internal',
+          message: 'That file could not be fetched.',
+        },
+      );
+    }
+    return response.blob();
+  }
+
+  /**
    * The reachability probe, kept on the Client so the access token never
    * leaves it.
    *

@@ -220,3 +220,106 @@
 .setupw__review div { display: grid; gap: 2px; }
 .setupw__review dt { margin: 0; }
 .setupw__review dd { margin: 0; font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+ * Branding (I2)
+ *
+ * Logical properties throughout, so the panel mirrors in Arabic without a
+ * second set of rules.
+ * ------------------------------------------------------------------------- */
+
+.brand {
+  padding: var(--space-5);
+  display: grid;
+  justify-content: center;
+  align-content: start;
+  inline-size: 100%;
+}
+
+.brand__panel { inline-size: min(620px, 100%); }
+.brand__lede { margin-block: 0 var(--space-4); }
+
+/* A fixed frame rather than letting the image set the height: a wide mark and
+ * a square one both have to sit correctly, and a panel that jumped in size
+ * between the two would make replacing a logo feel broken. The chequerboard
+ * shows transparency, which is what a PNG logo usually has. */
+.brand__frame {
+  display: grid;
+  place-items: center;
+  min-block-size: 180px;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-sunken);
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--border) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.brand__logo {
+  max-inline-size: 100%;
+  max-block-size: 140px;
+  object-fit: contain;
+}
+
+/* The empty state sits on a plain ground: a chequerboard behind text reads as
+ * a rendering fault rather than as "no image yet". */
+.brand__frame:has(.brand__empty) {
+  background-image: none;
+  background-color: var(--surface);
+}
+
+.brand__empty { text-align: center; }
+
+.brand__facts {
+  margin: var(--space-4) 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.brand__facts div { display: grid; gap: 2px; }
+.brand__facts dt { margin: 0; }
+.brand__facts dd { margin: 0; font-weight: 600; }
+
+.brand__actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-block-start: var(--space-5);
+}
+
+.brand__rules {
+  margin-block: var(--space-3) 0;
+}
+
+.brand__saved {
+  margin-block: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--success);
+  background: var(--success-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.brand__readonly {
+  margin-block: var(--space-4) 0;
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--border-strong);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+/* The honest note about where the logo does and does not appear. Informational
+ * rather than a warning: it is a limit of the product today, not a fault the
+ * client caused. */
+.brand__scope {
+  margin-block: var(--space-5) 0;
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--info);
+  background: var(--info-subtle);
+  border-radius: var(--radius-sm);
+}
