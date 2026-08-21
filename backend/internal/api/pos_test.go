@@ -41,7 +41,33 @@ type shopFixture struct {
 	email string
 }
 
+// seedShop is a shop mid-shift: everything seedShopBeforeOpening builds, plus
+// the open cash session a till needs before it can sell.
+//
+// Split from the seeding itself so a test can exercise the real HTTP open. The
+// session here is opened in-process on purpose — a fixture that went through
+// the router would make every POS test depend on the shift routes, and the
+// point of the split is that one test proves that path rather than all of them
+// assuming it.
 func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
+	t.Helper()
+	f := h.seedShopBeforeOpening(t, roleKey)
+
+	// A till cannot sell without an open session: there would be no drawer
+	// anyone had counted into, and a cash difference found later could not be
+	// attributed to anybody.
+	session, err := h.shift.Open(t.Context(), f.tenantID, f.deviceID, f.userID,
+		decimal.RequireFromString("200.00"), true)
+	if err != nil {
+		t.Fatalf("open till session: %v", err)
+	}
+	f.sessionID = session.ID
+	return f
+}
+
+// seedShopBeforeOpening is the same shop with its drawer not yet counted, which
+// is the state a till is in when the first cashier of the day signs in.
+func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixture {
 	t.Helper()
 	ctx := t.Context()
 
@@ -229,17 +255,6 @@ func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
 	}
 
 	f.token = h.tokenForDevice(t, f)
-
-	// A till cannot sell without an open session: there would be no drawer
-	// anyone had counted into, and a cash difference found later could not be
-	// attributed to anybody.
-	session, err := h.shift.Open(ctx, f.tenantID, f.deviceID, f.userID,
-		decimal.RequireFromString("200.00"), true)
-	if err != nil {
-		t.Fatalf("open till session: %v", err)
-	}
-	f.sessionID = session.ID
-
 	return f
 }
 

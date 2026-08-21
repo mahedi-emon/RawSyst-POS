@@ -104,7 +104,12 @@ func newHarness(t *testing.T) *harness {
 	deviceSvc := devices.NewService(pool)
 	mw = mw.WithDevices(deviceSvc)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool),
+	// One instance, handed to the server AND kept on the harness. Two would let
+	// a test prove something about a service the router never calls, which is
+	// exactly how the shift module stayed unreachable while its tests passed.
+	shiftSvc := shift.NewService(pool)
+
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), shiftSvc,
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
@@ -112,7 +117,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 
 	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens,
-		shift: shift.NewService(pool)}
+		shift: shiftSvc}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role

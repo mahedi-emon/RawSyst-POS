@@ -28,6 +28,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 )
@@ -81,6 +82,7 @@ type Server struct {
 	receivables  *receivables.Service
 	devices      *devices.Service
 	egs          *egs.Service
+	shift        *shift.Service
 	health       func() error
 	version      string
 }
@@ -99,6 +101,7 @@ func NewServer(
 	receivablesSvc *receivables.Service,
 	devicesSvc *devices.Service,
 	egsSvc *egs.Service,
+	shiftSvc *shift.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -116,6 +119,7 @@ func NewServer(
 		receivables:  receivablesSvc,
 		devices:      devicesSvc,
 		egs:          egsSvc,
+		shift:        shiftSvc,
 		health:       health,
 		version:      version,
 	}
@@ -210,6 +214,39 @@ func (s *Server) Routes() []Route {
 		// outright for a session with no terminal behind it.
 		{http.MethodPut, "/api/v1/pos/sales/{invoiceID}/signed-document",
 			AccessPermission, "sales.create", s.handleUploadSignedDocument, ""},
+
+		// --- shift and cash drawer (C8, design 11 §9) ---
+		//
+		// Opening and closing a till are the same act to blueprint A6.1, which
+		// gives the Cashier "shift open/close" as one capability, so both carry
+		// the permission design 11 §10 names for the close half. A till never
+		// says which device it is: the terminal comes from the token, for the
+		// reason the POS block above gives.
+		{http.MethodPost, "/api/v1/shifts", AccessPermission, "sales.receive_payment",
+			s.handleOpenShift, ""},
+		{http.MethodGet, "/api/v1/shifts/current", AccessPermission, "sales.receive_payment",
+			s.handleCurrentShift,
+			"a till restarted mid-shift has to find the session it is already in; " +
+				"without this the id from the open response is the only copy"},
+		{http.MethodGet, "/api/v1/shifts/{sessionID}", AccessPermission, "sales.receive_payment",
+			s.handlePeekShift,
+			"the cashier's own view of the shift before counting; withholds the " +
+				"expected figure on a blind-close till"},
+
+		// The supervisor's report, and the ONLY route that reveals the expected
+		// drawer before a count is committed. Gated on report.view rather than
+		// sales.receive_payment on purpose: the Cashier holds the latter, and a
+		// cashier who can read the expected figure can make the drawer agree
+		// with it, which would leave the variance reading zero on every shift
+		// and defeat the blind close blueprint B7 requires.
+		{http.MethodGet, "/api/v1/shifts/{sessionID}/x-report", AccessPermission, "report.view",
+			s.handleXReport, ""},
+
+		{http.MethodPost, "/api/v1/shifts/{sessionID}/cash-drop",
+			AccessPermission, "sales.receive_payment", s.handleCashDrop,
+			"moving cash to the vault mid-shift is part of running the drawer (C8)"},
+		{http.MethodPost, "/api/v1/shifts/{sessionID}/close",
+			AccessPermission, "sales.receive_payment", s.handleCloseShift, ""},
 
 		// --- sync ---
 		//
