@@ -137,6 +137,11 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 			{"4100", "Sales Revenue", "revenue", "sales_revenue"},
 			{"2200", "Output VAT Payable", "liability", "output_vat"},
 			{"5100", "Cost of Goods Sold", "expense", "cogs"},
+			// Where a drawer that did not reconcile lands. Present here because
+			// closing a till posts the variance, so a fixture without it cannot
+			// close a shift at all — which is the same hand-built-chart gap that
+			// hid the cost_variance mapping bug until 0048.
+			{"5500", "Cash Over/Short", "expense", "cash_over_short"},
 		}
 		for _, a := range accounts {
 			var id uuid.UUID

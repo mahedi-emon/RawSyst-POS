@@ -22,11 +22,14 @@ package shift
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -336,6 +339,16 @@ func (s *Service) Close(
 			return db.Translate(e, "That till session could not be closed.")
 		}
 
+		// In the same transaction that froze the count, so a drawer can never be
+		// declared closed with its difference missing from the books. If the
+		// posting fails — a closed period, an unmapped role — the close fails
+		// with it and the session stays open, which is the honest outcome: a Z
+		// report that reconciled nothing is worse than one that was refused.
+		if e := s.postVariance(ctx, tx, tenantID, sessionID, userID,
+			countedCash.Sub(expected)); e != nil {
+			return e
+		}
+
 		r, e := readReport(ctx, tx, sessionID)
 		if e != nil {
 			return e
@@ -344,6 +357,69 @@ func (s *Service) Close(
 		return nil
 	})
 	return out, err
+}
+
+// postVariance puts a drawer difference in the ledger.
+//
+// Design 11 §9: the variance "posts to a Cash Over/Short account rather than
+// being absorbed silently". Until 0052 it did not — the figure was written onto
+// cash_session and went no further, so a shop could run short every day for a
+// month while Cash carried a balance the drawer had never held and the loss
+// appeared nowhere in the P&L.
+//
+// Two rules rather than one signed rule, exactly as 0025 and 0026 arranged the
+// costing variance: the amount is always positive and the sides swap. A single
+// rule taking a signed figure would write a negative debit where a credit
+// belongs, and a trial balance carrying negative debits is one an accountant
+// cannot read.
+//
+// Idempotent through the engine's own key. `journal_entry_source_uq` is unique
+// on (source_type, source_id, rule_key), so a retry of the same close cannot
+// post twice — though it should never get the chance, since a second close is
+// refused above with the session still locked.
+func (s *Service) postVariance(
+	ctx context.Context, tx pgx.Tx,
+	tenantID, sessionID, userID uuid.UUID, variance decimal.Decimal,
+) error {
+	if variance.IsZero() {
+		// The drawer reconciled. There is no entry to make, and a run of
+		// zero-value journal entries would bury the shifts that went wrong.
+		return nil
+	}
+
+	// Counted less than expected: the cash is not there, so the asset comes
+	// down and the shop wears the difference.
+	ruleKey, direction := "cash.shortage", "short"
+	if variance.IsPositive() {
+		ruleKey, direction = "cash.overage", "over"
+	}
+
+	var companyID, storeID uuid.UUID
+	var sessionNo int64
+	var country string
+	if e := tx.QueryRow(ctx, `
+		SELECT s.company_id, s.store_id, s.session_no, c.country
+		FROM cash_session s JOIN company c ON c.id = s.company_id
+		WHERE s.id = $1`, sessionID).
+		Scan(&companyID, &storeID, &sessionNo, &country); e != nil {
+		return e
+	}
+
+	// Dated now rather than at the shift's opening. A shift that ran past
+	// midnight is reconciled on the day it was counted, and closed-period
+	// protection then applies to the day the money was actually declared.
+	_, err := accounting.PostByRule(ctx, tx, accounting.Entry{
+		TenantID: tenantID, CompanyID: companyID,
+		Date:       time.Now().UTC(),
+		SourceType: "cash_session", SourceID: sessionID,
+		StoreID: &storeID,
+		RuleKey: ruleKey, PostedBy: &userID,
+		Memo: fmt.Sprintf("Till session %d closed %s by %s",
+			sessionNo, direction, variance.Abs().StringFixed(2)),
+	}, country, accounting.Transaction{
+		Amounts: map[string]decimal.Decimal{"variance": variance.Abs()},
+	})
+	return err
 }
 
 // RecordMovement notes cash in or out of the drawer other than a sale.

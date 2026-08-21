@@ -92,6 +92,11 @@ var defaultChart = []seedAccount{
 	// hand and so never saw it.
 	{"5150", "Inventory Cost Variance", "expense", "cost_variance", ""},
 	{"5200", "Stock Write-off", "expense", "stock_writeoff", ""},
+	// Where a drawer that did not reconcile lands (C8, design 11 §9). Both
+	// directions post here: an unexplained surplus is as much a control failure
+	// as a shortfall, and sending an overage to Other Income would flatter the
+	// month it happened in.
+	{"5500", "Cash Over/Short", "expense", "cash_over_short", ""},
 	{"5900", "Rounding Differences", "expense", "rounding", ""},
 }
 
