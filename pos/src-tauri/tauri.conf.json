@@ -29,6 +29,15 @@
     "targets": "all",
     "icon": [
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "RawSyst",
+    "copyright": "Copyright © 2026 RawSyst",
+    "category": "Business",
+    "shortDescription": "Retail point of sale and back office",
+    "longDescription": "RawSyst POS is an offline-first point of sale for retail shops, with stock, accounting and VAT built in rather than bolted on.",
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    }
   }
 }

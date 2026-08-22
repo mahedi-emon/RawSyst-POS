@@ -110,6 +110,57 @@ jobs:
           go run ./cmd/migrate
           make test-db
 
+  frontends:
+    name: Front ends
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # One install for the whole workspace. `npm ci` rather than `npm install`
+      # so a lockfile that has drifted from package.json fails here rather than
+      # resolving to something nobody has run locally.
+      - name: Install
+        run: npm ci
+
+      # Types first. A type error makes the test failures that follow it
+      # unreadable, and all three packages are checked because `shared` is
+      # consumed by both of the others and a break there surfaces in them.
+      - name: Typecheck
+        run: |
+          npm run typecheck --workspace shared
+          npm run typecheck --workspace pos
+          npm run typecheck --workspace web
+
+      - name: Shared tests
+        run: npm test --workspace shared
+
+      - name: POS tests
+        run: npm test --workspace pos
+
+      # The builds are part of the gate, not a formality: `vite build` and
+      # `next build` both do work that neither the typechecker nor the tests do
+      # — module resolution across the workspace, and Next's own route and
+      # server-component checks — and either can fail on green tests.
+      - name: POS build
+        run: npm run build --workspace pos
+
+      - name: Back office build
+        run: npm run build --workspace web
+
+      # The gate that decides whether an installer may be cut. Run here in its
+      # reporting form so the state is visible on every commit: today it says
+      # the icon is a placeholder and there is no certificate, which is true and
+      # is the point. It does not fail the build, because a red CI for a known
+      # and accepted condition is a CI nobody reads.
+      - name: Release readiness
+        continue-on-error: true
+        run: npm run release:check --workspace pos
+
   security:
     name: Security scan
     runs-on: ubuntu-latest
