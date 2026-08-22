@@ -18,7 +18,7 @@
 // Exit code 1 with a list of what is not ready, or 0 and silence.
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -54,8 +54,23 @@ if (sha256(iconPath) === PLACEHOLDER_ICON_SHA256) {
       '  Put the designed mark somewhere and run:\n' +
       '    npm run icons -- path/to/mark.png\n' +
       '  It needs to be square and at least 1024x1024, with transparency.\n' +
-      '  `tauri icon` writes the whole set from it, including this .ico.',
+      '  `tauri icon` writes the whole set from it, including this .ico.\n' +
+      '  Then regenerate the installable web app icons from the same mark:\n' +
+      '    web/public/icons/icon-192.png, icon-512.png, icon-512-maskable.png\n' +
+      '  They are derived from this file, so while it is the placeholder they\n' +
+      '  are too — and those are what a phone puts on its home screen.',
   );
+}
+
+// The installable app (blueprint A7) needs its icons present, or a phone
+// declines to install it and says nothing useful about why.
+for (const icon of ['icon-192.png', 'icon-512.png', 'icon-512-maskable.png']) {
+  if (!existsSync(join(root, '..', 'web', 'public', 'icons', icon))) {
+    problems.push(
+      `web/public/icons/${icon} is missing. The web app manifest names it, ` +
+        'and a manifest whose icons 404 is an app a phone will not install.',
+    );
+  }
 }
 
 // --- what the installer says it is ---------------------------------------
