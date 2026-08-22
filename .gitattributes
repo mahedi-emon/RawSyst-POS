@@ -1,0 +1,33 @@
+# Line endings, settled once.
+#
+# This repository is developed on Windows with core.autocrlf=true, which
+# converts on checkout and back on commit. That mostly works and fails in one
+# visible way: a file rewritten by a tool (gofmt -w, a formatter, a script)
+# lands with endings that disagree with what git last stamped, so `git status`
+# reports it as modified while `git diff` shows nothing at all. Nine files were
+# sitting in exactly that state during the last audit — no content change,
+# reported as changed.
+#
+# Declaring the intent here takes the decision away from each machine's
+# configuration. Text is normalised to LF in the repository; what appears in a
+# working tree is then consistent regardless of who cloned it.
+* text=auto eol=lf
+
+# Binary, so git never tries to normalise them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.exe binary
+*.dll binary
+*.msi binary
+
+# Generated lockfiles are text but never worth reviewing as a diff.
+package-lock.json -diff
+Cargo.lock -diff
