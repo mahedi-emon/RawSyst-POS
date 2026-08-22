@@ -11,6 +11,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -625,4 +626,91 @@ func TestReadingADepositNeedsAccountingView(t *testing.T) {
 			resp.StatusCode, readBody(t, resp))
 	}
 	resp.Body.Close()
+}
+
+// A deposit covering many payments settles in one pass.
+//
+// Written when the per-payment loop was replaced by two set-based statements.
+// The loop issued two round trips per tender and held a row lock on each for
+// the whole transaction, which is fine for the three-payment tests above and
+// not fine for a day's card takings.
+//
+// Nine payments rather than a realistic few hundred, because the fixture stocks
+// ten units and topping it up correctly means a movement, a cost layer, a
+// valuation row AND its journal entry — more fixture than test. Nine is enough
+// for what this guards, which is the arithmetic surviving the change: the fee
+// still splits across every payment, the shares still sum back to the charge
+// exactly, and the clearing account still returns to zero.
+func TestADepositCoveringManyPaymentsSettlesInOnePass(t *testing.T) {
+	h := newHarness(t)
+	f, owner := settlingShop(t, h)
+
+	const payments = 9
+	for i := 0; i < payments; i++ {
+		// Deliberately uneven, so the proportional split has remainders to
+		// carry rather than dividing cleanly.
+		sellByCard(t, h, f, fmt.Sprintf("%d.%02d", 10+i, (i*7)%100))
+	}
+
+	pending := pendingTenders(t, h, f, owner)
+	if len(pending) != payments {
+		t.Fatalf("%d payments awaiting settlement, want %d", len(pending), payments)
+	}
+
+	ids := make([]string, 0, payments)
+	gross := decimal.Zero
+	for _, row := range pending {
+		r, _ := row.(map[string]any)
+		id, _ := r["tender_id"].(string)
+		amount, _ := r["amount"].(string)
+		ids = append(ids, id)
+		gross = gross.Add(decimal.RequireFromString(amount))
+	}
+
+	// A fee that divides into none of them evenly.
+	fee := decimal.RequireFromString("7.77")
+	net := gross.Sub(fee)
+
+	resp := h.do(t, http.MethodPost,
+		settlementPath(f, "/api/v1/settlement/batches"), owner, map[string]any{
+			"uuid":         uuid.NewString(),
+			"reference":    "MADA-BATCH",
+			"deposited_on": "2026-08-19",
+			"net_amount":   net.StringFixed(2),
+			"tender_ids":   ids,
+		})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("settle the batch: status %d — %s", resp.StatusCode, readBody(t, resp))
+	}
+	batch := decodeJSON(t, resp)
+
+	if batch["gross_amount"] != gross.StringFixed(2) {
+		t.Errorf("gross = %v, want %s", batch["gross_amount"], gross.StringFixed(2))
+	}
+	if batch["fee_amount"] != "7.77" {
+		t.Errorf("fee = %v, want 7.77", batch["fee_amount"])
+	}
+
+	tenders, _ := batch["tenders"].([]any)
+	if len(tenders) != payments {
+		t.Fatalf("%d payments in the batch, want %d", len(tenders), payments)
+	}
+	shares := decimal.Zero
+	for _, raw := range tenders {
+		row, _ := raw.(map[string]any)
+		share, _ := row["fee_amount"].(string)
+		shares = shares.Add(decimal.RequireFromString(share))
+	}
+	if !shares.Equal(fee) {
+		t.Errorf("the %d per-payment fees come to %s against a charge of %s",
+			payments, shares, fee)
+	}
+
+	// Every one of them settled, and the account it debited is empty again.
+	if rows := pendingTenders(t, h, f, owner); len(rows) != 0 {
+		t.Errorf("%d payments still pending after the batch was deposited", len(rows))
+	}
+	if got := roleBalance(t, h, f, "card_clearing"); !got.IsZero() {
+		t.Errorf("card clearing = %s after settling the batch, want 0", got)
+	}
 }

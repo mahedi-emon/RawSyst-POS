@@ -241,26 +241,40 @@ func (s *Service) Record(ctx context.Context, scope Scope, in NewBatch) (Batch, 
 			return db.Translate(e, "That deposit has already been recorded.")
 		}
 
+		// One statement each rather than two per payment.
+		//
+		// A day's card takings is one deposit, and a busy shop can put several
+		// hundred payments in it. At two round trips apiece that was a thousand
+		// statements inside one transaction, holding row locks on every tender
+		// for the duration. unnest expands the arrays server-side, so the cost
+		// is one parse and one plan regardless of how large the batch is.
 		shares := allocateFee(fee, gross, covered)
+		tenderIDs := make([]uuid.UUID, len(covered))
+		amounts := make([]decimal.Decimal, len(covered))
 		for i, c := range covered {
-			if _, e := tx.Exec(ctx, `
-				INSERT INTO settlement_batch_tender
-				  (tenant_id, batch_id, tender_id, amount)
-				VALUES ($1,$2,$3,$4)`,
-				scope.TenantID, batchID, c.TenderID, c.amount); e != nil {
-				return db.Translate(e,
-					"One of those payments is already in another deposit.")
-			}
-			if _, e := tx.Exec(ctx, `
-				UPDATE sales_tender
-				SET settlement_status = 'settled',
-				    settled_at        = $2,
-				    fee_amount        = $3
-				WHERE id = $1`,
-				c.TenderID, in.DepositedOn, shares[i]); e != nil {
-				return e
-			}
+			tenderIDs[i] = c.TenderID
+			amounts[i] = c.amount
 			covered[i].Fee = shares[i].StringFixed(moneyScale)
+		}
+
+		if _, e := tx.Exec(ctx, `
+			INSERT INTO settlement_batch_tender (tenant_id, batch_id, tender_id, amount)
+			SELECT $1, $2, t.id, t.amount
+			FROM unnest($3::uuid[], $4::numeric[]) AS t(id, amount)`,
+			scope.TenantID, batchID, tenderIDs, amounts); e != nil {
+			return db.Translate(e,
+				"One of those payments is already in another deposit.")
+		}
+
+		if _, e := tx.Exec(ctx, `
+			UPDATE sales_tender t
+			SET settlement_status = 'settled',
+			    settled_at        = $2,
+			    fee_amount        = s.fee
+			FROM unnest($1::uuid[], $3::numeric[]) AS s(id, fee)
+			WHERE t.id = s.id`,
+			tenderIDs, in.DepositedOn, shares); e != nil {
+			return e
 		}
 
 		result, e := accounting.PostByRule(ctx, tx, accounting.Entry{
