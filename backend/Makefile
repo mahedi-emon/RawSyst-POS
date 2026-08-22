@@ -122,8 +122,35 @@ test-db-reset: ## Empty the test database and migrate it again
 	@# DATABASE therefore succeeds and the CREATE that follows fails, leaving no
 	@# database at all. Dropping the schema needs only ownership, which the
 	@# migrations already conferred, and DDL is not subject to the row triggers.
-	@test -n "$(RAWSYST_DB_DSN)" || { 	  echo "RAWSYST_DB_DSN is not set. It names the database to empty."; 	  exit 1; 	}
-	@db=$$(printf '%s' "$(RAWSYST_DB_DSN)" | sed -e 's|.*/||' -e 's|?.*||'); 	case "$$db" in 	  *test*) ;; 	  *) echo "Refusing to empty \"$$db\": this only touches a database with"; 	     echo "\"test\" in its name. Emptying a development database would lose"; 	     echo "whatever was being worked on in it."; 	     exit 1 ;; 	esac; 	echo "Emptying $$db ..."; 	psql "$(RAWSYST_DB_DSN)" -v ON_ERROR_STOP=1 -q 	  -c "DROP SCHEMA public CASCADE" 	  -c "CREATE SCHEMA public" || exit 1; 	go run ./cmd/migrate
+	@if [ -z "$(RAWSYST_DB_DSN)" ]; then \
+	    echo "RAWSYST_DB_DSN is not set. It names the database to empty."; \
+	    exit 1; \
+	fi
+	@# Checked BEFORE anything is announced. Without it the target prints
+	@# "Emptying ..." and then dies on a missing binary, which reads as though
+	@# it got half way and left the database in pieces. It had not started.
+	@if ! command -v psql >/dev/null 2>&1; then \
+	    echo "psql is not on PATH, and this needs it."; \
+	    echo "On Windows it ships with PostgreSQL, usually at"; \
+	    echo "  /c/Program Files/PostgreSQL/18/bin"; \
+	    echo "Add it for this shell with"; \
+	    echo '  export PATH="/c/Program Files/PostgreSQL/18/bin:$$PATH"'; \
+	    exit 1; \
+	fi
+	@db=$$(printf '%s' "$(RAWSYST_DB_DSN)" | sed -e 's|.*/||' -e 's|?.*||'); \
+	case "$$db" in \
+	    *test*) ;; \
+	    *) \
+	        echo "Refusing to empty \"$$db\": this only touches a database with"; \
+	        echo "\"test\" in its name. Emptying a development database would"; \
+	        echo "lose whatever was being worked on in it."; \
+	        exit 1 ;; \
+	esac; \
+	echo "Emptying $$db ..."; \
+	psql "$(RAWSYST_DB_DSN)" -v ON_ERROR_STOP=1 -q \
+	    -c "DROP SCHEMA public CASCADE" \
+	    -c "CREATE SCHEMA public"
+	@go run ./cmd/migrate
 
 .PHONY: cover
 cover: ## Run tests with a coverage report
