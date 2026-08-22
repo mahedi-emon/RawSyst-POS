@@ -98,6 +98,11 @@ var defaultChart = []seedAccount{
 	// hand and so never saw it.
 	{"5150", "Inventory Cost Variance", "expense", "cost_variance", ""},
 	{"5200", "Stock Write-off", "expense", "stock_writeoff", ""},
+	// What it costs to be paid by card. Design 12 §1 gives it 5300. Separate
+	// from the clearing account on purpose: the clearing account is money owed
+	// to the shop, this is money the shop never receives, and merging them
+	// would leave a residue in an account whose whole job is to reach zero.
+	{"5300", "Bank & Card Charges", "expense", "bank_card_charges", ""},
 	// Where a drawer that did not reconcile lands (C8, design 11 §9). Both
 	// directions post here: an unexplained surplus is as much a control failure
 	// as a shortfall, and sending an overage to Other Income would flatter the

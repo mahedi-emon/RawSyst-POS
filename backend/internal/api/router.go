@@ -29,6 +29,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/settlement"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
@@ -85,6 +86,7 @@ type Server struct {
 	egs          *egs.Service
 	branding     *branding.Service
 	shift        *shift.Service
+	settlement   *settlement.Service
 	health       func() error
 	version      string
 }
@@ -105,6 +107,7 @@ func NewServer(
 	egsSvc *egs.Service,
 	brandingSvc *branding.Service,
 	shiftSvc *shift.Service,
+	settlementSvc *settlement.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -124,6 +127,7 @@ func NewServer(
 		egs:          egsSvc,
 		branding:     brandingSvc,
 		shift:        shiftSvc,
+		settlement:   settlementSvc,
 		health:       health,
 		version:      version,
 	}
@@ -427,6 +431,18 @@ func (s *Server) Routes() []Route {
 			"a new receipt that undoes one; the original is not edited. Idempotent on a client-assigned uuid"},
 		{http.MethodGet, "/api/v1/receivables/ageing", AccessPermission, "accounting.view",
 			s.handleCustomerAgeing, "who owes what, aged from the due date"},
+
+		// Card settlement (P15, C12). Reading what has not yet cleared is an
+		// accounting question, so accounting.view; recording a deposit changes
+		// the ledger, so accounting.create. Deliberately NOT
+		// sales.receive_payment: taking money at a counter and reconciling a
+		// bank statement are different jobs done by different people.
+		{http.MethodGet, "/api/v1/settlement/pending", AccessPermission, "accounting.view",
+			s.handlePendingSettlement, ""},
+		{http.MethodPost, "/api/v1/settlement/batches", AccessPermission, "accounting.create",
+			s.handleRecordSettlement, ""},
+		{http.MethodGet, "/api/v1/settlement/batches/{batchID}", AccessPermission, "accounting.view",
+			s.handleReadSettlement, ""},
 
 		{http.MethodGet, "/api/v1/companies", AccessAuthenticated, "", s.handleListCompanies,
 			"every signed-in user needs to know which companies they are in before asking about one; scoped by RLS and the token"},

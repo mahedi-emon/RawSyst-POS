@@ -33,7 +33,11 @@ func tieOut(t *testing.T, h *harness, f *buyingFixture) decimal.Decimal {
 	return d
 }
 
-func roleBalance(t *testing.T, h *harness, f *buyingFixture, role string) decimal.Decimal {
+// roleBalance is the net movement on the account a role points at.
+//
+// Takes the shop rather than the buying fixture because settlement needs it
+// too and buyingFixture embeds shopFixture, so one helper serves both.
+func roleBalance(t *testing.T, h *harness, f *shopFixture, role string) decimal.Decimal {
 	t.Helper()
 	var d decimal.Decimal
 	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
@@ -117,13 +121,13 @@ func TestTheAccrualHoldsTheValueUntilTheBillArrives(t *testing.T) {
 	f := seedBuying(t, h)
 	poID, lineID := raiseOrder(t, h, f, "10", "100.00")
 
-	before := roleBalance(t, h, f, "grni")
+	before := roleBalance(t, h, f.shopFixture, "grni")
 
 	receiveWith(t, h, f, poID, lineID, "10", "", "")
 
 	// A liability, so it is credit-normal and the signed balance goes DOWN by
 	// what is owed.
-	afterReceipt := roleBalance(t, h, f, "grni")
+	afterReceipt := roleBalance(t, h, f.shopFixture, "grni")
 	if !before.Sub(afterReceipt).Equal(decimal.RequireFromString("1000")) {
 		t.Errorf("the accrual moved by %s on a 1000 receipt", before.Sub(afterReceipt))
 	}
@@ -138,7 +142,7 @@ func TestTheAccrualHoldsTheValueUntilTheBillArrives(t *testing.T) {
 			}},
 		})
 
-	if after := roleBalance(t, h, f, "grni"); !after.Equal(before) {
+	if after := roleBalance(t, h, f.shopFixture, "grni"); !after.Equal(before) {
 		t.Errorf("the accrual is %s after billing, want back to %s — it did not "+
 			"clear on the invoice it belongs to", after, before)
 	}
@@ -150,7 +154,7 @@ func TestRejectedGoodsAccrueNothing(t *testing.T) {
 	f := seedBuying(t, h)
 	poID, lineID := raiseOrder(t, h, f, "10", "100.00")
 
-	before := roleBalance(t, h, f, "grni")
+	before := roleBalance(t, h, f.shopFixture, "grni")
 	if resp := h.do(t, "POST", f.path("/api/v1/purchasing/receipts"), f.token,
 		map[string]any{
 			"uuid": newUUID(), "po_id": poID,
@@ -163,7 +167,7 @@ func TestRejectedGoodsAccrueNothing(t *testing.T) {
 	}
 
 	// Six kept at 100.
-	moved := before.Sub(roleBalance(t, h, f, "grni"))
+	moved := before.Sub(roleBalance(t, h, f.shopFixture, "grni"))
 	if !moved.Equal(decimal.RequireFromString("600")) {
 		t.Errorf("the accrual moved by %s; six of ten were kept so it should be 600",
 			moved)
@@ -311,7 +315,7 @@ func TestAnOverchargingBillDoesNotOverClearTheAccrual(t *testing.T) {
 	f := seedBuying(t, h)
 	poID, lineID := raiseOrder(t, h, f, "10", "100.00")
 
-	before := roleBalance(t, h, f, "grni")
+	before := roleBalance(t, h, f.shopFixture, "grni")
 	receiveWith(t, h, f, poID, lineID, "10", "", "")
 
 	// Billed at 160 a unit against 100 agreed — a breach, so the bill is held
@@ -330,7 +334,7 @@ func TestAnOverchargingBillDoesNotOverClearTheAccrual(t *testing.T) {
 		t.Fatalf("expected the match to hold this bill, got %v", bill["status"])
 	}
 
-	held := roleBalance(t, h, f, "grni")
+	held := roleBalance(t, h, f.shopFixture, "grni")
 	if !before.Sub(held).Equal(decimal.RequireFromString("1000")) {
 		t.Errorf("a blocked bill changed the accrual; it is %s and should still "+
 			"hold the 1000 from the receipt", before.Sub(held))
@@ -345,7 +349,7 @@ func TestAnOverchargingBillDoesNotOverClearTheAccrual(t *testing.T) {
 		t.Fatalf("approve: %s", readBody(t, resp))
 	}
 
-	if after := roleBalance(t, h, f, "grni"); !after.Equal(before) {
+	if after := roleBalance(t, h, f.shopFixture, "grni"); !after.Equal(before) {
 		t.Errorf("the accrual is %s after approval, want back to %s — it cleared "+
 			"by the wrong amount", after, before)
 	}
@@ -357,7 +361,7 @@ func TestADirectBillStillPostsWithoutAnAccrual(t *testing.T) {
 	h := newHarness(t)
 	f := seedBuying(t, h)
 
-	before := roleBalance(t, h, f, "grni")
+	before := roleBalance(t, h, f.shopFixture, "grni")
 
 	billed := h.do(t, "POST", f.path("/api/v1/purchasing/bills"), f.token,
 		map[string]any{
@@ -374,7 +378,7 @@ func TestADirectBillStillPostsWithoutAnAccrual(t *testing.T) {
 	if posted, _ := decodeJSON(t, billed)["posted"].(bool); !posted {
 		t.Error("a direct bill was not posted")
 	}
-	if after := roleBalance(t, h, f, "grni"); !after.Equal(before) {
+	if after := roleBalance(t, h, f.shopFixture, "grni"); !after.Equal(before) {
 		t.Errorf("a bill with no receipt touched the accrual: %s to %s",
 			before, after)
 	}

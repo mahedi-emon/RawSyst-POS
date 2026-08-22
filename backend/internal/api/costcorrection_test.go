@@ -50,7 +50,7 @@ func allowSellingBelowZero(t *testing.T, h *harness, f *buyingFixture) {
 // has to follow.
 func varianceBalance(t *testing.T, h *harness, f *buyingFixture) decimal.Decimal {
 	t.Helper()
-	return roleBalance(t, h, f, "cost_variance")
+	return roleBalance(t, h, f.shopFixture, "cost_variance")
 }
 
 // sellShort rings up qty over HTTP, which with ten units on hand goes below zero.
