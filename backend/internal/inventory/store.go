@@ -496,14 +496,6 @@ func OnHandAt(ctx context.Context, tx pgx.Tx, variantID, warehouseID uuid.UUID) 
 	return qty, err
 }
 
-// ValuationOf is the company's stock valuation, read by whichever method that
-// company uses.
-func ValuationOf(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) (decimal.Decimal, error) {
-	var v decimal.Decimal
-	err := tx.QueryRow(ctx, `SELECT inventory_valuation($1)`, companyID).Scan(&v)
-	return v, err
-}
-
 // GLDifference is C13's hard invariant as a number: the valuation less the
 // Inventory control account balance, which must be zero.
 //

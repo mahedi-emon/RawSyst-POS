@@ -67,6 +67,12 @@ func run() error {
 	worker.Register(jobs.KindZATCASubmit, jobs.NewZATCASubmitter(pool, submitter))
 	worker.Register(jobs.KindZATCAStaleness, jobs.NewStalenessSweeper(pool))
 
+	// QA gate M1 as a running property rather than a build-time one. Until this
+	// was registered, the three tie-out invariants were proved on every build
+	// and watched on no live tenant — a shop whose books drifted after go-live
+	// would have heard it from its accountant months later.
+	worker.Register(jobs.KindAccountingTieOut, jobs.NewTieOutSweeper(pool))
+
 	if !submitter.Available() {
 		log.Warn("ZATCA submission is not available",
 			slog.String("reason",

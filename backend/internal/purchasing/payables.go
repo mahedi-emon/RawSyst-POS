@@ -615,3 +615,21 @@ func (s *Service) AgeingAt(
 	})
 	return out, err
 }
+
+// GLDifference is C9.3's hard invariant for payables as a number: what
+// suppliers are owed, less the Accounts Payable control account balance, which
+// must be zero.
+//
+// Deliberately the same shape and the same name as inventory.GLDifference and
+// receivables.GLDifference, so the nightly tie-out, the acceptance test and a
+// support engineer looking at a live tenant all ask one question and get one
+// answer — and so a third invariant does not arrive with a third way of asking
+// about it.
+func GLDifference(
+	ctx context.Context, tx pgx.Tx, companyID uuid.UUID,
+) (decimal.Decimal, error) {
+	var d decimal.Decimal
+	err := tx.QueryRow(ctx,
+		`SELECT payable_gl_difference($1)`, companyID).Scan(&d)
+	return d, err
+}

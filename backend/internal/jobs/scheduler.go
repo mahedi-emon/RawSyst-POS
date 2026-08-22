@@ -25,10 +25,15 @@ type Scheduler struct {
 	// Design 08 §7 says every minute: an invoice crossing 72 hours should raise
 	// its critical alert within a minute, not at the next nightly sweep.
 	StalenessEvery time.Duration
+
+	// TieOutAt is the hour, UTC, at which the books are reconciled. Design 08
+	// §7 says daily at 04:00 — after the day is over and before anybody is
+	// looking at yesterday's figures.
+	TieOutAt int
 }
 
 func NewScheduler(q *Queue, log *slog.Logger) *Scheduler {
-	return &Scheduler{queue: q, log: log, StalenessEvery: time.Minute}
+	return &Scheduler{queue: q, log: log, StalenessEvery: time.Minute, TieOutAt: 4}
 }
 
 // Run enqueues on schedule until the context ends.
@@ -47,6 +52,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.enqueueStaleness(ctx)
+			// Checked on the same tick rather than on a timer of its own. The
+			// dedupe key carries the date, so this enqueues once on the first
+			// tick after 04:00 and does nothing on the other 1,439 — and a
+			// worker that was down at 04:00 still reconciles when it comes
+			// back, which a fire-once-at-04:00 timer would not.
+			s.enqueueTieOut(ctx)
 		}
 	}
 }
@@ -103,4 +114,44 @@ func (s *Scheduler) tenants(ctx context.Context) ([]uuid.UUID, error) {
 		return rows.Err()
 	})
 	return out, err
+}
+
+// enqueueTieOut queues the nightly reconciliation, once per tenant per day.
+//
+// Design 08 §3 gives the job a queue key of company:{id}; the sweep itself
+// walks the tenant's companies in one transaction, so the key here is the
+// tenant. What matters is that two sweeps for the same tenant never run at
+// once, which the dedupe key and the queue key both prevent.
+func (s *Scheduler) enqueueTieOut(ctx context.Context) {
+	now := time.Now().UTC()
+	if now.Hour() != s.TieOutAt {
+		return
+	}
+
+	tenants, err := s.tenants(ctx)
+	if err != nil {
+		s.log.Error("could not list tenants for the tie-out",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	day := now.Format("2006-01-02")
+	for _, tenantID := range tenants {
+		id := tenantID
+		if err := s.queue.Enqueue(ctx, Spec{
+			TenantID: &id,
+			Kind:     KindAccountingTieOut,
+			QueueKey: "tenant:" + id.String(),
+			// Design 08 §3: priority 70, three attempts. Lower priority than
+			// ZATCA submission on purpose — a report that the books disagree
+			// can wait behind an invoice that must reach the authority.
+			Priority:    70,
+			MaxAttempts: 3,
+			DedupeKey:   KindAccountingTieOut + ":" + id.String() + ":" + day,
+		}); err != nil {
+			s.log.Error("could not enqueue a tie-out",
+				slog.String("tenant", id.String()),
+				slog.String("error", err.Error()))
+		}
+	}
 }
