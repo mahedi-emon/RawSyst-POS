@@ -49,8 +49,11 @@ describe('the string catalogue', () => {
       'shift.xReport',
       'shift.zReport',
     ]);
+    // Interpolation placeholders are Latin by construction — `{time}` is a key
+    // name, not text anybody reads — so they come out before the check.
+    const withoutPlaceholders = (text: string) => text.replace(/\{\w+\}/g, '');
     const suspicious = (Object.keys(ar) as Key[]).filter(
-      (k) => !allowed.has(k) && /[A-Za-z]{4,}/.test(ar[k]),
+      (k) => !allowed.has(k) && /[A-Za-z]{4,}/.test(withoutPlaceholders(ar[k])),
     );
     expect(suspicious, 'Arabic strings containing English words').toEqual([]);
   });

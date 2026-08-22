@@ -22,6 +22,7 @@ import { useState } from 'react';
 
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
+import { useT } from '@rawsyst/shared/i18n/locale';
 import {
   fetchReturnable,
   overReturned,
@@ -40,6 +41,7 @@ import {
 import { useTerminal } from '../offline/useTerminal';
 
 export function ReturnsScreen() {
+  const t = useT();
   const { client, can } = useAuth();
   // Only for the catalogue: a replacement is scanned from the local cache the
   // same way a sale line is. The queue is untouched — an exchange goes to the
@@ -233,10 +235,10 @@ export function ReturnsScreen() {
         <input
           className="scan__input"
           autoFocus
-          placeholder="Scan the receipt or type the sale reference"
+          placeholder={t('returns.scanReceipt')}
           value={invoiceId}
           onChange={(e) => setInvoiceId(e.target.value)}
-          aria-label="Sale reference"
+          aria-label={t('returns.saleReference')}
         />
       </form>
 
@@ -259,7 +261,7 @@ export function ReturnsScreen() {
               <tr>
                 <th scope="col">Item</th>
                 <th scope="col" className="num">Left</th>
-                <th scope="col">Return</th>
+                <th scope="col">{t('returns.return')}</th>
               </tr>
             </thead>
             <tbody>
@@ -314,7 +316,7 @@ export function ReturnsScreen() {
             <input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is it coming back?"
+              placeholder={t('returns.reason')}
             />
           </label>
 
@@ -338,7 +340,7 @@ export function ReturnsScreen() {
             <>
               <dl className="totals">
                 <div className="totals__grand">
-                  <dt>Refund</dt>
+                  <dt>{t('returns.refund')}</dt>
                   {/* The terminal's figure, for the cashier to see before they
                       commit. The server recomputes it and is the authority. */}
                   <dd className="num">{total}</dd>
@@ -355,7 +357,7 @@ export function ReturnsScreen() {
             </>
           ) : (
             <>
-              <h2 className="held__title">Going out in exchange</h2>
+              <h2 className="held__title">{t('returns.exchange')}</h2>
 
               <form
                 className="scan"
@@ -366,10 +368,10 @@ export function ReturnsScreen() {
               >
                 <input
                   className="scan__input"
-                  placeholder="Scan the replacement"
+                  placeholder={t('returns.scanReplacement')}
                   value={scanInput}
                   onChange={(e) => setScanInput(e.target.value)}
-                  aria-label="Scan the replacement item"
+                  aria-label={t('returns.scanReplacementItem')}
                 />
               </form>
 
@@ -407,7 +409,7 @@ export function ReturnsScreen() {
 
               <dl className="totals">
                 <div>
-                  <dt>Credit for goods returned</dt>
+                  <dt>{t('returns.credit')}</dt>
                   <dd className="num">{preview.credit}</dd>
                 </div>
                 <div className="totals__grand">

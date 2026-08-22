@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { scan } from '../api/pos';
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
+import { useT } from '@rawsyst/shared/i18n/locale';
 import { currentShift, type ShiftSession } from '@rawsyst/shared/api/shift';
 import { openedAtTime } from './shift';
 import { useTerminal } from '../offline/useTerminal';
@@ -60,6 +61,7 @@ import { buildReceipt, renderReceipt, type Receipt } from './receipt';
 const DISPLAY_RATE = '0.15';
 
 export function PosCounter() {
+  const t = useT();
   const { can, me, client } = useAuth();
   const terminal = useTerminal();
 
@@ -320,7 +322,7 @@ export function PosCounter() {
 
   return (
     <main className="counter">
-      <section className="counter__cart" aria-label="Current sale">
+      <section className="counter__cart" aria-label={t('pos.currentSale')}>
         <form
           className="scan"
           onSubmit={(e) => {
@@ -334,10 +336,10 @@ export function PosCounter() {
             // for the whole sale. A cashier should never have to click the box
             // between items.
             autoFocus
-            placeholder="Scan or type a barcode"
+            placeholder={t('pos.scanPlaceholder')}
             value={scanInput}
             onChange={(e) => setScanInput(e.target.value)}
-            aria-label="Scan a barcode"
+            aria-label={t('pos.scanBarcode')}
           />
         </form>
 
@@ -398,14 +400,15 @@ export function PosCounter() {
             while somebody works out what went wrong. */}
         {shift === null ? (
           <p className="counter__shift counter__shift--none" role="alert">
-            <strong>This till is not open.</strong> Count the float into the
-            drawer under <em>Till</em> before ringing up sales — a sale has to
-            belong to a shift somebody can reconcile.
+            <strong>{t('pos.tillNotOpen')}</strong> {t('pos.tillNotOpenWhy')}
           </p>
         ) : (
           shift && (
             <p className="counter__shift" role="status">
-              Shift {shift.session_no} · open since {openedAtTime(shift.opened_at)}
+              {t('pos.shiftOpenSince', {
+                no: shift.session_no,
+                time: openedAtTime(shift.opened_at),
+              })}
             </p>
           )
         )}
@@ -419,8 +422,8 @@ export function PosCounter() {
         {/* Parked carts. Shown only when there are any and the counter is
             clear, so the list never competes with a sale in progress. */}
         {parked.length > 0 && lines.length === 0 && (
-          <section className="held" aria-label="Held sales">
-            <h2 className="held__title">Held sales</h2>
+          <section className="held" aria-label={t('pos.heldSales')}>
+            <h2 className="held__title">{t('pos.heldSales')}</h2>
             <ul className="held__list">
               {parked.map((cart) => (
                 <li key={cart.id}>
@@ -439,14 +442,14 @@ export function PosCounter() {
         )}
 
         {lines.length === 0 ? (
-          <p className="counter__empty">Scan an item to begin.</p>
+          <p className="counter__empty">{t('pos.scanToBegin')}</p>
         ) : (
           <table className="cart">
             <thead>
               <tr>
-                <th scope="col">Item</th>
-                <th scope="col">Qty</th>
-                <th scope="col" className="num">Price</th>
+                <th scope="col">{t('pos.item')}</th>
+                <th scope="col">{t('pos.qty')}</th>
+                <th scope="col" className="num">{t('pos.price')}</th>
                 <th scope="col" />
               </tr>
             </thead>
@@ -493,25 +496,25 @@ export function PosCounter() {
         )}
       </section>
 
-      <aside className="counter__totals" aria-label="Totals and payment">
+      <aside className="counter__totals" aria-label={t('pos.totalsAndPayment')}>
         <QueueStatus terminal={terminal} />
 
         <dl className="totals">
           <div>
-            <dt>Subtotal</dt>
+            <dt>{t('pos.subtotal')}</dt>
             <dd className="num">{totals.subtotalNet}</dd>
           </div>
           <div>
-            <dt>VAT</dt>
+            <dt>{t('pos.vat')}</dt>
             <dd className="num">{totals.taxTotal}</dd>
           </div>
           <div className="totals__grand">
-            <dt>Total</dt>
+            <dt>{t('pos.total')}</dt>
             <dd className="num">{totals.totalInclusive}</dd>
           </div>
           {tenders.length > 0 && (
             <div className={owed === '0.00' ? '' : 'totals__owed'}>
-              <dt>Outstanding</dt>
+              <dt>{t('pos.outstanding')}</dt>
               <dd className="num">{owed}</dd>
             </div>
           )}
@@ -527,7 +530,7 @@ export function PosCounter() {
                 setTenders((prev) => [...prev, { method, amount: owed }])
               }
             >
-              {method === 'cash' ? 'Cash' : 'Mada'}
+              {method === 'cash' ? t('tender.cash') : t('tender.mada')}
             </button>
           ))}
 
@@ -577,7 +580,7 @@ export function PosCounter() {
         {/* What has been taken so far, so a mistake can be undone before
             the sale is finished rather than reversed after it. */}
         {tenders.length > 0 && (
-          <ul className="taken" aria-label="Payments taken">
+          <ul className="taken" aria-label={t('pos.paymentsTaken')}>
             {tenders.map((t, i) => (
               <li key={`${t.method}-${i}`} className="taken__row">
                 <span>{tenderLabel(t.method)}</span>

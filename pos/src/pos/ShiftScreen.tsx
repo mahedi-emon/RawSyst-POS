@@ -22,6 +22,7 @@
 // and, importantly, that the sales it has already queued are safe.
 
 import { useCallback, useEffect, useState } from 'react';
+import { useT } from '@rawsyst/shared/i18n/locale';
 
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
@@ -172,6 +173,7 @@ function OpenShift({
   currency: string | null;
   onOpened: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const pad = denominationsFor(currency);
 
@@ -208,7 +210,7 @@ function OpenShift({
     <main className="shift">
       <div className="ds-panel shift__panel">
         <div className="ds-panel__head">
-          <h1 className="ds-h1">Open the till</h1>
+          <h1 className="ds-h1">{t('shift.openTill')}</h1>
         </div>
         <div className="ds-panel__body">
           <p className="ds-body-sm ds-muted shift__lede">
@@ -266,7 +268,7 @@ function OpenShift({
               onChange={(e) => setBlind(e.target.checked)}
             />
             <span>
-              <strong>Blind close</strong>
+              <strong>{t('shift.blindClose')}</strong>
               <span className="ds-caption">
                 The expected total is hidden until the drawer has been counted,
                 so the count is a real one.
@@ -418,6 +420,7 @@ function CurrentShift({
  *  belongs to the X report and to the close, and putting it here would hand it
  *  to a cashier on every screen refresh. */
 function Takings({ report, currency }: { report: ShiftReport; currency: string | null }) {
+  const t = useT();
   const rows: Array<[string, string]> = [
     ['Opening float', report.opening_float],
     ['Cash takings', report.cash_takings],
@@ -429,7 +432,7 @@ function Takings({ report, currency }: { report: ShiftReport; currency: string |
   return (
     <dl className="shift__figures">
       <div className="shift__figure">
-        <dt className="ds-caption">Sales</dt>
+        <dt className="ds-caption">{t('shift.sales')}</dt>
         <dd className="num">{report.invoice_count}</dd>
       </div>
       {rows.map(([label, value]) => (
@@ -453,6 +456,7 @@ function XReport({
   currency: string | null;
   onDismiss: () => void;
 }) {
+  const t = useT();
   return (
     <section className="shift__xray" aria-label="X report">
       <div className="shift__xrayhead">
@@ -466,7 +470,7 @@ function XReport({
       </p>
       <Takings report={report} currency={currency} />
       <p className="shift__expected">
-        <span className="ds-caption">Expected in the drawer</span>
+        <span className="ds-caption">{t('shift.expectedInDrawer')}</span>
         <strong className="num">
           {money(report.expected_cash, { currency: currency ?? undefined })}
         </strong>
@@ -488,6 +492,7 @@ function MoveCash({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const [reason, setReason] = useState<CashMovementReason>('safe_drop');
   const [amount, setAmount] = useState('');
@@ -526,7 +531,7 @@ function MoveCash({
 
   return (
     <section className="shift__form" aria-label="Move cash">
-      <h2 className="ds-h3">Move cash</h2>
+      <h2 className="ds-h3">{t('shift.moveCash')}</h2>
 
       <Field label="Why" htmlFor="move-reason" required>
         <select
@@ -617,6 +622,7 @@ function CloseShift({
   onClosed: (report: ShiftReport) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const pad = denominationsFor(currency);
 
@@ -659,7 +665,7 @@ function CloseShift({
 
   return (
     <section className="shift__form" aria-label="Close the till">
-      <h2 className="ds-h3">Count the drawer</h2>
+      <h2 className="ds-h3">{t('shift.countDrawer')}</h2>
       <p className="ds-body-sm ds-muted">
         {blind
           ? 'Count what is physically in the drawer. The expected total is shown once you commit the count.'
@@ -780,6 +786,7 @@ function ZReport({
   currency: string | null;
   onDone: () => void;
 }) {
+  const t = useT();
   const result = reportVerdict(report);
 
   return (
@@ -795,13 +802,13 @@ function ZReport({
 
           <dl className="shift__figures shift__figures--z">
             <div className="shift__figure">
-              <dt className="ds-caption">Expected</dt>
+              <dt className="ds-caption">{t('shift.expected')}</dt>
               <dd className="num">
                 {money(report.expected_cash, { currency: currency ?? undefined })}
               </dd>
             </div>
             <div className="shift__figure">
-              <dt className="ds-caption">Counted</dt>
+              <dt className="ds-caption">{t('shift.counted')}</dt>
               <dd className="num">
                 {money(report.counted_cash, { currency: currency ?? undefined })}
               </dd>
@@ -865,8 +872,9 @@ function CountToggle({
   counting: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const t = useT();
   return (
-    <div className="shift__toggle" role="group" aria-label="How to count">
+    <div className="shift__toggle" role="group" aria-label={t('shift.howToCount')}>
       <button
         className={`ds-btn ds-btn--quiet${counting ? ' shift__toggle--on' : ''}`}
         aria-pressed={counting}
@@ -898,6 +906,7 @@ function DenominationPad({
   currency: string | null;
   total: string;
 }) {
+  const t = useT();
   return (
     <div className="denom">
       <div className="denom__grid">
@@ -933,7 +942,7 @@ function DenominationPad({
       </div>
 
       <p className="denom__total" role="status" aria-live="polite">
-        <span className="ds-caption">Counted</span>
+        <span className="ds-caption">{t('shift.counted')}</span>
         <strong className="ds-h2 num">
           {money(total, { currency: currency ?? undefined })}
         </strong>

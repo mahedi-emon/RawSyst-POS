@@ -9,10 +9,12 @@ import { useState, type FormEvent } from 'react';
 
 import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from './session';
+import { useT } from '../i18n/locale';
 
 export function LoginScreen() {
   const { signIn, status, tenantChoices, clearTenantChoices } = useAuth();
 
+  const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export function LoginScreen() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">RawSyst</h1>
-          <p className="login__subtitle">Which business?</p>
+          <p className="login__subtitle">{t('login.chooseTenant')}</p>
           <p className="login__hint">
             This email is used by more than one business. Choose the one you
             want to work in — you can sign out and pick another at any time.
@@ -124,10 +126,10 @@ export function LoginScreen() {
             not claim to be either. "Sign in to open the till" was on the back
             office until a browser check read it out loud — a buyer signing in
             to raise a purchase order is not opening a till. */}
-        <p className="login__subtitle">Sign in to continue</p>
+        <p className="login__subtitle">{t('login.continue')}</p>
 
         <label className="field">
-          <span className="field__label">Email</span>
+          <span className="field__label">{t('login.email')}</span>
           <input
             className="field__input"
             type="email"
@@ -141,7 +143,7 @@ export function LoginScreen() {
         </label>
 
         <label className="field">
-          <span className="field__label">Password</span>
+          <span className="field__label">{t('login.password')}</span>
           <input
             className="field__input"
             type="password"
@@ -162,7 +164,7 @@ export function LoginScreen() {
         )}
 
         <button className="button button--primary button--large" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? t('login.working') : t('login.submit')}
         </button>
       </form>
     </main>
