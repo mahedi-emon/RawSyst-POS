@@ -187,6 +187,22 @@ func (h *harness) seedUserWithRole(t *testing.T, roleKey string) string {
 		t.Fatalf("seed %s role: %v", roleKey, err)
 	}
 
+	// Best effort, and the error is deliberately dropped rather than
+	// overlooked.
+	//
+	// The cascade from tenant reaches session_refresh_token, sales_invoice,
+	// journal_entry and every other table carrying a reject_delete() trigger,
+	// and the trigger refuses — which is what it is for. Posted history is
+	// never deleted, and a test tenant’s history is history. So this succeeds
+	// only for a tenant that never logged in and never posted anything, and
+	// fails for every other one.
+	//
+	// Failing the test on it would be wrong: nothing is broken, the guarantee
+	// is working. Weakening the trigger so tests can tidy up would trade a
+	// production invariant for a smaller database, which is a bad trade. The
+	// database is therefore disposable — `make test-db-reset` recreates it —
+	// and this note exists so the next person does not spend an hour
+	// rediscovering why the cleanup appears to do nothing.
 	t.Cleanup(func() {
 		_ = h.pool.TxAsPlatform(context.Background(), func(tx pgx.Tx) error {
 			_, err := tx.Exec(context.Background(),

@@ -97,6 +97,34 @@ test: ## Run unit tests (RACE= to disable the race detector)
 test-db: ## Run tests needing PostgreSQL (set RAWSYST_DB_DSN)
 	go test $(RACE) -count=1 -tags=integration ./...
 
+.PHONY: test-db-reset
+test-db-reset: ## Empty the test database and migrate it again
+	@# The test database only grows, and that is not a leak — it is the cost of
+	@# a guarantee working.
+	@#
+	@# Fixtures do try to clean up: each seeded tenant gets a t.Cleanup that
+	@# deletes it, and ON DELETE CASCADE should take the company, the users and
+	@# the documents with it. That cascade reaches session_refresh_token,
+	@# sales_invoice, journal_entry and every other table carrying a
+	@# reject_delete() trigger, and the trigger does exactly what it exists to
+	@# do: refuses. Posted history is never deleted, and a test tenant's history
+	@# is history. So the cleanup succeeds only for a tenant that never logged
+	@# in, which in practice is none of them.
+	@#
+	@# Rather than weaken the trigger for the convenience of tests — a
+	@# production invariant traded for a smaller database is a bad trade — the
+	@# test database is treated as what it is: disposable.
+	@#
+	@# It drops the SCHEMA rather than the database. That matters for a reason
+	@# learned the hard way: dropping the database needs CREATEDB to put it
+	@# back, and the application role deliberately does not have CREATEDB (it is
+	@# unprivileged so that row-level security actually applies to it). A DROP
+	@# DATABASE therefore succeeds and the CREATE that follows fails, leaving no
+	@# database at all. Dropping the schema needs only ownership, which the
+	@# migrations already conferred, and DDL is not subject to the row triggers.
+	@test -n "$(RAWSYST_DB_DSN)" || { 	  echo "RAWSYST_DB_DSN is not set. It names the database to empty."; 	  exit 1; 	}
+	@db=$$(printf '%s' "$(RAWSYST_DB_DSN)" | sed -e 's|.*/||' -e 's|?.*||'); 	case "$$db" in 	  *test*) ;; 	  *) echo "Refusing to empty \"$$db\": this only touches a database with"; 	     echo "\"test\" in its name. Emptying a development database would lose"; 	     echo "whatever was being worked on in it."; 	     exit 1 ;; 	esac; 	echo "Emptying $$db ..."; 	psql "$(RAWSYST_DB_DSN)" -v ON_ERROR_STOP=1 -q 	  -c "DROP SCHEMA public CASCADE" 	  -c "CREATE SCHEMA public" || exit 1; 	go run ./cmd/migrate
+
 .PHONY: cover
 cover: ## Run tests with a coverage report
 	go test $(RACE) -count=1 -coverprofile=coverage.out ./...

@@ -11,4 +11,13 @@
 
 go 1.26
 
+// Repeated from backend/go.mod, because in a workspace THIS file decides the
+// toolchain and the module’s own directive is ignored. Without this line the
+// pin backend/go.mod describes silently does not happen: a build here used
+// whatever Go the machine had — 1.26.5, carrying the four stdlib advisories
+// (crypto/tls, net/http, encoding/xml, encoding/asn1) that 1.26.6 fixes and
+// that CI pins 1.26.6 to avoid. The comment in go.mod claimed the local build
+// and CI were on the same compiler; they were not.
+toolchain go1.26.6
+
 use ./backend
