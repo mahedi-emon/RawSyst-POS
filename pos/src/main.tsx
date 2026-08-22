@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
 import { AuthProvider } from '@rawsyst/shared/auth/session';
+import { LocaleProvider } from '@rawsyst/shared/i18n/locale';
+import { CardTableLabels } from '@rawsyst/shared/ui/CardTableLabels';
 // The design system first: it defines the tokens everything else consumes.
 import '@rawsyst/shared/design-system.css';
 import { signIn as signInOnTerminal } from './offline/credential';
@@ -23,13 +25,18 @@ if (!root) throw new Error('the application root is missing from the page');
 
 createRoot(root).render(
   <React.StrictMode>
-    <AuthProvider
-      baseUrl={baseUrl}
-      // A till signs in through the shell so the device secret can be attached
-      // without ever entering this layer. See offline/credential.ts.
-      signInWith={(email, password) => signInOnTerminal(baseUrl, email, password)}
-    >
-      <App apiBaseUrl={baseUrl} />
-    </AuthProvider>
+    <LocaleProvider>
+      <CardTableLabels />
+      <AuthProvider
+        baseUrl={baseUrl}
+        // A till signs in through the shell so the device secret can be
+        // attached without ever entering this layer. See offline/credential.ts.
+        signInWith={(email, password) =>
+          signInOnTerminal(baseUrl, email, password)
+        }
+      >
+        <App apiBaseUrl={baseUrl} />
+      </AuthProvider>
+    </LocaleProvider>
   </React.StrictMode>,
 );

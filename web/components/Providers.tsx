@@ -14,6 +14,8 @@
 // authenticated and permission-gated server-side.
 
 import { AuthProvider } from '@rawsyst/shared/auth/session';
+import { LocaleProvider } from '@rawsyst/shared/i18n/locale';
+import { CardTableLabels } from '@rawsyst/shared/ui/CardTableLabels';
 
 import { BackOffice } from './BackOffice';
 
@@ -21,8 +23,11 @@ const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8080';
 
 export function Providers() {
   return (
-    <AuthProvider baseUrl={baseUrl}>
-      <BackOffice />
-    </AuthProvider>
+    <LocaleProvider>
+      <CardTableLabels />
+      <AuthProvider baseUrl={baseUrl}>
+        <BackOffice />
+      </AuthProvider>
+    </LocaleProvider>
   );
 }

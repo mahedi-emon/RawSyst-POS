@@ -19,7 +19,11 @@
   --warn-line: #d9a441;
   --danger: #a8332b;
   --radius: 10px;
-  --tap: 48px;
+  /* Design system §5 sets the POS minimum at 56×56: "fast, repeated,
+   * sometimes with gloves". This was 48, which is the ordinary web touch
+   * target and not what a till is. The token is defined in the design system
+   * as --tap-pos; this alias keeps the existing rules reading naturally. */
+  --tap: var(--tap-pos, 56px);
   color-scheme: light dark;
 }
 
@@ -122,7 +126,13 @@ body {
 }
 .button:disabled { opacity: 0.45; cursor: not-allowed; }
 .button--primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-.button--large { min-height: 56px; font-size: 17px; }
+/* Design system §5: a POS primary action — Pay, Complete — is "72 px tall,
+ * full width of its column. Cannot be mis-tapped." */
+.button--large {
+  min-height: 72px;
+  inline-size: 100%;
+  font-size: 17px;
+}
 .button--quiet { background: transparent; }
 
 /* Focus is always visible. A till is used by keyboard and scanner far more
@@ -157,7 +167,7 @@ body {
 .scan { margin-bottom: 14px; }
 .scan__input {
   width: 100%;
-  min-height: 52px;
+  min-height: var(--tap);
   padding: 0 14px;
   font: inherit; font-size: 17px;
   color: var(--ink);

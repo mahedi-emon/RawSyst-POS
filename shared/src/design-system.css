@@ -505,3 +505,195 @@ body {
   background: var(--danger-subtle);
   border-color: var(--danger);
 }
+
+/* ---------------------------------------------------------------------------
+ * Responsive — design system §7
+ * ---------------------------------------------------------------------------
+ *
+ * The breakpoints the spec declares, as tokens, so a media query in any
+ * stylesheet is checkable against the table rather than against whatever
+ * number the last person reached for. CSS custom properties cannot be used in
+ * a media query, so these are documentation the review can hold a query to:
+ *
+ *   xs  < 640      Phone — owner monitoring, approvals
+ *   sm  640–1023   Large phone / small tablet
+ *   md  1024–1279  iPad — full back-office, portrait POS
+ *   lg  1280–1679  Laptop
+ *   xl  ≥ 1680     POS terminal, desktop back-office
+ */
+
+/* --- Tables become card lists on a phone ---------------------------------
+ *
+ * "Layout transformations, not hidden content. A table becomes a card list on
+ * phone; it does not lose columns." Every cell keeps its figure AND gains the
+ * column name it sat under, so nothing has to be inferred from position.
+ *
+ * The labels are stamped onto the cells at runtime from the table's own header
+ * — see ui/cardTable.ts. Without them this still degrades to a readable
+ * stacked list, just an unlabelled one.
+ */
+@media (max-width: 639px) {
+  .ds-table,
+  .ds-table tbody,
+  .ds-table tr,
+  .ds-table td {
+    display: block;
+    width: 100%;
+  }
+
+  /* Off-screen rather than display:none — the header is how a screen reader
+   * associates each cell with its column, and removing it would take that
+   * away from exactly the users who need it most. */
+  .ds-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .ds-table tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin-block-end: var(--space-3);
+    padding: var(--space-3);
+    background: var(--surface);
+  }
+
+  .ds-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    border: none;
+    padding: var(--space-2) 0;
+    text-align: start;
+  }
+
+  /* The column name, from the stamped attribute. A cell whose column has no
+   * heading — an actions cell — gets no label and no empty gap. */
+  .ds-table td[data-label]::before {
+    content: attr(data-label);
+    color: var(--ink-quiet);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-align: start;
+    flex: 0 0 auto;
+    padding-inline-end: var(--space-3);
+  }
+
+  /* Figures keep their alignment against the label rather than against a
+   * column that no longer exists. */
+  .ds-table td.num {
+    justify-content: space-between;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A row heading inside the body — a grouped section — reads as the card's
+   * title rather than as another labelled row. */
+  .ds-table tbody th {
+    display: block;
+    padding: 0 0 var(--space-2);
+    border: none;
+    text-align: start;
+  }
+
+  .ds-table tbody tr:hover td { background: none; }
+
+  /* The scroll container has nothing left to scroll. Releasing it stops the
+   * card list inheriting a horizontal scrollbar it does not need. */
+  .ds-scroll-x { overflow-x: visible; }
+}
+
+/* --- Navigation: a bottom bar on a phone ---------------------------------
+ *
+ * Spec §7: "Navigation | xs: Bottom bar, 5 items". A wrapped row at the top
+ * put the sections above the fold and out of thumb reach on the surface where
+ * reach matters most.
+ */
+@media (max-width: 639px) {
+  .app__nav {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+    z-index: 20;
+
+    display: flex;
+    justify-content: space-around;
+    gap: 0;
+
+    background: var(--surface);
+    border-block-start: 1px solid var(--line);
+    /* Clear of the home indicator on a phone with a gesture bar. */
+    padding-block-end: env(safe-area-inset-bottom, 0);
+  }
+
+  .app__navlink {
+    flex: 1 1 0;
+    min-height: var(--tap-mobile);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    border-radius: 0;
+    /* The current section is marked along the top edge, where a bottom bar
+     * reads it, rather than underneath where the bar's own edge is. */
+    border-block-start: 2px solid transparent;
+  }
+
+  .app__navlink--on {
+    border-block-start-color: var(--accent);
+  }
+
+  /* Room for the bar, so the last row of a table is not sitting under it. */
+  .bo,
+  .app {
+    padding-block-end: calc(var(--tap-mobile) + var(--space-4));
+  }
+}
+
+/* --- Language switch ------------------------------------------------------
+ *
+ * Two options, each written in its own language, because somebody looking for
+ * Arabic looks for العربية rather than for the word "Arabic". It sits in the
+ * top bar of both front ends including the sign-in screen: a person who cannot
+ * read the interface has to be able to change it before signing in.
+ */
+.lang {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.lang__opt {
+  min-height: var(--tap-desk);
+  padding-inline: var(--space-3);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.lang__opt:hover { background: var(--surface-sunken); }
+
+/* The selected language is filled, not merely coloured — colour is never the
+ * only signal, and aria-pressed carries it for anyone not seeing either. */
+.lang__opt--on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.lang__opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* On a phone the switch keeps a full touch target rather than shrinking with
+ * the bar around it. */
+@media (max-width: 639px) {
+  .lang__opt { min-height: var(--tap-mobile); }
+}

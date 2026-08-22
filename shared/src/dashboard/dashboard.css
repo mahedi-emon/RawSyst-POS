@@ -21,6 +21,15 @@
 .dash {
   padding: var(--space-5) var(--space-4) var(--space-7);
   display: grid;
+  /* minmax(0, 1fr), not the implicit 1fr.
+   *
+   * A bare `1fr` is `minmax(auto, 1fr)`, and that `auto` floor is min-content:
+   * one child that cannot shrink stretches the whole track and the page
+   * scrolls sideways. Found in Arabic, where the native date input renders
+   * month names and its min-content width goes from ~130px to ~334px, taking
+   * this track to 563px inside a 375px phone. Nothing about it is Arabic-
+   * specific though - a long unbroken product name does the same thing. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   max-inline-size: 1600px;
   margin-inline: auto;
@@ -28,6 +37,8 @@
 
 .dash__head {
   display: flex;
+  /* Wraps rather than forcing the title and the date control onto one line. */
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-4);
@@ -38,9 +49,17 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  /* Shrinks with the header rather than holding it open. */
+  min-inline-size: 0;
+  flex-shrink: 1;
 }
 
 .dash__date input {
+  /* Allowed to shrink below its intrinsic width. A date field is the widest
+   * thing in this header on a phone, and in Arabic it is nearly three times
+   * wider than in English. */
+  min-inline-size: 0;
+  max-inline-size: 100%;
   font: inherit;
   font-family: var(--font-mono);
   padding: var(--space-2) var(--space-3);
@@ -179,6 +198,13 @@
 
 .attention__row {
   display: flex;
+  /* Wraps, and its children may shrink.
+   *
+   * A flex item defaults to min-width:auto, which is min-content - so a row
+   * holding a long sentence refuses to go narrower than its longest
+   * unbreakable run and pushes the page sideways. English happened to fit at
+   * 375px; Arabic did not, which is how it was found. */
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
@@ -188,6 +214,14 @@
   background: var(--surface-sunken);
   /* The stripe. Logical property, so it mirrors with the page in Arabic. */
   border-inline-start: 3px solid var(--border-strong);
+}
+
+/* Every direct child may shrink and may break a long word. Applied here rather
+ * than to each element because the row's job is to hold a sentence and a
+ * figure, and neither of them has a minimum width worth defending. */
+.attention__row > * {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
 }
 
 .attention__row--critical { border-inline-start-color: var(--danger); }

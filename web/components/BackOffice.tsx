@@ -38,6 +38,8 @@ import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
 import { SettlementScreen } from '@rawsyst/shared/settlement/SettlementScreen';
+import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
+import { useT } from '@rawsyst/shared/i18n/locale';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
 import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
 
@@ -54,6 +56,7 @@ type Section =
 
 export function BackOffice() {
   const { status, me, signOut, client } = useAuth();
+  const t = useT();
 
   const [section, setSection] = useState<Section>('dashboard');
   const [drill, setDrill] = useState<DrillTarget | null>(null);
@@ -166,19 +169,19 @@ export function BackOffice() {
       : null;
 
   const sections: Array<{ key: Section; label: string; shown: boolean }> = [
-    { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
-    { key: 'buying', label: 'Buying', shown: mayBuy },
-    { key: 'customers', label: 'Customers', shown: maySeeCustomers },
-    { key: 'inventory', label: 'Inventory', shown: maySeeInventory },
+    { key: 'dashboard', label: t('nav.dashboard'), shown: mayReadFigures },
+    { key: 'buying', label: t('nav.buying'), shown: mayBuy },
+    { key: 'customers', label: t('nav.customers'), shown: maySeeCustomers },
+    { key: 'inventory', label: t('nav.inventory'), shown: maySeeInventory },
     // Between the money screens and the hardware ones, because reconciling a
     // bank statement is bookkeeping rather than administration.
-    { key: 'settlement', label: 'Settlement', shown: maySeeAccounting },
-    { key: 'devices', label: 'Terminals', shown: maySeeDevices },
-    { key: 'einvoicing', label: 'E-invoicing', shown: maySeeEInvoicing },
-    { key: 'setup', label: 'Setup', shown: maySeeSetup },
+    { key: 'settlement', label: t('nav.settlement'), shown: maySeeAccounting },
+    { key: 'devices', label: t('nav.devices'), shown: maySeeDevices },
+    { key: 'einvoicing', label: t('nav.einvoicing'), shown: maySeeEInvoicing },
+    { key: 'setup', label: t('nav.setup'), shown: maySeeSetup },
     // I2. Reads with identity.view and writes with identity.edit, the same
     // pair the rest of company settings carries.
-    { key: 'branding', label: 'Branding', shown: maySeeSetup },
+    { key: 'branding', label: t('nav.branding'), shown: maySeeSetup },
   ];
   const visible = sections.filter((s) => s.shown);
 
@@ -188,7 +191,7 @@ export function BackOffice() {
         <span className="bo__brand">RawSyst</span>
 
         {visible.length > 1 && (
-          <nav className="app__nav" aria-label="Sections">
+          <nav className="app__nav" aria-label={t('nav.sections')}>
             {visible.map((s) => (
               <button
                 key={s.key}
@@ -231,8 +234,10 @@ export function BackOffice() {
           </label>
         )}
 
+        <LanguageSwitch />
+
         <button className="ds-btn ds-btn--quiet" onClick={() => void signOut()}>
-          Sign out
+          {t('nav.signOut')}
         </button>
       </header>
 

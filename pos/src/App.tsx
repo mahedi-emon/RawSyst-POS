@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
+import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
+import { useT } from '@rawsyst/shared/i18n/locale';
 import { useAuth } from '@rawsyst/shared/auth/session';
 import { listCompanies, type Company } from '@rawsyst/shared/api/companies';
 import { Dashboard, type DrillTarget } from '@rawsyst/shared/dashboard/Dashboard';
@@ -56,6 +58,7 @@ type Pairing =
 
 export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { status, me, signOut, client } = useAuth();
+  const t = useT();
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [pairing, setPairing] = useState<Pairing>({ state: 'checking' });
   const [companies, setCompanies] = useState<Company[] | null>(null);
@@ -200,11 +203,11 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   const destinations: Array<{ key: Screen; label: string; shown: boolean }> = [
-    { key: 'dashboard', label: 'Dashboard', shown: mayReadFigures },
-    { key: 'sell', label: 'Sell', shown: maySell },
-    { key: 'return', label: 'Returns', shown: mayRefund },
-    { key: 'shift', label: 'Till', shown: mayRunTill },
-    { key: 'buying', label: 'Buying', shown: mayBuy },
+    { key: 'dashboard', label: t('nav.dashboard'), shown: mayReadFigures },
+    { key: 'sell', label: t('pos.title'), shown: maySell },
+    { key: 'return', label: t('nav.returns'), shown: mayRefund },
+    { key: 'shift', label: t('shift.title'), shown: mayRunTill },
+    { key: 'buying', label: t('nav.buying'), shown: mayBuy },
   ];
   const visible = destinations.filter((d) => d.shown);
 
@@ -216,7 +219,7 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
         {/* Only rendered when there is a genuine choice. A single-destination
             nav is chrome that teaches nothing. */}
         {visible.length > 1 && (
-          <nav className="app__nav" aria-label="Sections">
+          <nav className="app__nav" aria-label={t('nav.sections')}>
             {visible.map((d) => (
               <button
                 key={d.key}
@@ -256,8 +259,10 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
           </label>
         )}
 
+        <LanguageSwitch />
+
         <button className="ds-btn ds-btn--quiet" onClick={() => void signOut()}>
-          Sign out
+          {t('nav.signOut')}
         </button>
       </header>
 
