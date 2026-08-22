@@ -37,10 +37,20 @@ import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
+import { SettlementScreen } from '@rawsyst/shared/settlement/SettlementScreen';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
 import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
 
-type Section = 'dashboard' | 'buying' | 'customers' | 'devices' | 'einvoicing' | 'setup' | 'branding' | 'inventory';
+type Section =
+  | 'dashboard'
+  | 'buying'
+  | 'customers'
+  | 'settlement'
+  | 'devices'
+  | 'einvoicing'
+  | 'setup'
+  | 'branding'
+  | 'inventory';
 
 export function BackOffice() {
   const { status, me, signOut, client } = useAuth();
@@ -77,6 +87,10 @@ export function BackOffice() {
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
+  // Card settlement reads with accounting.view. A cashier takes the money and
+  // does not decide it has arrived — matching a bank statement to a day's
+  // takings is bookkeeping, and the routes refuse them either way.
+  const maySeeAccounting = may('accounting.view');
   // Separate from devices.view: an EGS unit carries the VAT registration the
   // invoice chain hangs from, so an accountant reads it and a store manager
   // sees it without being able to create one.
@@ -156,6 +170,9 @@ export function BackOffice() {
     { key: 'buying', label: 'Buying', shown: mayBuy },
     { key: 'customers', label: 'Customers', shown: maySeeCustomers },
     { key: 'inventory', label: 'Inventory', shown: maySeeInventory },
+    // Between the money screens and the hardware ones, because reconciling a
+    // bank statement is bookkeeping rather than administration.
+    { key: 'settlement', label: 'Settlement', shown: maySeeAccounting },
     { key: 'devices', label: 'Terminals', shown: maySeeDevices },
     { key: 'einvoicing', label: 'E-invoicing', shown: maySeeEInvoicing },
     { key: 'setup', label: 'Setup', shown: maySeeSetup },
@@ -238,6 +255,8 @@ export function BackOffice() {
         <PurchasingScreen companyId={activeCompany} />
       ) : section === 'customers' && maySeeCustomers ? (
         <CustomersScreen companyId={activeCompany} />
+      ) : section === 'settlement' && maySeeAccounting ? (
+        <SettlementScreen companyId={activeCompany} />
       ) : section === 'devices' && maySeeDevices ? (
         <DevicesScreen companyId={activeCompany} />
       ) : section === 'einvoicing' && maySeeEInvoicing ? (
