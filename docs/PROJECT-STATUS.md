@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-21 |
-| **Branch** | `main` @ `35d4010` |
-| **Backend** | 148 Go files, ~48,000 lines, 915 integration tests + 244 unit tests, 56 migrations |
-| **HTTP routes live** | 97 — auth, invoice reprint (logged), branding (company logo upload/replace/remove/serve), onboarding, platform, POS (incl. signed-document upload), sync, shifts (open, current, peek, X-report, cash drop, Z-report close), statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, payment reversal, ageing, supplier edit/retire), customers and receivables (accounts, credit limits, ledger, open invoices, receipts, receipt reversal, ageing, till snapshot), terminals (register, enrol, identity, branches, rename/reassign, pause, revoke), companies, reachability ping |
+| **Last updated** | 2026-08-22 |
+| **Branch** | `main` @ `aa69f65` |
+| **Backend** | 151 Go files, ~50,000 lines, 939+ integration tests + 248 unit tests, 57 migrations |
+| **HTTP routes live** | 104 — auth, invoice reprint (logged), branding (company logo upload/replace/remove/serve), onboarding, platform, card settlement (pending / record deposit / read batch), POS (incl. signed-document upload), sync, shifts (open, current, peek, X-report, cash drop, Z-report close), statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, payment reversal, ageing, supplier edit/retire), customers and receivables (accounts, credit limits, ledger, open invoices, receipts, receipt reversal, ageing, till snapshot), terminals (register, enrol, identity, branches, rename/reassign, pause, revoke), companies, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
 | **Front ends** | Next.js back-office (dashboard, drill-through, buying) + Tauri POS: login, RBAC gating, counter, offline queue, local catalogue cache, connectivity monitor, hold/resume, returns, exchanges, receipt, Owner Dashboard with A8 drill-through, Buying, Customers (accounts, credit standing, ledger, receipt allocation, receipt reversal, ageing), POS customer picker and credit sales with an offline customer cache, Terminals management and POS pairing (403 tests across shared/pos) |
 
