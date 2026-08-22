@@ -431,3 +431,198 @@ func TestSettlementNeedsAccountingPermissions(t *testing.T) {
 		t.Errorf("%d payments awaiting settlement for the owner, want 1", len(rows))
 	}
 }
+
+// --- reading a deposit back ----------------------------------------------
+
+// A recorded deposit reads back with the sales it covered.
+//
+// This route existed, was mounted, was declared, and had never once been
+// executed: coverage on settlement.Read was zero, and the only tests touching
+// it proved that it declares a permission and refuses an anonymous caller.
+// Both of those pass whether or not the handler works.
+func TestARecordedDepositReadsBackWithItsSales(t *testing.T) {
+	h := newHarness(t)
+	f, owner := settlingShop(t, h)
+
+	for _, price := range []string{"120.00", "80.00"} {
+		sellByCard(t, h, f, price)
+	}
+	pending := pendingTenders(t, h, f, owner)
+	if len(pending) != 2 {
+		t.Fatalf("%d payments awaiting settlement, want 2", len(pending))
+	}
+	ids := make([]string, 0, 2)
+	for _, row := range pending {
+		id, _ := row.(map[string]any)["tender_id"].(string)
+		ids = append(ids, id)
+	}
+
+	recorded := h.do(t, http.MethodPost,
+		settlementPath(f, "/api/v1/settlement/batches"), owner, map[string]any{
+			"uuid":         uuid.NewString(),
+			"reference":    "MADA-READBACK",
+			"deposited_on": "2026-08-18",
+			"net_amount":   "197.00",
+			"tender_ids":   ids,
+		})
+	if recorded.StatusCode != http.StatusCreated {
+		t.Fatalf("record the deposit: status %d — %s",
+			recorded.StatusCode, readBody(t, recorded))
+	}
+	batchID, _ := decodeJSON(t, recorded)["id"].(string)
+
+	resp := h.do(t, http.MethodGet,
+		settlementPath(f, "/api/v1/settlement/batches/"+batchID), owner, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("read the deposit back: status %d — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	got := decodeJSON(t, resp)
+
+	if got["id"] != batchID {
+		t.Errorf("id = %v, want %s", got["id"], batchID)
+	}
+	if got["reference"] != "MADA-READBACK" {
+		t.Errorf("reference = %v", got["reference"])
+	}
+	if got["deposited_on"] != "2026-08-18" {
+		t.Errorf("deposited_on = %v, want the date it landed", got["deposited_on"])
+	}
+	// 200.00 taken, 197.00 deposited, so the acquirer kept 3.00.
+	if got["gross_amount"] != "200.00" || got["fee_amount"] != "3.00" ||
+		got["net_amount"] != "197.00" {
+		t.Errorf("amounts = gross %v, fee %v, net %v; want 200.00 / 3.00 / 197.00",
+			got["gross_amount"], got["fee_amount"], got["net_amount"])
+	}
+
+	// The sales it covered, each with the share of the fee it bore. Without
+	// these the batch reconciles to nothing and QA gate M4's "the batch
+	// reconciles back to individual sales" is a forensic exercise again.
+	tenders, _ := got["tenders"].([]any)
+	if len(tenders) != 2 {
+		t.Fatalf("%d payments in the batch, want 2 — %v", len(tenders), got["tenders"])
+	}
+	shares := decimal.Zero
+	covered := decimal.Zero
+	for _, raw := range tenders {
+		row, _ := raw.(map[string]any)
+		amount, _ := row["amount"].(string)
+		fee, _ := row["fee_amount"].(string)
+		if row["invoice_number"] == nil {
+			t.Error("a payment in the batch names no invoice")
+		}
+		if method, _ := row["method"].(string); method != "mada" {
+			t.Errorf("payment method = %q, want mada", method)
+		}
+		covered = covered.Add(decimal.RequireFromString(amount))
+		shares = shares.Add(decimal.RequireFromString(fee))
+	}
+	if !covered.Equal(decimal.RequireFromString("200")) {
+		t.Errorf("the payments come to %s against a gross of 200.00", covered)
+	}
+	if !shares.Equal(decimal.RequireFromString("3")) {
+		t.Errorf("the per-payment fees come to %s against a charge of 3.00", shares)
+	}
+}
+
+// A deposit that does not exist is not found, rather than empty or a crash.
+func TestReadingADepositThatDoesNotExist(t *testing.T) {
+	h := newHarness(t)
+	f, owner := settlingShop(t, h)
+
+	resp := h.do(t, http.MethodGet,
+		settlementPath(f, "/api/v1/settlement/batches/"+uuid.NewString()), owner, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("an unknown deposit: status %d, want 404 — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+}
+
+// One company cannot read another's deposit, and is told it does not exist.
+//
+// Both companies here belong to DIFFERENT tenants, so row-level security is one
+// of the two things being checked; the company predicate in the query is the
+// other, and it is the one that matters when two companies share a tenant.
+func TestADepositCannotBeReadByAnotherCompany(t *testing.T) {
+	h := newHarness(t)
+	f, owner := settlingShop(t, h)
+	other, otherOwner := settlingShop(t, h)
+
+	sellByCard(t, h, other, "60.00")
+	theirs, _ := pendingTenders(t, h, other, otherOwner)[0].(map[string]any)["tender_id"].(string)
+
+	recorded := h.do(t, http.MethodPost,
+		settlementPath(other, "/api/v1/settlement/batches"), otherOwner, map[string]any{
+			"uuid":         uuid.NewString(),
+			"reference":    "THEIR-DEPOSIT",
+			"deposited_on": "2026-08-18",
+			"net_amount":   "58.00",
+			"tender_ids":   []string{theirs},
+		})
+	if recorded.StatusCode != http.StatusCreated {
+		t.Fatalf("seed the other company's deposit: status %d — %s",
+			recorded.StatusCode, readBody(t, recorded))
+	}
+	theirBatch, _ := decodeJSON(t, recorded)["id"].(string)
+
+	// Naming their batch id under our own company. Not found, not forbidden:
+	// confirming it exists would tell an outsider what to look for next.
+	resp := h.do(t, http.MethodGet,
+		settlementPath(f, "/api/v1/settlement/batches/"+theirBatch), owner, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("reading another company's deposit: status %d, want 404 — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	// And it is still readable by the company it belongs to, or the check above
+	// would pass simply because nothing is readable.
+	resp = h.do(t, http.MethodGet,
+		settlementPath(other, "/api/v1/settlement/batches/"+theirBatch), otherOwner, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("the owning company reading its own deposit: status %d — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+}
+
+// QA gate M7 on the read route as well as the write one.
+func TestReadingADepositNeedsAccountingView(t *testing.T) {
+	h := newHarness(t)
+	f, owner := settlingShop(t, h)
+	sellByCard(t, h, f, "45.00")
+
+	tenderID, _ := pendingTenders(t, h, f, owner)[0].(map[string]any)["tender_id"].(string)
+	recorded := h.do(t, http.MethodPost,
+		settlementPath(f, "/api/v1/settlement/batches"), owner, map[string]any{
+			"uuid":         uuid.NewString(),
+			"reference":    "MADA-GATED",
+			"deposited_on": "2026-08-18",
+			"net_amount":   "44.00",
+			"tender_ids":   []string{tenderID},
+		})
+	if recorded.StatusCode != http.StatusCreated {
+		t.Fatalf("record: status %d — %s", recorded.StatusCode, readBody(t, recorded))
+	}
+	batchID, _ := decodeJSON(t, recorded)["id"].(string)
+
+	// A cashier takes the money and does not read the bank reconciliation.
+	resp := h.do(t, http.MethodGet,
+		settlementPath(f, "/api/v1/settlement/batches/"+batchID), f.token, nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("cashier reading a deposit: status %d, want 403 — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	// An auditor reads everything and changes nothing, so this one they may.
+	auditor := h.seedUserIn(t, f, "auditor")
+	resp = h.do(t, http.MethodGet,
+		settlementPath(f, "/api/v1/settlement/batches/"+batchID), auditor, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("auditor reading a deposit: status %d, want 200 — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+}
