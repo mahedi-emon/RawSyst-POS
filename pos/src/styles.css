@@ -395,11 +395,10 @@ body {
   color: var(--text);
 }
 
-/* On a phone the bar wraps to two rows rather than compressing the brand and
- * the nav into illegibility. */
-@media (max-width: 560px) {
+/* xs, per design system §7. Only the brand wraps: below this width the design
+ * system lifts the nav out of the bar into a fixed bottom bar. */
+@media (max-width: 639px) {
   .app__brand { flex-basis: 100%; }
-  .app__nav { order: 3; flex-basis: 100%; }
 }
 
 /* --- Who the sale is for -------------------------------------------------
@@ -610,7 +609,7 @@ body {
 /* On a phone the dialog fills the screen: a cashier holding a handheld has no
  * spare width for a backdrop margin, and the search box must stay reachable
  * with a thumb. */
-@media (max-width: 560px) {
+@media (max-width: 639px) {
   .picker__backdrop { padding: 0; }
   .picker {
     inline-size: 100%;

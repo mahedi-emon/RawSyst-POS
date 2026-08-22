@@ -42,9 +42,11 @@
 
 /* On a phone the bar wraps rather than compressing the brand and the nav into
  * illegibility. */
-@media (max-width: 560px) {
+/* xs, per design system §7. The nav is not wrapped here any more: below this
+ * width the design system lifts it out of the bar into a fixed bottom bar, so
+ * only the brand needs a row of its own. */
+@media (max-width: 639px) {
   .bo__brand { flex-basis: 100%; }
-  .bo__bar .app__nav { order: 3; flex-basis: 100%; }
 }
 
 /* ---------------------------------------------------------------------------
