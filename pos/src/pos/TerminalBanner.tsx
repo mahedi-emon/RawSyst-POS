@@ -11,13 +11,15 @@
 // sale, the stock and the books are all recorded correctly.
 
 import type { Capabilities } from './terminal';
+import { useT } from '@rawsyst/shared/i18n/locale';
 
 export function TerminalBanner({ caps }: { caps: Capabilities | null }) {
+  const t = useT();
   if (!caps || caps.signing_available) return null;
 
   return (
     <div className="banner banner--warning" role="status">
-      <strong>E-invoicing is not active on this terminal.</strong>{' '}
+      <strong>{t('term.einvoicingNotActive')}</strong>{' '}
       Sales are recorded, stock and takings are correct, and every invoice is
       queued. None has been reported to ZATCA yet.
       {caps.key.status === 'not_started' && ' This terminal has not been onboarded.'}

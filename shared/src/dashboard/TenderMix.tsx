@@ -16,6 +16,7 @@
 
 import { money, tenderName } from '../ui/format';
 import type { TenderSlice } from '../api/dashboard';
+import { useT } from '../i18n/locale';
 
 export function TenderMix({
   tenders,
@@ -24,18 +25,19 @@ export function TenderMix({
   tenders: TenderSlice[];
   currency: string;
 }) {
+  const t = useT();
   const peak = tenders.reduce((max, t) => Math.max(max, width(t.total)), 0);
 
   return (
-    <section className="ds-panel" aria-label="How today was paid">
+    <section className="ds-panel" aria-label={t('dash.howPaid')}>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">How today was paid</h2>
+        <h2 className="ds-h3">{t('dash.howPaid')}</h2>
       </div>
 
       <div className="ds-panel__body">
         {tenders.length === 0 ? (
           <div className="ds-state">
-            <p className="ds-state__title">Nothing taken yet today</p>
+            <p className="ds-state__title">{t('dash.nothingTakenToday')}</p>
             <p className="ds-state__body">
               The split across cash, cards and wallets appears here as sales are
               rung up.

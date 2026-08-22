@@ -22,6 +22,7 @@
 // owner.
 
 import { useEffect, useState } from 'react';
+import { useT } from '@rawsyst/shared/i18n/locale';
 
 import {
   available as keystoreAvailable,
@@ -60,6 +61,7 @@ export function PairingScreen({
   apiBaseUrl: string;
   onPaired: (identity: TerminalIdentity) => void;
 }) {
+  const t = useT();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -115,11 +117,11 @@ export function PairingScreen({
         <h1 className="setup__title">RawSyst</h1>
         <p className="setup__lede">
           Set this machine up as a till. In the back office, open{' '}
-          <strong>Terminals</strong>, add this till and it will show you a code.
+          <strong>{t('dev.terminals')}</strong>, add this till and it will show you a code.
         </p>
 
         <label className="setup__label" htmlFor="pair-code">
-          Enter the code
+          {t('pair.enterCode')}
         </label>
         <input
           id="pair-code"
@@ -139,7 +141,7 @@ export function PairingScreen({
           disabled={busy || canStore === false}
         />
         <p className="setup__help" id="pair-help">
-          Eight characters. The dash is added for you.
+          {t('pair.eightCharacters')}
         </p>
 
         {failure && (
@@ -190,6 +192,7 @@ export function TerminalBlocked({
   onRetry: () => void;
   busy: boolean;
 }) {
+  const t = useT();
   return (
     <main className="setup">
       <div className="setup__card">
@@ -203,7 +206,7 @@ export function TerminalBlocked({
           {busy ? 'Checking…' : 'Check again'}
         </button>
         <p className="setup__foot">
-          An owner can change this under <strong>Terminals</strong> in the back
+          {t('pair.ownerCanChange')} <strong>{t('dev.terminals')}</strong> in the back
           office.
         </p>
       </div>

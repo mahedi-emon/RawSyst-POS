@@ -35,6 +35,7 @@ import {
   type OnboardingStep,
 } from '../api/onboarding';
 import { Field, FormError, TextInput } from '../ui/Form';
+import { useT } from '../i18n/locale';
 import {
   answersFor,
   isComplete,
@@ -61,6 +62,7 @@ type Load =
   | { state: 'denied' };
 
 export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {}) {
+  const t = useT();
   const { client, can } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [viewing, setViewing] = useState<OnboardingStep | null>(null);
@@ -107,7 +109,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
     return (
       <Shell>
         <div className="ds-state">
-          <p className="ds-state__title">This account cannot set up a business</p>
+          <p className="ds-state__title">{t('setup.noSetupAccess')}</p>
           <p className="ds-state__body">
             Setting up a business needs permission to manage people and
             settings. An owner can change that under Settings &gt; People.
@@ -126,7 +128,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
           </p>
           <p className="ds-state__body">{load.message}</p>
           <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         </div>
       </Shell>
@@ -140,7 +142,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
     <main className="setupw">
       <header className="setupw__head">
         <div>
-          <h1 className="ds-h1">Set up your business</h1>
+          <h1 className="ds-h1">{t('setup.setUpBusiness')}</h1>
           <p className="ds-body-sm ds-muted">
             Seven steps. Your answers are saved as you go, so you can stop and
             come back.
@@ -214,8 +216,9 @@ function StepRail({
   active: OnboardingStep;
   onPick: (s: OnboardingStep) => void;
 }) {
+  const t = useT();
   return (
-    <ol className="rail" aria-label="Setup steps">
+    <ol className="rail" aria-label={t('setup.steps')}>
       {STEPS.map((s, i) => {
         const done = isComplete(progress, s.key);
         const reachable = isReachable(progress, s.key);
@@ -354,6 +357,7 @@ function BusinessStep({
   readOnly: boolean;
   onAdvanced: (p: OnboardingProgress) => void;
 }) {
+  const t = useT();
   const saved = answersFor(progress, 'business_info') as Partial<BusinessInfo>;
   const [v, setV] = useState<BusinessInfo>({
     legal_name: saved.legal_name ?? '',
@@ -377,43 +381,43 @@ function BusinessStep({
 
   return (
     <>
-      <Field label="Registered legal name" htmlFor="legal-name" required error={field('legal_name')}
+      <Field label={t('setup.registeredLegalName')} htmlFor="legal-name" required error={field('legal_name')}
         hint="Exactly as it appears on your commercial registration.">
         <TextInput id="legal-name" value={v.legal_name} onChange={(x) => set('legal_name', x)}
           error={field('legal_name')} autoFocus />
       </Field>
 
-      <Field label="Legal name in Arabic" htmlFor="legal-name-ar"
+      <Field label={t('setup.legalNameArabic')} htmlFor="legal-name-ar"
         hint="Required on Saudi tax invoices. You can add it later.">
         <TextInput id="legal-name-ar" value={v.legal_name_ar}
           onChange={(x) => set('legal_name_ar', x)} />
       </Field>
 
-      <Field label="Trading name" htmlFor="trade-name" hint="What customers call you, if different.">
+      <Field label={t('setup.tradingName')} htmlFor="trade-name" hint="What customers call you, if different.">
         <TextInput id="trade-name" value={v.trade_name} onChange={(x) => set('trade_name', x)} />
       </Field>
 
       <div className="setupw__pair">
-        <Field label="Country" htmlFor="country" required error={field('country')}>
+        <Field label={t('common.country')} htmlFor="country" required error={field('country')}>
           <select id="country" className="field__input" value={v.country}
             onChange={(e) => set('country', e.target.value)}>
-            <option value="sa">Saudi Arabia</option>
-            <option value="bd">Bangladesh</option>
-            <option value="us">United States</option>
+            <option value="sa">{t('setup.saudiArabia')}</option>
+            <option value="bd">{t('setup.bangladesh')}</option>
+            <option value="us">{t('setup.unitedStates')}</option>
           </select>
         </Field>
 
-        <Field label="Books kept in" htmlFor="currency" required error={field('base_currency')}>
+        <Field label={t('setup.booksKeptIn')} htmlFor="currency" required error={field('base_currency')}>
           <select id="currency" className="field__input" value={v.base_currency}
             onChange={(e) => set('base_currency', e.target.value)}>
-            <option value="SAR">SAR — Saudi riyal</option>
-            <option value="BDT">BDT — Bangladeshi taka</option>
-            <option value="USD">USD — US dollar</option>
+            <option value="SAR">{t('ccy.sar')}</option>
+            <option value="BDT">{t('ccy.bdt')}</option>
+            <option value="USD">{t('ccy.usd')}</option>
           </select>
         </Field>
       </div>
 
-      <Field label="Commercial registration number" htmlFor="cr">
+      <Field label={t('setup.crNumber')} htmlFor="cr">
         <TextInput id="cr" value={v.cr_number} onChange={(x) => set('cr_number', x)} />
       </Field>
 
@@ -421,15 +425,15 @@ function BusinessStep({
         <input type="checkbox" checked={v.vat_registered}
           onChange={(e) => set('vat_registered', e.target.checked)} />
         <span>
-          <strong>This business is registered for VAT</strong>
+          <strong>{t('setup.vatRegistered')}</strong>
           <span className="ds-caption">
-            If it is, every invoice you issue must carry the number.
+            {t('setup.vatNumberNote')}
           </span>
         </span>
       </label>
 
       {v.vat_registered && (
-        <Field label="VAT registration number" htmlFor="vat" required error={field('vat_number')}
+        <Field label={t('setup.vatRegNumber')} htmlFor="vat" required error={field('vat_number')}
           hint={v.country === 'sa' ? '15 digits, starting and ending with 3.' : undefined}>
           <TextInput id="vat" value={v.vat_number} onChange={(x) => set('vat_number', x)}
             inputMode="numeric" error={field('vat_number')} />
@@ -460,6 +464,7 @@ function StoresStep({
   readOnly: boolean;
   onAdvanced: (p: OnboardingProgress) => void;
 }) {
+  const t = useT();
   const saved = answersFor(progress, 'stores') as { stores?: StoreInfo[] };
   const [stores, setStores] = useState<StoreInfo[]>(
     saved.stores?.length ? saved.stores : [{ code: '', name: '' }],
@@ -476,12 +481,12 @@ function StoresStep({
     <>
       {stores.map((s, i) => (
         <div className="setupw__row" key={i}>
-          <Field label="Store name" htmlFor={`store-name-${i}`} required error={rows[i]?.name}>
+          <Field label={t('setup.storeName')} htmlFor={`store-name-${i}`} required error={rows[i]?.name}>
             <TextInput id={`store-name-${i}`} value={s.name}
               onChange={(x) => edit(i, 'name', x)} error={rows[i]?.name}
               placeholder="Olaya branch" />
           </Field>
-          <Field label="Short code" htmlFor={`store-code-${i}`} required error={rows[i]?.code}
+          <Field label={t('common.shortCode')} htmlFor={`store-code-${i}`} required error={rows[i]?.code}
             hint="Appears in invoice numbers, like INV-RYD-000001.">
             <TextInput id={`store-code-${i}`} value={s.code}
               onChange={(x) => edit(i, 'code', x.toUpperCase())} error={rows[i]?.code}
@@ -490,7 +495,7 @@ function StoresStep({
           {stores.length > 1 && (
             <button className="ds-btn ds-btn--quiet setupw__drop"
               onClick={() => setStores((c) => c.filter((_, j) => j !== i))}>
-              Remove
+              {t('common.remove')}
             </button>
           )}
         </div>
@@ -498,7 +503,7 @@ function StoresStep({
 
       <button className="ds-btn ds-btn--secondary"
         onClick={() => setStores((c) => [...c, { code: '', name: '' }])}>
-        Add another store
+        {t('setup.addAnotherStore')}
       </button>
 
       {formError && <p className="field__error" role="alert">{formError}</p>}
@@ -527,6 +532,7 @@ function TaxStep({
   readOnly: boolean;
   onAdvanced: (p: OnboardingProgress) => void;
 }) {
+  const t = useT();
   const business = answersFor(progress, 'business_info') as Partial<BusinessInfo>;
   const country = business.country ?? 'sa';
   const ctx = taxContextFor(country);
@@ -544,19 +550,19 @@ function TaxStep({
     <>
       {ctx.fromRegistry && (
         <div className="setupw__loaded">
-          <h3 className="ds-h3">Loaded for you</h3>
+          <h3 className="ds-h3">{t('setup.loadedForYou')}</h3>
           <ul className="setupw__facts">
             <li>
-              <strong>VAT</strong> is applied at the rate in force on the day of
+              <strong>{t('common.vat')}</strong> is applied at the rate in force on the day of
               each sale, resolved from the regulatory register rather than typed
               in here — so a rate change does not need a settings edit.
             </li>
             <li>
-              <strong>Arabic</strong> is enabled, and invoices render
+              <strong>{t('tpl.arabic')}</strong> is enabled, and invoices render
               right-to-left.
             </li>
             <li>
-              <strong>E-invoicing</strong> applies. Setting up the units that
+              <strong>{t('egs.einvoicing')}</strong> applies. Setting up the units that
               sign your invoices is done under E-invoicing once this business
               exists.
             </li>
@@ -572,18 +578,18 @@ function TaxStep({
               RawSyst knew their deadline would plan around a date nobody
               official gave them. */}
           <p className="setupw__notice" role="note">
-            These two come from <strong>your own ZATCA notification</strong>.
+            {t('setup.theseComeFrom')} <strong>your own ZATCA notification</strong>.
             RawSyst does not know your wave or your date and never assumes one.
             Leave them blank if you have not been notified yet.
           </p>
 
-          <Field label="ZATCA wave" htmlFor="wave"
+          <Field label={t('setup.zatcaWave')} htmlFor="wave"
             hint="As written on your notification, for example “Wave 12”.">
             <TextInput id="wave" value={v.zatca_wave}
               onChange={(x) => setV((c) => ({ ...c, zatca_wave: x }))} />
           </Field>
 
-          <Field label="Integration deadline" htmlFor="deadline" error={field('zatca_deadline')}
+          <Field label={t('setup.integrationDeadline')} htmlFor="deadline" error={field('zatca_deadline')}
             hint="The date on your notification, as YYYY-MM-DD.">
             <TextInput id="deadline" value={v.zatca_deadline} type="date"
               onChange={(x) => setV((c) => ({ ...c, zatca_deadline: x }))}
@@ -628,6 +634,7 @@ function OptionalStep({
   readOnly: boolean;
   onAdvanced: (p: OnboardingProgress) => void;
 }) {
+  const t = useT();
   const { busy, failure, submit } = useStepSubmit(step, onAdvanced);
   const done = isComplete(progress, step);
 
@@ -644,7 +651,7 @@ function OptionalStep({
     <>
       <p className="ds-body-sm">{later[step]}</p>
       <p className="ds-caption setupw__skip">
-        This step is optional. Skipping it does not hold anything up.
+        {t('setup.optionalStep')}
       </p>
       <FormError message={failure} />
       <div className="setupw__actions">
@@ -666,6 +673,7 @@ function FinishStep({
   readOnly: boolean;
   onFinished: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -686,7 +694,7 @@ function FinishStep({
           it.
         </p>
         <button className="ds-btn ds-btn--primary" onClick={onFinished}>
-          Go to the back office
+          {t('setup.goToBackOffice')}
         </button>
       </div>
     );
@@ -696,7 +704,7 @@ function FinishStep({
     <>
       {outstanding.length > 0 ? (
         <div className="ds-state">
-          <p className="ds-state__title">A few steps are still open</p>
+          <p className="ds-state__title">{t('setup.stepsOpen')}</p>
           <p className="ds-state__body">
             Finish {outstanding.map((s) => s.title).join(' and ')} before
             creating the business.
@@ -705,15 +713,15 @@ function FinishStep({
       ) : (
         <>
           <dl className="setupw__review">
-            <div><dt className="ds-caption">Legal name</dt><dd>{business.legal_name || '—'}</dd></div>
-            <div><dt className="ds-caption">Country</dt><dd>{(business.country ?? '').toUpperCase() || '—'}</dd></div>
-            <div><dt className="ds-caption">Books in</dt><dd>{business.base_currency || '—'}</dd></div>
+            <div><dt className="ds-caption">{t('setup.legalName')}</dt><dd>{business.legal_name || '—'}</dd></div>
+            <div><dt className="ds-caption">{t('common.country')}</dt><dd>{(business.country ?? '').toUpperCase() || '—'}</dd></div>
+            <div><dt className="ds-caption">{t('setup.booksIn')}</dt><dd>{business.base_currency || '—'}</dd></div>
             <div>
-              <dt className="ds-caption">VAT</dt>
+              <dt className="ds-caption">{t('common.vat')}</dt>
               <dd>{business.vat_registered ? business.vat_number || 'Registered' : 'Not registered'}</dd>
             </div>
             <div>
-              <dt className="ds-caption">Stores</dt>
+              <dt className="ds-caption">{t('setup.stores')}</dt>
               <dd>{stores.length > 0 ? stores.map((s) => `${s.name} (${s.code})`).join(', ') : '—'}</dd>
             </div>
           </dl>
@@ -755,13 +763,14 @@ function StepActions({
   onSave: () => void;
   onContinue: () => void;
 }) {
+  const t = useT();
   return (
     <div className="setupw__actions">
       {/* Saving without continuing is the whole reason the wizard is
           resumable. It never validates, because a half-filled step must be
           allowed to persist. */}
       <button className="ds-btn ds-btn--quiet" disabled={busy || readOnly} onClick={onSave}>
-        Save and come back
+        {t('setup.saveAndComeBack')}
       </button>
       <button className="ds-btn ds-btn--primary" disabled={busy || readOnly} onClick={onContinue}>
         {busy ? 'Saving…' : 'Continue'}

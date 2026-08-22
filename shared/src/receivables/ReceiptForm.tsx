@@ -29,6 +29,7 @@ import {
 } from '../api/receivables';
 import { allocateOldestFirst, checkAllocation, major, minor } from './receivables';
 import { Field, FormActions, FormError, SelectInput, TextInput } from '../ui/Form';
+import { useT } from '../i18n/locale';
 
 const METHODS = [
   { id: 'cash', label: 'Cash' },
@@ -152,6 +153,7 @@ function ReceiptBody({
     allocations: { invoice_id: string; amount: string }[];
   }) => Promise<unknown>;
 }) {
+  const t = useT();
   const outcome = useMemo(
     () => checkAllocation(invoices, allocations),
     [invoices, allocations],
@@ -224,12 +226,12 @@ function ReceiptBody({
       <div className="ds-panel">
         <div className="ds-panel__body">
           <EmptyState
-            title="Nothing outstanding"
+            title={t('common.nothingOutstanding')}
             body={`${customer.name} has settled everything on their account, so there is nothing to allocate a payment against.`}
           />
           <div className="form__actions">
             <button className="ds-btn ds-btn--quiet" type="button" onClick={onCancel}>
-              Back to the account
+              {t('rcpt.backToAccount')}
             </button>
           </div>
         </div>
@@ -247,18 +249,18 @@ function ReceiptBody({
         <FormError message={failure} />
 
         <div className="form__grid">
-          <Field label="Amount received" htmlFor="rec-amount" required
+          <Field label={t('rcpt.amountReceived')} htmlFor="rec-amount" required
             hint="Type what the customer handed over and the invoices below fill in oldest first. Change any of them.">
             <TextInput id="rec-amount" value={received} onChange={suggest}
               inputMode="decimal" placeholder="0.00" autoFocus />
           </Field>
 
-          <Field label="How they paid" htmlFor="rec-method" required>
+          <Field label={t('rcpt.howTheyPaid')} htmlFor="rec-method" required>
             <SelectInput id="rec-method" value={method} onChange={setMethod}
               options={METHODS} label={(o) => o.label} />
           </Field>
 
-          <Field label="Reference" htmlFor="rec-ref"
+          <Field label={t('common.reference')} htmlFor="rec-ref"
             hint="A cheque number or a transfer reference, if there is one.">
             <TextInput id="rec-ref" value={reference} onChange={setReference} />
           </Field>
@@ -267,14 +269,14 @@ function ReceiptBody({
         <div className="ds-scroll-x">
           <table className="ds-table">
             <caption className="ds-caption receipt__caption">
-              What this payment settles
+              {t('rcpt.whatItSettles')}
             </caption>
             <thead>
               <tr>
-                <th scope="col">Invoice</th>
-                <th scope="col">Due</th>
-                <th scope="col" className="num">Outstanding</th>
-                <th scope="col" className="num">Allocate</th>
+                <th scope="col">{t('common.invoice')}</th>
+                <th scope="col">{t('common.due')}</th>
+                <th scope="col" className="num">{t('common.outstanding')}</th>
+                <th scope="col" className="num">{t('rcpt.allocate')}</th>
               </tr>
             </thead>
             <tbody>
@@ -314,7 +316,7 @@ function ReceiptBody({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={2}>Allocated</td>
+                <td colSpan={2}>{t('rcpt.allocated')}</td>
                 <td className="num ds-subtle">{money(received || '0.00')} received</td>
                 <td className="num">{money(allocated)}</td>
               </tr>

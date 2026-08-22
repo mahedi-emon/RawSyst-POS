@@ -31,10 +31,12 @@ import { BillDetail } from './BillDetail';
 import { SupplierForm } from './SupplierForm';
 import { OrderForm } from './OrderForm';
 import { BillForm } from './BillForm';
+import { useT } from '../i18n/locale';
 
 type Tab = 'orders' | 'bills' | 'suppliers' | 'ageing';
 
 export function PurchasingScreen({ companyId }: { companyId: string }) {
+  const t = useT();
   const { can } = useAuth();
   const [tab, setTab] = useState<Tab>('orders');
   const [openOrder, setOpenOrder] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
       setEditingSupplier(null);
     };
     return (
-      <FormPage title="Suppliers" onBack={done}>
+      <FormPage title={t('common.suppliers')} onBack={done}>
         <SupplierForm
           companyId={companyId}
           existing={editingSupplier ?? undefined}
@@ -81,7 +83,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
 
   if (creating === 'order') {
     return (
-      <FormPage title="Orders" onBack={() => setCreating(null)}>
+      <FormPage title={t('common.orders')} onBack={() => setCreating(null)}>
         <OrderForm
           companyId={companyId}
           onSaved={(order) => {
@@ -99,7 +101,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
 
   if (creating === 'bill') {
     return (
-      <FormPage title="Bills" onBack={() => setCreating(null)}>
+      <FormPage title={t('common.bills')} onBack={() => setCreating(null)}>
         <BillForm
           companyId={companyId}
           onSaved={(bill) => {
@@ -138,8 +140,8 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
     <main className="detail">
       <header className="detail__head detail__head--flat">
         <div className="detail__titles">
-          <h1 className="ds-h1">Buying</h1>
-          <p className="ds-caption">Orders, deliveries, bills and suppliers</p>
+          <h1 className="ds-h1">{t('purch.buying')}</h1>
+          <p className="ds-caption">{t('purch.overview')}</p>
         </div>
 
         <div className="detail__actions">
@@ -153,7 +155,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
               className="ds-btn ds-btn--primary"
               onClick={() => setCreating('supplier')}
             >
-              Add supplier
+              {t('purch.addSupplier')}
             </button>
           )}
           {tab === 'bills' && mayRecordBill && (
@@ -161,7 +163,7 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
               className="ds-btn ds-btn--primary"
               onClick={() => setCreating('bill')}
             >
-              Record a bill
+              {t('purch.recordBill')}
             </button>
           )}
           {tab === 'orders' && mayCreateOrder && (
@@ -169,11 +171,11 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
               className="ds-btn ds-btn--primary"
               onClick={() => setCreating('order')}
             >
-              New order
+              {t('purch.newOrder')}
             </button>
           )}
 
-          <div className="segmented" role="group" aria-label="What to show">
+          <div className="segmented" role="group" aria-label={t('common.whatToShow')}>
             {(
               [
                 ['orders', 'Orders'],
@@ -218,6 +220,7 @@ function Orders({
   companyId: string;
   onOpen: (id: string) => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const load = useCallback(() => listOrders(client, companyId), [client, companyId]);
   const { remote, reload } = useRemote(load);
@@ -229,18 +232,18 @@ function Orders({
           <div className="ds-panel__body ds-scroll-x">
             {orders.length === 0 ? (
               <EmptyState
-                title="No purchase orders yet"
+                title={t('purch.noOrders')}
                 body="An order records what you have asked a supplier for. Nothing goes into stock until the goods actually arrive and you receive them."
               />
             ) : (
               <table className="ds-table">
                 <thead>
                   <tr>
-                    <th scope="col">Order</th>
-                    <th scope="col">Supplier</th>
-                    <th scope="col">Ordered</th>
-                    <th scope="col">Status</th>
-                    <th scope="col" className="num">Value</th>
+                    <th scope="col">{t('common.order')}</th>
+                    <th scope="col">{t('common.supplier')}</th>
+                    <th scope="col">{t('common.ordered')}</th>
+                    <th scope="col">{t('common.status')}</th>
+                    <th scope="col" className="num">{t('common.value')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -279,6 +282,7 @@ function Bills({
   companyId: string;
   onOpen: (id: string) => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const load = useCallback(() => listBills(client, companyId), [client, companyId]);
   const { remote, reload } = useRemote(load);
@@ -290,18 +294,18 @@ function Bills({
           <div className="ds-panel__body ds-scroll-x">
             {bills.length === 0 ? (
               <EmptyState
-                title="No supplier bills yet"
+                title={t('purch.noBills')}
                 body="Bills appear here as you record them. Each is checked against its order and what actually arrived before it can be paid."
               />
             ) : (
               <table className="ds-table">
                 <thead>
                   <tr>
-                    <th scope="col">Invoice</th>
-                    <th scope="col">Supplier</th>
-                    <th scope="col">Due</th>
-                    <th scope="col">Status</th>
-                    <th scope="col" className="num">Outstanding</th>
+                    <th scope="col">{t('common.invoice')}</th>
+                    <th scope="col">{t('common.supplier')}</th>
+                    <th scope="col">{t('common.due')}</th>
+                    <th scope="col">{t('common.status')}</th>
+                    <th scope="col" className="num">{t('common.outstanding')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -342,6 +346,7 @@ function Suppliers({
   onEdit: (supplier: Supplier) => void;
   onChanged: () => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   // Retired suppliers are shown behind a toggle rather than hidden outright.
   // They are referenced by orders and bills, so somebody looking one up needs
@@ -383,31 +388,31 @@ function Suppliers({
 
           <div className="ds-panel">
             <div className="ds-panel__head">
-              <h2 className="ds-h3">Suppliers</h2>
+              <h2 className="ds-h3">{t('common.suppliers')}</h2>
               <label className="supplier__toggle">
                 <input
                   type="checkbox"
                   checked={showRetired}
                   onChange={(e) => setShowRetired(e.target.checked)}
                 />
-                <span className="ds-caption">Include retired</span>
+                <span className="ds-caption">{t('common.includeRetired')}</span>
               </label>
             </div>
 
             <div className="ds-panel__body ds-scroll-x">
               {suppliers.length === 0 ? (
                 <EmptyState
-                  title="No suppliers yet"
+                  title={t('purch.noSuppliers')}
                   body="Add the businesses you buy from. Their payment terms set when each bill falls due."
                 />
               ) : (
                 <table className="ds-table">
                   <thead>
                     <tr>
-                      <th scope="col">Supplier</th>
-                      <th scope="col">Terms</th>
-                      <th scope="col">VAT number</th>
-                      <th scope="col" className="num">Owed</th>
+                      <th scope="col">{t('common.supplier')}</th>
+                      <th scope="col">{t('common.terms')}</th>
+                      <th scope="col">{t('common.vatNumber')}</th>
+                      <th scope="col" className="num">{t('common.owed')}</th>
                       {mayManage && <th scope="col" />}
                     </tr>
                   </thead>
@@ -442,6 +447,7 @@ function SupplierRow({
   onEdit: () => void;
   onSetActive: (active: boolean) => void;
 }) {
+  const t = useT();
   const owes = Number(supplier.outstanding) > 0;
   return (
     <tr className={supplier.is_active ? undefined : 'detail__row--aside'}>
@@ -467,7 +473,7 @@ function SupplierRow({
         <td>
           <div className="supplier__actions">
             <button className="ds-btn ds-btn--quiet" onClick={onEdit}>
-              Edit
+              {t('action.edit')}
             </button>
             {/* Retiring is refused by the server while money is owed, so the
                 control is hidden rather than offering something that would be
@@ -478,7 +484,7 @@ function SupplierRow({
                   className="ds-btn ds-btn--quiet"
                   onClick={() => onSetActive(false)}
                 >
-                  Retire
+                  {t('common.retire')}
                 </button>
               )
             ) : (
@@ -486,7 +492,7 @@ function SupplierRow({
                 className="ds-btn ds-btn--quiet"
                 onClick={() => onSetActive(true)}
               >
-                Bring back
+                {t('common.bringBack')}
               </button>
             )}
           </div>
@@ -501,6 +507,7 @@ function SupplierRow({
  * ago is not late, and ageing it from issue would send a buyer to chase a
  * supplier who is owed nothing yet. */
 function AgeingView({ companyId }: { companyId: string }) {
+  const t = useT();
   const { client } = useAuth();
   const load = useCallback(() => fetchAgeing(client, companyId), [client, companyId]);
   const { remote, reload } = useRemote(load);
@@ -510,26 +517,26 @@ function AgeingView({ companyId }: { companyId: string }) {
       {(ageing) => (
         <div className="ds-panel">
           <div className="ds-panel__head">
-            <h2 className="ds-h3">What we owe</h2>
+            <h2 className="ds-h3">{t('purch.whatWeOwe')}</h2>
             <span className="ds-caption">as at {ageing.as_of}</span>
           </div>
           <div className="ds-panel__body ds-scroll-x">
             {ageing.rows.length === 0 ? (
               <EmptyState
-                title="Nothing outstanding"
+                title={t('common.nothingOutstanding')}
                 body="Every supplier bill has been settled."
               />
             ) : (
               <table className="ds-table">
                 <thead>
                   <tr>
-                    <th scope="col">Supplier</th>
-                    <th scope="col" className="num">Not due</th>
+                    <th scope="col">{t('common.supplier')}</th>
+                    <th scope="col" className="num">{t('common.notDue')}</th>
                     <th scope="col" className="num">1–30</th>
                     <th scope="col" className="num">31–60</th>
                     <th scope="col" className="num">61–90</th>
                     <th scope="col" className="num">90+</th>
-                    <th scope="col" className="num">Total</th>
+                    <th scope="col" className="num">{t('common.total')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -550,7 +557,7 @@ function AgeingView({ companyId }: { companyId: string }) {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td>Total owed</td>
+                    <td>{t('common.totalOwed')}</td>
                     <td colSpan={5} />
                     <td className="num">
                       {money(ageing.total, { currency: ageing.base_currency })}

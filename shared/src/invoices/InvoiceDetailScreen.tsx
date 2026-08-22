@@ -37,6 +37,7 @@ import {
 } from '../api/branding';
 import { InvoiceState, invoiceStateHint } from '../dashboard/InvoiceState';
 import { money } from '../ui/format';
+import { useT } from '../i18n/locale';
 import {
   auditActionName,
   chainStatus,
@@ -74,6 +75,7 @@ export function InvoiceDetailScreen({
    *  honest: the button is not offered to somebody the server would refuse. */
   onIssueCreditNote?: (invoice: Invoice) => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [logo, setLogo] = useState<string | null>(null);
@@ -191,7 +193,7 @@ export function InvoiceDetailScreen({
             </p>
             <p className="ds-state__body">{load.message}</p>
             <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
-              Try again
+              {t('common.tryAgain')}
             </button>
           </div>
         </div>
@@ -241,7 +243,7 @@ export function InvoiceDetailScreen({
               className="ds-btn ds-btn--primary"
               onClick={() => onIssueCreditNote(invoice)}
             >
-              Issue credit note
+              {t('inv.issueCreditNote')}
             </button>
           )}
         </>
@@ -294,24 +296,24 @@ export function InvoiceDetailScreen({
 
         <dl className="inv__parties">
           <div>
-            <dt className="ds-caption">Billed to</dt>
+            <dt className="ds-caption">{t('inv.billedTo')}</dt>
             <dd>
               {invoice.customer ? (
                 invoice.customer.name
               ) : (
                 // Not a gap. A shop does not ask a name to sell a bottle of
                 // water, and a simplified invoice does not require one.
-                <span className="ds-subtle">Walk-in customer</span>
+                <span className="ds-subtle">{t('inv.walkIn')}</span>
               )}
             </dd>
           </div>
           <div>
-            <dt className="ds-caption">Currency</dt>
+            <dt className="ds-caption">{t('common.currency')}</dt>
             <dd className="num">{invoice.currency}</dd>
           </div>
           {invoice.parent_invoice_id && (
             <div>
-              <dt className="ds-caption">Corrects</dt>
+              <dt className="ds-caption">{t('inv.corrects')}</dt>
               <dd>
                 {onOpenInvoice ? (
                   <button
@@ -336,12 +338,12 @@ export function InvoiceDetailScreen({
             <thead>
               <tr>
                 <th scope="col" className="inv__lineno">#</th>
-                <th scope="col">Description</th>
-                <th scope="col" className="num">Qty</th>
-                <th scope="col" className="num">Unit</th>
-                {showDiscount && <th scope="col" className="num">Discount</th>}
-                <th scope="col">Tax</th>
-                <th scope="col" className="num">Amount</th>
+                <th scope="col">{t('common.description')}</th>
+                <th scope="col" className="num">{t('common.qty')}</th>
+                <th scope="col" className="num">{t('common.unit')}</th>
+                {showDiscount && <th scope="col" className="num">{t('common.discount')}</th>}
+                <th scope="col">{t('inv.tax')}</th>
+                <th scope="col" className="num">{t('common.amount')}</th>
               </tr>
             </thead>
             <tbody>
@@ -387,27 +389,27 @@ export function InvoiceDetailScreen({
             total is the one number the customer will ask about, so it is the
             only figure here given weight. */}
         <div className="inv__totals">
-          <Total label="Subtotal" value={invoice.subtotal_net} currency={invoice.currency} />
+          <Total label={t('common.subtotal')} value={invoice.subtotal_net} currency={invoice.currency} />
           {money(invoice.discount_total) !== '0.00' && (
             <Total
-              label="Discount"
+              label={t('common.discount')}
               value={`-${invoice.discount_total}`}
               currency={invoice.currency}
             />
           )}
-          <Total label="VAT" value={invoice.tax_total} currency={invoice.currency} />
+          <Total label={t('common.vat')} value={invoice.tax_total} currency={invoice.currency} />
           <Total
-            label="Total"
+            label={t('common.total')}
             value={credit ? `-${invoice.total_inclusive}` : invoice.total_inclusive}
             currency={invoice.currency}
             grand
           />
         </div>
 
-        <section className="inv__tenders" aria-label="Payment">
+        <section className="inv__tenders" aria-label={t('inv.payment')}>
           <h2 className="ds-h3">{credit ? 'Refunded by' : 'Paid by'}</h2>
           {invoice.tenders.length === 0 ? (
-            <p className="ds-subtle ds-body-sm">Nothing recorded against this document.</p>
+            <p className="ds-subtle ds-body-sm">{t('inv.nothingRecorded')}</p>
           ) : (
             <ul className="inv__tenderlist">
               {invoice.tenders.map((t) => {
@@ -428,7 +430,7 @@ export function InvoiceDetailScreen({
               not need a line telling the reader it owes nothing. */}
           {!payment.settled && (
             <p className="inv__outstanding">
-              <span>Still outstanding</span>
+              <span>{t('inv.stillOutstanding')}</span>
               <strong className="num">
                 {money(payment.outstanding, { currency: invoice.currency })}
               </strong>
@@ -448,7 +450,7 @@ export function InvoiceDetailScreen({
           <footer className="inv__foot">
             {(template.payment_terms || template.payment_terms_ar) && (
               <div className="inv__blockgroup">
-                <h2 className="ds-caption">Payment</h2>
+                <h2 className="ds-caption">{t('inv.payment')}</h2>
                 {template.payment_terms && (
                   <p className="inv__block">{template.payment_terms}</p>
                 )}
@@ -462,7 +464,7 @@ export function InvoiceDetailScreen({
 
             {(template.return_policy || template.return_policy_ar) && (
               <div className="inv__blockgroup">
-                <h2 className="ds-caption">Returns</h2>
+                <h2 className="ds-caption">{t('inv.returns')}</h2>
                 {template.return_policy && (
                   <p className="inv__block">{template.return_policy}</p>
                 )}
@@ -497,11 +499,11 @@ export function InvoiceDetailScreen({
         alternative, rather than hunting for a button that was never going to
         exist.
       */}
-      <section className="inv__immutable" aria-label="Why this cannot be changed">
-        <h2 className="ds-h3">This invoice cannot be edited or deleted.</h2>
+      <section className="inv__immutable" aria-label={t('inv.cannotBeChanged')}>
+        <h2 className="ds-h3">{t('inv.cannotEditDelete')}</h2>
         <p className="ds-body-sm">
           Finalized tax invoices are immutable under ZATCA rules. To correct it,
-          issue a <strong>Credit Note</strong>.
+          issue a <strong>{t('inv.creditNote')}</strong>.
         </p>
         {credit ? (
           <p className="ds-caption">
@@ -513,7 +515,7 @@ export function InvoiceDetailScreen({
             className="ds-btn ds-btn--primary"
             onClick={() => onIssueCreditNote(invoice)}
           >
-            Issue credit note
+            {t('inv.issueCreditNote')}
           </button>
         ) : (
           <p className="ds-caption">
@@ -540,12 +542,13 @@ export function InvoiceDetailScreen({
  * those is true rather than rendering an empty QR — a code that does not scan
  * is worse than no code. */
 function ZatcaPanel({ invoice }: { invoice: Invoice }) {
+  const t = useT();
   const status = chainStatus(invoice);
 
   return (
-    <section className="ds-panel inv__panel" aria-label="E-invoicing">
+    <section className="ds-panel inv__panel" aria-label={t('egs.einvoicing')}>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">E-invoicing</h2>
+        <h2 className="ds-h3">{t('egs.einvoicing')}</h2>
         <InvoiceState state={invoice.state} />
       </div>
       <div className="ds-panel__body">
@@ -558,18 +561,18 @@ function ZatcaPanel({ invoice }: { invoice: Invoice }) {
           <>
             <dl className="inv__facts">
               <div>
-                <dt className="ds-caption">Invoice counter (ICV)</dt>
+                <dt className="ds-caption">{t('inv.icv')}</dt>
                 <dd className="num">{invoice.zatca!.icv}</dd>
               </div>
               <div>
-                <dt className="ds-caption">Schema</dt>
+                <dt className="ds-caption">{t('inv.schema')}</dt>
                 <dd>{invoice.zatca!.schema_version}</dd>
               </div>
             </dl>
 
-            <p className="ds-caption inv__hashlabel">Previous invoice hash (PIH)</p>
+            <p className="ds-caption inv__hashlabel">{t('inv.pih')}</p>
             <p className="inv__hash num">{invoice.zatca!.pih}</p>
-            <p className="ds-caption inv__hashlabel">This invoice&rsquo;s hash</p>
+            <p className="ds-caption inv__hashlabel">{t('inv.thisHash')}</p>
             <p className="inv__hash num">{invoice.zatca!.invoice_hash}</p>
 
             {status === 'signed' ? (
@@ -604,17 +607,18 @@ function ZatcaPanel({ invoice }: { invoice: Invoice }) {
 /** What has happened to this document. The first question in a dispute is who
  *  reprinted it and when, and this is the only place that answers it. */
 function AuditPanel({ invoice }: { invoice: Invoice }) {
+  const t = useT();
   const entries = orderedAudit(invoice.audit);
 
   return (
-    <section className="ds-panel inv__panel" aria-label="History">
+    <section className="ds-panel inv__panel" aria-label={t('common.history')}>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">History</h2>
+        <h2 className="ds-h3">{t('common.history')}</h2>
       </div>
       <div className="ds-panel__body">
         {entries.length === 0 ? (
           <p className="ds-body-sm ds-muted">
-            Nothing has happened to this document since it was issued.
+            {t('inv.nothingHappened')}
           </p>
         ) : (
           <ol className="inv__trail">

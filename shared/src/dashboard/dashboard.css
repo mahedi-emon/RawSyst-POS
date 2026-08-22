@@ -280,6 +280,10 @@
 .detail {
   padding: var(--space-5) var(--space-4) var(--space-7);
   display: grid;
+  /* minmax(0, 1fr) for the reason .dash carries: a bare 1fr floors at
+   * min-content, so one child that will not shrink stretches the track and the
+   * page scrolls sideways. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   max-inline-size: 1600px;
   margin-inline: auto;
@@ -289,8 +293,14 @@
   display: grid;
   gap: var(--space-3);
   grid-template-areas: "back back" "titles actions";
+  /* Both columns may shrink. The actions column holds a segmented control or a
+   * primary button, and either will hold the row open at its own width unless
+   * told otherwise. */
+  grid-template-columns: minmax(0, auto) minmax(0, auto);
   align-items: end;
 }
+
+.detail__head > * { min-inline-size: 0; }
 
 .detail__back {
   grid-area: back;
@@ -439,6 +449,10 @@
 
 .segmented {
   display: inline-flex;
+  /* Wraps on a narrow screen rather than forcing the header wider than the
+   * page. Three or four filter buttons do not fit across a phone. */
+  flex-wrap: wrap;
+  max-inline-size: 100%;
   background: var(--surface-sunken);
   border-radius: var(--radius-sm);
   padding: 2px;

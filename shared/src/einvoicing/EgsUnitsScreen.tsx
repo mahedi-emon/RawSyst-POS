@@ -18,6 +18,7 @@ import { listDeviceStores, type DeviceStore } from '../api/devices';
 import { listEgsUnits, type EgsUnit } from '../api/egs';
 import { architectureName, describeUnit, missingCsrFields } from './egs';
 import { EgsUnitForm } from './EgsUnitForm';
+import { useT } from '../i18n/locale';
 
 interface Loaded {
   units: EgsUnit[];
@@ -25,6 +26,7 @@ interface Loaded {
 }
 
 export function EgsUnitsScreen({ companyId }: { companyId: string }) {
+  const t = useT();
   const { client, can } = useAuth();
 
   const [editing, setEditing] = useState<EgsUnit | null>(null);
@@ -47,15 +49,15 @@ export function EgsUnitsScreen({ companyId }: { companyId: string }) {
     <main className="detail">
       <header className="detail__head detail__head--flat">
         <div className="detail__titles">
-          <h1 className="ds-h1">E-invoicing</h1>
+          <h1 className="ds-h1">{t('egs.einvoicing')}</h1>
           <p className="ds-caption">
-            The units that sign your invoices. Every terminal signs under one.
+            {t('egs.unitsExplain')}
           </p>
         </div>
         {mayManage && !creating && !editing && (
           <div className="detail__actions">
             <button className="ds-btn ds-btn--primary" onClick={() => setCreating(true)}>
-              Add unit
+              {t('egs.addUnit')}
             </button>
           </div>
         )}
@@ -87,21 +89,21 @@ export function EgsUnitsScreen({ companyId }: { companyId: string }) {
               <div className="ds-panel__body ds-scroll-x">
                 {loaded.units.length === 0 ? (
                   <EmptyState
-                    title="No e-invoicing units yet"
+                    title={t('egs.noUnits')}
                     body="A unit is what signs your invoices and keeps them in one numbered sequence. Add one before you register a terminal — a till with no unit cannot ring up a sale."
                   />
                 ) : (
                   <table className="ds-table">
                     <thead>
                       <tr>
-                        <th scope="col">Unit</th>
-                        <th scope="col">Branch</th>
+                        <th scope="col">{t('common.unit')}</th>
+                        <th scope="col">{t('common.branch')}</th>
                         <th scope="col">ZATCA</th>
                         <th scope="col" className="num">
-                          Terminals
+                          {t('dev.terminals')}
                         </th>
                         <th scope="col" className="num">
-                          Invoices
+                          {t('egs.invoices')}
                         </th>
                         {mayManage && <th scope="col" />}
                       </tr>
@@ -136,6 +138,7 @@ function UnitRow({
   mayManage: boolean;
   onEdit: () => void;
 }) {
+  const t = useT();
   const state = describeUnit(unit);
   const missing = missingCsrFields(unit.csr);
 
@@ -145,7 +148,7 @@ function UnitRow({
         <span className="detail__strong">{unit.label}</span>
         <span className="ds-caption">{architectureName(unit.architecture)}</span>
       </td>
-      <td>{unit.store || <span className="ds-subtle">Whole business</span>}</td>
+      <td>{unit.store || <span className="ds-subtle">{t('egs.wholeBusiness')}</span>}</td>
       <td>
         <span className={`ds-badge ds-badge--${state.tone}`}>{state.label}</span>
         {state.next && <span className="ds-caption">{state.next}</span>}
@@ -161,7 +164,7 @@ function UnitRow({
         <td>
           <div className="supplier__actions">
             <button className="ds-btn ds-btn--quiet" onClick={onEdit}>
-              Edit
+              {t('action.edit')}
             </button>
           </div>
         </td>

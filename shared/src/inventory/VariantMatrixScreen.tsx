@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
+import { useT } from '../i18n/locale';
 import {
   fetchMatrix,
   listProducts,
@@ -47,6 +48,7 @@ type Load =
   | { state: 'failed'; message: string; offline: boolean };
 
 export function VariantMatrixScreen({ companyId }: { companyId: string }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [products, setProducts] = useState<Product[] | null>(null);
@@ -133,9 +135,9 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
     <main className="matrix">
       <header className="matrix__head">
         <div>
-          <h1 className="ds-h1">Inventory</h1>
+          <h1 className="ds-h1">{t('matrix.inventory')}</h1>
           <p className="ds-body-sm ds-muted">
-            What you hold, broken down the way it actually sells.
+            {t('matrix.overview')}
           </p>
         </div>
       </header>
@@ -143,12 +145,12 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
       <div className="ds-panel">
         <div className="ds-panel__body matrix__picker">
           <label className="matrix__search">
-            <span className="ds-caption">Find a product</span>
+            <span className="ds-caption">{t('matrix.findProduct')}</span>
             <input
               className="field__input"
               type="search"
               value={search}
-              placeholder="Name or SKU"
+              placeholder={t('matrix.nameOrSku')}
               onChange={(e) => {
                 setSearch(e.target.value);
                 void loadProducts(e.target.value);
@@ -157,7 +159,7 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
           </label>
 
           <label className="matrix__select">
-            <span className="ds-caption">Product</span>
+            <span className="ds-caption">{t('matrix.product')}</span>
             <select
               className="field__input"
               value={productId ?? ''}
@@ -175,7 +177,7 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
           {grid && axes.length > 1 && (
             <>
               <label className="matrix__select">
-                <span className="ds-caption">Rows</span>
+                <span className="ds-caption">{t('matrix.rows')}</span>
                 <select
                   className="field__input"
                   value={rowAxis ?? ''}
@@ -189,7 +191,7 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
                 </select>
               </label>
               <label className="matrix__select">
-                <span className="ds-caption">Columns</span>
+                <span className="ds-caption">{t('matrix.columns')}</span>
                 <select
                   className="field__input"
                   value={colAxis ?? ''}
@@ -237,6 +239,7 @@ function Body({
   totals: ReturnType<typeof summarise>;
   productCount: number | null;
 }) {
+  const t = useT();
   if (load.state === 'loading') {
     return (
       <div className="ds-panel">
@@ -250,7 +253,7 @@ function Body({
   if (load.state === 'denied') {
     return (
       <Panel>
-        <p className="ds-state__title">This account cannot see the catalogue</p>
+        <p className="ds-state__title">{t('matrix.noCatalogueAccess')}</p>
         <p className="ds-state__body">
           Reading stock needs permission to view the catalogue. An owner can
           change that under Settings &gt; People.
@@ -273,7 +276,7 @@ function Body({
   if (productCount === 0) {
     return (
       <Panel>
-        <p className="ds-state__title">No products yet</p>
+        <p className="ds-state__title">{t('matrix.noProducts')}</p>
         <p className="ds-state__body">
           Add a product and generate its variants, and the grid will show what
           you hold of each.
@@ -346,14 +349,14 @@ function Body({
         // the difference between a cell that means one variant and a cell that
         // quietly means several.
         <p className="matrix__note" role="note">
-          These variants also differ by <strong>{grid.extraAxes.join(', ')}</strong>.
+          {t('matrix.alsoDifferBy')} <strong>{grid.extraAxes.join(', ')}</strong>.
           A cell holding more than one of those shows only the first — pick it as
           an axis to separate them.
         </p>
       )}
 
       {/* Spec §4: the copy under the grid states the point plainly. */}
-      <section className="ds-panel matrix__summary" aria-label="What the total hides">
+      <section className="ds-panel matrix__summary" aria-label={t('matrix.whatTotalHides')}>
         <div className="ds-panel__body">
           <p className="matrix__total">
             <strong className="num">{totals.total}</strong> in stock across{' '}

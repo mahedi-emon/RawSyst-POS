@@ -22,6 +22,7 @@ import {
   type Supplier,
 } from '../api/purchasing';
 import { useAuth } from '../auth/session';
+import { useT } from '../i18n/locale';
 import {
   Field,
   FormActions,
@@ -42,6 +43,7 @@ export function SupplierForm({
   onSaved: (supplier: Supplier) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [code, setCode] = useState(existing?.code ?? '');
@@ -129,7 +131,7 @@ export function SupplierForm({
               issued, so renaming it would silently change what those documents
               refer to — a supplier who has genuinely been replaced is retired
               and a new one added, which leaves the history readable. */}
-          <Field label="Short code" htmlFor="sup-code" required error={fields.code}
+          <Field label={t('common.shortCode')} htmlFor="sup-code" required error={fields.code}
             hint={
               existing
                 ? 'Fixed once set: it appears on orders you have already issued.'
@@ -143,14 +145,14 @@ export function SupplierForm({
             )}
           </Field>
 
-          <Field label="Registered name" htmlFor="sup-name" required
+          <Field label={t('cust.registeredName')} htmlFor="sup-name" required
             error={fields.legal_name}
             hint="The name on their invoices, not the trading name.">
             <TextInput id="sup-name" value={legalName} onChange={setLegalName}
               placeholder="Acme Textiles LLC" error={fields.legal_name} />
           </Field>
 
-          <Field label="Payment terms" htmlFor="sup-terms" required
+          <Field label={t('common.paymentTerms')} htmlFor="sup-terms" required
             error={fields.payment_terms_days}
             hint="Days from the invoice date. This sets when their bills fall due and who appears as overdue.">
             <TextInput id="sup-terms" value={terms} onChange={setTerms}
@@ -158,18 +160,18 @@ export function SupplierForm({
               error={fields.payment_terms_days} />
           </Field>
 
-          <Field label="VAT number" htmlFor="sup-vat" error={fields.vat_number}
+          <Field label={t('common.vatNumber')} htmlFor="sup-vat" error={fields.vat_number}
             hint="On their invoices. Needed to reclaim input tax on what you buy.">
             <TextInput id="sup-vat" value={vatNumber} onChange={setVatNumber}
               inputMode="numeric" error={fields.vat_number} />
           </Field>
 
-          <Field label="Phone" htmlFor="sup-phone" error={fields.phone}>
+          <Field label={t('common.phone')} htmlFor="sup-phone" error={fields.phone}>
             <TextInput id="sup-phone" value={phone} onChange={setPhone}
               inputMode="tel" error={fields.phone} />
           </Field>
 
-          <Field label="Email" htmlFor="sup-email" error={fields.email}>
+          <Field label={t('common.email')} htmlFor="sup-email" error={fields.email}>
             <TextInput id="sup-email" value={email} onChange={setEmail}
               type="email" inputMode="email" error={fields.email} />
           </Field>

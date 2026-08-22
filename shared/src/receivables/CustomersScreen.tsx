@@ -26,10 +26,12 @@ import {
 import { ageingTone, ageingTotals, creditStanding, worstBucket } from './receivables';
 import { CustomerForm } from './CustomerForm';
 import { CustomerDetail } from './CustomerDetail';
+import { useT } from '../i18n/locale';
 
 type Tab = 'customers' | 'ageing';
 
 export function CustomersScreen({ companyId }: { companyId: string }) {
+  const t = useT();
   const { can } = useAuth();
   const [tab, setTab] = useState<Tab>('customers');
   const [open, setOpen] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function CustomersScreen({ companyId }: { companyId: string }) {
       setEditing(null);
     };
     return (
-      <FormPage title="Customers" onBack={done}>
+      <FormPage title={t('common.customers')} onBack={done}>
         <CustomerForm
           companyId={companyId}
           existing={editing ?? undefined}
@@ -83,8 +85,8 @@ export function CustomersScreen({ companyId }: { companyId: string }) {
     <main className="detail">
       <header className="detail__head detail__head--flat">
         <div className="detail__titles">
-          <h1 className="ds-h1">Customers</h1>
-          <p className="ds-caption">Accounts, balances and what is overdue</p>
+          <h1 className="ds-h1">{t('common.customers')}</h1>
+          <p className="ds-caption">{t('cust.overview')}</p>
         </div>
 
         <div className="detail__actions">
@@ -93,11 +95,11 @@ export function CustomersScreen({ companyId }: { companyId: string }) {
               distrust the rest of them. */}
           {tab === 'customers' && mayAdd && (
             <button className="ds-btn ds-btn--primary" onClick={() => setCreating(true)}>
-              Add customer
+              {t('cust.addCustomer')}
             </button>
           )}
 
-          <div className="segmented" role="group" aria-label="What to show">
+          <div className="segmented" role="group" aria-label={t('common.whatToShow')}>
             {(
               [
                 ['customers', 'Customers'],
@@ -142,6 +144,7 @@ function Customers({
   onEdit: (customer: Customer) => void;
   onChanged: () => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   // Retired customers sit behind a toggle rather than being hidden outright.
   // They are referenced by invoices already issued, so somebody looking one up
@@ -184,16 +187,16 @@ function Customers({
 
           <div className="ds-panel">
             <div className="ds-panel__head">
-              <h2 className="ds-h3">Customers</h2>
+              <h2 className="ds-h3">{t('common.customers')}</h2>
               <div className="customer__filters">
                 <label className="ds-visually-hidden" htmlFor="cust-search">
-                  Search customers
+                  {t('cust.searchCustomers')}
                 </label>
                 <input
                   id="cust-search"
                   className="input customer__search"
                   value={search}
-                  placeholder="Search by name, code or phone"
+                  placeholder={t('cust.searchBy')}
                   onChange={(e) => setSearch(e.target.value)}
                 />
                 <label className="supplier__toggle">
@@ -202,7 +205,7 @@ function Customers({
                     checked={showRetired}
                     onChange={(e) => setShowRetired(e.target.checked)}
                   />
-                  <span className="ds-caption">Include retired</span>
+                  <span className="ds-caption">{t('common.includeRetired')}</span>
                 </label>
               </div>
             </div>
@@ -221,15 +224,15 @@ function Customers({
                 <table className="ds-table">
                   <thead>
                     <tr>
-                      <th scope="col">Customer</th>
-                      <th scope="col">Terms</th>
+                      <th scope="col">{t('common.customer')}</th>
+                      <th scope="col">{t('common.terms')}</th>
                       <th scope="col" className="num">
-                        Owed
+                        {t('common.owed')}
                       </th>
                       <th scope="col" className="num">
-                        Limit
+                        {t('common.limit')}
                       </th>
-                      <th scope="col">Account</th>
+                      <th scope="col">{t('common.account')}</th>
                       {mayManage && <th scope="col" />}
                     </tr>
                   </thead>
@@ -268,6 +271,7 @@ function CustomerRow({
   onEdit: () => void;
   onSetActive: (active: boolean) => void;
 }) {
+  const t = useT();
   const owes = Number(customer.balance) > 0;
   const standing = creditStanding(customer);
 
@@ -303,7 +307,7 @@ function CustomerRow({
         <td>
           <div className="supplier__actions">
             <button className="ds-btn ds-btn--quiet" onClick={onEdit}>
-              Edit
+              {t('action.edit')}
             </button>
             {/* Retiring is refused by the server while money is owed, so the
                 control is hidden rather than offering something that would be
@@ -311,12 +315,12 @@ function CustomerRow({
             {customer.is_active ? (
               !owes && (
                 <button className="ds-btn ds-btn--quiet" onClick={() => onSetActive(false)}>
-                  Retire
+                  {t('common.retire')}
                 </button>
               )
             ) : (
               <button className="ds-btn ds-btn--quiet" onClick={() => onSetActive(true)}>
-                Bring back
+                {t('common.bringBack')}
               </button>
             )}
           </div>
@@ -355,6 +359,7 @@ function AgeingView({
   companyId: string;
   onOpen: (id: string) => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const load = useCallback(() => readAgeing(client, companyId), [client, companyId]);
   const { remote, reload } = useRemote(load);
@@ -366,22 +371,22 @@ function AgeingView({
         return (
           <div className="ds-panel">
             <div className="ds-panel__head">
-              <h2 className="ds-h3">What we&rsquo;re owed</h2>
+              <h2 className="ds-h3">{t('cust.whatWereOwed')}</h2>
               <span className="ds-caption">as at {ageing.as_of}</span>
             </div>
             <div className="ds-panel__body ds-scroll-x">
               {ageing.rows.length === 0 ? (
                 <EmptyState
-                  title="Nothing outstanding"
+                  title={t('common.nothingOutstanding')}
                   body="Every customer invoice has been settled. Sales put on account will appear here until they are paid."
                 />
               ) : (
                 <table className="ds-table">
                   <thead>
                     <tr>
-                      <th scope="col">Customer</th>
+                      <th scope="col">{t('common.customer')}</th>
                       <th scope="col" className="num">
-                        Not due
+                        {t('common.notDue')}
                       </th>
                       <th scope="col" className="num">
                         1–30
@@ -396,7 +401,7 @@ function AgeingView({
                         90+
                       </th>
                       <th scope="col" className="num">
-                        Total
+                        {t('common.total')}
                       </th>
                     </tr>
                   </thead>
@@ -407,7 +412,7 @@ function AgeingView({
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td>Total owed</td>
+                      <td>{t('common.totalOwed')}</td>
                       <td className="num ds-muted">{money(totals.not_due)}</td>
                       <td className="num">{money(totals.days_0_30)}</td>
                       <td className="num">{money(totals.days_31_60)}</td>

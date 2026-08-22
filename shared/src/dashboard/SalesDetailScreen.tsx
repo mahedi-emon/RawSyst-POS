@@ -13,6 +13,7 @@ import { money, shortDate } from '../ui/format';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { InvoiceState } from './InvoiceState';
 import { useRemote } from './useRemote';
+import { useT } from '../i18n/locale';
 
 export function SalesDetailScreen({
   companyId,
@@ -27,6 +28,7 @@ export function SalesDetailScreen({
    *  which is what a surface with nowhere to navigate to should show. */
   onOpenInvoice?: (invoiceId: string) => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const load = useCallback(
     () => fetchSales(client, companyId, date),
@@ -36,7 +38,7 @@ export function SalesDetailScreen({
 
   return (
     <DetailScreen
-      title="Sales"
+      title={t('common.sales')}
       subtitle={shortDate(date)}
       onBack={onBack}
       onRefresh={reload}
@@ -48,16 +50,16 @@ export function SalesDetailScreen({
             {/* The day's shape before the detail. Sales and refunds stay
                 apart: netting them into one figure hides a day where a lot was
                 sold and a lot came back, which is the day worth seeing. */}
-            <section className="detail__summary" aria-label="Day totals">
-              <Figure label="Sold" value={money(d.sales_total, { currency: d.base_currency })} note={`${d.invoice_count} sale${d.invoice_count === 1 ? '' : 's'}`} />
+            <section className="detail__summary" aria-label={t('dash.dayTotals')}>
+              <Figure label={t('dash.sold')} value={money(d.sales_total, { currency: d.base_currency })} note={`${d.invoice_count} sale${d.invoice_count === 1 ? '' : 's'}`} />
               <Figure
-                label="Refunded"
+                label={t('dash.refunded')}
                 value={money(d.refund_total, { currency: d.base_currency })}
                 note={`${d.refund_count} credit note${d.refund_count === 1 ? '' : 's'}`}
                 muted={d.refund_count === 0}
               />
-              <Figure label="Net" value={money(d.net_total, { currency: d.base_currency })} note="after refunds" strong />
-              <Figure label="VAT" value={money(d.tax_total, { currency: d.base_currency })} note="on sales" />
+              <Figure label={t('common.net')} value={money(d.net_total, { currency: d.base_currency })} note="after refunds" strong />
+              <Figure label={t('common.vat')} value={money(d.tax_total, { currency: d.base_currency })} note="on sales" />
             </section>
 
             <div className="ds-panel">
@@ -71,11 +73,11 @@ export function SalesDetailScreen({
                   <table className="ds-table">
                     <thead>
                       <tr>
-                        <th scope="col">Time</th>
-                        <th scope="col">Invoice</th>
-                        <th scope="col">Paid by</th>
-                        <th scope="col">Reporting</th>
-                        <th scope="col" className="num">Amount</th>
+                        <th scope="col">{t('common.time')}</th>
+                        <th scope="col">{t('common.invoice')}</th>
+                        <th scope="col">{t('dash.paidBy')}</th>
+                        <th scope="col">{t('dash.reporting')}</th>
+                        <th scope="col" className="num">{t('common.amount')}</th>
                       </tr>
                     </thead>
                     <tbody>

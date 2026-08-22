@@ -31,6 +31,7 @@ import {
   type DocumentTemplate,
 } from '../api/branding';
 import { Field, FormError, TextInput } from '../ui/Form';
+import { useT } from '../i18n/locale';
 
 /** How each type reads, and what it is for. The labels are the shop's words
  *  rather than the column's: nobody outside this codebase says "standard". */
@@ -63,6 +64,7 @@ type Load =
   | { state: 'failed'; message: string };
 
 export function TemplatePanel({ companyId }: { companyId: string }) {
+  const t = useT();
   const { client, can } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [active, setActive] = useState<DocType>('standard');
@@ -95,10 +97,10 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
     return (
       <div className="ds-panel tmpl">
         <div className="ds-state">
-          <p className="ds-state__title">Your templates could not be read</p>
+          <p className="ds-state__title">{t('tpl.couldNotRead')}</p>
           <p className="ds-state__body">{load.message}</p>
           <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         </div>
       </div>
@@ -110,7 +112,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
   return (
     <div className="ds-panel tmpl">
       <div className="ds-panel__head">
-        <h2 className="ds-h2">Document text</h2>
+        <h2 className="ds-h2">{t('tpl.documentText')}</h2>
       </div>
 
       <div className="ds-panel__body">
@@ -122,7 +124,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
         {/* Which type is being edited. A tab strip rather than a dropdown: four
             is few enough to show, and which ones you have customised is worth
             seeing at a glance. */}
-        <div className="tmpl__tabs" role="tablist" aria-label="Document type">
+        <div className="tmpl__tabs" role="tablist" aria-label={t('tpl.documentType')}>
           {TYPES.map((t) => {
             const configured = load.templates.find(
               (x) => x.doc_type === t.key,
@@ -169,7 +171,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
             editing a footer might alter last quarter's invoices will never
             touch it. */}
         <p className="tmpl__note" role="note">
-          <strong>This does not change documents you have already issued.</strong>{' '}
+          <strong>{t('tpl.notRetroactive')}</strong>{' '}
           Their figures, parties, dates and tax numbers are fixed and cannot be
           edited. These words are your stationery: a reprint of an old invoice
           comes out on today&rsquo;s.
@@ -194,6 +196,7 @@ function TemplateForm({
   onSaved: (saved: DocumentTemplate) => void;
   onReset: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const [draft, setDraft] = useState<DocumentTemplate>(template);
   const [busy, setBusy] = useState(false);
@@ -241,7 +244,7 @@ function TemplateForm({
       <p className="ds-caption tmpl__purpose">{purpose}</p>
 
       <Block
-        label="Header"
+        label={t('tpl.header')}
         hint="Printed under your logo. An address, a branch, a strapline."
         id={`hdr-${draft.doc_type}`}
         value={draft.header_text}
@@ -254,7 +257,7 @@ function TemplateForm({
       />
 
       <Block
-        label="Payment terms"
+        label={t('common.paymentTerms')}
         hint="How and when you expect to be paid. Bank details belong here."
         id={`pay-${draft.doc_type}`}
         value={draft.payment_terms}
@@ -267,7 +270,7 @@ function TemplateForm({
       />
 
       <Block
-        label="Returns policy"
+        label={t('tpl.returnsPolicy')}
         hint="The one customers argue about. Worth writing once, properly."
         id={`ret-${draft.doc_type}`}
         value={draft.return_policy}
@@ -281,7 +284,7 @@ function TemplateForm({
       />
 
       <Block
-        label="Closing line"
+        label={t('tpl.closingLine')}
         hint="The last thing on the page. Usually a thank you."
         id={`ftr-${draft.doc_type}`}
         value={draft.footer_text}
@@ -302,7 +305,7 @@ function TemplateForm({
             onChange={(e) => set('show_logo', e.target.checked)}
           />
           <span>
-            <strong>Show your logo</strong>
+            <strong>{t('tpl.showLogo')}</strong>
             <span className="ds-caption">
               Off prints this type without a mark, without removing the logo
               from the others.
@@ -318,9 +321,9 @@ function TemplateForm({
             onChange={(e) => set('show_tax_number', e.target.checked)}
           />
           <span>
-            <strong>Show tax numbers</strong>
+            <strong>{t('tpl.showTaxNumbers')}</strong>
             <span className="ds-caption">
-              Required on a tax invoice. Usually unwanted on a counter receipt.
+              {t('tpl.taxNumberNote')}
             </span>
           </span>
         </label>
@@ -329,7 +332,7 @@ function TemplateForm({
       <FormError message={problem} />
       {saved && (
         <p className="tmpl__saved ds-body-sm" role="status">
-          Saved. New documents of this type will carry it, and so will reprints.
+          {t('tpl.saved')}
         </p>
       )}
 
@@ -346,7 +349,7 @@ function TemplateForm({
               disabled={busy}
               onClick={() => void reset()}
             >
-              Reset to default
+              {t('tpl.resetToDefault')}
             </button>
           )}
           <button
@@ -391,6 +394,7 @@ function Block({
   readOnly: boolean;
   long?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="tmpl__block">
       <p className="tmpl__blocklabel">
@@ -398,7 +402,7 @@ function Block({
         <span className="ds-caption">{hint}</span>
       </p>
       <div className="tmpl__pair">
-        <Field label="English" htmlFor={`${id}-en`} error={error}>
+        <Field label={t('tpl.english')} htmlFor={`${id}-en`} error={error}>
           {long ? (
             <textarea
               id={`${id}-en`}

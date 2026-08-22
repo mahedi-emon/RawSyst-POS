@@ -19,6 +19,7 @@
 // form that disagreed with the server would simply be wrong.
 
 import type { ReactNode } from 'react';
+import { useT } from '../i18n/locale';
 
 /** Field-level messages, keyed as the server keys them. */
 export type FieldErrors = Record<string, string>;
@@ -162,6 +163,7 @@ export function FormActions({
   onCancel: () => void;
   children?: ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="form__actions">
       <button
@@ -172,7 +174,7 @@ export function FormActions({
         {busy ? 'Saving…' : submitLabel}
       </button>
       <button className="ds-btn ds-btn--quiet" type="button" onClick={onCancel}>
-        Cancel
+        {t('action.cancel')}
       </button>
       {children}
     </div>

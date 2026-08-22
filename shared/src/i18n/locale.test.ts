@@ -49,11 +49,15 @@ describe('the string catalogue', () => {
       'shift.xReport',
       'shift.zReport',
     ]);
-    // Interpolation placeholders are Latin by construction — `{time}` is a key
-    // name, not text anybody reads — so they come out before the check.
-    const withoutPlaceholders = (text: string) => text.replace(/\{\w+\}/g, '');
+    // Two things are Latin by construction and are not translation failures:
+    // interpolation placeholders like `{time}`, which are key names rather than
+    // text anybody reads, and the product's own name. A brand is written as it
+    // is written — Mada becomes مدى because that is its Arabic name, and
+    // RawSyst has none.
+    const strip = (text: string) =>
+      text.replace(/\{\w+\}/g, '').replace(/RawSyst/g, '');
     const suspicious = (Object.keys(ar) as Key[]).filter(
-      (k) => !allowed.has(k) && /[A-Za-z]{4,}/.test(withoutPlaceholders(ar[k])),
+      (k) => !allowed.has(k) && /[A-Za-z]{4,}/.test(strip(ar[k])),
     );
     expect(suspicious, 'Arabic strings containing English words').toEqual([]);
   });

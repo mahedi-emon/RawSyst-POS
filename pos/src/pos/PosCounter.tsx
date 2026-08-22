@@ -366,7 +366,7 @@ export function PosCounter() {
                 className="button button--quiet"
                 onClick={() => setPicking(true)}
               >
-                Change
+                {t('common.change')}
               </button>
               <button
                 className="button button--quiet"
@@ -380,7 +380,7 @@ export function PosCounter() {
                   );
                 }}
               >
-                Remove
+                {t('common.remove')}
               </button>
             </>
           ) : (
@@ -486,7 +486,7 @@ export function PosCounter() {
                       }
                       aria-label={`Remove ${l.description}`}
                     >
-                      Remove
+                      {t('common.remove')}
                     </button>
                   </td>
                 </tr>
@@ -581,18 +581,18 @@ export function PosCounter() {
             the sale is finished rather than reversed after it. */}
         {tenders.length > 0 && (
           <ul className="taken" aria-label={t('pos.paymentsTaken')}>
-            {tenders.map((t, i) => (
-              <li key={`${t.method}-${i}`} className="taken__row">
-                <span>{tenderLabel(t.method)}</span>
-                <span className="num">{t.amount}</span>
+            {tenders.map((taken, i) => (
+              <li key={`${taken.method}-${i}`} className="taken__row">
+                <span>{tenderLabel(taken.method)}</span>
+                <span className="num">{taken.amount}</span>
                 <button
                   className="button button--quiet"
                   onClick={() =>
                     setTenders((prev) => prev.filter((_, j) => j !== i))
                   }
-                  aria-label={`Remove the ${tenderLabel(t.method)} payment`}
+                  aria-label={`Remove the ${tenderLabel(taken.method)} payment`}
                 >
-                  Remove
+                  {t('common.remove')}
                 </button>
               </li>
             ))}
@@ -603,7 +603,7 @@ export function PosCounter() {
             refuses it regardless of what this screen offered. */}
         {can('sales.discount') && (
           <button className="button button--quiet" disabled={lines.length === 0}>
-            Discount
+            {t('common.discount')}
           </button>
         )}
 
@@ -672,7 +672,7 @@ export function PosCounter() {
               className="button button--quiet"
               onClick={() => setReceipt(null)}
             >
-              Done
+              {t('common.done')}
             </button>
           </section>
         )}

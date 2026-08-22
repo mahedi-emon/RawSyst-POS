@@ -12,14 +12,16 @@
 // that came back.
 
 import type { TerminalState } from '../offline/useTerminal';
+import { useT } from '@rawsyst/shared/i18n/locale';
 
 export function QueueStatus({ terminal }: { terminal: TerminalState }) {
+  const t = useT();
   if (!terminal.ready) {
     // Running outside the Tauri shell, in a browser during development.
     // Said plainly rather than shown as healthy: nothing is durable here.
     return (
       <p className="queue queue--warn" role="status">
-        No local storage on this terminal — sales are not being saved.
+        {t('queue.noLocalStorage')}
       </p>
     );
   }
@@ -34,12 +36,13 @@ export function QueueStatus({ terminal }: { terminal: TerminalState }) {
 
 /** Reachability. Says nothing about the queue. */
 function NetworkLine({ terminal }: { terminal: TerminalState }) {
+  const t = useT();
   const { network, cached } = terminal;
 
   if (!network.checked) {
     return (
       <p className="queue" role="status">
-        Checking the connection…
+        {t('queue.checking')}
       </p>
     );
   }
@@ -58,7 +61,7 @@ function NetworkLine({ terminal }: { terminal: TerminalState }) {
   if (network.reachable) {
     return (
       <p className="queue queue--ok" role="status" aria-live="polite">
-        Connected.
+        {t('queue.connected')}
       </p>
     );
   }
@@ -76,6 +79,7 @@ function NetworkLine({ terminal }: { terminal: TerminalState }) {
 
 /** The backlog. Says nothing about reachability. */
 function QueueLine({ terminal }: { terminal: TerminalState }) {
+  const t = useT();
   const { pending, failed } = terminal.counts;
 
   if (failed > 0) {
@@ -92,7 +96,7 @@ function QueueLine({ terminal }: { terminal: TerminalState }) {
   if (pending === 0) {
     return (
       <p className="queue queue--ok" role="status" aria-live="polite">
-        Nothing waiting to send.
+        {t('queue.nothingWaiting')}
       </p>
     );
   }

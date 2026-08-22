@@ -29,6 +29,7 @@ import {
   type CustomerType,
 } from '../api/receivables';
 import { useAuth } from '../auth/session';
+import { useT } from '../i18n/locale';
 import {
   Field,
   FormActions,
@@ -56,6 +57,7 @@ export function CustomerForm({
   onSaved: (customer: Customer) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
 
   const [code, setCode] = useState(existing?.code ?? '');
@@ -158,7 +160,7 @@ export function CustomerForm({
               signed, so renaming it would silently change what those documents
               refer to. */}
           <Field
-            label="Short code"
+            label={t('common.shortCode')}
             htmlFor="cust-code"
             required
             error={fields.code}
@@ -182,7 +184,7 @@ export function CustomerForm({
             )}
           </Field>
 
-          <Field label="Name" htmlFor="cust-name" required error={fields.name}
+          <Field label={t('common.name')} htmlFor="cust-name" required error={fields.name}
             hint="As it should appear on their invoices.">
             <TextInput id="cust-name" value={name} onChange={setName}
               placeholder="Al Noor Trading LLC" error={fields.name} />
@@ -190,7 +192,7 @@ export function CustomerForm({
 
           {/* Wholesale is kept apart in reporting (B12) so retail figures are
               not distorted by it. Which is why this is not cosmetic. */}
-          <Field label="Type" htmlFor="cust-type" required error={fields.customer_type}
+          <Field label={t('common.type')} htmlFor="cust-type" required error={fields.customer_type}
             hint="Wholesale is reported separately, so retail figures stay comparable.">
             <SelectInput
               id="cust-type"
@@ -202,7 +204,7 @@ export function CustomerForm({
             />
           </Field>
 
-          <Field label="Payment terms" htmlFor="cust-terms" required
+          <Field label={t('common.paymentTerms')} htmlFor="cust-terms" required
             error={fields.payment_terms_days}
             hint="Days from the invoice date. This sets when their invoices fall due and who shows as overdue.">
             <TextInput id="cust-terms" value={terms} onChange={setTerms}
@@ -211,32 +213,32 @@ export function CustomerForm({
           </Field>
 
           {showLimit && (
-            <Field label="Credit limit" htmlFor="cust-limit" error={fields.credit_limit}
+            <Field label={t('common.creditLimit')} htmlFor="cust-limit" error={fields.credit_limit}
               hint="The most they may owe at once. Leave empty for no credit account, which means every sale must be paid at the till.">
               <TextInput id="cust-limit" value={creditLimit} onChange={setCreditLimit}
-                inputMode="decimal" placeholder="Leave empty for no credit"
+                inputMode="decimal" placeholder={t('cust.leaveEmptyNoCredit')}
                 error={fields.credit_limit} />
             </Field>
           )}
 
-          <Field label="Phone" htmlFor="cust-phone" error={fields.phone}
+          <Field label={t('common.phone')} htmlFor="cust-phone" error={fields.phone}
             hint="How a till finds them fastest.">
             <TextInput id="cust-phone" value={phone} onChange={setPhone}
               inputMode="tel" error={fields.phone} />
           </Field>
 
-          <Field label="Email" htmlFor="cust-email" error={fields.email}>
+          <Field label={t('common.email')} htmlFor="cust-email" error={fields.email}>
             <TextInput id="cust-email" value={email} onChange={setEmail}
               type="email" inputMode="email" error={fields.email} />
           </Field>
 
-          <Field label="VAT number" htmlFor="cust-vat" error={fields.vat_number}
+          <Field label={t('common.vatNumber')} htmlFor="cust-vat" error={fields.vat_number}
             hint="Needed only if they require a full tax invoice rather than a simplified one.">
             <TextInput id="cust-vat" value={vatNumber} onChange={setVatNumber}
               inputMode="numeric" error={fields.vat_number} />
           </Field>
 
-          <Field label="Address" htmlFor="cust-address" error={fields.address}>
+          <Field label={t('common.address')} htmlFor="cust-address" error={fields.address}>
             <TextInput id="cust-address" value={address} onChange={setAddress}
               error={fields.address} />
           </Field>

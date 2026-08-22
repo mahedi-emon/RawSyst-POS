@@ -22,6 +22,7 @@ import { receiptNotice, receivingDefaults } from './purchasing';
 import { issueOrder, readOrder, receiveGoods, type Order } from '../api/purchasing';
 import { OrderStatus } from './PurchasingScreen';
 import { OrderForm } from './OrderForm';
+import { useT } from '../i18n/locale';
 
 export function OrderDetail({
   companyId,
@@ -32,6 +33,7 @@ export function OrderDetail({
   poId: string;
   onBack: () => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   const load = useCallback(
     () => readOrder(client, companyId, poId),
@@ -155,7 +157,7 @@ export function OrderDetail({
                   className="ds-btn ds-btn--secondary"
                   onClick={() => setEditing(true)}
                 >
-                  Edit
+                  {t('action.edit')}
                 </button>
               )}
               {order.status === 'draft' && mayIssue && (
@@ -164,7 +166,7 @@ export function OrderDetail({
                   disabled={busy}
                   onClick={() => void issue(order)}
                 >
-                  Send to supplier
+                  {t('purch.sendToSupplier')}
                 </button>
               )}
               {(order.status === 'issued' || order.status === 'receiving') &&
@@ -174,7 +176,7 @@ export function OrderDetail({
                     className="ds-btn ds-btn--primary"
                     onClick={() => startReceiving(order)}
                   >
-                    Record a delivery
+                    {t('purch.recordDelivery')}
                   </button>
                 )}
             </>
@@ -198,11 +200,11 @@ export function OrderDetail({
               <h2 className="ds-h3">{receiving ? 'What arrived' : 'Lines'}</h2>
               {receiving && (
                 <label className="purchase__ref">
-                  <span className="ds-caption">Delivery note</span>
+                  <span className="ds-caption">{t('purch.deliveryNote')}</span>
                   <input
                     value={deliveryRef}
                     onChange={(e) => setDeliveryRef(e.target.value)}
-                    placeholder="Their reference"
+                    placeholder={t('purch.theirReference')}
                   />
                 </label>
               )}
@@ -210,24 +212,24 @@ export function OrderDetail({
 
             <div className="ds-panel__body ds-scroll-x">
               {(order.lines ?? []).length === 0 ? (
-                <EmptyState title="This order has no lines" body="Nothing was ordered." />
+                <EmptyState title={t('purch.noLines')} body="Nothing was ordered." />
               ) : (
                 <table className="ds-table">
                   <thead>
                     <tr>
-                      <th scope="col">Item</th>
-                      <th scope="col" className="num">Ordered</th>
-                      <th scope="col" className="num">Received</th>
-                      <th scope="col" className="num">Still due</th>
+                      <th scope="col">{t('common.item')}</th>
+                      <th scope="col" className="num">{t('common.ordered')}</th>
+                      <th scope="col" className="num">{t('common.received')}</th>
+                      <th scope="col" className="num">{t('purch.stillDue')}</th>
                       {receiving ? (
                         <>
-                          <th scope="col">Arrived</th>
-                          <th scope="col">Rejected</th>
+                          <th scope="col">{t('common.arrived')}</th>
+                          <th scope="col">{t('purch.rejected')}</th>
                         </>
                       ) : (
                         <>
-                          <th scope="col" className="num">Unit cost</th>
-                          <th scope="col" className="num">Value</th>
+                          <th scope="col" className="num">{t('common.unitCost')}</th>
+                          <th scope="col" className="num">{t('common.value')}</th>
                         </>
                       )}
                     </tr>
@@ -294,7 +296,7 @@ export function OrderDetail({
                   {!receiving && (
                     <tfoot>
                       <tr>
-                        <td colSpan={5}>Order total</td>
+                        <td colSpan={5}>{t('purch.orderTotal')}</td>
                         <td className="num">
                           {money(order.total_inclusive, { currency: order.currency })}
                         </td>
@@ -309,7 +311,7 @@ export function OrderDetail({
           {receiving && (
             <section className="ds-panel">
               <div className="ds-panel__head">
-                <h2 className="ds-h3">Costs on this delivery</h2>
+                <h2 className="ds-h3">{t('purch.costsOnDelivery')}</h2>
                 <span className="ds-caption">optional</span>
               </div>
               <div className="ds-panel__body purchase__form">
@@ -323,7 +325,7 @@ export function OrderDetail({
                     inputMode="decimal"
                     value={landedCost}
                     placeholder="0.00"
-                    aria-label="Freight, duty and handling"
+                    aria-label={t('purch.freightDuty')}
                     onChange={(e) => setLandedCost(e.target.value)}
                   />
                 </label>
@@ -337,7 +339,7 @@ export function OrderDetail({
                     inputMode="decimal"
                     value={importVat}
                     placeholder="0.00"
-                    aria-label="Import VAT"
+                    aria-label={t('purch.importVat')}
                     onChange={(e) => setImportVat(e.target.value)}
                   />
                 </label>
@@ -347,20 +349,20 @@ export function OrderDetail({
                     when the items are alike and the freight is per box. */}
                 {landedCost.trim() !== '' && (
                   <label className="purchase__field">
-                    <span className="ds-caption">Spread it</span>
+                    <span className="ds-caption">{t('purch.spreadIt')}</span>
                     <select
                       className="input"
                       value={basis}
-                      aria-label="How to spread the freight"
+                      aria-label={t('purch.howToSpread')}
                       onChange={(e) =>
                         setBasis(e.target.value === 'quantity' ? 'quantity' : 'value')
                       }
                     >
                       <option value="value">
-                        By value — dearer items carry more
+                        {t('purch.spreadByValue')}
                       </option>
                       <option value="quantity">
-                        By quantity — every unit carries the same
+                        {t('purch.spreadByQty')}
                       </option>
                     </select>
                   </label>
@@ -382,7 +384,7 @@ export function OrderDetail({
                 className="ds-btn ds-btn--quiet"
                 onClick={() => setReceiving(false)}
               >
-                Cancel
+                {t('action.cancel')}
               </button>
               <p className="ds-caption purchase__aside">
                 Recording a delivery puts the goods into stock at the agreed

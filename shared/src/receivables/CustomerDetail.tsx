@@ -29,6 +29,7 @@ import {
 } from '../api/receivables';
 import { canReversePayment, creditStanding } from './receivables';
 import { ReceiptForm } from './ReceiptForm';
+import { useT } from '../i18n/locale';
 
 export function CustomerDetail({
   companyId,
@@ -41,6 +42,7 @@ export function CustomerDetail({
   onBack: () => void;
   onEdit: (customer: Customer) => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   const [taking, setTaking] = useState(false);
   const [confirming, setConfirming] = useState<{ id: string; uuid: string } | null>(null);
@@ -63,7 +65,7 @@ export function CustomerDetail({
           <span aria-hidden="true" className="detail__backarrow">
             ←
           </span>
-          Customers
+          {t('common.customers')}
         </button>
       </header>
 
@@ -105,12 +107,12 @@ export function CustomerDetail({
                       className="ds-btn ds-btn--primary"
                       onClick={() => setTaking(true)}
                     >
-                      Record a payment
+                      {t('cust.recordPayment')}
                     </button>
                   )}
                   {mayManage && (
                     <button className="ds-btn ds-btn--quiet" onClick={() => onEdit(customer)}>
-                      Edit details
+                      {t('cust.editDetails')}
                     </button>
                   )}
                 </div>
@@ -125,7 +127,7 @@ export function CustomerDetail({
 
               <div className="ds-panel">
                 <div className="ds-panel__head">
-                  <h2 className="ds-h3">Account history</h2>
+                  <h2 className="ds-h3">{t('cust.accountHistory')}</h2>
                   <span className="ds-caption">
                     closing {money(ledger.closing, { currency: ledger.base_currency })}
                   </span>
@@ -138,27 +140,27 @@ export function CustomerDetail({
                   )}
                   {ledger.rows.length === 0 ? (
                     <EmptyState
-                      title="Nothing on this account yet"
+                      title={t('cust.nothingOnAccount')}
                       body="Sales put on account appear here, along with every payment received against them."
                     />
                   ) : (
                     <table className="ds-table">
                       <thead>
                         <tr>
-                          <th scope="col">Date</th>
-                          <th scope="col">Reference</th>
-                          <th scope="col">Due</th>
+                          <th scope="col">{t('common.date')}</th>
+                          <th scope="col">{t('common.reference')}</th>
+                          <th scope="col">{t('common.due')}</th>
                           <th scope="col" className="num">
-                            Charged
+                            {t('cust.charged')}
                           </th>
                           <th scope="col" className="num">
-                            Received
+                            {t('common.received')}
                           </th>
                           <th scope="col" className="num">
-                            Balance
+                            {t('common.balance')}
                           </th>
                           <th scope="col">
-                            <span className="ds-visually-hidden">Actions</span>
+                            <span className="ds-visually-hidden">{t('common.actions')}</span>
                           </th>
                         </tr>
                       </thead>
@@ -216,7 +218,7 @@ export function CustomerDetail({
                       </tbody>
                       <tfoot>
                         <tr>
-                          <td colSpan={5}>Owed now</td>
+                          <td colSpan={5}>{t('cust.owedNow')}</td>
                           <td className="num">
                             {money(ledger.closing, { currency: ledger.base_currency })}
                           </td>
@@ -247,6 +249,7 @@ function AccountStanding({
   currency: string;
   onChanged: () => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(customer.credit_limit ?? '');
@@ -280,27 +283,27 @@ function AccountStanding({
     <div className="ds-panel">
       <div className="ds-panel__body customer__standing">
         <div className="customer__figure">
-          <span className="ds-caption">Owed now</span>
+          <span className="ds-caption">{t('cust.owedNow')}</span>
           <strong className="customer__amount num">
             {money(customer.balance, { currency })}
           </strong>
         </div>
 
         <div className="customer__figure">
-          <span className="ds-caption">Credit limit</span>
+          <span className="ds-caption">{t('common.creditLimit')}</span>
           {customer.credit_limit ? (
             <strong className="customer__amount num">
               {money(customer.credit_limit, { currency })}
             </strong>
           ) : (
-            <strong className="customer__amount ds-subtle">None</strong>
+            <strong className="customer__amount ds-subtle">{t('common.none')}</strong>
           )}
         </div>
 
         {/* The figure somebody about to sell on account actually needs, rather
             than making them subtract two others in their head at the counter. */}
         <div className="customer__figure">
-          <span className="ds-caption">Available</span>
+          <span className="ds-caption">{t('common.available')}</span>
           {standing.kind === 'none' || standing.kind === 'at_limit' ? (
             <strong className="customer__amount ds-subtle">—</strong>
           ) : (
@@ -328,7 +331,7 @@ function AccountStanding({
       {maySetLimit && editing && (
         <div className="ds-panel__body customer__limitform">
           <label className="field__label" htmlFor="cust-limit-edit">
-            Credit limit
+            {t('common.creditLimit')}
           </label>
           <p className="field__hint" id="cust-limit-hint">
             The most {customer.name} may owe at once. Empty removes the account, so
@@ -342,7 +345,7 @@ function AccountStanding({
               value={draft}
               inputMode="decimal"
               aria-describedby="cust-limit-hint"
-              placeholder="Empty for no credit"
+              placeholder={t('cust.emptyForNoCredit')}
               onChange={(e) => setDraft(e.target.value)}
             />
             <button
@@ -361,7 +364,7 @@ function AccountStanding({
                 setFailure(null);
               }}
             >
-              Cancel
+              {t('action.cancel')}
             </button>
           </div>
           {failure && (
@@ -394,6 +397,7 @@ function LedgerLine({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const t = useT();
   return (
     <tr>
       <td className="num">{shortDate(row.date)}</td>
@@ -414,7 +418,7 @@ function LedgerLine({
       <td>
         {mayReverse && !confirming && (
           <button className="ds-btn ds-btn--quiet" disabled={busy} onClick={onAsk}>
-            Reverse
+            {t('cust.reverse')}
           </button>
         )}
         {mayReverse && confirming && (
@@ -423,7 +427,7 @@ function LedgerLine({
               {busy ? 'Reversing…' : 'Confirm reverse'}
             </button>
             <button className="ds-btn ds-btn--quiet" disabled={busy} onClick={onCancel}>
-              Cancel
+              {t('action.cancel')}
             </button>
           </>
         )}

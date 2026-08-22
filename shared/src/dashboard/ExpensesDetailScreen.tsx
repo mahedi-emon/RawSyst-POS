@@ -12,6 +12,7 @@ import { useAuth } from '../auth/session';
 import { money, shortDate } from '../ui/format';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { useRemote } from './useRemote';
+import { useT } from '../i18n/locale';
 
 export function ExpensesDetailScreen({
   companyId,
@@ -22,6 +23,7 @@ export function ExpensesDetailScreen({
   date: string;
   onBack: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
 
@@ -33,7 +35,7 @@ export function ExpensesDetailScreen({
 
   return (
     <DetailScreen
-      title="Expenses"
+      title={t('common.expenses')}
       subtitle={shortDate(date)}
       onBack={onBack}
       onRefresh={reload}
@@ -41,7 +43,7 @@ export function ExpensesDetailScreen({
       actions={
         accountId && (
           <button className="ds-btn ds-btn--secondary" onClick={() => setAccountId(undefined)}>
-            Show all accounts
+            {t('dash.showAllAccounts')}
           </button>
         )
       }
@@ -61,9 +63,9 @@ export function ExpensesDetailScreen({
             </div>
           ) : (
             <div className="detail__split">
-              <section className="ds-panel" aria-label="By account">
+              <section className="ds-panel" aria-label={t('dash.byAccount')}>
                 <div className="ds-panel__head">
-                  <h2 className="ds-h3">By account</h2>
+                  <h2 className="ds-h3">{t('dash.byAccount')}</h2>
                 </div>
                 <div className="ds-panel__body ds-scroll-x">
                   <table className="ds-table">
@@ -103,9 +105,9 @@ export function ExpensesDetailScreen({
                 </div>
               </section>
 
-              <section className="ds-panel" aria-label="Entries">
+              <section className="ds-panel" aria-label={t('common.entries')}>
                 <div className="ds-panel__head">
-                  <h2 className="ds-h3">Entries</h2>
+                  <h2 className="ds-h3">{t('common.entries')}</h2>
                   <span className="ds-caption">
                     {d.entries.length} posting{d.entries.length === 1 ? '' : 's'}
                   </span>
@@ -113,17 +115,17 @@ export function ExpensesDetailScreen({
                 <div className="ds-panel__body ds-scroll-x">
                   {d.entries.length === 0 ? (
                     <EmptyState
-                      title="Nothing posted to that account"
+                      title={t('dash.nothingPostedAccount')}
                       body="Choose another account, or show them all."
                     />
                   ) : (
                     <table className="ds-table">
                       <thead>
                         <tr>
-                          <th scope="col">Entry</th>
-                          <th scope="col">Account</th>
-                          <th scope="col">Description</th>
-                          <th scope="col" className="num">Amount</th>
+                          <th scope="col">{t('common.entry')}</th>
+                          <th scope="col">{t('common.account')}</th>
+                          <th scope="col">{t('common.description')}</th>
+                          <th scope="col" className="num">{t('common.amount')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -135,7 +137,7 @@ export function ExpensesDetailScreen({
                               <span className="ds-caption">{entry.code}</span>
                             </td>
                             <td>
-                              {entry.memo || <span className="ds-subtle">No description</span>}
+                              {entry.memo || <span className="ds-subtle">{t('dash.noDescription')}</span>}
                               {entry.source_type && (
                                 <span className="ds-caption">
                                   from {entry.source_type.replace(/_/g, ' ')}

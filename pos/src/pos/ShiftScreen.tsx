@@ -63,6 +63,7 @@ type Loading =
   | { state: 'failed'; message: string; offline: boolean };
 
 export function ShiftScreen({ onClosed }: { onClosed?: () => void } = {}) {
+  const t = useT();
   const { client, can } = useAuth();
 
   const [shift, setShift] = useState<Loading>({ state: 'loading' });
@@ -141,7 +142,7 @@ export function ShiftScreen({ onClosed }: { onClosed?: () => void } = {}) {
             </p>
             <p className="ds-state__body">{shift.message}</p>
             <button className="ds-btn ds-btn--secondary" onClick={() => void load()}>
-              Try again
+              {t('common.tryAgain')}
             </button>
           </div>
         </div>
@@ -593,7 +594,7 @@ function MoveCash({
 
       <div className="shift__formactions">
         <button className="ds-btn ds-btn--quiet" onClick={onCancel} disabled={busy}>
-          Cancel
+          {t('action.cancel')}
         </button>
         <button
           className="ds-btn ds-btn--primary"
@@ -760,7 +761,7 @@ function CloseShift({
       ) : (
         <div className="shift__formactions">
           <button className="ds-btn ds-btn--quiet" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t('action.cancel')}
           </button>
           <button
             className="ds-btn ds-btn--primary"
@@ -827,7 +828,7 @@ function ZReport({
           )}
 
           <button className="ds-btn ds-btn--primary shift__go" onClick={onDone}>
-            Done
+            {t('common.done')}
           </button>
         </div>
       </div>

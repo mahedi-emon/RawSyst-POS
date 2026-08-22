@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '../auth/session';
 import type { Client } from '../api/client';
+import { useT } from '../i18n/locale';
 
 interface Pickable {
   id: string;
@@ -70,6 +71,7 @@ export function VariantPicker({
   description: string;
   onPick: (v: Pickable) => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const [catalogue, setCatalogue] = useState<Pickable[] | null>(null);
   const [term, setTerm] = useState('');
@@ -119,7 +121,7 @@ export function VariantPicker({
             setOpen(true);
           }}
         >
-          Change
+          {t('common.change')}
         </button>
       </div>
     );
@@ -132,7 +134,7 @@ export function VariantPicker({
         value={term}
         placeholder={catalogue === null ? 'Loading items…' : 'Search by name or SKU'}
         disabled={catalogue === null}
-        aria-label="Search the catalogue"
+        aria-label={t('purch.searchCatalogue')}
         onChange={(e) => {
           setTerm(e.target.value);
           setOpen(true);

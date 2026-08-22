@@ -16,6 +16,7 @@ import { useAuth } from '../auth/session';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { useRemote } from './useRemote';
 import { trimQuantity } from './drilldown';
+import { useT } from '../i18n/locale';
 
 type Filter = 'low' | 'out';
 
@@ -28,6 +29,7 @@ export function StockScreen({
   initialFilter: Filter;
   onBack: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const [filter, setFilter] = useState<Filter>(initialFilter);
 
@@ -39,13 +41,13 @@ export function StockScreen({
 
   return (
     <DetailScreen
-      title="Stock to reorder"
+      title={t('dash.stockToReorder')}
       subtitle="Counted across every warehouse in this business"
       onBack={onBack}
       onRefresh={reload}
       refreshing={refreshing}
       actions={
-        <div className="segmented" role="group" aria-label="Which stock to show">
+        <div className="segmented" role="group" aria-label={t('dash.whichStock')}>
           {(['out', 'low'] as const).map((f) => (
             <button
               key={f}
@@ -89,10 +91,10 @@ export function StockScreen({
                 <table className="ds-table">
                   <thead>
                     <tr>
-                      <th scope="col">Item</th>
-                      <th scope="col">Barcode</th>
-                      <th scope="col" className="num">On hand</th>
-                      <th scope="col" className="num">Reorder at</th>
+                      <th scope="col">{t('common.item')}</th>
+                      <th scope="col">{t('dash.barcode')}</th>
+                      <th scope="col" className="num">{t('dash.onHand')}</th>
+                      <th scope="col" className="num">{t('dash.reorderAt')}</th>
                     </tr>
                   </thead>
                   <tbody>

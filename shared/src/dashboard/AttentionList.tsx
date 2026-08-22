@@ -20,6 +20,7 @@ import type { Attention } from '../api/dashboard';
 import { sortAttention } from './logic';
 import type { DrillTarget } from './Dashboard';
 import { targetForLink } from './drilldown';
+import { useT } from '../i18n/locale';
 
 
 const LABEL: Record<Attention['severity'], string> = {
@@ -35,12 +36,13 @@ export function AttentionList({
   items: Attention[];
   onOpen: (target: DrillTarget) => void;
 }) {
+  const t = useT();
   const sorted = sortAttention(items);
 
   return (
-    <section className="ds-panel attention" aria-label="Needs attention">
+    <section className="ds-panel attention" aria-label={t('dash.needsAttention')}>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">Needs attention</h2>
+        <h2 className="ds-h3">{t('dash.needsAttention')}</h2>
         {sorted.length > 0 && (
           <span className="ds-caption">{sorted.length} item{sorted.length === 1 ? '' : 's'}</span>
         )}
@@ -49,9 +51,9 @@ export function AttentionList({
       <div className="ds-panel__body">
         {sorted.length === 0 ? (
           <div className="ds-state">
-            <p className="ds-state__title">Nothing needs attention</p>
+            <p className="ds-state__title">{t('dash.nothingNeedsAttention')}</p>
             <p className="ds-state__body">
-              Invoices are reporting on time and stock levels are healthy.
+              {t('dash.allHealthy')}
             </p>
           </div>
         ) : (
@@ -89,7 +91,7 @@ export function AttentionList({
                         if (target) onOpen(target);
                       }}
                     >
-                      Open
+                      {t('dash.open')}
                     </button>
                   )}
                 </div>

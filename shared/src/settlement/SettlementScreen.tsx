@@ -28,9 +28,11 @@ import {
   type PendingTender,
 } from '../api/settlement';
 import { byMethod, canRecord, checkDeposit, outstandingTotal } from './settlement';
+import { useT } from '../i18n/locale';
 
 export function SettlementScreen({ companyId }: { companyId: string }) {
   const { client, can } = useAuth();
+  const t = useT();
   const mayRecord = can('accounting.create');
 
   const load = useCallback(
@@ -43,10 +45,9 @@ export function SettlementScreen({ companyId }: { companyId: string }) {
     <main className="detail">
       <header className="detail__head detail__head--flat">
         <div className="detail__titles">
-          <h1 className="ds-h1">Card settlement</h1>
+          <h1 className="ds-h1">{t('settlement.title')}</h1>
           <p className="ds-caption">
-            Money taken on a card that has not yet reached the bank. Record each
-            deposit against the payments it covered.
+            {t('settle.intro')}
           </p>
         </div>
       </header>
@@ -57,8 +58,8 @@ export function SettlementScreen({ companyId }: { companyId: string }) {
             <div className="ds-panel">
               <div className="ds-panel__body">
                 <EmptyState
-                  title="Everything has settled"
-                  body="Every card payment taken has been matched to a deposit. When the next one is taken it will appear here until the acquirer pays it out."
+                  title={t('settle.allSettledTitle')}
+                  body={t('settle.allSettledBody')}
                 />
               </div>
             </div>
@@ -87,6 +88,7 @@ function Outstanding({
   mayRecord: boolean;
   onRecorded: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -160,7 +162,7 @@ function Outstanding({
         <div className="ds-panel__body">
           <p className="ds-caption">
             <span className="detail__strong">{money(outstandingTotal(pending))}</span>{' '}
-            taken on cards and not yet deposited.
+            {t('settle.notYetDeposited')}
           </p>
         </div>
 
@@ -169,10 +171,10 @@ function Outstanding({
             <thead>
               <tr>
                 {mayRecord && <th scope="col" />}
-                <th scope="col">Invoice</th>
-                <th scope="col">Taken</th>
+                <th scope="col">{t('common.invoice')}</th>
+                <th scope="col">{t('settle.taken')}</th>
                 <th scope="col" className="num">
-                  Amount
+                  {t('common.amount')}
                 </th>
               </tr>
             </thead>
@@ -194,7 +196,9 @@ function Outstanding({
                     )}{' '}
                     {tenderName(group.method)}
                     <span className="ds-caption">
-                      {group.count === 1 ? '1 payment' : `${group.count} payments`}
+                      {group.count === 1
+                        ? t('settle.onePayment')
+                        : t('settle.nPayments', { count: group.count })}
                     </span>
                   </th>
                   <td className="num detail__strong">{money(group.total)}</td>

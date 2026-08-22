@@ -29,6 +29,7 @@ import {
 } from '../api/purchasing';
 import { BillStatus } from './PurchasingScreen';
 import { payable } from './purchasing';
+import { useT } from '../i18n/locale';
 
 export function BillDetail({
   companyId,
@@ -39,6 +40,7 @@ export function BillDetail({
   billId: string;
   onBack: () => void;
 }) {
+  const t = useT();
   const { client, can } = useAuth();
   const load = useCallback(
     () => readBill(client, companyId, billId),
@@ -118,11 +120,11 @@ export function BillDetail({
 
           {bill.status === 'blocked' && <HeldNotice bill={bill} />}
 
-          <section className="detail__summary" aria-label="Bill totals">
-            <Figure label="Net" value={money(bill.subtotal_net, { currency: bill.currency })} />
-            <Figure label="VAT" value={money(bill.tax_total, { currency: bill.currency })} />
-            <Figure label="Total" value={money(bill.total_inclusive, { currency: bill.currency })} strong />
-            <Figure label="Outstanding" value={money(bill.outstanding, { currency: bill.currency })} strong />
+          <section className="detail__summary" aria-label={t('purch.billTotals')}>
+            <Figure label={t('common.net')} value={money(bill.subtotal_net, { currency: bill.currency })} />
+            <Figure label={t('common.vat')} value={money(bill.tax_total, { currency: bill.currency })} />
+            <Figure label={t('common.total')} value={money(bill.total_inclusive, { currency: bill.currency })} strong />
+            <Figure label={t('common.outstanding')} value={money(bill.outstanding, { currency: bill.currency })} strong />
           </section>
 
           <MatchEvidence lines={bill.match ?? []} />
@@ -130,17 +132,17 @@ export function BillDetail({
           {bill.status === 'blocked' && mayApprove && (
             <section className="ds-panel">
               <div className="ds-panel__head">
-                <h2 className="ds-h3">Accept this discrepancy</h2>
+                <h2 className="ds-h3">{t('purch.acceptDiscrepancy')}</h2>
               </div>
               <div className="ds-panel__body purchase__form">
                 <label className="purchase__field">
                   <span className="ds-caption">
-                    Why is this being accepted? Recorded against your name.
+                    {t('purch.whyAccepting')}
                   </span>
                   <input
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. short delivery agreed by phone"
+                    placeholder={t('purch.discrepancyExample')}
                   />
                 </label>
                 <button
@@ -164,12 +166,12 @@ export function BillDetail({
           {mayPay && payable(bill) && (
             <section className="ds-panel">
               <div className="ds-panel__head">
-                <h2 className="ds-h3">Pay this bill</h2>
+                <h2 className="ds-h3">{t('purch.payThisBill')}</h2>
               </div>
               <div className="ds-panel__body purchase__form">
                 <label className="purchase__field">
                   <span className="ds-caption">
-                    Amount — leave blank to settle it in full
+                    {t('purch.amountOrBlank')}
                   </span>
                   <input
                     inputMode="decimal"
@@ -179,10 +181,10 @@ export function BillDetail({
                   />
                 </label>
                 <label className="purchase__field">
-                  <span className="ds-caption">Paid from</span>
+                  <span className="ds-caption">{t('common.paidFrom')}</span>
                   <select value={method} onChange={(e) => setMethod(e.target.value)}>
-                    <option value="bank">Bank</option>
-                    <option value="cash">Cash</option>
+                    <option value="bank">{t('common.bank')}</option>
+                    <option value="cash">{t('common.cash')}</option>
                   </select>
                 </label>
                 <button
@@ -206,11 +208,12 @@ export function BillDetail({
  * Informational rather than alarming: the control working correctly is not an
  * error, and styling it as one would teach buyers to click past it. */
 function HeldNotice({ bill }: { bill: Bill }) {
+  const t = useT();
   const breaches = (bill.match ?? []).filter((m) => m.outcome === 'breach');
   return (
-    <section className="ds-panel gate" aria-label="Why this bill is held">
+    <section className="ds-panel gate" aria-label={t('purch.whyHeld')}>
       <div className="ds-panel__body">
-        <h2 className="ds-h3">This bill is held and cannot be paid yet</h2>
+        <h2 className="ds-h3">{t('purch.billHeld')}</h2>
         <p className="gate__body">
           It does not agree with {bill.po_number || 'the order'} and what
           actually arrived. The bill is recorded, but it has deliberately not
@@ -235,30 +238,31 @@ function HeldNotice({ bill }: { bill: Bill }) {
  * it was fine" is the evidence an auditor asks for, and a screen showing only
  * problems cannot demonstrate that a check happened at all. */
 function MatchEvidence({ lines }: { lines: MatchLine[] }) {
+  const t = useT();
   if (lines.length === 0) return null;
 
   return (
-    <section className="ds-panel" aria-label="Three-way match">
+    <section className="ds-panel" aria-label={t('purch.threeWayMatch')}>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">Checks against the order and the delivery</h2>
+        <h2 className="ds-h3">{t('purch.matchExplain')}</h2>
         <span className="ds-caption">{lines.length} comparison{lines.length === 1 ? '' : 's'}</span>
       </div>
       <div className="ds-panel__body ds-scroll-x">
         <table className="ds-table">
           <thead>
             <tr>
-              <th scope="col">Item</th>
-              <th scope="col">Checked</th>
-              <th scope="col" className="num">Ordered</th>
-              <th scope="col" className="num">Arrived</th>
-              <th scope="col" className="num">Billed</th>
-              <th scope="col">Result</th>
+              <th scope="col">{t('common.item')}</th>
+              <th scope="col">{t('purch.checked')}</th>
+              <th scope="col" className="num">{t('common.ordered')}</th>
+              <th scope="col" className="num">{t('common.arrived')}</th>
+              <th scope="col" className="num">{t('common.billed')}</th>
+              <th scope="col">{t('purch.result')}</th>
             </tr>
           </thead>
           <tbody>
             {lines.map((m, i) => (
               <tr key={i}>
-                <td>{m.description || <span className="ds-subtle">Whole bill</span>}</td>
+                <td>{m.description || <span className="ds-subtle">{t('purch.wholeBill')}</span>}</td>
                 <td>{m.dimension === 'qty' ? 'Quantity' : m.dimension === 'price' ? 'Unit price' : m.dimension}</td>
                 <td className="num">{m.ordered ? trimQuantity(m.ordered) : '—'}</td>
                 <td className="num">{m.received ? trimQuantity(m.received) : '—'}</td>

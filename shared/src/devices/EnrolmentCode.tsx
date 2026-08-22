@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 
 import type { IssuedCode } from '../api/devices';
 import { codeGroups, countdown, secondsLeft } from './devices';
+import { useT } from '../i18n/locale';
 
 export function EnrolmentCode({
   issued,
@@ -28,6 +29,7 @@ export function EnrolmentCode({
   onDone: () => void;
   busy: boolean;
 }) {
+  const t = useT();
   const [left, setLeft] = useState(() => secondsLeft(issued.expires_at));
 
   // Ticks once a second while this is on screen. Cheap, and the alternative is
@@ -49,12 +51,12 @@ export function EnrolmentCode({
 
       <div className="ds-panel__body pairing">
         <ol className="pairing__steps">
-          <li>Open RawSyst on the new terminal.</li>
+          <li>{t('dev.openOnNewTerminal')}</li>
           <li>
             Type this code into it{' '}
             <strong>exactly as shown</strong>.
           </li>
-          <li>The terminal is ready as soon as it accepts the code.</li>
+          <li>{t('dev.readyOnAccept')}</li>
         </ol>
 
         {/* The code itself. aria-label spells it out for a screen reader,
@@ -82,7 +84,7 @@ export function EnrolmentCode({
             role="status"
             aria-live="off"
           >
-            Expires in <span className="num">{countdown(left)}</span>. It works
+            {t('dev.expiresIn')} <span className="num">{countdown(left)}</span>. It works
             once, on one terminal.
           </p>
         )}
@@ -94,7 +96,7 @@ export function EnrolmentCode({
 
         <div className="form__actions">
           <button className="ds-btn ds-btn--primary" onClick={onDone}>
-            Done
+            {t('common.done')}
           </button>
           <button
             className="ds-btn ds-btn--quiet"

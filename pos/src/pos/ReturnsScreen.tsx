@@ -259,7 +259,7 @@ export function ReturnsScreen() {
           <table className="cart">
             <thead>
               <tr>
-                <th scope="col">Item</th>
+                <th scope="col">{t('common.item')}</th>
                 <th scope="col" className="num">Left</th>
                 <th scope="col">{t('returns.return')}</th>
               </tr>
@@ -398,7 +398,7 @@ export function ReturnsScreen() {
                             }
                             aria-label={`Remove ${line.description}`}
                           >
-                            Remove
+                            {t('common.remove')}
                           </button>
                         </td>
                       </tr>

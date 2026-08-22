@@ -46,6 +46,7 @@ import {
 } from '../ui/Form';
 import { VariantPicker } from './VariantPicker';
 import { lineTotals, orderTotals, type DraftLine } from './draft';
+import { useT } from '../i18n/locale';
 
 export function OrderForm({
   companyId,
@@ -59,6 +60,7 @@ export function OrderForm({
   onSaved: (order: Order) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
@@ -194,13 +196,13 @@ export function OrderForm({
     return (
       <div className="ds-panel">
         <div className="ds-state">
-          <p className="ds-state__title">No suppliers yet</p>
+          <p className="ds-state__title">{t('purch.noSuppliers')}</p>
           <p className="ds-state__body">
             An order is raised against a supplier. Add one first, and their
             payment terms will set when the bill falls due.
           </p>
           <button className="ds-btn ds-btn--secondary" onClick={onCancel}>
-            Back
+            {t('common.back')}
           </button>
         </div>
       </div>
@@ -213,26 +215,26 @@ export function OrderForm({
         <h2 className="ds-h3">
           {existing ? `Correcting ${existing.po_number}` : 'New purchase order'}
         </h2>
-        {existing && <span className="ds-caption">Draft — nothing is committed yet</span>}
+        {existing && <span className="ds-caption">{t('purch.draftNotCommitted')}</span>}
       </div>
 
       <div className="ds-panel__body form__body">
         <FormError message={failure} />
 
         <div className="form__grid">
-          <Field label="Supplier" htmlFor="po-supplier" required error={fields.supplier_id}>
+          <Field label={t('common.supplier')} htmlFor="po-supplier" required error={fields.supplier_id}>
             <SelectInput
               id="po-supplier"
               value={supplierId}
               onChange={setSupplierId}
               options={suppliers}
               label={(s) => `${s.legal_name} (${s.code})`}
-              placeholder="Choose a supplier"
+              placeholder={t('purch.chooseSupplier')}
               error={fields.supplier_id}
             />
           </Field>
 
-          <Field label="Deliver to" htmlFor="po-warehouse" required
+          <Field label={t('purch.deliverTo')} htmlFor="po-warehouse" required
             error={fields.warehouse_id}
             hint="Stock arrives here when the delivery is recorded.">
             <SelectInput
@@ -241,26 +243,26 @@ export function OrderForm({
               onChange={setWarehouseId}
               options={warehouses}
               label={(w) => (w.store ? `${w.name} — ${w.store}` : w.name)}
-              placeholder="Choose a warehouse"
+              placeholder={t('purch.chooseWarehouse')}
               error={fields.warehouse_id}
             />
           </Field>
 
-          <Field label="Expected" htmlFor="po-expected" error={fields.expected_on}
+          <Field label={t('common.expected')} htmlFor="po-expected" error={fields.expected_on}
             hint="When the supplier says it will arrive.">
             <TextInput id="po-expected" value={expectedOn} onChange={setExpectedOn}
               type="date" error={fields.expected_on} />
           </Field>
 
-          <Field label="Notes" htmlFor="po-notes">
+          <Field label={t('common.notes')} htmlFor="po-notes">
             <TextInput id="po-notes" value={notes} onChange={setNotes}
-              placeholder="Anything the supplier should know" />
+              placeholder={t('purch.supplierShouldKnow')} />
           </Field>
         </div>
 
-        <section className="form__lines" aria-label="Items">
+        <section className="form__lines" aria-label={t('purch.items')}>
           <div className="form__lineshead">
-            <h3 className="ds-h3">Items</h3>
+            <h3 className="ds-h3">{t('purch.items')}</h3>
             {fields.lines && (
               <span className="field__error" role="alert">{fields.lines}</span>
             )}
@@ -270,10 +272,10 @@ export function OrderForm({
             <table className="ds-table">
               <thead>
                 <tr>
-                  <th scope="col">Item</th>
-                  <th scope="col">Quantity</th>
-                  <th scope="col">Unit cost</th>
-                  <th scope="col" className="num">Line total</th>
+                  <th scope="col">{t('common.item')}</th>
+                  <th scope="col">{t('common.quantity')}</th>
+                  <th scope="col">{t('common.unitCost')}</th>
+                  <th scope="col" className="num">{t('common.lineTotal')}</th>
                   <th scope="col" />
                 </tr>
               </thead>
@@ -316,7 +318,7 @@ export function OrderForm({
                         onClick={() => setLines((p) => p.filter((_, j) => j !== i))}
                         aria-label={`Remove line ${i + 1}`}
                       >
-                        Remove
+                        {t('common.remove')}
                       </button>
                     </td>
                   </tr>
@@ -325,7 +327,7 @@ export function OrderForm({
                 {lines.length === 0 && (
                   <tr>
                     <td colSpan={5} className="form__empty">
-                      No items yet. Add the first one below.
+                      {t('purch.noItemsYet')}
                     </td>
                   </tr>
                 )}
@@ -334,17 +336,17 @@ export function OrderForm({
               {lines.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>Net</td>
+                    <td colSpan={3}>{t('common.net')}</td>
                     <td className="num">{money(totals.net, { currency })}</td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={3}>VAT</td>
+                    <td colSpan={3}>{t('common.vat')}</td>
                     <td className="num">{money(totals.tax, { currency })}</td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={3}>Order total</td>
+                    <td colSpan={3}>{t('purch.orderTotal')}</td>
                     <td className="num">{money(totals.gross, { currency })}</td>
                     <td />
                   </tr>
@@ -363,7 +365,7 @@ export function OrderForm({
               ])
             }
           >
-            Add an item
+            {t('purch.addItem')}
           </button>
 
           <p className="ds-caption form__aside">

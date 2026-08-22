@@ -34,6 +34,7 @@ import {
 } from '../api/branding';
 import { FormError } from '../ui/Form';
 import { TemplatePanel } from './TemplatePanel';
+import { useT } from '../i18n/locale';
 
 /** Mirrors the server's own limits so the copy can state them before a client
  *  picks a file. The server is still the authority — these numbers exist to
@@ -48,6 +49,7 @@ type Load =
   | { state: 'denied' };
 
 export function BrandingScreen({ companyId }: { companyId: string }) {
+  const t = useT();
   const { client, can } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [preview, setPreview] = useState<string | null>(null);
@@ -174,7 +176,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
     return (
       <Shell>
         <div className="ds-state">
-          <p className="ds-state__title">This account cannot see branding</p>
+          <p className="ds-state__title">{t('brand.noBrandingAccess')}</p>
           <p className="ds-state__body">
             Branding sits with the rest of your business settings. An owner can
             change what your role reaches under Settings &gt; People.
@@ -193,7 +195,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
           </p>
           <p className="ds-state__body">{load.message}</p>
           <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         </div>
       </Shell>
@@ -206,8 +208,8 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
     <main className="brand">
       <div className="ds-panel brand__panel">
         <div className="ds-panel__head">
-          <h1 className="ds-h1">Branding</h1>
-          {logo && <span className="ds-badge ds-badge--success">Logo set</span>}
+          <h1 className="ds-h1">{t('brand.branding')}</h1>
+          {logo && <span className="ds-badge ds-badge--success">{t('brand.logoSet')}</span>}
         </div>
 
         <div className="ds-panel__body">
@@ -222,15 +224,15 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
               preview ? (
                 // Sized by the frame rather than by the file, so a wide mark
                 // and a square one both sit correctly.
-                <img className="brand__logo" src={preview} alt="Your business logo" />
+                <img className="brand__logo" src={preview} alt={t('brand.yourLogo')} />
               ) : (
                 <div className="ds-skeleton" style={{ blockSize: 120, inlineSize: 200 }} />
               )
             ) : (
               <div className="brand__empty">
-                <p className="ds-state__title">No logo yet</p>
+                <p className="ds-state__title">{t('brand.noLogo')}</p>
                 <p className="ds-state__body">
-                  Documents carry the default RawSyst mark until you add one.
+                  {t('brand.defaultMark')}
                 </p>
               </div>
             )}
@@ -239,15 +241,15 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
           {logo && (
             <dl className="brand__facts">
               <div>
-                <dt className="ds-caption">Format</dt>
+                <dt className="ds-caption">{t('brand.format')}</dt>
                 <dd>{logo.content_type === 'image/png' ? 'PNG' : 'JPEG'}</dd>
               </div>
               <div>
-                <dt className="ds-caption">Size</dt>
+                <dt className="ds-caption">{t('brand.size')}</dt>
                 <dd className="num">{Math.max(1, Math.round(logo.byte_size / 1024))} KB</dd>
               </div>
               <div>
-                <dt className="ds-caption">Dimensions</dt>
+                <dt className="ds-caption">{t('brand.dimensions')}</dt>
                 <dd className="num">
                   {logo.width} &times; {logo.height}
                 </dd>
@@ -313,7 +315,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
               that implied otherwise would have a client wondering why their
               receipts had not changed. */}
           <p className="brand__scope ds-body-sm" role="note">
-            <strong>Where this appears.</strong> Your logo heads the invoices,
+            <strong>{t('brand.whereAppears')}</strong> Your logo heads the invoices,
             credit notes and debit notes you open in the back office, and any
             copy you print from there. It does not appear on the till receipt:
             that is printed as plain text so it works on every counter printer,

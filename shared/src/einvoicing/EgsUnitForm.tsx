@@ -32,6 +32,7 @@ import {
 } from '../api/egs';
 import type { DeviceStore } from '../api/devices';
 import { useAuth } from '../auth/session';
+import { useT } from '../i18n/locale';
 import {
   Field,
   FormActions,
@@ -62,6 +63,7 @@ export function EgsUnitForm({
   onSaved: (unit: EgsUnit) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [label, setLabel] = useState(existing?.label ?? '');
@@ -138,7 +140,7 @@ export function EgsUnitForm({
 
         <div className="form__grid">
           <Field
-            label="Name"
+            label={t('common.name')}
             htmlFor="egs-label"
             required
             error={fields.label}
@@ -148,7 +150,7 @@ export function EgsUnitForm({
               id="egs-label"
               value={label}
               onChange={setLabel}
-              placeholder="Main branch"
+              placeholder={t('egs.mainBranch')}
               error={fields.label}
               autoFocus
             />
@@ -156,7 +158,7 @@ export function EgsUnitForm({
 
           {existing ? (
             <Field
-              label="How it signs"
+              label={t('egs.howItSigns')}
               htmlFor="egs-arch-fixed"
               required
               hint="Chosen when the unit was created. It decides where the signing key is held, so it cannot be changed afterwards."
@@ -167,7 +169,7 @@ export function EgsUnitForm({
             </Field>
           ) : (
             <Field
-              label="How it signs"
+              label={t('egs.howItSigns')}
               htmlFor="egs-arch"
               required
               error={fields.architecture}
@@ -186,7 +188,7 @@ export function EgsUnitForm({
 
           {!central && (
             <Field
-              label="Branch"
+              label={t('common.branch')}
               htmlFor="egs-store"
               required
               error={fields.store_id}
@@ -198,7 +200,7 @@ export function EgsUnitForm({
                 onChange={setStoreId}
                 options={stores}
                 label={(s) => s.name}
-                placeholder="Choose a branch"
+                placeholder={t('dev.chooseBranch')}
                 error={fields.store_id}
               />
             </Field>
@@ -206,7 +208,7 @@ export function EgsUnitForm({
         </div>
 
         <div className="ds-panel__head">
-          <h3 className="ds-h3">Registration details</h3>
+          <h3 className="ds-h3">{t('egs.registrationDetails')}</h3>
           <p className="ds-caption">
             ZATCA asks for all nine of these when the unit is registered. You can
             save now and fill them in later — the unit will say what is still
@@ -216,7 +218,7 @@ export function EgsUnitForm({
 
         <div className="form__grid">
           <Field
-            label="Unit name for the certificate"
+            label={t('egs.unitNameForCert')}
             htmlFor="csr-cn"
             error={fields['csr.common_name']}
             hint="The name this unit is identified by on its certificate."
@@ -230,7 +232,7 @@ export function EgsUnitForm({
           </Field>
 
           <Field
-            label="Serial number"
+            label={t('egs.serialNumber')}
             htmlFor="csr-serial"
             error={fields['csr.egs_serial_number']}
             hint="Who made this unit, which version it is, and its serial — written as 1-Manufacturer|2-Model|3-Serial."
@@ -245,7 +247,7 @@ export function EgsUnitForm({
           </Field>
 
           <Field
-            label="VAT number"
+            label={t('common.vatNumber')}
             htmlFor="csr-vat"
             error={fields['csr.organization_identifier']}
             hint="Your 15-digit Saudi VAT registration number."
@@ -261,7 +263,7 @@ export function EgsUnitForm({
           </Field>
 
           <Field
-            label="Branch or group member"
+            label={t('egs.branchOrGroup')}
             htmlFor="csr-ou"
             error={fields['csr.organization_unit']}
             hint="Normally the branch name. If your VAT number belongs to a VAT group, use the 10-digit tax number of the member being registered instead."
@@ -275,7 +277,7 @@ export function EgsUnitForm({
           </Field>
 
           <Field
-            label="Registered business name"
+            label={t('egs.registeredName')}
             htmlFor="csr-org"
             error={fields['csr.organization_name']}
             hint="As it appears on your VAT certificate."
@@ -288,7 +290,7 @@ export function EgsUnitForm({
             />
           </Field>
 
-          <Field label="Country" htmlFor="csr-country" error={fields['csr.country']}>
+          <Field label={t('common.country')} htmlFor="csr-country" error={fields['csr.country']}>
             <TextInput
               id="csr-country"
               value={csr.country}
@@ -299,7 +301,7 @@ export function EgsUnitForm({
           </Field>
 
           <Field
-            label="Invoices issued"
+            label={t('egs.invoicesIssued')}
             htmlFor="csr-type"
             error={fields['csr.invoice_type']}
             hint="Standard invoices go to business customers and are cleared before you hand them over. Simplified invoices are the receipts a walk-in customer takes."
@@ -310,13 +312,13 @@ export function EgsUnitForm({
               onChange={set('invoice_type')}
               options={invoiceTypes}
               label={(t) => t.name}
-              placeholder="Choose"
+              placeholder={t('common.choose')}
               error={fields['csr.invoice_type']}
             />
           </Field>
 
           <Field
-            label="Address"
+            label={t('common.address')}
             htmlFor="csr-location"
             error={fields['csr.location']}
             hint="Where this unit is."
@@ -330,7 +332,7 @@ export function EgsUnitForm({
           </Field>
 
           <Field
-            label="Industry"
+            label={t('egs.industry')}
             htmlFor="csr-industry"
             error={fields['csr.industry']}
             hint="What the business does, such as Retail or Restaurant."

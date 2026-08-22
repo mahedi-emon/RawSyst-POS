@@ -29,6 +29,28 @@
  * Colour
  * ------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+ * Box sizing
+ * ---------------------------------------------------------------------------
+ *
+ * Padding and border count INSIDE a declared width. Without this a rule as
+ * ordinary as `inline-size: 100%; padding: var(--space-5)` makes an element
+ * wider than its container by exactly its padding, and the page scrolls
+ * sideways.
+ *
+ * It lived only in the POS stylesheet, so the till was correct and the back
+ * office was not: `.brand`, `.setupw` and `.matrix` each came out 48px wider
+ * than the viewport. It went unseen because a horizontal overflow to the right
+ * looks like nothing much until the page is read right-to-left, and then the
+ * whole layout hangs off the edge. The design system is where it belongs —
+ * both front ends import this file first.
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 :root {
   /* Neutrals — the interface is mostly this. */
   --bg: #fbfbfd;
@@ -696,4 +718,52 @@ body {
  * the bar around it. */
 @media (max-width: 639px) {
   .lang__opt { min-height: var(--tap-mobile); }
+}
+
+/* --- Form fields ----------------------------------------------------------
+ *
+ * `field`, `field__label` and `field__input` are emitted by shared components
+ * — the sign-in screen and the variant matrix among them — and were styled
+ * only in the POS stylesheet, which the back office does not import. So those
+ * controls rendered as unstyled native inputs in the browser app.
+ *
+ * That is also what produced a horizontal overflow in Arabic: an unstyled
+ * <select> takes its width from its widest option, and Arabic option text made
+ * one 666px wide inside a 180px grid cell. The width cap below is the fix for
+ * both.
+ */
+.field {
+  display: grid;
+  gap: var(--space-2);
+  /* A grid or flex child defaults to a min-content floor. Without this a field
+   * holding a long option refuses to shrink and stretches its container. */
+  min-inline-size: 0;
+}
+
+.field__label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.field__input {
+  inline-size: 100%;
+  /* Never wider than the space it was given, whatever it contains. */
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: var(--tap-desk);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.field__input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+@media (max-width: 639px) {
+  .field__input { min-block-size: var(--tap-mobile); }
 }

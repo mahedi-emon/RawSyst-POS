@@ -29,6 +29,7 @@ import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { InvoiceState } from './InvoiceState';
 import { useRemote } from './useRemote';
 import { formatAge } from './drilldown';
+import { useT } from '../i18n/locale';
 
 export function ComplianceScreen({
   companyId,
@@ -37,6 +38,7 @@ export function ComplianceScreen({
   companyId: string;
   onBack: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
   const load = useCallback(
     () => fetchCompliance(client, companyId),
@@ -46,7 +48,7 @@ export function ComplianceScreen({
 
   return (
     <DetailScreen
-      title="Reporting to ZATCA"
+      title={t('comp.reportingToZatca')}
       subtitle="Invoices that have not completed reporting"
       onBack={onBack}
       onRefresh={reload}
@@ -62,7 +64,7 @@ export function ComplianceScreen({
 
             <div className="ds-panel">
               <div className="ds-panel__head">
-                <h2 className="ds-h3">Outstanding</h2>
+                <h2 className="ds-h3">{t('common.outstanding')}</h2>
                 <span className="ds-caption">
                   {d.outstanding} invoice{d.outstanding === 1 ? '' : 's'}
                   {d.oldest_hours > 0 && ` · oldest ${formatAge(d.oldest_hours)}`}
@@ -72,19 +74,19 @@ export function ComplianceScreen({
               <div className="ds-panel__body ds-scroll-x">
                 {d.rows.length === 0 ? (
                   <EmptyState
-                    title="Everything has reported"
+                    title={t('comp.everythingReported')}
                     body="No invoice is waiting. Nothing needs doing here."
                   />
                 ) : (
                   <table className="ds-table">
                     <thead>
                       <tr>
-                        <th scope="col">Issued</th>
-                        <th scope="col">Invoice</th>
-                        <th scope="col" className="num">Chain</th>
-                        <th scope="col">Waiting</th>
-                        <th scope="col">Status</th>
-                        <th scope="col" className="num">Amount</th>
+                        <th scope="col">{t('comp.issued')}</th>
+                        <th scope="col">{t('common.invoice')}</th>
+                        <th scope="col" className="num">{t('comp.chain')}</th>
+                        <th scope="col">{t('comp.waiting')}</th>
+                        <th scope="col">{t('common.status')}</th>
+                        <th scope="col" className="num">{t('common.amount')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -109,10 +111,11 @@ export function ComplianceScreen({
  * refusing to produce a cryptographic document it cannot yet produce correctly
  * is the safe behaviour, and inventing one would be the unsafe one. */
 function GateNotice({ outstanding }: { outstanding: number }) {
+  const t = useT();
   return (
-    <section className="ds-panel gate" aria-label="Why these are waiting">
+    <section className="ds-panel gate" aria-label={t('comp.whyWaiting')}>
       <div className="ds-panel__body">
-        <h2 className="ds-h3">Electronic invoicing is not active on this system</h2>
+        <h2 className="ds-h3">{t('comp.notActive')}</h2>
 
         <p className="gate__body">
           {outstanding === 0
@@ -125,7 +128,7 @@ function GateNotice({ outstanding }: { outstanding: number }) {
         </p>
 
         <p className="gate__body">
-          <strong>The sales themselves are fine.</strong> Every one is recorded
+          <strong>{t('comp.salesAreFine')}</strong> Every one is recorded
           in full — the money, the stock movements and the accounting entries are
           all correct, the receipts you gave customers are valid, and the invoice
           sequence is unbroken. What is outstanding is the submission to ZATCA,
@@ -142,6 +145,7 @@ function GateNotice({ outstanding }: { outstanding: number }) {
 }
 
 function Row({ row, currency }: { row: ComplianceRow; currency: string }) {
+  const t = useT();
   return (
     <tr>
       <td className="num">{row.issued_at}</td>
@@ -150,7 +154,7 @@ function Row({ row, currency }: { row: ComplianceRow; currency: string }) {
           {row.human_number || row.invoice_id.slice(0, 8)}
         </span>
         {row.doc_type === 'credit_note' && (
-          <span className="ds-caption">Credit note</span>
+          <span className="ds-caption">{t('comp.creditNote')}</span>
         )}
       </td>
       {/* The chain position. A gap in the sequence is the exact signal tamper

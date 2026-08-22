@@ -35,6 +35,7 @@ import {
 import type { EgsUnit } from '../api/egs';
 import { unitsForStore } from '../einvoicing/egs';
 import { useAuth } from '../auth/session';
+import { useT } from '../i18n/locale';
 import {
   Field,
   FormActions,
@@ -62,6 +63,7 @@ export function TerminalForm({
   onSaved: (terminal: Terminal) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [label, setLabel] = useState(existing?.terminal_label ?? '');
@@ -153,7 +155,7 @@ export function TerminalForm({
 
         <div className="form__grid">
           <Field
-            label="Name"
+            label={t('common.name')}
             htmlFor="term-label"
             required
             error={fields.terminal_label}
@@ -170,7 +172,7 @@ export function TerminalForm({
           </Field>
 
           <Field
-            label="Branch"
+            label={t('common.branch')}
             htmlFor="term-store"
             required
             error={fields.store_id}
@@ -186,13 +188,13 @@ export function TerminalForm({
               onChange={setStoreId}
               options={stores}
               label={(s) => s.name}
-              placeholder="Choose a branch"
+              placeholder={t('dev.chooseBranch')}
               error={fields.store_id}
             />
           </Field>
 
           <Field
-            label="E-invoicing unit"
+            label={t('dev.einvoicingUnit')}
             htmlFor="term-egs"
             required={!existing}
             error={fields.egs_unit_id}
@@ -208,7 +210,7 @@ export function TerminalForm({
               onChange={setUnitId}
               options={eligible}
               label={(u) => u.label}
-              placeholder="Choose a unit"
+              placeholder={t('dev.chooseUnit')}
               error={fields.egs_unit_id}
             />
           </Field>

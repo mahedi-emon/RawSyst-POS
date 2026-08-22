@@ -26,6 +26,7 @@ import { useAuth } from '@rawsyst/shared/auth/session';
 import { listCustomers } from '@rawsyst/shared/api/receivables';
 import type { Customers } from '../offline/customers';
 import { fromCache, type CounterCustomer } from './customer';
+import { useT } from '@rawsyst/shared/i18n/locale';
 
 export function CustomerPicker({
   customers,
@@ -38,6 +39,7 @@ export function CustomerPicker({
   onChoose: (customer: CounterCustomer) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [term, setTerm] = useState('');
@@ -150,17 +152,17 @@ export function CustomerPicker({
         className="picker"
         role="dialog"
         aria-modal="true"
-        aria-label="Choose a customer"
+        aria-label={t('pick.chooseCustomer')}
         onKeyDown={onKey}
       >
         <header className="picker__head">
-          <h2 className="picker__title">Who is this sale for?</h2>
+          <h2 className="picker__title">{t('pick.whoIsThisFor')}</h2>
           <button
             className="button button--quiet"
             onClick={onClose}
-            aria-label="Close without choosing"
+            aria-label={t('pick.closeWithout')}
           >
-            Close
+            {t('action.close')}
           </button>
         </header>
 
@@ -168,8 +170,8 @@ export function CustomerPicker({
           ref={box}
           className="picker__search"
           value={term}
-          placeholder="Name, phone or customer code"
-          aria-label="Search for a customer"
+          placeholder={t('pick.namePhoneCode')}
+          aria-label={t('pick.searchCustomer')}
           // The list is the live region; the box only announces itself.
           aria-controls="picker-results"
           onChange={(e) => setTerm(e.target.value)}
@@ -190,10 +192,10 @@ export function CustomerPicker({
         <ul className="picker__results" id="picker-results" role="listbox">
           {term.trim().length < 2 ? (
             <li className="picker__hint">
-              Type at least two letters, or the last digits of a phone number.
+              {t('pick.twoLetters')}
             </li>
           ) : searching ? (
-            <li className="picker__hint">Searching…</li>
+            <li className="picker__hint">{t('action.loading')}</li>
           ) : results.length === 0 && searched ? (
             <li className="picker__hint">
               Nobody matches &ldquo;{term.trim()}&rdquo;.
@@ -233,8 +235,9 @@ export function CustomerPicker({
 
 /** What each row says about the account, in the fewest words that decide it. */
 function CreditSummary({ customer }: { customer: CounterCustomer }) {
+  const t = useT();
   if (!customer.creditLimit) {
-    return <span className="picker__nocredit">Pays now</span>;
+    return <span className="picker__nocredit">{t('pick.paysNow')}</span>;
   }
   const available = Number(customer.available || '0');
   return (

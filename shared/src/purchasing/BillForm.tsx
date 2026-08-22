@@ -43,6 +43,7 @@ import {
   type FieldErrors,
 } from '../ui/Form';
 import { billableQty, orderTotals, type DraftLine } from './draft';
+import { useT } from '../i18n/locale';
 
 /** A bill line being typed. Carries the PO line it answers, when there is one:
  *  that link is what the quantity and price comparisons are made against. */
@@ -59,6 +60,7 @@ export function BillForm({
   onSaved: (bill: Bill) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
@@ -221,13 +223,13 @@ export function BillForm({
     return (
       <div className="ds-panel">
         <div className="ds-state">
-          <p className="ds-state__title">No suppliers yet</p>
+          <p className="ds-state__title">{t('purch.noSuppliers')}</p>
           <p className="ds-state__body">
             A bill is recorded against a supplier, and their payment terms set
             when it falls due. Add one first.
           </p>
           <button className="ds-btn ds-btn--secondary" onClick={onCancel}>
-            Back
+            {t('common.back')}
           </button>
         </div>
       </div>
@@ -237,14 +239,14 @@ export function BillForm({
   return (
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">Record a supplier bill</h2>
+        <h2 className="ds-h3">{t('purch.recordSupplierBill')}</h2>
       </div>
 
       <div className="ds-panel__body form__body">
         <FormError message={failure} />
 
         <div className="form__grid">
-          <Field label="Against which order" htmlFor="bill-po"
+          <Field label={t('purch.againstWhichOrder')} htmlFor="bill-po"
             hint="Choosing one fills the lines in and lets the bill be checked against what arrived. Leave blank for rent, utilities and the like.">
             <SelectInput
               id="bill-po"
@@ -255,11 +257,11 @@ export function BillForm({
               }}
               options={orders}
               label={(o) => `${o.po_number} — ${o.supplier}`}
-              placeholder="No order (a direct bill)"
+              placeholder={t('purch.noOrderDirect')}
             />
           </Field>
 
-          <Field label="Supplier" htmlFor="bill-supplier" required
+          <Field label={t('common.supplier')} htmlFor="bill-supplier" required
             error={fields.supplier_id}>
             <SelectInput
               id="bill-supplier"
@@ -267,19 +269,19 @@ export function BillForm({
               onChange={setSupplierId}
               options={suppliers}
               label={(s) => `${s.legal_name} (${s.code})`}
-              placeholder="Choose a supplier"
+              placeholder={t('purch.chooseSupplier')}
               error={fields.supplier_id}
             />
           </Field>
 
-          <Field label="Their invoice number" htmlFor="bill-ref" required
+          <Field label={t('purch.theirInvoiceNumber')} htmlFor="bill-ref" required
             error={fields.supplier_ref}
             hint="Exactly as it appears on their document. The same number cannot be entered twice for one supplier.">
             <TextInput id="bill-ref" value={supplierRef} onChange={setSupplierRef}
               placeholder="INV-10023" error={fields.supplier_ref} />
           </Field>
 
-          <Field label="Invoice date" htmlFor="bill-date" required
+          <Field label={t('purch.invoiceDate')} htmlFor="bill-date" required
             error={fields.bill_date}
             hint="Their date, not today's. The due date follows from it and the supplier's terms.">
             <TextInput id="bill-date" value={billDate} onChange={setBillDate}
@@ -287,9 +289,9 @@ export function BillForm({
           </Field>
         </div>
 
-        <section className="form__lines" aria-label="Billed lines">
+        <section className="form__lines" aria-label={t('purch.billedLines')}>
           <div className="form__lineshead">
-            <h3 className="ds-h3">What they are charging for</h3>
+            <h3 className="ds-h3">{t('purch.whatCharging')}</h3>
             {fields.lines && (
               <span className="field__error" role="alert">{fields.lines}</span>
             )}
@@ -308,10 +310,10 @@ export function BillForm({
               <table className="ds-table">
                 <thead>
                   <tr>
-                    <th scope="col">Item</th>
-                    <th scope="col">Quantity billed</th>
-                    <th scope="col">Unit cost billed</th>
-                    <th scope="col" className="num">Line total</th>
+                    <th scope="col">{t('common.item')}</th>
+                    <th scope="col">{t('purch.quantityBilled')}</th>
+                    <th scope="col">{t('purch.unitCostBilled')}</th>
+                    <th scope="col" className="num">{t('common.lineTotal')}</th>
                     <th scope="col" />
                   </tr>
                 </thead>
@@ -323,7 +325,7 @@ export function BillForm({
                           {line.description || 'Item'}
                         </span>
                         {!line.poLineId && (
-                          <span className="ds-caption">Not on the order</span>
+                          <span className="ds-caption">{t('purch.notOnOrder')}</span>
                         )}
                       </td>
                       <td>
@@ -352,7 +354,7 @@ export function BillForm({
                           onClick={() => setLines((p) => p.filter((_, j) => j !== i))}
                           aria-label={`Remove line ${i + 1}`}
                         >
-                          Remove
+                          {t('common.remove')}
                         </button>
                       </td>
                     </tr>
@@ -360,17 +362,17 @@ export function BillForm({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>Net</td>
+                    <td colSpan={3}>{t('common.net')}</td>
                     <td className="num">{money(totals.net)}</td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={3}>VAT</td>
+                    <td colSpan={3}>{t('common.vat')}</td>
                     <td className="num">{money(totals.tax)}</td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={3}>Invoice total</td>
+                    <td colSpan={3}>{t('purch.invoiceTotal')}</td>
                     <td className="num">{money(totals.gross)}</td>
                     <td />
                   </tr>
@@ -389,7 +391,7 @@ export function BillForm({
               ])
             }
           >
-            Add a line
+            {t('purch.addLine')}
           </button>
 
           <p className="ds-caption form__aside">

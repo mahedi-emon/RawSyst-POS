@@ -31,6 +31,7 @@ import { describeState, offered } from './devices';
 import { TerminalForm } from './TerminalForm';
 import { EnrolmentCode } from './EnrolmentCode';
 import { RevokeDialog } from './RevokeDialog';
+import { useT } from '../i18n/locale';
 
 interface Loaded {
   terminals: Terminal[];
@@ -39,6 +40,7 @@ interface Loaded {
 }
 
 export function DevicesScreen({ companyId }: { companyId: string }) {
+  const t = useT();
   const { client, can } = useAuth();
 
   const [editing, setEditing] = useState<Terminal | null>(null);
@@ -100,7 +102,7 @@ export function DevicesScreen({ companyId }: { companyId: string }) {
 
   if (issued) {
     return (
-      <FormPage title="Terminals" onBack={() => setIssued(null)}>
+      <FormPage title={t('dev.terminals')} onBack={() => setIssued(null)}>
         <EnrolmentCode
           issued={issued}
           busy={busy !== null}
@@ -118,13 +120,13 @@ export function DevicesScreen({ companyId }: { companyId: string }) {
     <main className="detail">
       <header className="detail__head detail__head--flat">
         <div className="detail__titles">
-          <h1 className="ds-h1">Terminals</h1>
-          <p className="ds-caption">The tills that can sell for this business</p>
+          <h1 className="ds-h1">{t('dev.terminals')}</h1>
+          <p className="ds-caption">{t('dev.tillsThatSell')}</p>
         </div>
         {mayManage && !creating && !editing && (
           <div className="detail__actions">
             <button className="ds-btn ds-btn--primary" onClick={() => setCreating(true)}>
-              Add terminal
+              {t('dev.addTerminal')}
             </button>
           </div>
         )}
@@ -168,17 +170,17 @@ export function DevicesScreen({ companyId }: { companyId: string }) {
                 <div className="ds-panel__body ds-scroll-x">
                   {loaded.terminals.length === 0 ? (
                     <EmptyState
-                      title="No terminals yet"
+                      title={t('dev.noTerminals')}
                       body="A terminal is one till. Add one here, then type the code it gives you into the machine on your counter — that is what lets it ring up sales."
                     />
                   ) : (
                     <table className="ds-table">
                       <thead>
                         <tr>
-                          <th scope="col">Terminal</th>
-                          <th scope="col">Branch</th>
-                          <th scope="col">State</th>
-                          <th scope="col">Last seen</th>
+                          <th scope="col">{t('dev.terminal')}</th>
+                          <th scope="col">{t('common.branch')}</th>
+                          <th scope="col">{t('dev.state')}</th>
+                          <th scope="col">{t('dev.lastSeen')}</th>
                           {mayManage && <th scope="col" />}
                         </tr>
                       </thead>
@@ -237,6 +239,7 @@ function TerminalRow({
   onSetActive: (active: boolean) => void;
   onRevoke: () => void;
 }) {
+  const t = useT();
   const state = describeState(terminal);
   const controls = offered(terminal, mayManage);
   const gone = terminal.status === 'revoked';
@@ -285,7 +288,7 @@ function TerminalRow({
             )}
             {controls.edit && (
               <button className="ds-btn ds-btn--quiet" onClick={onEdit}>
-                Edit
+                {t('action.edit')}
               </button>
             )}
             {controls.pause && (
@@ -294,7 +297,7 @@ function TerminalRow({
                 onClick={() => onSetActive(false)}
                 disabled={busy}
               >
-                Switch off
+                {t('dev.switchOff')}
               </button>
             )}
             {controls.resume && (
@@ -303,12 +306,12 @@ function TerminalRow({
                 onClick={() => onSetActive(true)}
                 disabled={busy}
               >
-                Switch on
+                {t('dev.switchOn')}
               </button>
             )}
             {controls.revoke && (
               <button className="ds-btn ds-btn--quiet ds-btn--warn" onClick={onRevoke}>
-                Revoke
+                {t('dev.revoke')}
               </button>
             )}
           </div>

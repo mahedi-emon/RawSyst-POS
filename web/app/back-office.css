@@ -682,6 +682,7 @@
 .matrix {
   padding: var(--space-5);
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   align-content: start;
   inline-size: 100%;
@@ -689,10 +690,13 @@
 
 .matrix__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: start;
   justify-content: space-between;
   gap: var(--space-4);
 }
+
+.matrix__head > * { min-inline-size: 0; }
 
 .matrix__picker {
   display: grid;

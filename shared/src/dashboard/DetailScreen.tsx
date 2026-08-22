@@ -14,6 +14,7 @@
 import type { ReactNode } from 'react';
 
 import type { Remote } from './useRemote';
+import { useT } from '../i18n/locale';
 
 export function DetailScreen({
   title,
@@ -91,6 +92,8 @@ export function RemoteBody<T>({
   onRetry: () => void;
   children: (data: T) => ReactNode;
 }) {
+  const t = useT();
+
   switch (remote.state) {
     case 'loading':
       return <TableSkeleton />;
@@ -98,7 +101,7 @@ export function RemoteBody<T>({
     case 'denied':
       return (
         <Panel
-          title="You do not have access to this"
+          title={t('dash.noAccessThis')}
           body="Your role does not include permission to view these records. An owner can change that under Settings > People."
         />
       );
@@ -107,14 +110,14 @@ export function RemoteBody<T>({
       // Neutral, not red. The system is working; the network is not.
       return (
         <Panel
-          title="No connection to the server"
+          title={t('common.noConnection')}
           body="These records are held on the server, so they need a connection. Selling is unaffected — the till keeps working offline."
           onRetry={onRetry}
         />
       );
 
     case 'error':
-      return <Panel title="That did not load" body={remote.message} onRetry={onRetry} />;
+      return <Panel title={t('common.didNotLoad')} body={remote.message} onRetry={onRetry} />;
 
     case 'ready':
       return <>{children(remote.data)}</>;
@@ -130,6 +133,7 @@ function Panel({
   body: string;
   onRetry?: () => void;
 }) {
+  const t = useT();
   return (
     <div className="ds-panel">
       <div className="ds-state">
@@ -137,7 +141,7 @@ function Panel({
         <p className="ds-state__body">{body}</p>
         {onRetry && (
           <button className="ds-btn ds-btn--secondary" onClick={onRetry}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         )}
       </div>
@@ -149,8 +153,9 @@ function Panel({
  *  screens resolves into. Matching the real layout stops the page jumping when
  *  the data lands. */
 function TableSkeleton() {
+  const t = useT();
   return (
-    <div className="ds-panel" aria-busy="true" aria-label="Loading">
+    <div className="ds-panel" aria-busy="true" aria-label={t('common.loading')}>
       <div className="ds-panel__body">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div

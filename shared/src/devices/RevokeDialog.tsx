@@ -18,6 +18,7 @@ import { useState } from 'react';
 import { Offline, RequestFailed } from '../api/client';
 import { revokeTerminal, type Terminal } from '../api/devices';
 import { useAuth } from '../auth/session';
+import { useT } from '../i18n/locale';
 
 export function RevokeDialog({
   companyId,
@@ -30,6 +31,7 @@ export function RevokeDialog({
   onRevoked: (t: Terminal) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { client } = useAuth();
 
   const [typed, setTyped] = useState('');
@@ -99,22 +101,22 @@ export function RevokeDialog({
         </p>
 
         <label className="field__label" htmlFor="revoke-reason">
-          Why are you revoking it?
+          {t('dev.whyRevoking')}
         </label>
         <p className="field__hint" id="revoke-reason-hint">
-          This is what the next person reads when they wonder what happened.
+          {t('dev.revokeNote')}
         </p>
         <input
           id="revoke-reason"
           className="input"
           value={reason}
-          placeholder="Stolen from the counter"
+          placeholder={t('dev.stolenExample')}
           aria-describedby="revoke-reason-hint"
           onChange={(e) => setReason(e.target.value)}
         />
 
         <label className="field__label" htmlFor="revoke-name">
-          Type <strong>{terminal.terminal_label}</strong> to confirm
+          {t('common.type')} <strong>{terminal.terminal_label}</strong> to confirm
         </label>
         <input
           id="revoke-name"
@@ -142,7 +144,7 @@ export function RevokeDialog({
             {busy ? 'Revoking…' : 'Revoke this terminal'}
           </button>
           <button className="ds-btn ds-btn--quiet" type="button" onClick={onCancel}>
-            Cancel
+            {t('action.cancel')}
           </button>
         </div>
       </form>
