@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -126,6 +127,26 @@ func (g *Grants) Permissions() []string {
 	for p := range g.permissions {
 		out = append(out, p)
 	}
+	return out
+}
+
+// StoreIDs returns the branches the actor is confined to, or nil when they are
+// confined to none — which means every branch, not no branch.
+//
+// Reported to the client by /auth/me so a manager scoped to one branch is shown
+// one branch rather than a store picker they cannot use. Like Permissions, this
+// shapes the UI and controls nothing: the routes re-check.
+func (g *Grants) StoreIDs() []uuid.UUID {
+	if g == nil || len(g.storeIDs) == 0 {
+		return nil
+	}
+	out := make([]uuid.UUID, 0, len(g.storeIDs))
+	for id := range g.storeIDs {
+		out = append(out, id)
+	}
+	// Sorted for the same reason the permission list is: two responses should be
+	// diffable, and the payload byte-stable.
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out
 }
 

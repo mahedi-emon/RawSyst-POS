@@ -18,7 +18,7 @@ go test -count=1 ./...                   # unit
 go test -count=1 -tags=integration ./... # needs RAWSYST_DB_DSN
 go run ./cmd/lintwording ..              # forbidden compliance claims
 ```
-`-race` needs a 64-bit C toolchain absent on this Windows box; it is opt-in via `RACE=` and always on in CI.
+`-race` runs locally as of P16. A 64-bit mingw-w64 (WinLibs UCRT) is installed at `%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_*\mingw64\bin`; `gcc` on PATH is a 32-bit MinGW 6.3 and must NOT be used for cgo. The Makefile finds the 64-bit one and sets `CC` itself — `make race-doctor` reports which compiler it picked. `make test` and `make test-db` are `-race` by default; disable with `RACE=`.
 
 ## Built so far
 | Package | Contains |

@@ -188,6 +188,23 @@ func CheckStoreScope(ctx context.Context, storeID uuid.UUID) error {
 	return errs.New(errs.CodeNotFound, "That store was not found.")
 }
 
+// CheckWarehouseScope reports whether the actor may act in a given warehouse.
+//
+// The third of design 04's four scope dimensions, and the same shape as the
+// store check because the question is the same one: blueprint A6.2 scopes
+// inventory staff to a warehouse, and a goods receipt names the warehouse it is
+// received into.
+func CheckWarehouseScope(ctx context.Context, warehouseID uuid.UUID) error {
+	g := GrantsFrom(ctx)
+	if g == nil {
+		return errs.New(errs.CodeUnauthenticated, "You are not signed in.")
+	}
+	if g.InWarehouse(warehouseID) {
+		return nil
+	}
+	return errs.New(errs.CodeNotFound, "That warehouse was not found.")
+}
+
 // CheckCompanyScope reports whether the actor may act within a legal entity.
 // Relevant for group tenants, where one Owner login spans several companies
 // that keep separate books and separate VAT registrations.

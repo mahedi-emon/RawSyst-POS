@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -98,6 +99,19 @@ func (s *Server) handleCreateSale(w http.ResponseWriter, r *http.Request) {
 
 	sale, err := s.buildSale(r, req, invoiceUUID, issuedAt, a)
 	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Blueprint A6.2's amount ceiling: a cashier may discount up to SAR 50, a
+	// manager up to SAR 500, an owner without limit. Weighed against the
+	// DOCUMENT's total discount rather than each line's — a ceiling that looked
+	// at one line at a time would be sidestepped by splitting a discount across
+	// two lines, and a ceiling that is trivial to sidestep is not one.
+	//
+	// The refusal names the ceiling, so the till can raise a manager-approval
+	// prompt rather than a dead end.
+	if err := identity.CheckAmountLimit(r.Context(), totalDiscount(sale), "discount"); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
@@ -222,6 +236,17 @@ func (s *Server) buildSale(
 	}, nil
 }
 
+// totalDiscount is every discount on the document, invoice-level and line-level
+// together. What a cashier is trusted with is the whole reduction they granted,
+// not its largest single piece.
+func totalDiscount(sale sales.Sale) decimal.Decimal {
+	total := sale.Input.InvoiceDiscount
+	for _, l := range sale.Input.Lines {
+		total = total.Add(l.LineDiscount)
+	}
+	return total
+}
+
 // --- POST /api/v1/pos/returns -------------------------------------------
 
 type returnLineRequest struct {
@@ -320,6 +345,19 @@ func (s *Server) handleCreateReturn(w http.ResponseWriter, r *http.Request) {
 			refund.ReversesTenderID = &reversesID
 		}
 		refunds = append(refunds, refund)
+	}
+
+	// Design 04 §4.5 gates the refund route on the actor's amount ceiling. What
+	// is weighed is the money leaving the till: a return credited to a
+	// customer's account hands nothing over and is bounded by their credit
+	// limit instead.
+	refunded := decimal.Zero
+	for _, f := range refunds {
+		refunded = refunded.Add(f.Amount)
+	}
+	if err := identity.CheckAmountLimit(r.Context(), refunded, "refund"); err != nil {
+		httpx.Error(w, r, err)
+		return
 	}
 
 	userID := a.UserID

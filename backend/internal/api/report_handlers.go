@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -47,6 +48,12 @@ func reportScope(r *http.Request) (reports.Scope, error) {
 	if raw := r.URL.Query().Get("store_id"); raw != "" {
 		storeID, err := parseUUID(raw, "store_id")
 		if err != nil {
+			return reports.Scope{}, err
+		}
+		// A branch manager asking for the branch next door is told it does not
+		// exist, rather than that they may not look — probing ids should not
+		// enumerate the estate.
+		if err := identity.CheckStoreScope(r.Context(), storeID); err != nil {
 			return reports.Scope{}, err
 		}
 		scope.StoreID = &storeID

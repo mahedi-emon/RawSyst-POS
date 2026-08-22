@@ -693,6 +693,19 @@ func (h *harness) seedUserIn(t *testing.T, f *shopFixture, roleKey string) strin
 // take one from.
 func (h *harness) seedUserInTenant(t *testing.T, tenantID uuid.UUID, roleKey string) string {
 	t.Helper()
+	email, _ := h.newUserInTenant(t, tenantID, roleKey)
+	return h.login(t, email)
+}
+
+// newUserInTenant is the same without the sign-in, and it hands back the id.
+//
+// Split out for the scope tests: an assignment has to be narrowed to a branch,
+// a warehouse or an amount BEFORE the user signs in, because grants are
+// resolved once per user and cached.
+func (h *harness) newUserInTenant(
+	t *testing.T, tenantID uuid.UUID, roleKey string,
+) (string, uuid.UUID) {
+	t.Helper()
 	ctx := t.Context()
 
 	email := "u" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16] + "@example.test"
@@ -737,7 +750,7 @@ func (h *harness) seedUserInTenant(t *testing.T, tenantID uuid.UUID, roleKey str
 		t.Fatalf("assign %s: %v", roleKey, err)
 	}
 
-	return h.login(t, email)
+	return email, userID
 }
 
 func firstAgeingRow(t *testing.T, body map[string]any) map[string]any {

@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -182,6 +183,13 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.Lines = append(in.Lines, parsed)
+	}
+
+	// Blueprint A6.2 scopes inventory staff to a warehouse. A purchase order
+	// names where the goods land, so ordering into a warehouse is acting in it.
+	if err := identity.CheckWarehouseScope(r.Context(), in.WarehouseID); err != nil {
+		httpx.Error(w, r, err)
+		return
 	}
 
 	out, err := s.purchasing.CreateOrder(r.Context(), scope, in)
@@ -760,6 +768,13 @@ func (s *Server) handleUpdateOrder(w http.ResponseWriter, r *http.Request) {
 
 	in, err := orderFromRequest(req)
 	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Blueprint A6.2 scopes inventory staff to a warehouse. A purchase order
+	// names where the goods land, so ordering into a warehouse is acting in it.
+	if err := identity.CheckWarehouseScope(r.Context(), in.WarehouseID); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}

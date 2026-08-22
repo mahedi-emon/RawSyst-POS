@@ -4,8 +4,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 )
@@ -63,6 +65,13 @@ func (s *Server) handleRegisterTerminal(w http.ResponseWriter, r *http.Request) 
 	}
 	storeID, err := parseUUID(req.StoreID, "store_id")
 	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	// A manager scoped to one branch does not register tills in another
+	// (design 04 §4.3). Row-level security will not catch this: both branches
+	// belong to the same tenant, so the row is legitimately visible.
+	if err := identity.CheckStoreScope(r.Context(), storeID); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
@@ -138,6 +147,15 @@ func (s *Server) handleAmendTerminal(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
+	}
+	// Moving a till into a branch is acting in that branch. The branch it moves
+	// OUT of needs no separate check: the service reads the device within the
+	// caller's own company scope, so one they cannot see cannot be amended.
+	if storeID != uuid.Nil {
+		if err := identity.CheckStoreScope(r.Context(), storeID); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
 	}
 	egsUnitID, err := parseOptionalUUID(req.EGSUnitID, "egs_unit_id")
 	if err != nil {

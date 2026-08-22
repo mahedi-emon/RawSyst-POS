@@ -202,6 +202,11 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		t := a.TenantID
 		resp.TenantID = &t
 	}
+	// The branches this user is confined to. Absent when they are confined to
+	// none, which is the ordinary case and means every branch — an empty list
+	// would read as the opposite.
+	resp.StoreScope = g.StoreIDs()
+
 	if limit := g.AmountLimit(); limit != nil {
 		// A decimal string, never a JSON number: the client must not widen a
 		// money value through a float on its way to a comparison.

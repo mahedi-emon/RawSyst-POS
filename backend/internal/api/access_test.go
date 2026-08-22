@@ -57,6 +57,11 @@ type harness struct {
 	// invoice can be issued at all.
 	tokens *identity.TokenService
 	shift  *shift.Service
+
+	// authz lets a scope test drop a user's cached grants after narrowing their
+	// assignment. Grants are resolved once and held for a TTL, so a limit
+	// written after the first request would otherwise not be seen.
+	authz *identity.Authorizer
 }
 
 func newHarness(t *testing.T) *harness {
@@ -117,7 +122,7 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
-	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens,
+	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens, authz: authz,
 		shift: shiftSvc}
 }
 
