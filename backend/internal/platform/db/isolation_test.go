@@ -682,9 +682,14 @@ func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
 		// TestTheCanonicalFormIsRecordedAsVerified below.
 		"SA.ZATCA.UBL_FIELD_SET", // split out of XML_SCHEMA_VERSION by 0044
 
-		// 0045. Both are onboarding rather than invoice format: without them a
-		// CSR cannot be built or sent, however well the nine inputs are captured.
-		"SA.ZATCA.CSR_SUBJECT_LAYOUT",
+		// 0045. SA.ZATCA.CSR_SUBJECT_LAYOUT was here until 0060, which read the
+		// OpenSSL config file out of §5.3's screenshots and found the
+		// certificateTemplateName OID that 0059 recorded as its last unknown.
+		// Its value is now pinned by TestTheCSRLayoutIsRecordedAsVerified below.
+		//
+		// This one stays: 0060 filled six of its seven __VERIFY__ placeholders,
+		// and the seventh — the header carrying the OTP — is still unnamed in
+		// every official document, so a CSR can now be built and still not sent.
 		"SA.ZATCA.ONBOARDING_REQUEST_FORMAT",
 
 		// 0046. The QR framing is verified; how tags 6 to 9 encode their values is
@@ -832,6 +837,77 @@ func TestTheCanonicalFormIsRecordedAsVerified(t *testing.T) {
 	for i, want := range wantTransforms {
 		if transforms[i] != want {
 			t.Errorf("transform %d = %q, want %q", i, transforms[i], want)
+		}
+	}
+}
+
+// 0060 verified the CSR subject layout from the Developer Portal Manual's §5.3
+// screenshots, which four earlier passes had read as empty because the section's
+// substance is in images rather than in the text layer.
+//
+// Pinned because the two values below are the ones that cannot be recovered by
+// inspection later. A CSR with a correct distinguished name and no template
+// extension is refused at onboarding without saying why, and the OID that
+// carries that extension went unfound through four verification passes.
+func TestTheCSRLayoutIsRecordedAsVerified(t *testing.T) {
+	pool := testPool(t)
+
+	var verified *time.Time
+	var templateOID, encoding, signature string
+	var subjectRDNs, altNameRDNs []string
+	err := pool.Raw().QueryRow(context.Background(),
+		`SELECT verified_on,
+		        payload->>'certificate_template_oid',
+		        payload->>'certificate_template_encoding',
+		        payload->>'signature_algorithm',
+		        ARRAY(SELECT jsonb_array_elements_text(payload->'subject_rdns')),
+		        ARRAY(SELECT jsonb_array_elements_text(payload->'alt_name_rdns'))
+		   FROM regulatory_rule
+		  WHERE rule_key = 'SA.ZATCA.CSR_SUBJECT_LAYOUT' AND effective_to IS NULL`).
+		Scan(&verified, &templateOID, &encoding, &signature, &subjectRDNs, &altNameRDNs)
+	if err != nil {
+		t.Fatalf("read the CSR subject rule: %v", err)
+	}
+
+	if verified == nil {
+		t.Error("the CSR layout was read from §5.3 but the rule is not " +
+			"recorded as verified")
+	}
+	// Literals rather than the zatca constants, for the same reason as the
+	// canonicalization test above: that package imports this one.
+	if templateOID != "1.3.6.1.4.1.311.20.2" {
+		t.Errorf("certificateTemplateName OID = %q, want 1.3.6.1.4.1.311.20.2",
+			templateOID)
+	}
+	if encoding != "ASN1:PRINTABLESTRING" {
+		t.Errorf("template encoding = %q, want ASN1:PRINTABLESTRING", encoding)
+	}
+	if signature != "ecdsa-with-SHA256" {
+		t.Errorf("signature algorithm = %q, want ecdsa-with-SHA256", signature)
+	}
+
+	// The split between the two is the part an implementer gets wrong: the
+	// manual's own sample CSR puts the serial number and the organization
+	// identifier in the SUBJECT, and the config file it tells you to use puts
+	// them in the alternative names.
+	wantSubject := []string{"C", "OU", "O", "CN"}
+	wantAltNames := []string{"SN", "UID", "title", "registeredAddress", "businessCategory"}
+
+	if len(subjectRDNs) != len(wantSubject) {
+		t.Fatalf("%d subject RDNs recorded, want %d", len(subjectRDNs), len(wantSubject))
+	}
+	for i, want := range wantSubject {
+		if subjectRDNs[i] != want {
+			t.Errorf("subject RDN %d = %q, want %q", i, subjectRDNs[i], want)
+		}
+	}
+	if len(altNameRDNs) != len(wantAltNames) {
+		t.Fatalf("%d alternative-name RDNs recorded, want %d",
+			len(altNameRDNs), len(wantAltNames))
+	}
+	for i, want := range wantAltNames {
+		if altNameRDNs[i] != want {
+			t.Errorf("alternative-name RDN %d = %q, want %q", i, altNameRDNs[i], want)
 		}
 	}
 }
