@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { initialLocale } from './locale';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { ar, catalogues, directionOf, en, type Key } from './strings';
 
@@ -101,5 +102,69 @@ describe('QA gate M6 — mixed script', () => {
     // instead of characters would cut an Arabic word mid-letter.
     const truncated = [...MIXED_SCRIPT].slice(0, 6).join('');
     expect(truncated).toBe('قميص ر');
+  });
+});
+
+describe('which language the product opens in', () => {
+  const realStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  function stub(stored: string | null, browserLanguage: string) {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: () => stored, setItem: () => {} },
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { language: browserLanguage },
+    });
+  }
+
+  afterEach(() => {
+    if (realStorage) Object.defineProperty(globalThis, 'localStorage', realStorage);
+    else delete (globalThis as Record<string, unknown>)['localStorage'];
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as Record<string, unknown>)['navigator'];
+  });
+
+  it('opens in English even when the browser asks for Arabic', () => {
+    // This is the whole point. It used to read navigator.language and start in
+    // Arabic for any browser reporting it — which is most browsers in Saudi
+    // Arabia, so most shops opened the product in a language nobody chose.
+    stub(null, 'ar-SA');
+    expect(initialLocale()).toBe('en');
+  });
+
+  it('opens in English for any browser language', () => {
+    for (const language of ['ar', 'ar-SA', 'en-GB', 'bn-BD', '']) {
+      stub(null, language);
+      expect(initialLocale(), `browser language ${language}`).toBe('en');
+    }
+  });
+
+  it('honours a choice somebody actually made, and remembers it', () => {
+    stub('ar', 'en-GB');
+    expect(initialLocale()).toBe('ar');
+
+    stub('en', 'ar-SA');
+    expect(initialLocale()).toBe('en');
+  });
+
+  it('ignores a stored value that is not a language it ships', () => {
+    stub('fr', 'ar-SA');
+    expect(initialLocale()).toBe('en');
+  });
+
+  it('starts in English rather than failing when storage throws', () => {
+    // A private window throws on access instead of returning null. A till that
+    // will not start because it could not read a preference is worse than one
+    // that starts in English.
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('access denied');
+      },
+    });
+    expect(initialLocale()).toBe('en');
   });
 });

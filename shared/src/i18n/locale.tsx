@@ -41,26 +41,33 @@ interface LocaleValue {
 const LocaleContext = createContext<LocaleValue | null>(null);
 
 /**
- * Reads the stored preference, then the browser's.
+ * Reads the stored preference, and nothing else.
  *
- * A Saudi shop's staff should not have to set this on every terminal, and a
- * browser already reporting Arabic is a better first guess than English.
- * Wrapped because storage throws in a private window rather than returning
- * null, and a till that will not start because it could not read a preference
- * is worse than one that starts in English.
+ * English is the default, deliberately. This used to fall back to
+ * `navigator.language` and start in Arabic for any browser reporting Arabic —
+ * which is most browsers in Saudi Arabia, so most shops opened the product in a
+ * language nobody had chosen. A first impression in the wrong language reads as
+ * a broken install, and the person best placed to judge which language a
+ * terminal should run in is the person standing at it.
+ *
+ * So the only thing that switches the language is somebody pressing the switch.
+ * Once they do it is remembered per device, which is what a shop actually
+ * wants: the till in the shop runs Arabic, the owner's laptop runs English,
+ * and neither has to be set twice.
+ *
+ * Do NOT reintroduce browser sniffing here — `TestEnglishIsTheDefault` below
+ * exists to catch that.
+ *
+ * The read is wrapped because storage THROWS in a private window rather than
+ * returning null, and a till that will not start because it could not read a
+ * preference is worse than one that starts in English.
  */
-function initialLocale(): Locale {
+export function initialLocale(): Locale {
   try {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (stored === 'ar' || stored === 'en') return stored;
   } catch {
     // Ignored on purpose: see above.
-  }
-  try {
-    const preferred = globalThis.navigator?.language ?? '';
-    if (preferred.toLowerCase().startsWith('ar')) return 'ar';
-  } catch {
-    // Ignored on purpose.
   }
   return 'en';
 }
