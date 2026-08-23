@@ -289,3 +289,62 @@ func TestALowerCaseCountryCodeIsEncodedUpper(t *testing.T) {
 		t.Errorf("the country was not encoded upper-case\n%s", text)
 	}
 }
+
+// The software signer produces a CSR that OpenSSL verifies.
+//
+// This is the whole chain: a real secp256k1 key, the hand-encoded DER, and a
+// signature over it. OpenSSL had no part in producing any of it, so if it
+// verifies the self-signature the encoding and the signing are both right.
+func TestARealKeyProducesACSROpenSSLVerifies(t *testing.T) {
+	bin, err := exec.LookPath("openssl")
+	if err != nil {
+		t.Skip("openssl is not installed")
+	}
+
+	signer, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("generating a key: %v", err)
+	}
+	csr, err := BuildCSR(validSubject(), TemplateNameTSTZATCACodeSigning, signer)
+	if err != nil {
+		t.Fatalf("building the request: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "real.csr")
+	if err := os.WriteFile(path, csr, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(bin, "req", "-in", path, "-noout", "-verify").CombinedOutput()
+	if err != nil {
+		t.Fatalf("openssl could not verify the request: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "verify OK") {
+		t.Errorf("openssl did not confirm the signature: %s", out)
+	}
+}
+
+// A key survives a round trip through PEM.
+func TestASigningKeyCanBeSavedAndReloaded(t *testing.T) {
+	signer, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("generating: %v", err)
+	}
+	pemBytes, err := signer.PrivateKeyPEM()
+	if err != nil {
+		t.Fatalf("exporting: %v", err)
+	}
+
+	reloaded, err := LoadSigner(pemBytes)
+	if err != nil {
+		t.Fatalf("reloading: %v", err)
+	}
+
+	before := signer.Public().(*ecdsa.PublicKey)
+	after := reloaded.Public().(*ecdsa.PublicKey)
+	if before.X.Cmp(after.X) != 0 || before.Y.Cmp(after.Y) != 0 {
+		t.Error("the reloaded key is a different key")
+	}
+	if err := checkSecp256k1(after); err != nil {
+		t.Errorf("the reloaded key is not on secp256k1: %v", err)
+	}
+}

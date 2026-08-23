@@ -473,6 +473,32 @@
   white-space: nowrap;
 }
 
+/* Both of these are sized for a mouse. Measured on a 390px phone they came out
+ * at 32px and 35px, under the 44px a thumb needs. The desktop sizes are
+ * deliberate — a row of filters should not be 44px tall on a monitor — so the
+ * bump is scoped to the width where the input device changes.
+ *
+ * It lives here rather than in the design system because both rules set
+ * --tap-desk in THIS file, which is imported last; an override written
+ * anywhere else loses the cascade regardless of how it is phrased. */
+@media (max-width: 639px) {
+  .segmented__btn,
+  .attention__open {
+    min-block-size: var(--tap-mobile);
+  }
+
+  /* A native checkbox renders 13px square. The label around it is the real tap
+   * target, so it gets the height and the box gets enough size to aim at. */
+  .supplier__toggle {
+    min-block-size: var(--tap-mobile);
+  }
+
+  .supplier__toggle input {
+    inline-size: 20px;
+    block-size: 20px;
+  }
+}
+
 .segmented__btn--on {
   background: var(--surface);
   color: var(--text);

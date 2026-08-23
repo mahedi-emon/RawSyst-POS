@@ -649,6 +649,63 @@ body {
   .ds-scroll-x { overflow-x: visible; }
 }
 
+/* ---------------------------------------------------------------------------
+ * Shell navigation
+ *
+ * BackOffice.tsx renders .app__nav / .app__navlink / .app__spacer /
+ * .app__company, and every one of those was defined only in pos/src/styles.css.
+ * The browser app never imports that file, so the PRIMARY NAVIGATION rendered
+ * as bare 18px text buttons on tablet and desktop.
+ *
+ * It hid because the phone rules below DO live in this file, so a reviewer
+ * checking "is the mobile nav styled" saw rules and stopped. Only the base
+ * layer was missing.
+ * ------------------------------------------------------------------------- */
+
+.app__nav {
+  display: flex;
+  /* Wraps, because an owner sees nine sections and nine do not fit across a
+   * 768px tablet. Without this the row simply extended past the viewport and
+   * took the whole PAGE into horizontal overflow — the one layout failure that
+   * makes an app feel broken rather than cramped. */
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.app__navlink {
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  min-block-size: var(--tap-mobile);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.app__navlink:hover { background: var(--surface-sunken); color: var(--text); }
+
+/* The current section is marked by weight and an underline, not a filled pill.
+ * A filled nav item competes with the primary action on the page. */
+.app__navlink--on {
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--brand);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.app__spacer { flex: 1 1 auto; }
+
+.app__company {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
 /* --- Navigation: a bottom bar on a phone ---------------------------------
  *
  * Spec §7: "Navigation | xs: Bottom bar, 5 items". A wrapped row at the top
@@ -662,8 +719,14 @@ body {
     inset-block-end: 0;
     z-index: 20;
 
-    display: flex;
-    justify-content: space-around;
+    /* A GRID, not a flex row. The spec assumed five sections; an owner sees
+     * nine, and nine on one row at 390px pushed the last three off the side of
+     * the screen — the bar overflowed rather than wrapping, because a flex item
+     * will not shrink below its own text. auto-fit wraps to a second row
+     * instead, which costs 44px of height and keeps every section in thumb
+     * reach without truncating a single label. */
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
     gap: 0;
 
     background: var(--surface);
@@ -673,12 +736,18 @@ body {
   }
 
   .app__navlink {
-    flex: 1 1 0;
-    min-height: var(--tap-mobile);
+    /* Without this a grid item keeps a min-content floor and a long label
+     * widens its whole column. */
+    min-inline-size: 0;
+    min-block-size: var(--tap-mobile);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.75rem;
+    padding-inline: var(--space-1);
+    font-size: 0.6875rem;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
     border-radius: 0;
     /* The current section is marked along the top edge, where a bottom bar
      * reads it, rather than underneath where the bar's own edge is. */
@@ -692,9 +761,35 @@ body {
   /* Room for the bar, so the last row of a table is not sitting under it. */
   .bo,
   .app {
-    padding-block-end: calc(var(--tap-mobile) + var(--space-4));
+    /* Two rows of sections, plus breathing room, so the last row of a table is
+     * never sitting under the bar. */
+    padding-block-end: calc(var(--tap-mobile) * 2 + var(--space-4));
   }
 }
+
+/* --- Tap targets on a phone -----------------------------------------------
+ *
+ * These three read comfortably at 32-35px with a mouse and are awkward with a
+ * thumb. The desktop sizes are deliberate — a dense table of segmented filters
+ * should not be 44px a row on a monitor — so the bump is scoped to the width
+ * where the input device changes, not applied globally.
+ *
+ * Found by measuring every interactive element at 390px rather than by reading
+ * the stylesheet: .segmented__btn was 35, .ds-btn--quiet 32, and a badge that
+ * doubles as a drill-down button 20.
+ */
+@media (max-width: 639px) {
+  /* A badge is inline text; as a button it needs a thumb-sized box. */
+  button.ds-badge {
+    min-block-size: var(--tap-mobile);
+    padding-inline: var(--space-3);
+  }
+}
+
+/* .segmented__btn and .attention__open are bumped in dashboard.css instead.
+ * Both set --tap-desk explicitly there, and dashboard.css is imported after
+ * this file, so a rule here loses the cascade however it is written. Putting
+ * the override next to what it overrides is the honest place for it. */
 
 /* --- Language switch ------------------------------------------------------
  *

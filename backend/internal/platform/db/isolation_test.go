@@ -672,47 +672,47 @@ func TestReleaseBlockersAreFlagged(t *testing.T) {
 // set verified_on on both, which took the whole of each off that list — including
 // the halves it had not answered. 0044 gave those halves their own rules, and
 // this is what stops the same thing happening again.
-func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
+func TestNoZATCARuleIsBothBlockingAndUnverified(t *testing.T) {
 	pool := testPool(t)
 
-	want := []string{
-		// Three rules have left this list, each to a pinning test below:
-		//
-		//   XML_CANONICALIZATION    0059, from Security Features v1.1 §2.3.3
-		//   CSR_SUBJECT_LAYOUT      0060, from the Developer Portal Manual §5.3
-		//   QR_TAG_VALUE_ENCODING   0061, from the worked payload in Technical
-		//                                 Guideline V2 §6
-		//   UBL_FIELD_SET           0061, checked by ZATCA's own validator
-		//
-		// What is left is the one thing no published ZATCA document states.
-
-		// 0045. SA.ZATCA.CSR_SUBJECT_LAYOUT was here until 0060, which read the
-		// OpenSSL config file out of §5.3's screenshots and found the
-		// certificateTemplateName OID that 0059 recorded as its last unknown.
-		// Its value is now pinned by TestTheCSRLayoutIsRecordedAsVerified below.
-		//
-		// This one stays: 0060 filled six of its seven __VERIFY__ placeholders,
-		// and the seventh — the header carrying the OTP — is still unnamed in
-		// every official document, so a CSR can now be built and still not sent.
-		"SA.ZATCA.ONBOARDING_REQUEST_FORMAT",
+	// This list used to name four formats. Each left it to a pinning test as it
+	// was read from a primary source:
+	//
+	//   XML_CANONICALIZATION   0059  Security Features v1.1 §2.3.3
+	//   CSR_SUBJECT_LAYOUT     0060  Developer Portal Manual §5.3 screenshots
+	//   QR_TAG_VALUE_ENCODING  0061  the worked payload in Technical Guideline §6
+	//   UBL_FIELD_SET          0061  checked by ZATCA's own validator
+	//   ONBOARDING_REQUEST_FORMAT 0062  the OTP header, from ZATCA's own API
+	//
+	// So the assertion inverts: rather than listing what is still unknown, it
+	// refuses to let anything become unknown again. A new ZATCA rule added as a
+	// blocker without evidence fails here.
+	rows, err := pool.Raw().Query(context.Background(),
+		`SELECT rule_key FROM regulatory_rule
+		  WHERE rule_key LIKE 'SA.ZATCA.%'
+		    AND release_blocker AND verified_on IS NULL
+		    AND effective_to IS NULL
+		  ORDER BY rule_key`)
+	if err != nil {
+		t.Fatalf("read the registry: %v", err)
 	}
-	for _, key := range want {
-		var blocker bool
-		var verified *time.Time
-		err := pool.Raw().QueryRow(context.Background(),
-			`SELECT release_blocker, verified_on FROM regulatory_rule
-			 WHERE rule_key = $1 AND effective_to IS NULL`, key).
-			Scan(&blocker, &verified)
-		if err != nil {
-			t.Fatalf("rule %s missing from the registry: %v", key, err)
+	defer rows.Close()
+
+	var open []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			t.Fatalf("scan: %v", err)
 		}
-		if !blocker {
-			t.Errorf("rule %s is not flagged as a release blocker", key)
-		}
-		if verified != nil {
-			t.Errorf("rule %s claims to be verified on %s; nothing in this "+
-				"repository has read it from the ZATCA standard", key, verified)
-		}
+		open = append(open, key)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read the registry: %v", err)
+	}
+
+	if len(open) > 0 {
+		t.Errorf("these ZATCA rules block release and have never been verified "+
+			"against a primary source: %v", open)
 	}
 }
 

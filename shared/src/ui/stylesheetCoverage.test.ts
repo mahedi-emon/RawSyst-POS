@@ -66,7 +66,9 @@ function classesDefinedIn(files: string[]): Set<string> {
   const defined = new Set<string>();
   for (const file of files) {
     const css = readFileSync(file, 'utf8');
-    for (const match of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) defined.add(match[1]);
+    for (const match of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) {
+      if (match[1]) defined.add(match[1]);
+    }
   }
   return defined;
 }

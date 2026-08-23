@@ -298,3 +298,75 @@ func TestStatusCodesMapOnlyWhereTheManualDescribesThem(t *testing.T) {
 		}
 	}
 }
+
+// The compliance CSID call is the one unauthenticated call in the flow, and
+// the only one carrying an OTP.
+func TestTheComplianceCSIDCallCarriesTheOTPHeaderAndNoCredentials(t *testing.T) {
+	client, got := serve(t, http.StatusOK, `{
+		"requestID": 1, "dispositionMessage": "ISSUED",
+		"binarySecurityToken": "TUlJRDZq", "secret": "s"
+	}`)
+
+	if _, _, err := client.RequestComplianceCSID(context.Background(),
+		[]byte("-----BEGIN CERTIFICATE REQUEST-----\nMII\n-----END CERTIFICATE REQUEST-----\n"),
+		"123456"); err != nil {
+		t.Fatalf("onboarding: %v", err)
+	}
+
+	if got.path != PathComplianceCSID {
+		t.Errorf("path = %s, want %s", got.path, PathComplianceCSID)
+	}
+	// Established from ZATCA's own API: without a header named OTP the service
+	// answers Missing-OTP, and with one it moves on to validating the CSR.
+	if v := got.headers.Get(HeaderOTP); v != "123456" {
+		t.Errorf("%s = %q, want the one-time password", HeaderOTP, v)
+	}
+	// This call is what OBTAINS the credentials, so it cannot present them.
+	if got.headers.Get("Authorization") != "" {
+		t.Error("the compliance CSID call presented credentials it does not yet have")
+	}
+}
+
+func TestOnboardingRefusesAnOTPThatIsNotSixDigits(t *testing.T) {
+	client, _ := serve(t, http.StatusOK, `{}`)
+	csr := []byte("-----BEGIN CERTIFICATE REQUEST-----\nMII\n-----END CERTIFICATE REQUEST-----\n")
+
+	for _, bad := range []string{"", "12345", "1234567", "12345a", "abcdef"} {
+		if _, _, err := client.RequestComplianceCSID(context.Background(), csr, bad); err == nil {
+			t.Errorf("the one-time password %q was accepted", bad)
+		}
+	}
+}
+
+// Renewal is a PATCH on the production path and carries an OTP of its own.
+func TestRenewalPatchesTheProductionCertificate(t *testing.T) {
+	client, got := serve(t, http.StatusOK, `{
+		"requestID": 2, "dispositionMessage": "ISSUED",
+		"binarySecurityToken": "TUlJRDZq", "secret": "s"
+	}`)
+
+	if _, _, err := client.RenewProductionCSID(context.Background(),
+		[]byte("-----BEGIN CERTIFICATE REQUEST-----\nMII\n-----END CERTIFICATE REQUEST-----\n"),
+		"654321"); err != nil {
+		t.Fatalf("renewal: %v", err)
+	}
+	if got.method != http.MethodPatch {
+		t.Errorf("method = %s, want PATCH", got.method)
+	}
+	if got.path != PathProductionCSID {
+		t.Errorf("path = %s, want %s", got.path, PathProductionCSID)
+	}
+	if got.headers.Get(HeaderOTP) != "654321" {
+		t.Error("renewal did not carry its one-time password")
+	}
+}
+
+// A 200 with no certificate in it is not a success.
+func TestACertificateResponseWithNoCertificateIsAnError(t *testing.T) {
+	client, _ := serve(t, http.StatusOK, `{"requestID": 3, "dispositionMessage": "PENDING"}`)
+
+	if _, _, err := client.RequestProductionCSID(context.Background(),
+		[]byte("-----BEGIN CERTIFICATE REQUEST-----\nMII\n-----END CERTIFICATE REQUEST-----\n")); err == nil {
+		t.Fatal("a response carrying no certificate was treated as success")
+	}
+}

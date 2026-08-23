@@ -89,6 +89,16 @@ const (
 	// parameter in the header" on reporting and clearance.
 	HeaderAuthenticationCertificate = "authentication-certificate"
 	HeaderAcceptLanguage            = "accept-language"
+
+	// HeaderOTP carries the one-time password on the compliance CSID call.
+	//
+	// No published ZATCA document names this header. It was established from
+	// the authority's own API on 2026-08-24: POST to the live core compliance
+	// endpoint answers {"code":"Missing-OTP","message":"OTP is required field"}
+	// with no such header and with "X-OTP" or "One-Time-Password", and moves on
+	// to validating the CSR the moment a header named OTP is present. The
+	// server states its own contract; that is evidence, not inference.
+	HeaderOTP = "OTP"
 )
 
 // Clearance-Status appears in ZATCA integrations elsewhere and is deliberately
@@ -150,10 +160,9 @@ type DocumentRequest struct {
 	// text form, 44 characters, as the Fatoora SDK prints it ("INVOICE HASH =
 	// QnVEexW4nWv4CaE39a/66Jp/OXO/evHQ8pDlG7weq/4=").
 	//
-	// This is NOT the same encoding as QR tag 6, which the Security Features
-	// Standard §4.1 defines as the raw 32-byte digest. The same number travels
-	// in two encodings and swapping them produces a well-formed, rejected
-	// request — see QRHash, which refuses the 44-byte form for that reason.
+	// The same encoding as QR tag 6, which also carries the base64 text — but
+	// NOT the same as the value QRHash takes, which is the raw 32-byte digest
+	// it encodes for you. Handing this string to QRHash gets it encoded twice.
 	InvoiceHash string `json:"invoiceHash"`
 
 	// Invoice is the UBL 2.1 XML, base64-encoded: clearance "accepts standard
@@ -252,7 +261,7 @@ func (c *Client) document(ctx context.Context, path string, body DocumentRequest
 			"A document submission needs both the invoice and its hash.")
 	}
 
-	status, raw, err := c.post(ctx, http.MethodPost, path, body, true)
+	status, raw, err := c.send(ctx, http.MethodPost, path, body, true, nil)
 	if err != nil {
 		return DocumentResponse{}, status, err
 	}
@@ -270,33 +279,104 @@ func (c *Client) document(ctx context.Context, path string, body DocumentRequest
 	return out, status, nil
 }
 
-// RequestProductionCSID exchanges a CSR for a production certificate.
+// RequestComplianceCSID exchanges a CSR and an OTP for a compliance CSID.
 //
-// The compliance CSID call is deliberately absent. It needs the one-time
-// password issued by the Fatoora portal, and the manual describes that step
-// only as "insert valid OTP" in a screenshot of a form — it never names the
-// header or body field that carries it. Implementing it would mean inventing
-// that name, and a wrong one fails in a way that looks like a bad OTP.
+// This is the first call of onboarding and the only one that is not
+// authenticated: the credentials it returns are what authenticate everything
+// after it.
+//
+// The OTP cannot be obtained programmatically, and that is ZATCA's design
+// rather than a gap here. SA.ZATCA.ONBOARDING_OTP records the FAQ verbatim:
+// "OTP generation is managed by the FATOORA portal and must be taken from the
+// portal itself, no need for any API" and "There is no API for OTP". A human
+// reads a six-digit code off the portal and it is valid for one hour. So
+// onboarding can never be a background job, and this method takes the code as
+// an argument rather than pretending it could fetch one.
+func (c *Client) RequestComplianceCSID(
+	ctx context.Context, csrPEM []byte, otp string,
+) (CSIDResponse, int, error) {
+	if strings.TrimSpace(otp) == "" {
+		return CSIDResponse{}, 0, errs.New(errs.CodeInvalidInput,
+			"Onboarding needs the one-time password from the Fatoora portal.")
+	}
+	// Six numeric digits, per SA.ZATCA.ONBOARDING_OTP, whose failure list begins
+	// "Invalid OTP/OTC (not exactly six digits, not numeric)".
+	if len(otp) != 6 || !isDigits(otp) {
+		return CSIDResponse{}, 0, errs.New(errs.CodeInvalidInput,
+			"The one-time password is six digits.")
+	}
+
+	body := struct {
+		CSR string `json:"csr"`
+	}{CSR: EncodeCSRForAPI(csrPEM)}
+
+	status, raw, err := c.send(ctx, http.MethodPost, PathComplianceCSID, body,
+		false, map[string]string{HeaderOTP: otp})
+	if err != nil {
+		return CSIDResponse{}, status, err
+	}
+	return readCSID(raw, status)
+}
+
+// RequestProductionCSID exchanges a compliance CSID for a production one.
+//
+// Authenticated with the compliance credentials, which is why it carries no
+// OTP: the compliance CSID is itself the proof that an OTP was presented.
 func (c *Client) RequestProductionCSID(ctx context.Context, csrPEM []byte) (CSIDResponse, int, error) {
 	body := struct {
 		CSR string `json:"csr"`
 	}{CSR: EncodeCSRForAPI(csrPEM)}
 
-	status, raw, err := c.post(ctx, http.MethodPost, PathProductionCSID, body, true)
+	status, raw, err := c.send(ctx, http.MethodPost, PathProductionCSID, body, true, nil)
 	if err != nil {
 		return CSIDResponse{}, status, err
 	}
+	return readCSID(raw, status)
+}
 
+// RenewProductionCSID replaces a certificate that is near expiry.
+//
+// PATCH rather than POST on the same path, per the Sandbox endpoint listing:
+// "Renews an X509 Certificate (CSID) based on submitted CSR."
+func (c *Client) RenewProductionCSID(
+	ctx context.Context, csrPEM []byte, otp string,
+) (CSIDResponse, int, error) {
+	if len(otp) != 6 || !isDigits(otp) {
+		return CSIDResponse{}, 0, errs.New(errs.CodeInvalidInput,
+			"Renewal needs the six-digit one-time password from the Fatoora portal.")
+	}
+
+	body := struct {
+		CSR string `json:"csr"`
+	}{CSR: EncodeCSRForAPI(csrPEM)}
+
+	status, raw, err := c.send(ctx, http.MethodPatch, PathProductionCSID, body,
+		true, map[string]string{HeaderOTP: otp})
+	if err != nil {
+		return CSIDResponse{}, status, err
+	}
+	return readCSID(raw, status)
+}
+
+// readCSID parses a certificate response.
+func readCSID(raw []byte, status int) (CSIDResponse, int, error) {
 	var out CSIDResponse
-	if e := json.Unmarshal(raw, &out); e != nil {
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return CSIDResponse{}, status, errs.New(errs.CodeUnavailable,
 			"ZATCA returned a certificate response this installation could not read.")
+	}
+	if out.BinarySecurityToken == "" && status == http.StatusOK {
+		return out, status, errs.New(errs.CodeUnavailable,
+			"ZATCA accepted the request but returned no certificate.")
 	}
 	return out, status, nil
 }
 
 // post sends one request with the documented headers.
-func (c *Client) post(ctx context.Context, method, path string, body any, authenticate bool) (int, []byte, error) {
+func (c *Client) send(
+	ctx context.Context, method, path string, body any,
+	authenticate bool, extra map[string]string,
+) (int, []byte, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return 0, nil, errs.New(errs.CodeInternal, "The request could not be encoded.")
@@ -314,6 +394,9 @@ func (c *Client) post(ctx context.Context, method, path string, body any, authen
 	if authenticate {
 		req.Header.Set("Authorization", c.cfg.Credentials.Authorization())
 		req.Header.Set(HeaderAuthenticationCertificate, c.cfg.Credentials.BinarySecurityToken)
+	}
+	for name, value := range extra {
+		req.Header.Set(name, value)
 	}
 
 	resp, err := c.cfg.HTTPClient.Do(req)

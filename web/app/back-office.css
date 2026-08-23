@@ -1014,3 +1014,20 @@
   border-inline-start: 3px solid var(--info);
   background: var(--info-subtle);
 }
+
+
+/* ---------------------------------------------------------------------------
+ * Tap targets on a phone
+ *
+ * Measured at 390px rather than read off the stylesheet: the setup rail's steps
+ * came out at 39px and the template tabs at 37, both under the 44 a thumb
+ * needs. Setup is the first thing a new owner does and Branding is done from
+ * wherever they happen to be, so both are realistically used on a phone.
+ * ------------------------------------------------------------------------- */
+
+@media (max-width: 639px) {
+  .rail__step,
+  .tmpl__tab {
+    min-block-size: var(--tap-mobile);
+  }
+}
