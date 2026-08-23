@@ -92,15 +92,15 @@ export function TerminalForm({
     if (!label.trim()) {
       local.terminal_label = 'Give the terminal a name, like "Till 2".';
     }
-    if (!storeId) local.store_id = 'Say which branch this terminal is in.';
+    if (!storeId) local.store_id = t('terminal.chooseBranch');
     // Required when registering. When correcting an older terminal that never
     // had one, leaving it blank keeps things as they are rather than blocking
     // a rename behind a decision the reader came here for something else.
     if (!existing && !unitId) {
-      local.egs_unit_id = 'Choose the unit this terminal will sign under.';
+      local.egs_unit_id = t('terminal.chooseUnit');
     }
     if (unitId && !chosenIsEligible) {
-      local.egs_unit_id = 'That unit signs for a different branch.';
+      local.egs_unit_id = t('terminal.unitOtherBranch');
     }
     if (Object.keys(local).length > 0) {
       setFields(local);
@@ -128,7 +128,7 @@ export function TerminalForm({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so the terminal was not saved. ' +
+          t('terminal.saveOffline') +
             'Nothing has been lost — try again when the connection is back.',
         );
       } else if (err instanceof RequestFailed) {
@@ -146,7 +146,7 @@ export function TerminalForm({
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
         <h2 className="ds-h3">
-          {existing ? existing.terminal_label : 'New terminal'}
+          {existing ? existing.terminal_label : t('terminal.new')}
         </h2>
       </div>
 
@@ -179,7 +179,7 @@ export function TerminalForm({
             hint={
               existing
                 ? 'Moving a terminal between your branches keeps its invoice history. It cannot move to another business.'
-                : 'Where this terminal stands.'
+                : t('terminal.whereItStands')
             }
           >
             <SelectInput

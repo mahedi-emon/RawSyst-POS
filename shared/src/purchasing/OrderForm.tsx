@@ -108,7 +108,7 @@ export function OrderForm({
         setFailure(
           err instanceof Offline
             ? 'This device cannot reach the server, so suppliers and warehouses could not be loaded.'
-            : 'Suppliers and warehouses could not be loaded.',
+            : t('order.lookupsFailed'),
         );
       });
     return () => {
@@ -127,11 +127,11 @@ export function OrderForm({
     e.preventDefault();
 
     const local: FieldErrors = {};
-    if (!supplierId) local.supplier_id = 'Choose who you are buying from.';
-    if (!warehouseId) local.warehouse_id = 'Choose where the goods will be delivered.';
+    if (!supplierId) local.supplier_id = t('order.chooseSupplier');
+    if (!warehouseId) local.warehouse_id = t('order.chooseWarehouse');
     const usable = lines.filter((l) => l.variantId && Number(l.qty) > 0);
     if (usable.length === 0) {
-      local.lines = 'Add at least one item with a quantity.';
+      local.lines = t('order.needsAnItem');
     }
     if (Object.keys(local).length > 0) {
       setFields(local);
@@ -166,7 +166,7 @@ export function OrderForm({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so the order was not saved. ' +
+          t('order.saveOffline') +
             'Nothing has been lost.',
         );
       } else if (err instanceof RequestFailed) {
@@ -213,7 +213,7 @@ export function OrderForm({
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
         <h2 className="ds-h3">
-          {existing ? `Correcting ${existing.po_number}` : 'New purchase order'}
+          {existing ? `Correcting ${existing.po_number}` : t('order.new')}
         </h2>
         {existing && <span className="ds-caption">{t('purch.draftNotCommitted')}</span>}
       </div>
@@ -375,7 +375,7 @@ export function OrderForm({
         </section>
 
         <FormActions
-          submitLabel={existing ? 'Save changes' : 'Save as draft'}
+          submitLabel={existing ? 'Save changes' : t('order.saveDraft')}
           busy={busy}
           onCancel={onCancel}
         />

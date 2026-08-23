@@ -23,6 +23,7 @@ import { issueOrder, readOrder, receiveGoods, type Order } from '../api/purchasi
 import { OrderStatus } from './PurchasingScreen';
 import { OrderForm } from './OrderForm';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 export function OrderDetail({
   companyId,
@@ -75,7 +76,7 @@ export function OrderDetail({
       }));
 
     if (lines.length === 0) {
-      setNotice('Enter what arrived before recording the delivery.');
+      setNotice(t('order.enterArrived'));
       return;
     }
 
@@ -94,7 +95,7 @@ export function OrderDetail({
       setNotice(receiptNotice(receipt));
       reload();
     } catch (err) {
-      setNotice(explain(err, 'That delivery could not be recorded.'));
+      setNotice(explain(err, t('order.deliveryFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -105,10 +106,10 @@ export function OrderDetail({
     setNotice(null);
     try {
       await issueOrder(client, companyId, order.id);
-      setNotice('Order sent. It can now receive deliveries.');
+      setNotice(t('order.sent'));
       reload();
     } catch (err) {
-      setNotice(explain(err, 'That order could not be issued.'));
+      setNotice(explain(err, t('order.issueFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -131,7 +132,7 @@ export function OrderDetail({
               existing={order}
               onSaved={() => {
                 setEditing(false);
-                setNotice('Order updated.');
+                setNotice(t('order.updated'));
                 reload();
               }}
               onCancel={() => setEditing(false)}
@@ -378,7 +379,7 @@ export function OrderDetail({
                 disabled={busy}
                 onClick={() => void submitReceipt(order)}
               >
-                {busy ? 'Recording…' : 'Record delivery'}
+                {busy ? t('order.recording') : t('order.recordDelivery')}
               </button>
               <button
                 className="ds-btn ds-btn--quiet"
@@ -401,18 +402,15 @@ export function OrderDetail({
   );
 }
 
-function explain(err: unknown, fallback: string): string {
+function explain(err: unknown, fallback: string, t: (key: Key) => string): string {
   if (err instanceof Offline) {
     // Purchasing is a back-office activity against live records: what is
     // already received and billed cannot be known offline, and guessing would
     // put stock in twice.
-    return (
-      'This device cannot reach the server, so the delivery cannot be recorded. ' +
-      'Nothing has been changed.'
-    );
+    return t('order.deliveryOffline');
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) return 'You do not have permission to do that.';
+    if (err.status === 403) return t('common.noPermission');
     return err.message;
   }
   return err instanceof Error ? err.message : fallback;

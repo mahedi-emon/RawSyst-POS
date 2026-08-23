@@ -38,6 +38,7 @@ import {
 import { InvoiceState, invoiceStateHint } from '../dashboard/InvoiceState';
 import { money } from '../ui/format';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 import {
   auditActionName,
   chainStatus,
@@ -103,7 +104,7 @@ export function InvoiceDetailScreen({
       }
       setLoad({
         state: 'failed',
-        message: explain(err),
+        message: explain(err, t),
         offline: err instanceof Offline,
       });
     }
@@ -169,8 +170,8 @@ export function InvoiceDetailScreen({
           <div className="ds-state">
             <p className="ds-state__title">
               {load.state === 'denied'
-                ? 'This account cannot view invoices'
-                : 'That invoice was not found'}
+                ? t('inv.noPermissionView')
+                : t('inv.notFound')}
             </p>
             <p className="ds-state__body">
               {load.state === 'denied'
@@ -189,7 +190,7 @@ export function InvoiceDetailScreen({
         <div className="ds-panel">
           <div className="ds-state">
             <p className="ds-state__title">
-              {load.offline ? 'This invoice could not be reached' : 'This invoice could not be read'}
+              {load.offline ? t('inv.unreachable') : t('inv.unreadable')}
             </p>
             <p className="ds-state__body">{load.message}</p>
             <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
@@ -215,12 +216,12 @@ export function InvoiceDetailScreen({
     setReprinting(true);
     try {
       await reprintInvoice(client, invoiceId);
-      setNotice('A reprint has been recorded against this invoice.');
+      setNotice(t('inv.reprintRecorded'));
       // Reloaded so the trail below shows what just happened rather than
       // making the reader take the notice on trust.
       await reload();
     } catch (err) {
-      setProblem(explain(err));
+      setProblem(explain(err, t));
     } finally {
       setReprinting(false);
     }
@@ -236,7 +237,7 @@ export function InvoiceDetailScreen({
             disabled={reprinting}
             onClick={() => void reprint()}
           >
-            {reprinting ? 'Recording…' : 'Reprint'}
+            {reprinting ? 'Recording…' : t('inv.reprint')}
           </button>
           {!credit && mayRefund && onIssueCreditNote && (
             <button
@@ -715,16 +716,16 @@ function hasFooterBlocks(t: DocumentTemplate): boolean {
   );
 }
 
-function explain(err: unknown): string {
+function explain(err: unknown, t: (key: Key) => string): string {
   if (err instanceof Offline) {
     return (
-      'This invoice lives on the server and cannot be read while the ' +
+      t('inv.offlineOnServer') +
       'connection is down. Nothing about it has changed.'
     );
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) return 'This login is not allowed to do that.';
+    if (err.status === 403) return t('common.loginNotAllowed');
     return err.message;
   }
-  return err instanceof Error ? err.message : 'Something went wrong.';
+  return err instanceof Error ? err.message : t('common.somethingWrong');
 }

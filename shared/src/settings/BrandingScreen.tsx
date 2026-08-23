@@ -35,6 +35,7 @@ import {
 import { FormError } from '../ui/Form';
 import { TemplatePanel } from './TemplatePanel';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 /** Mirrors the server's own limits so the copy can state them before a client
  *  picks a file. The server is still the authority — these numbers exist to
@@ -75,7 +76,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
       }
       setLoad({
         state: 'failed',
-        message: explain(err),
+        message: explain(err, t),
         offline: err instanceof Offline,
       });
     }
@@ -129,7 +130,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
       return;
     }
     if (file.type && file.type !== 'image/png' && file.type !== 'image/jpeg') {
-      setProblem('Choose a PNG or a JPEG. Other formats are not accepted.');
+      setProblem(t('brand.formatHint'));
       return;
     }
 
@@ -138,9 +139,9 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
       const data = await readFileAsBase64(file);
       const logo = await putLogo(client, companyId, data);
       setLoad({ state: 'ready', logo });
-      setSaved('Your logo has been saved.');
+      setSaved(t('brand.saved'));
     } catch (err) {
-      setProblem(explain(err));
+      setProblem(explain(err, t));
     } finally {
       setBusy(null);
       // Cleared so picking the SAME file again still fires a change event,
@@ -156,9 +157,9 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
     try {
       await deleteLogo(client, companyId);
       setLoad({ state: 'ready', logo: null });
-      setSaved('Your logo has been removed. Documents use the RawSyst mark again.');
+      setSaved(t('brand.removed'));
     } catch (err) {
-      setProblem(explain(err));
+      setProblem(explain(err, t));
     } finally {
       setBusy(null);
     }
@@ -191,7 +192,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
       <Shell>
         <div className="ds-state">
           <p className="ds-state__title">
-            {load.offline ? 'Your branding could not be reached' : 'Branding could not be read'}
+            {load.offline ? t('brand.unreachable') : t('brand.unreadable')}
           </p>
           <p className="ds-state__body">{load.message}</p>
           <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
@@ -283,10 +284,10 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
                   onClick={() => picker.current?.click()}
                 >
                   {busy === 'uploading'
-                    ? 'Uploading…'
+                    ? t('brand.uploading')
                     : logo
-                      ? 'Replace logo'
-                      : 'Upload a logo'}
+                      ? t('brand.replaceLogo')
+                      : t('brand.uploadLogo')}
                 </button>
                 {logo && (
                   <button
@@ -294,7 +295,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
                     disabled={busy !== null}
                     onClick={() => void remove()}
                   >
-                    {busy === 'removing' ? 'Removing…' : 'Remove'}
+                    {busy === 'removing' ? t('brand.removing') : 'Remove'}
                   </button>
                 )}
               </div>
@@ -342,19 +343,19 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 /** Turns a failure into something an owner can act on. */
-function explain(err: unknown): string {
+function explain(err: unknown, t: (key: Key) => string): string {
   if (err instanceof Offline) {
     return (
-      'Your logo is stored on the server, so it cannot be changed until the ' +
+      t('brand.offlineOnServer') +
       'connection is back. Nothing already saved is lost.'
     );
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) return 'This login is not allowed to change branding.';
-    if (err.status === 404) return 'That business was not found.';
+    if (err.status === 403) return t('brand.notAllowed');
+    if (err.status === 404) return t('brand.businessNotFound');
     // 400 carries the server's own sentence, which names the actual problem —
     // the size, the format, the dimensions — better than anything here could.
     return err.message;
   }
-  return err instanceof Error ? err.message : 'Something went wrong.';
+  return err instanceof Error ? err.message : t('common.somethingWrong');
 }

@@ -32,31 +32,36 @@ import {
 } from '../api/branding';
 import { Field, FormError, TextInput } from '../ui/Form';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 /** How each type reads, and what it is for. The labels are the shop's words
  *  rather than the column's: nobody outside this codebase says "standard". */
-const TYPES: Array<{ key: DocType; label: string; purpose: string }> = [
-  {
-    key: 'standard',
-    label: 'Tax invoice',
-    purpose: 'A B2B invoice, carrying both parties and their tax numbers.',
-  },
-  {
-    key: 'simplified',
-    label: 'Simplified invoice',
-    purpose: 'The everyday counter sale. Usually the shortest of the four.',
-  },
-  {
-    key: 'credit_note',
-    label: 'Credit note',
-    purpose: 'Money going back. Where a returns policy earns its place.',
-  },
-  {
-    key: 'debit_note',
-    label: 'Debit note',
-    purpose: 'A correction that increases what is owed.',
-  },
-];
+function documentTypes(
+  t: (key: Key) => string,
+): Array<{ key: DocType; label: string; purpose: string }> {
+  return [
+    {
+      key: 'standard',
+      label: t('tmpl.taxInvoice'),
+      purpose: t('tmpl.taxInvoiceHint'),
+    },
+    {
+      key: 'simplified',
+      label: t('tmpl.simplified'),
+      purpose: t('tmpl.simplifiedHint'),
+    },
+    {
+      key: 'credit_note',
+      label: t('comp.creditNote'),
+      purpose: t('tmpl.creditHint'),
+    },
+    {
+      key: 'debit_note',
+      label: t('tmpl.debitNote'),
+      purpose: t('tmpl.debitHint'),
+    },
+  ];
+}
 
 type Load =
   | { state: 'loading' }
@@ -75,7 +80,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
     try {
       setLoad({ state: 'ready', templates: await fetchTemplates(client, companyId) });
     } catch (err) {
-      setLoad({ state: 'failed', message: explain(err) });
+      setLoad({ state: 'failed', message: explain(err, t) });
     }
   }, [client, companyId]);
 
@@ -125,19 +130,19 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
             is few enough to show, and which ones you have customised is worth
             seeing at a glance. */}
         <div className="tmpl__tabs" role="tablist" aria-label={t('tpl.documentType')}>
-          {TYPES.map((t) => {
+          {documentTypes(t).map((type) => {
             const configured = load.templates.find(
-              (x) => x.doc_type === t.key,
+              (x) => x.doc_type === type.key,
             )?.configured;
             return (
               <button
-                key={t.key}
+                key={type.key}
                 role="tab"
-                aria-selected={active === t.key}
-                className={`tmpl__tab${active === t.key ? ' tmpl__tab--on' : ''}`}
-                onClick={() => setActive(t.key)}
+                aria-selected={active === type.key}
+                className={`tmpl__tab${active === type.key ? ' tmpl__tab--on' : ''}`}
+                onClick={() => setActive(type.key)}
               >
-                {t.label}
+                {type.label}
                 {configured && (
                   <span className="tmpl__dot" aria-label="customised">
                     &middot;
@@ -153,7 +158,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
             key={current.doc_type}
             companyId={companyId}
             template={current}
-            purpose={TYPES.find((t) => t.key === active)?.purpose ?? ''}
+            purpose={documentTypes(t).find((type) => type.key === active)?.purpose ?? ''}
             readOnly={!mayEdit}
             onSaved={(saved) =>
               setLoad({
@@ -220,7 +225,7 @@ function TemplateForm({
       // Field-level messages come back keyed as the form keys them, so each
       // sits under its own box rather than as a banner the reader has to hunt.
       if (err instanceof RequestFailed && err.fields) setFields(err.fields);
-      setProblem(explain(err));
+      setProblem(explain(err, t));
     } finally {
       setBusy(false);
     }
@@ -233,7 +238,7 @@ function TemplateForm({
       await resetTemplate(client, companyId, draft.doc_type);
       onReset();
     } catch (err) {
-      setProblem(explain(err));
+      setProblem(explain(err, t));
     } finally {
       setBusy(false);
     }
@@ -451,16 +456,16 @@ function Block({
   );
 }
 
-function explain(err: unknown): string {
+function explain(err: unknown, t: (key: Key) => string): string {
   if (err instanceof Offline) {
     return (
-      'Your document text is kept on the server, so it cannot be changed ' +
+      t('tmpl.offlineOnServer') +
       'until the connection is back. Nothing already saved is lost.'
     );
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) return 'This login is not allowed to change document text.';
+    if (err.status === 403) return t('tmpl.notAllowed');
     return err.message;
   }
-  return err instanceof Error ? err.message : 'Something went wrong.';
+  return err instanceof Error ? err.message : t('common.somethingWrong');
 }

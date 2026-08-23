@@ -96,8 +96,8 @@ export function BillForm({
         setSuppliers([]);
         setFailure(
           err instanceof Offline
-            ? 'This device cannot reach the server, so suppliers could not be loaded.'
-            : 'Suppliers could not be loaded.',
+            ? t('bill.suppliersOffline')
+            : t('bill.suppliersFailed'),
         );
       });
     return () => {
@@ -141,7 +141,7 @@ export function BillForm({
         );
       } catch (err) {
         setFailure(
-          err instanceof Error ? err.message : 'That order could not be read.',
+          err instanceof Error ? err.message : t('bill.orderReadFailed'),
         );
       } finally {
         setLoadingOrder(false);
@@ -159,13 +159,13 @@ export function BillForm({
     e.preventDefault();
 
     const local: FieldErrors = {};
-    if (!supplierId) local.supplier_id = 'Choose whose invoice this is.';
+    if (!supplierId) local.supplier_id = t('bill.chooseSupplier');
     if (!supplierRef.trim()) {
       local.supplier_ref =
         "Enter the supplier's own invoice number, so the same document cannot be paid twice.";
     }
     const usable = lines.filter((l) => Number(l.qty) > 0);
-    if (usable.length === 0) local.lines = 'A bill needs at least one line.';
+    if (usable.length === 0) local.lines = t('bill.needsALine');
 
     if (Object.keys(local).length > 0) {
       setFields(local);
@@ -195,8 +195,8 @@ export function BillForm({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so the bill was not recorded. ' +
-            'Nothing has been lost.',
+          t('bill.saveOffline') +
+            t('common.nothingLost'),
         );
       } else if (err instanceof RequestFailed) {
         if (err.fields) setFields(err.fields);
@@ -302,8 +302,8 @@ export function BillForm({
           ) : lines.length === 0 ? (
             <p className="form__empty">
               {poId
-                ? 'That order has nothing left to bill.'
-                : 'Choose an order above to fill these in, or add a line by hand.'}
+                ? t('bill.orderFullyBilled')
+                : t('bill.chooseOrderHint')}
             </p>
           ) : (
             <div className="ds-scroll-x">

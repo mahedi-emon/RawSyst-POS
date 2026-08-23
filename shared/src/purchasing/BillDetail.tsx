@@ -30,6 +30,7 @@ import {
 import { BillStatus } from './PurchasingScreen';
 import { payable } from './purchasing';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 export function BillDetail({
   companyId,
@@ -59,7 +60,7 @@ export function BillDetail({
 
   async function approve(bill: Bill) {
     if (!reason.trim()) {
-      setNotice('Say why this is being accepted. It is recorded against your name.');
+      setNotice(t('bill.reasonPrompt'));
       return;
     }
     setBusy(true);
@@ -67,10 +68,10 @@ export function BillDetail({
     try {
       await approveBill(client, companyId, bill.id, reason.trim());
       setReason('');
-      setNotice('Accepted. The bill is now on the ledger and can be paid.');
+      setNotice(t('bill.accepted'));
       reload();
     } catch (err) {
-      setNotice(explain(err, 'That could not be approved.'));
+      setNotice(explain(err, t('bill.approveFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -94,7 +95,7 @@ export function BillDetail({
       );
       reload();
     } catch (err) {
-      setNotice(explain(err, 'That payment could not be recorded.'));
+      setNotice(explain(err, t('bill.paymentFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -150,7 +151,7 @@ export function BillDetail({
                   disabled={busy || !reason.trim()}
                   onClick={() => void approve(bill)}
                 >
-                  {busy ? 'Accepting…' : 'Accept and post'}
+                  {busy ? t('bill.accepting') : t('bill.acceptAndPost')}
                 </button>
               </div>
             </section>
@@ -192,7 +193,7 @@ export function BillDetail({
                   disabled={busy}
                   onClick={() => void pay(bill)}
                 >
-                  {busy ? 'Paying…' : `Pay ${money(payAmount || bill.outstanding)}`}
+                  {busy ? t('bill.paying') : `Pay ${money(payAmount || bill.outstanding)}`}
                 </button>
               </div>
             </section>
@@ -263,7 +264,7 @@ function MatchEvidence({ lines }: { lines: MatchLine[] }) {
             {lines.map((m, i) => (
               <tr key={i}>
                 <td>{m.description || <span className="ds-subtle">{t('purch.wholeBill')}</span>}</td>
-                <td>{m.dimension === 'qty' ? 'Quantity' : m.dimension === 'price' ? 'Unit price' : m.dimension}</td>
+                <td>{m.dimension === 'qty' ? 'Quantity' : m.dimension === 'price' ? t('common.unitPrice') : m.dimension}</td>
                 <td className="num">{m.ordered ? trimQuantity(m.ordered) : '—'}</td>
                 <td className="num">{m.received ? trimQuantity(m.received) : '—'}</td>
                 <td className="num">{m.billed ? trimQuantity(m.billed) : '—'}</td>
@@ -280,6 +281,7 @@ function MatchEvidence({ lines }: { lines: MatchLine[] }) {
 }
 
 function Outcome({ line }: { line: MatchLine }) {
+  const t = useT();
   const tone =
     line.outcome === 'breach'
       ? 'ds-badge--danger'
@@ -288,10 +290,10 @@ function Outcome({ line }: { line: MatchLine }) {
         : 'ds-badge--success';
   const label =
     line.outcome === 'breach'
-      ? 'Does not agree'
+      ? t('bill.doesNotAgree')
       : line.outcome === 'within_tolerance'
-        ? 'Within tolerance'
-        : 'Agrees';
+        ? t('bill.withinTolerance')
+        : t('bill.agrees');
   return (
     <span className={`ds-badge ${tone}`} title={line.detail}>
       {label}
@@ -316,15 +318,12 @@ function Figure({
   );
 }
 
-function explain(err: unknown, fallback: string): string {
+function explain(err: unknown, fallback: string, t: (key: Key) => string): string {
   if (err instanceof Offline) {
-    return (
-      'This device cannot reach the server. Nothing has been changed, and no ' +
-      'money has moved.'
-    );
+    return t('bill.offlineNoChange');
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) return 'You do not have permission to do that.';
+    if (err.status === 403) return t('common.noPermission');
     return err.message;
   }
   return err instanceof Error ? err.message : fallback;

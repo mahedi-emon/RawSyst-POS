@@ -64,7 +64,7 @@ export function SupplierForm({
     // validation runs in Go and a test asserts it names every missing field.
     const local: FieldErrors = {};
     if (!existing && !code.trim()) {
-      local.code = 'Give the supplier a short code you will recognise.';
+      local.code = t('supplier.codeHint');
     }
     if (!legalName.trim()) local.legal_name = "Enter the supplier's registered name.";
     const days = Number(terms);
@@ -99,7 +99,7 @@ export function SupplierForm({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so the supplier was not saved. ' +
+          t('supplier.saveOffline') +
             'Nothing has been lost — try again when the connection is back.',
         );
       } else if (err instanceof RequestFailed) {
@@ -119,7 +119,7 @@ export function SupplierForm({
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
         <h2 className="ds-h3">
-          {existing ? existing.legal_name : 'New supplier'}
+          {existing ? existing.legal_name : t('supplier.new')}
         </h2>
       </div>
 
@@ -134,8 +134,8 @@ export function SupplierForm({
           <Field label={t('common.shortCode')} htmlFor="sup-code" required error={fields.code}
             hint={
               existing
-                ? 'Fixed once set: it appears on orders you have already issued.'
-                : 'How you will find them in a list. SKU-style, e.g. ACME.'
+                ? t('supplier.codeFixed')
+                : t('supplier.codeExample')
             }>
             {existing ? (
               <p className="field__fixed num">{existing.code}</p>
