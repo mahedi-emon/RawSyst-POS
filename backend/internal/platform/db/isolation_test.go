@@ -676,11 +676,15 @@ func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
 	pool := testPool(t)
 
 	want := []string{
-		// SA.ZATCA.XML_CANONICALIZATION was here until 0059, which read §2.3.3
-		// of the Security Features Implementation Standards v1.1 directly and
-		// recorded the transform chain. Its value is now pinned by
-		// TestTheCanonicalFormIsRecordedAsVerified below.
-		"SA.ZATCA.UBL_FIELD_SET", // split out of XML_SCHEMA_VERSION by 0044
+		// Three rules have left this list, each to a pinning test below:
+		//
+		//   XML_CANONICALIZATION    0059, from Security Features v1.1 §2.3.3
+		//   CSR_SUBJECT_LAYOUT      0060, from the Developer Portal Manual §5.3
+		//   QR_TAG_VALUE_ENCODING   0061, from the worked payload in Technical
+		//                                 Guideline V2 §6
+		//   UBL_FIELD_SET           0061, checked by ZATCA's own validator
+		//
+		// What is left is the one thing no published ZATCA document states.
 
 		// 0045. SA.ZATCA.CSR_SUBJECT_LAYOUT was here until 0060, which read the
 		// OpenSSL config file out of §5.3's screenshots and found the
@@ -691,10 +695,6 @@ func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
 		// and the seventh — the header carrying the OTP — is still unnamed in
 		// every official document, so a CSR can now be built and still not sent.
 		"SA.ZATCA.ONBOARDING_REQUEST_FORMAT",
-
-		// 0046. The QR framing is verified; how tags 6 to 9 encode their values is
-		// answered two different ways by the standard, so it stays open.
-		"SA.ZATCA.QR_TAG_VALUE_ENCODING",
 	}
 	for _, key := range want {
 		var blocker bool
@@ -909,6 +909,82 @@ func TestTheCSRLayoutIsRecordedAsVerified(t *testing.T) {
 		if altNameRDNs[i] != want {
 			t.Errorf("alternative-name RDN %d = %q, want %q", i, altNameRDNs[i], want)
 		}
+	}
+}
+
+// 0061 verified every QR tag's value encoding against ZATCA's worked payload.
+//
+// Pinned because the encodings are NOT uniform and nothing downstream would
+// notice a mistake: tag 6 and tag 7 carry base64 TEXT, tags 8 and 9 carry RAW
+// DER. A payload built with the wrong one for any tag is well-formed, scans,
+// and means nothing. 0059 got tag 6 wrong in exactly this way.
+func TestTheQRValueEncodingIsRecordedAsVerified(t *testing.T) {
+	pool := testPool(t)
+
+	var verified *time.Time
+	var tag6, tag7, tag8, tag9 string
+	err := pool.Raw().QueryRow(context.Background(),
+		`SELECT verified_on,
+		        payload->>'tag_6', payload->>'tag_7',
+		        payload->>'tag_8', payload->>'tag_9'
+		   FROM regulatory_rule
+		  WHERE rule_key = 'SA.ZATCA.QR_TAG_VALUE_ENCODING' AND effective_to IS NULL`).
+		Scan(&verified, &tag6, &tag7, &tag8, &tag9)
+	if err != nil {
+		t.Fatalf("read the QR encoding rule: %v", err)
+	}
+
+	if verified == nil {
+		t.Error("the QR value encoding was read from the worked payload but " +
+			"the rule is not recorded as verified")
+	}
+	// Tag 6 is the one that changed, so it is asserted most specifically.
+	if !strings.Contains(tag6, "base64") || !strings.Contains(tag6, "text") {
+		t.Errorf("tag 6 = %q, want the base64 TEXT of the digest", tag6)
+	}
+	if !strings.Contains(tag7, "base64") {
+		t.Errorf("tag 7 = %q, want the base64 text of the signature", tag7)
+	}
+	for name, got := range map[string]string{"tag 8": tag8, "tag 9": tag9} {
+		if !strings.Contains(got, "raw DER") {
+			t.Errorf("%s = %q, want raw DER", name, got)
+		}
+	}
+}
+
+// 0061 verified the UBL field set against ZATCA's own validator.
+//
+// The validator URL is pinned because the rule's whole history was a belief
+// that no such thing was reachable — it was recorded for months as available
+// only inside the Fatoora SDK, which answers 403.
+func TestTheUBLFieldSetIsRecordedAsVerified(t *testing.T) {
+	pool := testPool(t)
+
+	var verified *time.Time
+	var profileID, currency, validatorURL string
+	err := pool.Raw().QueryRow(context.Background(),
+		`SELECT verified_on, payload->>'profile_id', payload->>'currency',
+		        payload->>'validator_url'
+		   FROM regulatory_rule
+		  WHERE rule_key = 'SA.ZATCA.UBL_FIELD_SET' AND effective_to IS NULL`).
+		Scan(&verified, &profileID, &currency, &validatorURL)
+	if err != nil {
+		t.Fatalf("read the UBL field set rule: %v", err)
+	}
+
+	if verified == nil {
+		t.Error("the UBL field set was checked by ZATCA's validator but the " +
+			"rule is not recorded as verified")
+	}
+	// BR-KSA-EN16931-01 and -02 fix these two outright.
+	if profileID != "reporting:1.0" {
+		t.Errorf("profile id = %q, want reporting:1.0", profileID)
+	}
+	if currency != "SAR" {
+		t.Errorf("currency = %q, want SAR", currency)
+	}
+	if !strings.Contains(validatorURL, "validate-e-invoice/invoice/validate") {
+		t.Errorf("validator url = %q, want ZATCA's public validator", validatorURL)
 	}
 }
 
