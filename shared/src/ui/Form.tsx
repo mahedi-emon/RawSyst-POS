@@ -39,13 +39,14 @@ export function Field({
   required?: boolean;
   children: ReactNode;
 }) {
+  const t = useT();
   return (
     <div className={`field${error ? ' field--bad' : ''}`}>
       <label className="field__label" htmlFor={htmlFor}>
         {label}
         {/* A word, not an asterisk. An asterisk needs a legend somewhere else
             on the page, which is one more thing to read and to translate. */}
-        {!required && <span className="field__optional"> (optional)</span>}
+        {!required && <span className="field__optional"> {t('field.optional')}</span>}
       </label>
 
       {hint && <span className="field__hint">{hint}</span>}

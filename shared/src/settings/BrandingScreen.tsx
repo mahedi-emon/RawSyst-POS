@@ -214,11 +214,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
         </div>
 
         <div className="ds-panel__body">
-          <p className="ds-body-sm ds-muted brand__lede">
-            Your logo belongs to this business. A group with several businesses
-            sets one for each, because each issues its own invoices under its
-            own registration.
-          </p>
+          <p className="ds-body-sm ds-muted brand__lede">{t('brand.belongsToBusiness')}</p>
 
           <div className="brand__frame" aria-live="polite">
             {logo ? (
@@ -306,22 +302,14 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
               </p>
             </>
           ) : (
-            <p className="brand__readonly ds-body-sm" role="note">
-              You can see your branding but not change it. Changing a logo needs
-              permission to manage settings.
-            </p>
+            <p className="brand__readonly ds-body-sm" role="note">{t('brand.readOnly')}</p>
           )}
 
           {/* The honest note. Nothing prints this yet, and a settings screen
               that implied otherwise would have a client wondering why their
               receipts had not changed. */}
           <p className="brand__scope ds-body-sm" role="note">
-            <strong>{t('brand.whereAppears')}</strong> Your logo heads the invoices,
-            credit notes and debit notes you open in the back office, and any
-            copy you print from there. It does not appear on the till receipt:
-            that is printed as plain text so it works on every counter printer,
-            and text cannot hold an image.
-          </p>
+            <strong>{t('brand.whereAppears')}</strong>{t('brand.whereItAppears')}</p>
         </div>
       </div>
 

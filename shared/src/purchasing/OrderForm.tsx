@@ -197,10 +197,7 @@ export function OrderForm({
       <div className="ds-panel">
         <div className="ds-state">
           <p className="ds-state__title">{t('purch.noSuppliers')}</p>
-          <p className="ds-state__body">
-            An order is raised against a supplier. Add one first, and their
-            payment terms will set when the bill falls due.
-          </p>
+          <p className="ds-state__body">{t('order.needsSupplier')}</p>
           <button className="ds-btn ds-btn--secondary" onClick={onCancel}>
             {t('common.back')}
           </button>
@@ -368,10 +365,7 @@ export function OrderForm({
             {t('purch.addItem')}
           </button>
 
-          <p className="ds-caption form__aside">
-            The figures above are a guide. The server prices the order from these
-            lines when it is saved and is the authority on the total.
-          </p>
+          <p className="ds-caption form__aside">{t('order.figuresGuide')}</p>
         </section>
 
         <FormActions

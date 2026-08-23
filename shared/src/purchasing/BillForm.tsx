@@ -224,10 +224,7 @@ export function BillForm({
       <div className="ds-panel">
         <div className="ds-state">
           <p className="ds-state__title">{t('purch.noSuppliers')}</p>
-          <p className="ds-state__body">
-            A bill is recorded against a supplier, and their payment terms set
-            when it falls due. Add one first.
-          </p>
+          <p className="ds-state__body">{t('bill.needsSupplier')}</p>
           <button className="ds-btn ds-btn--secondary" onClick={onCancel}>
             {t('common.back')}
           </button>
@@ -394,11 +391,7 @@ export function BillForm({
             {t('purch.addLine')}
           </button>
 
-          <p className="ds-caption form__aside">
-            Enter what the supplier has actually charged, even where it differs
-            from the order. The difference is what the check is for, and a bill
-            that does not agree is held rather than refused.
-          </p>
+          <p className="ds-caption form__aside">{t('bill.enterActual')}</p>
         </section>
 
         <FormActions submitLabel="Record bill" busy={busy} onCancel={onCancel} />

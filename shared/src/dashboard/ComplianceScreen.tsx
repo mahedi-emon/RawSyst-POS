@@ -128,17 +128,9 @@ function GateNotice({ outstanding }: { outstanding: number }) {
         </p>
 
         <p className="gate__body">
-          <strong>{t('comp.salesAreFine')}</strong> Every one is recorded
-          in full — the money, the stock movements and the accounting entries are
-          all correct, the receipts you gave customers are valid, and the invoice
-          sequence is unbroken. What is outstanding is the submission to ZATCA,
-          and nothing is lost while it waits.
-        </p>
+          <strong>{t('comp.salesAreFine')}</strong>{t('comp.allRecorded')}</p>
 
-        <p className="gate__body ds-muted">
-          There is nothing to retry here. Once verification completes, everything
-          in this list is submitted in order, oldest first, automatically.
-        </p>
+        <p className="gate__body ds-muted">{t('comp.nothingToRetry')}</p>
       </div>
     </section>
   );

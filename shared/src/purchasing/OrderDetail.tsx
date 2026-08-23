@@ -317,10 +317,7 @@ export function OrderDetail({
               </div>
               <div className="ds-panel__body purchase__form">
                 <label className="purchase__field">
-                  <span className="ds-caption">
-                    Freight, duty and handling — spread across the items above
-                    and added to what the stock cost you
-                  </span>
+                  <span className="ds-caption">{t('order.landedCost')}</span>
                   <input
                     className="input input--narrow"
                     inputMode="decimal"
@@ -331,10 +328,7 @@ export function OrderDetail({
                   />
                 </label>
                 <label className="purchase__field">
-                  <span className="ds-caption">
-                    Import VAT — reclaimed rather than added to the cost of the
-                    stock, so it is kept separate
-                  </span>
+                  <span className="ds-caption">{t('order.importVat')}</span>
                   <input
                     className="input input--narrow"
                     inputMode="decimal"
@@ -387,12 +381,7 @@ export function OrderDetail({
               >
                 {t('action.cancel')}
               </button>
-              <p className="ds-caption purchase__aside">
-                Recording a delivery puts the goods into stock at the agreed
-                cost plus any freight above. The supplier is not owed anything
-                until their bill is entered — until then the value sits as goods
-                received and not invoiced.
-              </p>
+              <p className="ds-caption purchase__aside">{t('order.deliveryExplain')}</p>
             </div>
           )}
         </DetailScreen>

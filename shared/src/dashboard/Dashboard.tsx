@@ -216,20 +216,20 @@ export function Dashboard({
                     <MoneyRow label={t('common.bank')} amount={d.money.bank} currency={currency} />
                     <MoneyRow
                       label={t('dash.withCardProcessor')}
-                      note="Taken, not yet paid out"
+                      note={t('dash.takenNotPaidOut')}
                       amount={d.money.unsettled}
                       currency={currency}
                     />
                     <MoneyRow
                       label={t('dash.owedByCustomers')}
-                      note="Not counted in the total"
+                      note={t('dash.notInTotal')}
                       amount={d.money.receivable}
                       currency={currency}
                       excluded
                     />
                     <MoneyRow
                       label={t('dash.storeCreditHeld')}
-                      note="Not counted in the total"
+                      note={t('dash.notInTotal')}
                       amount={d.money.store_credit}
                       currency={currency}
                       excluded
@@ -240,7 +240,7 @@ export function Dashboard({
                         would think they owed less than they do. */}
                     <MoneyRow
                       label={t('dash.grniShort')}
-                      note="You will owe this. Not counted in the total"
+                      note={t('dash.youWillOweThis')}
                       amount={d.money.accrued_purchases}
                       currency={currency}
                       excluded
@@ -480,14 +480,14 @@ function NotBuiltYet({ modules }: { modules: string[] }) {
 }
 
 function NoTradingYet({ date }: { date: string }) {
+  const t = useT();
   return (
     <div className="ds-panel">
       <div className="ds-state">
-        <p className="ds-state__title">No sales on {shortDate(date)}</p>
-        <p className="ds-state__body">
-          Once the till starts ringing up, today's takings, profit and payment
-          mix appear here. Nothing is wrong.
+        <p className="ds-state__title">
+          {t('dash.noSalesOn')} {shortDate(date)}
         </p>
+        <p className="ds-state__body">{t('dash.tillNotStarted')}</p>
       </div>
     </div>
   );
@@ -563,11 +563,7 @@ function OfflineState({ onRetry }: { onRetry: () => void }) {
       <div className="ds-panel">
         <div className="ds-state">
           <p className="ds-state__title">{t('common.noConnection')}</p>
-          <p className="ds-state__body">
-            These figures are calculated from your books on the server, so they
-            need a connection. Selling is unaffected — the till keeps working
-            offline and sends its sales when the connection returns.
-          </p>
+          <p className="ds-state__body">{t('dash.figuresNeedServer')}</p>
           <button className="ds-btn ds-btn--secondary" onClick={onRetry}>
             {t('common.tryAgain')}
           </button>

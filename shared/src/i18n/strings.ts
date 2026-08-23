@@ -797,6 +797,64 @@ export const en = {
 
   // --- Settlement ----------------------------------------------------
   'settle.depositFailed': 'That deposit could not be recorded. Nothing was changed.',
+
+  // --- Explanatory text: sign-in, dashboard, devices -----------------
+  'login.multiBusiness': 'This email is used by more than one business. Choose the one you want to work in — you can sign out and pick another at any time.',
+  'login.useAnotherEmail': 'Use a different email',
+  'comp.allRecorded': 'Every one is recorded in full — the money, the stock movements and the accounting entries are all correct, the receipts you gave customers are valid, and the invoice sequence is unbroken. What is outstanding is the submission to ZATCA, and nothing is lost while it waits.',
+  'comp.nothingToRetry': 'There is nothing to retry here. Once verification completes, everything in this list is submitted in order, oldest first, automatically.',
+  'dash.tillNotStarted': 'Once the till starts ringing up, today\'s takings, profit and payment mix appear here. Nothing is wrong.',
+  'dash.figuresNeedServer': 'These figures are calculated from your books on the server, so they need a connection. Selling is unaffected — the till keeps working offline and sends its sales when the connection returns.',
+  'tender.appearsHere': 'The split across cash, cards and wallets appears here as sales are rung up.',
+  'enrol.expired': 'This code has expired. Get a new one — it takes a moment and the old one stops working.',
+  'enrol.keepPrivate': 'Anybody who has this code can set up a terminal on your business until it expires. Do not send it where it will be kept.',
+  'revoke.stopsImmediately': 'This terminal will stop working straight away, wherever it is, and it cannot be set up again. To use the same machine later you would register a new terminal.',
+  'revoke.tradingKept': 'Its sales, invoices and invoice history are kept and stay in your reports. Revoking removes the terminal, not its trading.',
+
+  // --- Explanatory text: units, stock, invoices, setup ---------------
+  'egs.nineFields': 'ZATCA asks for all nine of these when the unit is registered. You can save now and fill them in later — the unit will say what is still outstanding.',
+  'matrix.addProduct': 'Add a product and generate its variants, and the grid will show what you hold of each.',
+  'matrix.needsAttribute': 'A grid needs at least one attribute — a size, a colour — on each variant. Generate the matrix for this product and its cells will appear here.',
+  'matrix.nothingUnusual': 'Nothing is out, low or sitting unsold. The total is the whole story today.',
+  'inv.immutable': 'Finalized tax invoices are immutable under ZATCA rules. To correct it, issue a',
+  'inv.isCreditNote': 'This document is itself a credit note. Correcting one means issuing a fresh invoice, not amending this.',
+  'inv.noChainPosition': 'This document holds no chain position. A counter is consumed only when a legal document is issued.',
+  'inv.terminalSigned': 'The terminal has signed this document and returned its QR payload.',
+  'setup.sevenSteps': 'Seven steps. Your answers are saved as you go, so you can stop and come back.',
+  'setup.readOnly': 'You can see how setup is going but not change it. Saving a step needs permission to manage people and settings.',
+  'setup.taxFromRegister': 'Nothing to configure. Tax for this country is applied from the regulatory register at the date of each sale.',
+  'setup.nextSteps': 'You can start adding products and registering tills. If you are in Saudi Arabia, the units that sign your invoices are set up under E-invoicing — that is a separate step and this one does not complete it.',
+  'setup.createsChart': 'Creating the business sets up its chart of accounts. It does not register you with ZATCA or anyone else — that stays between you and them.',
+
+  // --- Explanatory text: purchasing, branding, templates -------------
+  'bill.heldNoRights': 'This bill is held until somebody with approval rights accepts the discrepancy. Your role does not include that.',
+  'bill.needsSupplier': 'A bill is recorded against a supplier, and their payment terms set when it falls due. Add one first.',
+  'bill.enterActual': 'Enter what the supplier has actually charged, even where it differs from the order. The difference is what the check is for, and a bill that does not agree is held rather than refused.',
+  'order.landedCost': 'Freight, duty and handling — spread across the items above and added to what the stock cost you',
+  'order.importVat': 'Import VAT — reclaimed rather than added to the cost of the stock, so it is kept separate',
+  'order.deliveryExplain': 'Recording a delivery puts the goods into stock at the agreed cost plus any freight above. The supplier is not owed anything until their bill is entered — until then the value sits as goods received and not invoiced.',
+  'order.needsSupplier': 'An order is raised against a supplier. Add one first, and their payment terms will set when the bill falls due.',
+  'order.figuresGuide': 'The figures above are a guide. The server prices the order from these lines when it is saved and is the authority on the total.',
+  'brand.belongsToBusiness': 'Your logo belongs to this business. A group with several businesses sets one for each, because each issues its own invoices under its own registration.',
+  'brand.readOnly': 'You can see your branding but not change it. Changing a logo needs permission to manage settings.',
+  'brand.whereItAppears': 'Your logo heads the invoices, credit notes and debit notes you open in the back office, and any copy you print from there. It does not appear on the till receipt: that is printed as plain text so it works on every counter printer, and text cannot hold an image.',
+  'tmpl.beyondFigures': 'What your documents say beyond the figures. Each type is set on its own, because a credit note rarely wants the same words as an invoice.',
+  'tmpl.offRemovesMark': 'Off prints this type without a mark, without removing the logo from the others.',
+  'tmpl.readOnly': 'You can see this but not change it. Editing document text needs permission to manage settings.',
+
+  // --- Dashboard notes, list tabs and form hints ---------------------
+  'dash.takenNotPaidOut': 'Taken, not yet paid out',
+  'dash.notInTotal': 'Not counted in the total',
+  'dash.youWillOweThis': 'You will owe this. Not counted in the total',
+  'dash.noSalesOn': 'No sales on',
+  'common.atCost': 'at cost',
+  'nav.orders': 'Orders',
+  'nav.bills': 'Bills',
+  'nav.whatWeOwe': 'What we owe',
+  'nav.whatWereOwed': 'What we\'re owed',
+  'order.emptyExplain': 'An order records what you have asked a supplier for. Nothing goes into stock until the goods actually arrive and you receive them.',
+  'cust.emptyExplain': 'Add the people and businesses you sell to. Their payment terms set when each invoice falls due, and their credit limit caps what they may owe at once.',
+  'field.optional': '(optional)',
 } as const;
 
 /** Every string the interface can show. */
@@ -1558,6 +1616,64 @@ export const ar: Record<Key, string> = {
 
   // --- Settlement ----------------------------------------------------
   'settle.depositFailed': 'تعذّر تسجيل هذا الإيداع. لم يتغيّر شيء.',
+
+  // --- Explanatory text: sign-in, dashboard, devices -----------------
+  'login.multiBusiness': 'هذا البريد الإلكتروني مستخدم في أكثر من منشأة. اختر المنشأة التي تريد العمل فيها — يمكنك تسجيل الخروج واختيار غيرها في أي وقت.',
+  'login.useAnotherEmail': 'استخدام بريد إلكتروني آخر',
+  'comp.allRecorded': 'كلها مسجّلة بالكامل — المبالغ وحركات المخزون والقيود المحاسبية صحيحة، والإيصالات التي سلّمتها للعملاء صالحة، وتسلسل الفواتير غير منقطع. المتبقي هو الإرسال إلى الهيئة، ولا يُفقد شيء أثناء الانتظار.',
+  'comp.nothingToRetry': 'لا يوجد ما يُعاد هنا. بمجرد اكتمال التحقق، تُرسل كل العناصر في هذه القائمة بالترتيب، الأقدم أولًا، تلقائيًا.',
+  'dash.tillNotStarted': 'بمجرد أن يبدأ الصندوق بتسجيل المبيعات، ستظهر هنا مبيعات اليوم والأرباح وتوزيع طرق الدفع. لا يوجد خطأ.',
+  'dash.figuresNeedServer': 'تُحتسب هذه الأرقام من دفاترك على الخادم، لذلك تحتاج إلى اتصال. البيع غير متأثر — يواصل الصندوق العمل دون اتصال ويرسل مبيعاته عند عودة الاتصال.',
+  'tender.appearsHere': 'يظهر هنا توزيع المبيعات بين النقد والبطاقات والمحافظ مع تسجيل كل عملية بيع.',
+  'enrol.expired': 'انتهت صلاحية هذا الرمز. احصل على رمز جديد — لا يستغرق الأمر سوى لحظة ويتوقف الرمز القديم عن العمل.',
+  'enrol.keepPrivate': 'يستطيع أي شخص لديه هذا الرمز إعداد نقطة بيع على منشأتك حتى انتهاء صلاحيته. لا ترسله إلى مكان يُحفظ فيه.',
+  'revoke.stopsImmediately': 'ستتوقف نقطة البيع هذه عن العمل فورًا أينما كانت، ولا يمكن إعدادها مرة أخرى. لاستخدام الجهاز نفسه لاحقًا عليك تسجيل نقطة بيع جديدة.',
+  'revoke.tradingKept': 'تُحفظ مبيعاتها وفواتيرها وسجل فواتيرها وتبقى في تقاريرك. الإبطال يزيل نقطة البيع لا نشاطها التجاري.',
+
+  // --- Explanatory text: units, stock, invoices, setup ---------------
+  'egs.nineFields': 'تطلب الهيئة هذه الحقول التسعة جميعها عند تسجيل الوحدة. يمكنك الحفظ الآن وإكمالها لاحقًا — وستوضّح الوحدة ما زال ناقصًا.',
+  'matrix.addProduct': 'أضف منتجًا وأنشئ متغيّراته، وستعرض الشبكة ما لديك من كل منها.',
+  'matrix.needsAttribute': 'تحتاج الشبكة إلى خاصية واحدة على الأقل — مقاس أو لون — لكل متغيّر. أنشئ الشبكة لهذا المنتج وستظهر خلاياها هنا.',
+  'matrix.nothingUnusual': 'لا يوجد صنف نافد أو منخفض أو راكد. الإجمالي هو كل ما في الأمر اليوم.',
+  'inv.immutable': 'الفواتير الضريبية النهائية غير قابلة للتعديل بموجب أنظمة الهيئة. لتصحيحها، أصدر',
+  'inv.isCreditNote': 'هذا المستند نفسه إشعار دائن. تصحيحه يعني إصدار فاتورة جديدة، لا تعديل هذا المستند.',
+  'inv.noChainPosition': 'لا يشغل هذا المستند أي خانة في السلسلة. لا يُستهلك العداد إلا عند إصدار مستند قانوني.',
+  'inv.terminalSigned': 'وقّعت نقطة البيع هذا المستند وأعادت رمز الاستجابة السريعة الخاص به.',
+  'setup.sevenSteps': 'سبع خطوات. تُحفظ إجاباتك أولًا بأول، فيمكنك التوقف والعودة لاحقًا.',
+  'setup.readOnly': 'يمكنك متابعة سير الإعداد دون تغييره. يحتاج حفظ أي خطوة إلى صلاحية إدارة المستخدمين والإعدادات.',
+  'setup.taxFromRegister': 'لا شيء للإعداد. تُطبَّق ضريبة هذا البلد من السجل التنظيمي بتاريخ كل عملية بيع.',
+  'setup.nextSteps': 'يمكنك البدء بإضافة المنتجات وتسجيل نقاط البيع. إذا كنت في السعودية، تُعدّ الوحدات التي توقّع فواتيرك ضمن الفوترة الإلكترونية — وهي خطوة منفصلة لا تكتمل بهذه الخطوة.',
+  'setup.createsChart': 'إنشاء المنشأة يهيّئ دليل حساباتها. ولا يسجّلك لدى الهيئة أو أي جهة أخرى — يبقى ذلك بينك وبينهم.',
+
+  // --- Explanatory text: purchasing, branding, templates -------------
+  'bill.heldNoRights': 'تبقى هذه الفاتورة محجوزة حتى يقبل الفرق شخصٌ لديه صلاحية الاعتماد. دورك لا يشمل ذلك.',
+  'bill.needsSupplier': 'تُسجَّل الفاتورة على مورد، وتحدّد مدة السداد لديه موعد استحقاقها. أضف موردًا أولًا.',
+  'bill.enterActual': 'أدخل ما طالب به المورد فعليًا، حتى لو اختلف عن الطلب. الفرق هو الغرض من المطابقة، والفاتورة غير المطابقة تُحجز ولا تُرفض.',
+  'order.landedCost': 'الشحن والرسوم والمناولة — تُوزَّع على الأصناف أعلاه وتُضاف إلى تكلفة المخزون',
+  'order.importVat': 'ضريبة الاستيراد — تُسترد ولا تُضاف إلى تكلفة المخزون، لذلك تُحفظ منفصلة',
+  'order.deliveryExplain': 'تسجيل التسليم يُدخل البضاعة إلى المخزون بالتكلفة المتفق عليها مضافًا إليها أي شحن أعلاه. ولا يُستحق للمورد شيء حتى تُدخل فاتورته — وحتى ذلك الحين تُقيَّد القيمة كبضاعة مستلمة ولم تُفوتر.',
+  'order.needsSupplier': 'يُصدر الطلب على مورد. أضف موردًا أولًا، وستحدّد مدة السداد لديه موعد استحقاق الفاتورة.',
+  'order.figuresGuide': 'الأرقام أعلاه استرشادية. يحتسب الخادم سعر الطلب من هذه البنود عند الحفظ وهو المرجع في الإجمالي.',
+  'brand.belongsToBusiness': 'شعارك يخص هذه المنشأة. المجموعة التي تضم عدة منشآت تحدّد شعارًا لكل منها، لأن كلًا منها تصدر فواتيرها بسجلها الخاص.',
+  'brand.readOnly': 'يمكنك رؤية هويتك دون تغييرها. يحتاج تغيير الشعار إلى صلاحية إدارة الإعدادات.',
+  'brand.whereItAppears': 'يتصدّر شعارك الفواتير والإشعارات الدائنة والمدينة التي تفتحها في الإدارة، وأي نسخة تطبعها منها. ولا يظهر على إيصال الصندوق: فهو يُطبع نصًا عاديًا ليعمل على كل طابعات الكاونتر، والنص لا يحمل صورة.',
+  'tmpl.beyondFigures': 'ما تقوله مستنداتك إلى جانب الأرقام. يُضبط كل نوع على حدة، لأن الإشعار الدائن نادرًا ما يحتاج نفس كلمات الفاتورة.',
+  'tmpl.offRemovesMark': 'الإيقاف يطبع هذا النوع دون علامة، دون إزالة الشعار من الأنواع الأخرى.',
+  'tmpl.readOnly': 'يمكنك الاطلاع دون التغيير. يحتاج تعديل نص المستندات إلى صلاحية إدارة الإعدادات.',
+
+  // --- Dashboard notes, list tabs and form hints ---------------------
+  'dash.takenNotPaidOut': 'محصّل ولم يُورَّد بعد',
+  'dash.notInTotal': 'غير محتسب في الإجمالي',
+  'dash.youWillOweThis': 'ستكون مستحقة عليك. غير محتسبة في الإجمالي',
+  'dash.noSalesOn': 'لا مبيعات في',
+  'common.atCost': 'بالتكلفة',
+  'nav.orders': 'الطلبات',
+  'nav.bills': 'الفواتير',
+  'nav.whatWeOwe': 'ما علينا',
+  'nav.whatWereOwed': 'ما لنا',
+  'order.emptyExplain': 'يسجّل الطلب ما طلبته من المورد. ولا يدخل شيء إلى المخزون حتى تصل البضاعة فعليًا وتستلمها.',
+  'cust.emptyExplain': 'أضف الأشخاص والمنشآت التي تبيع لها. تحدّد مدة السداد لديهم موعد استحقاق كل فاتورة، ويحدّ الحد الائتماني ما يمكن أن يترتب عليهم في وقت واحد.',
+  'field.optional': '(اختياري)',
 };
 
 /** The catalogues, by locale. */

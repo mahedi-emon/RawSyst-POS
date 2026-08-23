@@ -158,10 +158,7 @@ export function BillDetail({
           )}
 
           {bill.status === 'blocked' && !mayApprove && (
-            <p className="ds-panel purchase__hint">
-              This bill is held until somebody with approval rights accepts the
-              discrepancy. Your role does not include that.
-            </p>
+            <p className="ds-panel purchase__hint">{t('bill.heldNoRights')}</p>
           )}
 
           {mayPay && payable(bill) && (

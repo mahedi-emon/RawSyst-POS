@@ -38,10 +38,7 @@ export function TenderMix({
         {tenders.length === 0 ? (
           <div className="ds-state">
             <p className="ds-state__title">{t('dash.nothingTakenToday')}</p>
-            <p className="ds-state__body">
-              The split across cash, cards and wallets appears here as sales are
-              rung up.
-            </p>
+            <p className="ds-state__body">{t('tender.appearsHere')}</p>
           </div>
         ) : (
           <>

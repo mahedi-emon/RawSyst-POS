@@ -90,15 +90,8 @@ export function RevokeDialog({
           Revoke {terminal.terminal_label}?
         </h2>
 
-        <p className="dialog__body">
-          This terminal will stop working straight away, wherever it is, and it
-          cannot be set up again. To use the same machine later you would
-          register a new terminal.
-        </p>
-        <p className="dialog__body ds-muted">
-          Its sales, invoices and invoice history are kept and stay in your
-          reports. Revoking removes the terminal, not its trading.
-        </p>
+        <p className="dialog__body">{t('revoke.stopsImmediately')}</p>
+        <p className="dialog__body ds-muted">{t('revoke.tradingKept')}</p>
 
         <label className="field__label" htmlFor="revoke-reason">
           {t('dev.whyRevoking')}

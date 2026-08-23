@@ -278,10 +278,7 @@ function Body({
     return (
       <Panel>
         <p className="ds-state__title">{t('matrix.noProducts')}</p>
-        <p className="ds-state__body">
-          Add a product and generate its variants, and the grid will show what
-          you hold of each.
-        </p>
+        <p className="ds-state__body">{t('matrix.addProduct')}</p>
       </Panel>
     );
   }
@@ -292,11 +289,7 @@ function Body({
         <p className="ds-state__title">
           {product ? `${product.name} has no variants yet` : t('common.nothingToShow')}
         </p>
-        <p className="ds-state__body">
-          A grid needs at least one attribute — a size, a colour — on each
-          variant. Generate the matrix for this product and its cells will
-          appear here.
-        </p>
+        <p className="ds-state__body">{t('matrix.needsAttribute')}</p>
       </Panel>
     );
   }
@@ -377,10 +370,7 @@ function Body({
               things.
             </p>
           ) : (
-            <p className="ds-body-sm ds-muted">
-              Nothing is out, low or sitting unsold. The total is the whole story
-              today.
-            </p>
+            <p className="ds-body-sm ds-muted">{t('matrix.nothingUnusual')}</p>
           )}
         </div>
       </section>

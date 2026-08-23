@@ -79,6 +79,31 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
   return [...new Set(found)];
 }
 
+/**
+ * Prose written straight into JSX, e.g. `<p>Your logo belongs to…</p>`.
+ *
+ * These are not string literals, so the check above never saw them. That is how
+ * 38 paragraphs — the long explanations that tell somebody what a screen is
+ * for — stayed English after the literals were all translated. An Arabic RTL
+ * browser run found them; this finds them without one.
+ */
+function untranslatedJsxTextIn(file: string, known: Set<string>): string[] {
+  const text = readFileSync(file, 'utf8');
+  const found: string[] = [];
+
+  for (const match of text.matchAll(/>([^<>{}]{12,400})</g)) {
+    const collapsed = match[1]!.split(/\s+/).filter(Boolean).join(' ');
+    if (!collapsed || known.has(collapsed) || BRANDS.has(collapsed)) continue;
+    if (!/^[A-Z][A-Za-z0-9 ,.'’…\-–—()/&%:!?]+$/.test(collapsed)) continue;
+    // Three real words or more: shorter than that is a label already keyed, an
+    // abbreviation, or punctuation the regex happened to span.
+    const words = collapsed.split(' ').filter((w) => /^[A-Za-z]{3,}$/.test(w));
+    if (words.length < 3) continue;
+    found.push(collapsed);
+  }
+  return [...new Set(found)];
+}
+
 describe('translation coverage', () => {
   const files = walk(sharedSrc).filter((f) => !NO_PROSE.has(f.split(/[\\/]/).pop()!));
   const known = new Set<string>(Object.values(en));
@@ -103,6 +128,23 @@ describe('translation coverage', () => {
         'Arabic shop reads them in English. Add a key to `en` and `ar` in\n' +
         'shared/src/i18n/strings.ts and call t() instead — or, if it is a brand\n' +
         'name that is written the same way in both languages, add it to BRANDS:\n',
+    ).toBe('');
+  });
+
+  it('leaves no untranslated paragraph written straight into JSX', () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const found = untranslatedJsxTextIn(file, known);
+      if (found.length === 0) continue;
+      const where = relative(repoRoot, file).replace(/\\/g, '/');
+      for (const text of found) offenders.push(`  ${where}\n    "${text.slice(0, 90)}"`);
+    }
+
+    expect(
+      offenders.join('\n'),
+      'These paragraphs are rendered to a user and are not in the catalogue.\n' +
+        'They are JSX text rather than string literals, which is why the check\n' +
+        'above cannot see them. Replace the text with a t() call:\n',
     ).toBe('');
   });
 });

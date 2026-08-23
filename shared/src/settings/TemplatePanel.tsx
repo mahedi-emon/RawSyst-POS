@@ -121,10 +121,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
       </div>
 
       <div className="ds-panel__body">
-        <p className="ds-body-sm ds-muted tmpl__lede">
-          What your documents say beyond the figures. Each type is set on its
-          own, because a credit note rarely wants the same words as an invoice.
-        </p>
+        <p className="ds-body-sm ds-muted tmpl__lede">{t('tmpl.beyondFigures')}</p>
 
         {/* Which type is being edited. A tab strip rather than a dropdown: four
             is few enough to show, and which ones you have customised is worth
@@ -311,10 +308,7 @@ function TemplateForm({
           />
           <span>
             <strong>{t('tpl.showLogo')}</strong>
-            <span className="ds-caption">
-              Off prints this type without a mark, without removing the logo
-              from the others.
-            </span>
+            <span className="ds-caption">{t('tmpl.offRemovesMark')}</span>
           </span>
         </label>
 
@@ -342,10 +336,7 @@ function TemplateForm({
       )}
 
       {readOnly ? (
-        <p className="tmpl__readonly ds-body-sm" role="note">
-          You can see this but not change it. Editing document text needs
-          permission to manage settings.
-        </p>
+        <p className="tmpl__readonly ds-body-sm" role="note">{t('tmpl.readOnly')}</p>
       ) : (
         <div className="tmpl__actions">
           {draft.configured && (

@@ -72,10 +72,7 @@ export function LoginScreen() {
         <div className="login__card">
           <h1 className="login__title">RawSyst</h1>
           <p className="login__subtitle">{t('login.chooseTenant')}</p>
-          <p className="login__hint">
-            This email is used by more than one business. Choose the one you
-            want to work in — you can sign out and pick another at any time.
-          </p>
+          <p className="login__hint">{t('login.multiBusiness')}</p>
 
           {problem && (
             <p className="login__error" role="alert">
@@ -107,9 +104,7 @@ export function LoginScreen() {
               // of thing that ends up in a screenshot.
               setPassword('');
             }}
-          >
-            Use a different email
-          </button>
+          >{t('login.useAnotherEmail')}</button>
         </div>
       </main>
     );

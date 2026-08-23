@@ -179,10 +179,10 @@ export function PurchasingScreen({ companyId }: { companyId: string }) {
           <div className="segmented" role="group" aria-label={t('common.whatToShow')}>
             {(
               [
-                ['orders', 'Orders'],
-                ['bills', 'Bills'],
-                ['suppliers', 'Suppliers'],
-                ['ageing', 'What we owe'],
+                ['orders', t('nav.orders')],
+                ['bills', t('nav.bills')],
+                ['suppliers', t('common.suppliers')],
+                ['ageing', t('nav.whatWeOwe')],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -234,7 +234,7 @@ function Orders({
             {orders.length === 0 ? (
               <EmptyState
                 title={t('purch.noOrders')}
-                body="An order records what you have asked a supplier for. Nothing goes into stock until the goods actually arrive and you receive them."
+                body={t('order.emptyExplain')}
               />
             ) : (
               <table className="ds-table">

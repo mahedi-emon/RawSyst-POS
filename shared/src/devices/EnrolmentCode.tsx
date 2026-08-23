@@ -74,10 +74,7 @@ export function EnrolmentCode({
         </p>
 
         {expired ? (
-          <p className="pairing__expiry pairing__expiry--dead" role="status">
-            This code has expired. Get a new one — it takes a moment and the old
-            one stops working.
-          </p>
+          <p className="pairing__expiry pairing__expiry--dead" role="status">{t('enrol.expired')}</p>
         ) : (
           <p
             className={`pairing__expiry${nearlyGone ? ' pairing__expiry--soon' : ''}`}
@@ -89,10 +86,7 @@ export function EnrolmentCode({
           </p>
         )}
 
-        <p className="pairing__note">
-          Anybody who has this code can set up a terminal on your business until
-          it expires. Do not send it where it will be kept.
-        </p>
+        <p className="pairing__note">{t('enrol.keepPrivate')}</p>
 
         <div className="form__actions">
           <button className="ds-btn ds-btn--primary" onClick={onDone}>

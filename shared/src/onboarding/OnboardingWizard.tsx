@@ -144,10 +144,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
       <header className="setupw__head">
         <div>
           <h1 className="ds-h1">{t('setup.setUpBusiness')}</h1>
-          <p className="ds-body-sm ds-muted">
-            Seven steps. Your answers are saved as you go, so you can stop and
-            come back.
-          </p>
+          <p className="ds-body-sm ds-muted">{t('setup.sevenSteps')}</p>
         </div>
         <ReadinessBadge progress={progress} />
       </header>
@@ -161,10 +158,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
       <div className="ds-panel setupw__panel">
         <div className="ds-panel__body">
           {!mayEdit && (
-            <p className="setupw__readonly ds-body-sm" role="note">
-              You can see how setup is going but not change it. Saving a step
-              needs permission to manage people and settings.
-            </p>
+            <p className="setupw__readonly ds-body-sm" role="note">{t('setup.readOnly')}</p>
           )}
           <StepBody
             key={active}
@@ -600,10 +594,7 @@ function TaxStep({
           </Field>
         </>
       ) : (
-        <p className="ds-body-sm ds-muted">
-          Nothing to configure. Tax for this country is applied from the
-          regulatory register at the date of each sale.
-        </p>
+        <p className="ds-body-sm ds-muted">{t('setup.taxFromRegister')}</p>
       )}
 
       <FormError message={failure} />
@@ -690,12 +681,7 @@ function FinishStep({
     return (
       <div className="ds-state">
         <p className="ds-state__title">{business.legal_name} is set up</p>
-        <p className="ds-state__body">
-          You can start adding products and registering tills. If you are in
-          Saudi Arabia, the units that sign your invoices are set up under
-          E-invoicing — that is a separate step and this one does not complete
-          it.
-        </p>
+        <p className="ds-state__body">{t('setup.nextSteps')}</p>
         <button className="ds-btn ds-btn--primary" onClick={onFinished}>
           {t('setup.goToBackOffice')}
         </button>
@@ -729,11 +715,7 @@ function FinishStep({
             </div>
           </dl>
 
-          <p className="setupw__notice" role="note">
-            Creating the business sets up its chart of accounts. It does not
-            register you with ZATCA or anyone else — that stays between you and
-            them.
-          </p>
+          <p className="setupw__notice" role="note">{t('setup.createsChart')}</p>
 
           <FormError message={failure} />
           <div className="setupw__actions">

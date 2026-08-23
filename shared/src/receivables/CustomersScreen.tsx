@@ -102,8 +102,8 @@ export function CustomersScreen({ companyId }: { companyId: string }) {
           <div className="segmented" role="group" aria-label={t('common.whatToShow')}>
             {(
               [
-                ['customers', 'Customers'],
-                ['ageing', "What we're owed"],
+                ['customers', t('common.customers')],
+                ['ageing', t('nav.whatWereOwed')],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -217,7 +217,7 @@ function Customers({
                   body={
                     search
                       ? t('cust.searchHint')
-                      : 'Add the people and businesses you sell to. Their payment terms set when each invoice falls due, and their credit limit caps what they may owe at once.'
+                      : t('cust.emptyExplain')
                   }
                 />
               ) : (

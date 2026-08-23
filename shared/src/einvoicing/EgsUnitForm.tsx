@@ -209,11 +209,7 @@ export function EgsUnitForm({
 
         <div className="ds-panel__head">
           <h3 className="ds-h3">{t('egs.registrationDetails')}</h3>
-          <p className="ds-caption">
-            ZATCA asks for all nine of these when the unit is registered. You can
-            save now and fill them in later — the unit will say what is still
-            outstanding.
-          </p>
+          <p className="ds-caption">{t('egs.nineFields')}</p>
         </div>
 
         <div className="form__grid">

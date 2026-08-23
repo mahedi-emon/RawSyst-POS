@@ -502,15 +502,10 @@ export function InvoiceDetailScreen({
       */}
       <section className="inv__immutable" aria-label={t('inv.cannotBeChanged')}>
         <h2 className="ds-h3">{t('inv.cannotEditDelete')}</h2>
-        <p className="ds-body-sm">
-          Finalized tax invoices are immutable under ZATCA rules. To correct it,
-          issue a <strong>{t('inv.creditNote')}</strong>.
+        <p className="ds-body-sm">{t('inv.immutable')}<strong>{t('inv.creditNote')}</strong>.
         </p>
         {credit ? (
-          <p className="ds-caption">
-            This document is itself a credit note. Correcting one means issuing
-            a fresh invoice, not amending this.
-          </p>
+          <p className="ds-caption">{t('inv.isCreditNote')}</p>
         ) : mayRefund && onIssueCreditNote ? (
           <button
             className="ds-btn ds-btn--primary"
@@ -554,10 +549,7 @@ function ZatcaPanel({ invoice }: { invoice: Invoice }) {
       </div>
       <div className="ds-panel__body">
         {status === 'none' ? (
-          <p className="ds-body-sm ds-muted">
-            This document holds no chain position. A counter is consumed only
-            when a legal document is issued.
-          </p>
+          <p className="ds-body-sm ds-muted">{t('inv.noChainPosition')}</p>
         ) : (
           <>
             <dl className="inv__facts">
@@ -577,10 +569,7 @@ function ZatcaPanel({ invoice }: { invoice: Invoice }) {
             <p className="inv__hash num">{invoice.zatca!.invoice_hash}</p>
 
             {status === 'signed' ? (
-              <p className="ds-body-sm">
-                The terminal has signed this document and returned its QR
-                payload.
-              </p>
+              <p className="ds-body-sm">{t('inv.terminalSigned')}</p>
             ) : (
               // Honest, and specific about which half is missing.
               <p className="ds-body-sm ds-muted inv__unsigned">
