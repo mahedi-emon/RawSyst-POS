@@ -1,6 +1,8 @@
 package zatca
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -251,4 +253,88 @@ func TestTagsSixToNineAreNotRequiredByValidation(t *testing.T) {
 	if err := ValidateQR(officialQRPhase1); err != nil {
 		t.Errorf("a phase-one payload must remain valid: %v", err)
 	}
+}
+
+// Tag 6 is the raw digest, and anything else is refused.
+//
+// Security Features Implementation Standards v1.1 §4.1, for tag 6: "Length:
+// length of hash (SHA256 ) is 32 bytes / Value: the byte array constituting the
+// value of the field."
+//
+// The mistake this guards against passes every other check: the base64 TEXT of
+// a SHA-256 digest is 44 characters, which fits in a length byte and encodes
+// into a perfectly well-formed TLV stream. It would simply be the wrong bytes,
+// and nothing downstream would notice until ZATCA rejected the invoice.
+func TestTag6CarriesTheRawDigestAndNotItsText(t *testing.T) {
+	digest := sha256.Sum256([]byte("an invoice"))
+
+	field, err := QRHash(digest[:])
+	if err != nil {
+		t.Fatalf("a 32-byte digest was refused: %v", err)
+	}
+	if field.Tag != QRInvoiceHash {
+		t.Errorf("tag = %d, want %d", field.Tag, QRInvoiceHash)
+	}
+	if len(field.Value) != 32 {
+		t.Errorf("value is %d bytes, want the raw 32", len(field.Value))
+	}
+	if !bytes.Equal(field.Value, digest[:]) {
+		t.Error("the value is not the digest that was handed in")
+	}
+
+	// The base64 text of the same digest, which is what a caller reaching for
+	// the "obvious" encoding would pass.
+	asText := base64.StdEncoding.EncodeToString(digest[:])
+	if _, err := QRHash([]byte(asText)); err == nil {
+		t.Error("the base64 TEXT of a digest was accepted as tag 6; it is 44 " +
+			"bytes and would have produced a well-formed, wrong QR")
+	}
+
+	for _, wrong := range [][]byte{nil, {}, digest[:31], append(digest[:], 0)} {
+		if _, err := QRHash(wrong); err == nil {
+			t.Errorf("a %d-byte value was accepted as a SHA-256 digest", len(wrong))
+		}
+	}
+}
+
+// The length byte counts bytes, and the whole stream frames as the standard says.
+func TestTag6FramesAsThirtyTwoBytesInTheStream(t *testing.T) {
+	digest := sha256.Sum256([]byte("an invoice"))
+	hash, err := QRHash(digest[:])
+	if err != nil {
+		t.Fatalf("QRHash: %v", err)
+	}
+
+	payload, err := EncodeQR(
+		QRText(QRSellerName, "Olaya Trading"),
+		QRText(QRSellerVAT, "311111111111113"),
+		QRText(QRTimestamp, "2026-08-23T10:15:00Z"),
+		QRText(QRInvoiceTotal, "115.00"),
+		QRText(QRVATTotal, "15.00"),
+		hash,
+	)
+	if err != nil {
+		t.Fatalf("EncodeQR: %v", err)
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatalf("the payload is not base64: %v", err)
+	}
+
+	// Walk to tag 6 and check its declared length is 32.
+	for i := 0; i < len(raw); {
+		tag, length := raw[i], int(raw[i+1])
+		if QRTag(tag) == QRInvoiceHash {
+			if length != 32 {
+				t.Fatalf("tag 6 declares %d bytes, want 32", length)
+			}
+			if !bytes.Equal(raw[i+2:i+2+length], digest[:]) {
+				t.Fatal("tag 6's bytes are not the digest")
+			}
+			return
+		}
+		i += 2 + length
+	}
+	t.Fatal("tag 6 is not in the stream")
 }

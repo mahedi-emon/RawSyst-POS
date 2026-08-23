@@ -676,8 +676,11 @@ func TestTheUnverifiedZATCAFormatsStillBlockRelease(t *testing.T) {
 	pool := testPool(t)
 
 	want := []string{
-		"SA.ZATCA.XML_CANONICALIZATION", // split out of HASH_ALGORITHM by 0044
-		"SA.ZATCA.UBL_FIELD_SET",        // split out of XML_SCHEMA_VERSION by 0044
+		// SA.ZATCA.XML_CANONICALIZATION was here until 0059, which read §2.3.3
+		// of the Security Features Implementation Standards v1.1 directly and
+		// recorded the transform chain. Its value is now pinned by
+		// TestTheCanonicalFormIsRecordedAsVerified below.
+		"SA.ZATCA.UBL_FIELD_SET", // split out of XML_SCHEMA_VERSION by 0044
 
 		// 0045. Both are onboarding rather than invoice format: without them a
 		// CSR cannot be built or sent, however well the nine inputs are captured.
@@ -754,6 +757,82 @@ func TestTheVerifiedZATCAOnboardingRulesAreRecorded(t *testing.T) {
 	}
 	if sig != "ecdsa-with-SHA256" {
 		t.Errorf("CSR signature algorithm = %q, want ecdsa-with-SHA256", sig)
+	}
+}
+
+// 0059 verified the canonical form, from the primary source.
+//
+// Security Features Implementation Standards v1.1 §2.3.3 prints the
+// ds:Transforms element; §3 defines the previous-invoice hash as the same
+// transform plus sha256. Like the QR rule this keeps release_blocker = true as
+// a permanent mark of a release-critical value — the gate is
+// `release_blocker AND verified_on IS NULL`.
+//
+// The method is pinned because two of its neighbours are what everyone reaches
+// for by mistake: exclusive c14n, and the 2001 version. Either produces a
+// different canonical form, so every PIH in the chain would be wrong together
+// and the error would only surface at submission.
+func TestTheCanonicalFormIsRecordedAsVerified(t *testing.T) {
+	pool := testPool(t)
+
+	var verified *time.Time
+	var blocker bool
+	var method, digest, transformAlgorithm string
+	var transforms []string
+	err := pool.Raw().QueryRow(context.Background(),
+		`SELECT verified_on, release_blocker,
+		        payload->>'method', payload->>'digest',
+		        payload->>'transform_algorithm',
+		        ARRAY(SELECT jsonb_array_elements_text(payload->'transforms'))
+		   FROM regulatory_rule
+		  WHERE rule_key = 'SA.ZATCA.XML_CANONICALIZATION' AND effective_to IS NULL`).
+		Scan(&verified, &blocker, &method, &digest, &transformAlgorithm, &transforms)
+	if err != nil {
+		t.Fatalf("read the canonicalization rule: %v", err)
+	}
+
+	if verified == nil {
+		t.Error("the canonical form was read from §2.3.3 but the rule is not " +
+			"recorded as verified")
+	}
+	if !blocker {
+		t.Error("the canonicalization rule stopped being marked release-critical")
+	}
+	// Literals rather than the zatca constants: that package imports this one,
+	// so referencing it from here is an import cycle. The values are the same
+	// ones zatca/canonical.go records, quoted from the same paragraph.
+	const (
+		wantMethod    = "http://www.w3.org/2006/12/xml-c14n11"
+		wantTransform = "http://www.w3.org/TR/1999/REC-xpath-19991116"
+		wantDigest    = "sha256"
+	)
+	if method != wantMethod {
+		t.Errorf("method = %q, want %q — NOT exclusive c14n and not the 2001 "+
+			"version", method, wantMethod)
+	}
+	if transformAlgorithm != wantTransform {
+		t.Errorf("transform algorithm = %q, want %q", transformAlgorithm, wantTransform)
+	}
+	if digest != wantDigest {
+		t.Errorf("digest = %q, want %q", digest, wantDigest)
+	}
+
+	// The three removals, in order. Order is part of the specification: a
+	// transform chain runs in sequence and the same members in a different
+	// order can produce different bytes.
+	wantTransforms := []string{
+		"not(//ancestor-or-self::ext:UBLExtensions)",
+		"not(//ancestor-or-self::cac:Signature)",
+		"not(//ancestor-or-self::cac:AdditionalDocumentReference[cbc:ID='QR'])",
+	}
+	if len(transforms) != len(wantTransforms) {
+		t.Fatalf("%d transforms recorded, want %d",
+			len(transforms), len(wantTransforms))
+	}
+	for i, want := range wantTransforms {
+		if transforms[i] != want {
+			t.Errorf("transform %d = %q, want %q", i, transforms[i], want)
+		}
 	}
 }
 

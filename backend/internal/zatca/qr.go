@@ -24,13 +24,29 @@ import (
 //   - "It is mandatory to generate and print QR code encoded in Base64 format
 //     with up to 700 characters"
 //
-// What this file deliberately does NOT decide is how the values of tags 6 to 9
-// are themselves encoded. ZATCA's worked example carries tags 6 and 7 as base64
-// TEXT and tags 8 and 9 as raw DER BYTES — which the prose above does not
-// describe, and which the length table printed beside that same example
-// contradicts. That open question is SA.ZATCA.QR_TAG_VALUE_ENCODING and it
-// blocks release. So the code below frames and reads a payload without claiming
-// to know what tags 6 to 9 mean.
+// TAG 6 was settled on 2026-08-23 from a source this project had not previously
+// read: the Security Features Implementation Standards v1.1 (2022-06-24) §4.1,
+// which states the encoding per tag group rather than in prose. Quoted:
+//
+//	[for tags 1 to 5]
+//	 Length: the length of the byte array resulted from the UTF8 encoding of
+//	 the field value. The length shall be stored in one byte.
+//	 Value: the byte array resulting from the UTF8 encoding of the field value.
+//
+//	[for tag 6]
+//	 Length: length of hash (SHA256 ) is 32 bytes
+//	 Value: the byte array constituting the value of the field
+//
+// So tag 6 is the RAW 32-byte digest, not its base64 text — which is what the
+// Technical Guideline's worked example appeared to show and what made the two
+// documents look as though they disagreed. QRHash below enforces it.
+//
+// TAGS 7, 8 and 9 are still not settled. §4.1 brackets its rules as "[for tags
+// 1 to 5]" and "[for tag 6]" and says nothing about the three that follow, so
+// the contradiction the Technical Guideline raises for them stands unresolved.
+// SA.ZATCA.QR_TAG_VALUE_ENCODING therefore remains open for 7 to 9 — and they
+// cannot be produced at all until there is a certificate to sign with. The code
+// below frames and reads a payload without claiming to know what 7 to 9 mean.
 
 // QRTag identifies a field in the QR payload. The nine tags are fixed by the
 // table on p. 58.
@@ -75,6 +91,25 @@ type QRField struct {
 // Arabic seller name is roughly two bytes per letter.
 func QRText(tag QRTag, value string) QRField {
 	return QRField{Tag: tag, Value: []byte(value)}
+}
+
+// QRHash builds tag 6 from a SHA-256 digest.
+//
+// Takes the raw 32 bytes and refuses anything else. §4.1 fixes the length at
+// 32 and the value at "the byte array constituting the value of the field", so
+// a caller passing the base64 TEXT of a digest — 44 characters, which fits in a
+// length byte and encodes without complaint — would produce a QR that is
+// well-formed and wrong. Being strict here is the only place that mistake can
+// be caught.
+func QRHash(digest []byte) (QRField, error) {
+	const sha256Bytes = 32
+	if len(digest) != sha256Bytes {
+		return QRField{}, errs.Newf(errs.CodeInvalidInput,
+			"Tag 6 carries a SHA-256 digest, which is %d bytes, and this is %d. "+
+				"If this is the base64 text of a digest, decode it first.",
+			sha256Bytes, len(digest))
+	}
+	return QRField{Tag: QRInvoiceHash, Value: digest}, nil
 }
 
 // EncodeQR renders fields as the base64 TLV payload.
