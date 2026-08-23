@@ -24,29 +24,40 @@ import (
 //   - "It is mandatory to generate and print QR code encoded in Base64 format
 //     with up to 700 characters"
 //
-// TAG 6 was settled on 2026-08-23 from a source this project had not previously
-// read: the Security Features Implementation Standards v1.1 (2022-06-24) §4.1,
-// which states the encoding per tag group rather than in prose. Quoted:
+// TAGS 6 TO 9 were settled on 2026-08-24 against ZATCA's own worked example in
+// Technical Guideline V2 §6, which prints a complete QR payload twice — once as
+// a hex dump of the TLV stream and once as the base64 string. The stream was
+// decoded and parsed: it is 388 bytes, nine fields, no remainder. A payload
+// that parses to exactly nine well-formed fields with nothing left over is its
+// own proof that it was transcribed correctly.
 //
-//	[for tags 1 to 5]
-//	 Length: the length of the byte array resulted from the UTF8 encoding of
-//	 the field value. The length shall be stored in one byte.
-//	 Value: the byte array resulting from the UTF8 encoding of the field value.
+// The encodings are NOT uniform, and that is the whole difficulty:
 //
-//	[for tag 6]
-//	 Length: length of hash (SHA256 ) is 32 bytes
-//	 Value: the byte array constituting the value of the field
+//	tag 1-5  UTF-8 text
+//	tag 6    UTF-8 text of the BASE64 of the digest   (44 bytes)
+//	tag 7    UTF-8 text of the BASE64 of the DER signature
+//	tag 8    RAW DER SubjectPublicKeyInfo bytes       (88 bytes, begins 0x30)
+//	tag 9    RAW DER ECDSA signature bytes            (72 bytes, begins 0x30)
 //
-// So tag 6 is the RAW 32-byte digest, not its base64 text — which is what the
-// Technical Guideline's worked example appeared to show and what made the two
-// documents look as though they disagreed. QRHash below enforces it.
+// So the stream switches from text to raw bytes between tag 7 and tag 8. Tags 8
+// and 9 are not valid UTF-8 at all.
 //
-// TAGS 7, 8 and 9 are still not settled. §4.1 brackets its rules as "[for tags
-// 1 to 5]" and "[for tag 6]" and says nothing about the three that follow, so
-// the contradiction the Technical Guideline raises for them stands unresolved.
-// SA.ZATCA.QR_TAG_VALUE_ENCODING therefore remains open for 7 to 9 — and they
-// cannot be produced at all until there is a certificate to sign with. The code
-// below frames and reads a payload without claiming to know what 7 to 9 mean.
+// # This corrects what this file said on 2026-08-23
+//
+// The previous note read tag 6 as the RAW 32-byte digest, on the strength of
+// Security Features Implementation Standards v1.1 §4.1: "Length: length of hash
+// (SHA256 ) is 32 bytes / Value: the byte array constituting the value of the
+// field". QRHash enforced 32 bytes and explicitly refused the 44-byte base64
+// text — which would have rejected the authority's own published payload.
+//
+// The two documents can be reconciled: §4.1's "32 bytes" describes the HASH,
+// and "the value of the field" is the base64 rendering of it. The worked
+// example settles which reading is operative, and it is corroborated a second
+// time — the Developer Portal Manual shows the Fatoora SDK printing
+// "INVOICE HASH = QnVEexW4nWv4CaE39a/66Jp/OXO/evHQ8pDlG7weq/4=", the identical
+// value that appears in tag 6 of this payload.
+//
+// Prose describing an encoding lost to a complete artefact encoded in it.
 
 // QRTag identifies a field in the QR payload. The nine tags are fixed by the
 // table on p. 58.
@@ -95,12 +106,10 @@ func QRText(tag QRTag, value string) QRField {
 
 // QRHash builds tag 6 from a SHA-256 digest.
 //
-// Takes the raw 32 bytes and refuses anything else. §4.1 fixes the length at
-// 32 and the value at "the byte array constituting the value of the field", so
-// a caller passing the base64 TEXT of a digest — 44 characters, which fits in a
-// length byte and encodes without complaint — would produce a QR that is
-// well-formed and wrong. Being strict here is the only place that mistake can
-// be caught.
+// Takes the RAW 32 bytes and writes the base64 text of them, because that is
+// what ZATCA's worked payload carries. Refusing anything but 32 bytes on the
+// way in is what stops a caller passing the base64 text and getting it encoded
+// twice — a QR that is well-formed, 68 bytes long, and wrong.
 func QRHash(digest []byte) (QRField, error) {
 	const sha256Bytes = 32
 	if len(digest) != sha256Bytes {
@@ -109,7 +118,70 @@ func QRHash(digest []byte) (QRField, error) {
 				"If this is the base64 text of a digest, decode it first.",
 			sha256Bytes, len(digest))
 	}
-	return QRField{Tag: QRInvoiceHash, Value: digest}, nil
+	return QRField{
+		Tag:   QRInvoiceHash,
+		Value: []byte(base64.StdEncoding.EncodeToString(digest)),
+	}, nil
+}
+
+// QRStampField builds tag 7 from the invoice's ECDSA signature.
+//
+// Text, like tag 6: the example carries 96 bytes reading "MEUCIQD5zx...", which
+// is the base64 of a DER signature and not the signature. The DER is passed in
+// and encoded here so the choice is made in one place.
+func QRStampField(derSignature []byte) (QRField, error) {
+	if err := requireDER(derSignature, 7); err != nil {
+		return QRField{}, err
+	}
+	return QRField{
+		Tag:   QRStamp,
+		Value: []byte(base64.StdEncoding.EncodeToString(derSignature)),
+	}, nil
+}
+
+// QRPublicKeyField builds tag 8 from the stamp certificate's public key.
+//
+// RAW DER, not base64 — this is where the payload stops being text. The value
+// is the whole SubjectPublicKeyInfo: in the worked example 88 bytes beginning
+// 30 56 30 10 06 07 2a 86 48 ce 3d 02 01, which is SEQUENCE, id-ecPublicKey,
+// secp256k1.
+func QRPublicKeyField(subjectPublicKeyInfo []byte) (QRField, error) {
+	if err := requireDER(subjectPublicKeyInfo, 8); err != nil {
+		return QRField{}, err
+	}
+	return QRField{Tag: QRPublicKey, Value: subjectPublicKeyInfo}, nil
+}
+
+// QRCAStampField builds tag 9 from ZATCA's signature over the certificate.
+//
+// RAW DER, like tag 8. Required on simplified invoices and their notes. §6
+// describes obtaining it by decoding the PCSID and taking the certificate's
+// signature value.
+func QRCAStampField(derSignature []byte) (QRField, error) {
+	if err := requireDER(derSignature, 9); err != nil {
+		return QRField{}, err
+	}
+	return QRField{Tag: QRCAStamp, Value: derSignature}, nil
+}
+
+// requireDER refuses a value that is not a DER structure.
+//
+// Tags 8 and 9 carry raw DER, and every DER SEQUENCE begins 0x30. A caller who
+// passes the base64 TEXT of one instead hands over something beginning 'M',
+// which encodes into a QR that scans and means nothing. One byte of checking
+// catches the whole class.
+func requireDER(value []byte, tag QRTag) error {
+	if len(value) == 0 {
+		return errs.Newf(errs.CodeInvalidInput,
+			"Tag %d has no value.", tag)
+	}
+	const derSequence = 0x30
+	if value[0] != derSequence {
+		return errs.Newf(errs.CodeInvalidInput,
+			"Tag %d carries DER, which begins 0x30, and this begins 0x%02x. "+
+				"If this is base64 text, decode it first.", tag, value[0])
+	}
+	return nil
 }
 
 // EncodeQR renders fields as the base64 TLV payload.

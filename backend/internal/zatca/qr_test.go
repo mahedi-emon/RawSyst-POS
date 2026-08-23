@@ -255,17 +255,15 @@ func TestTagsSixToNineAreNotRequiredByValidation(t *testing.T) {
 	}
 }
 
-// Tag 6 is the raw digest, and anything else is refused.
+// Tag 6 carries the base64 TEXT of the digest, not the raw digest.
 //
-// Security Features Implementation Standards v1.1 §4.1, for tag 6: "Length:
-// length of hash (SHA256 ) is 32 bytes / Value: the byte array constituting the
-// value of the field."
-//
-// The mistake this guards against passes every other check: the base64 TEXT of
-// a SHA-256 digest is 44 characters, which fits in a length byte and encodes
-// into a perfectly well-formed TLV stream. It would simply be the wrong bytes,
-// and nothing downstream would notice until ZATCA rejected the invoice.
-func TestTag6CarriesTheRawDigestAndNotItsText(t *testing.T) {
+// This reverses what these tests asserted on 2026-08-23, and the reversal is
+// the point. The old reading came from Security Features v1.1 §4.1 ("length of
+// hash (SHA256 ) is 32 bytes"); ZATCA's own worked payload in Technical
+// Guideline V2 §6 carries 44 bytes of base64 text there. An artefact encoded in
+// the format beats prose describing it, and the reproduction test below
+// rebuilds that artefact byte for byte.
+func TestTag6CarriesTheBase64TextOfTheDigest(t *testing.T) {
 	digest := sha256.Sum256([]byte("an invoice"))
 
 	field, err := QRHash(digest[:])
@@ -275,21 +273,20 @@ func TestTag6CarriesTheRawDigestAndNotItsText(t *testing.T) {
 	if field.Tag != QRInvoiceHash {
 		t.Errorf("tag = %d, want %d", field.Tag, QRInvoiceHash)
 	}
-	if len(field.Value) != 32 {
-		t.Errorf("value is %d bytes, want the raw 32", len(field.Value))
+
+	want := base64.StdEncoding.EncodeToString(digest[:])
+	if string(field.Value) != want {
+		t.Errorf("value = %q, want the base64 text %q", field.Value, want)
 	}
-	if !bytes.Equal(field.Value, digest[:]) {
-		t.Error("the value is not the digest that was handed in")
+	if len(field.Value) != 44 {
+		t.Errorf("value is %d bytes, want 44", len(field.Value))
 	}
 
-	// The base64 text of the same digest, which is what a caller reaching for
-	// the "obvious" encoding would pass.
-	asText := base64.StdEncoding.EncodeToString(digest[:])
-	if _, err := QRHash([]byte(asText)); err == nil {
-		t.Error("the base64 TEXT of a digest was accepted as tag 6; it is 44 " +
-			"bytes and would have produced a well-formed, wrong QR")
+	// The input is still strictly the raw digest. Passing the base64 text would
+	// otherwise be encoded a second time, producing well-formed wrong bytes.
+	if _, err := QRHash([]byte(want)); err == nil {
+		t.Error("the base64 text of a digest was accepted as input to QRHash")
 	}
-
 	for _, wrong := range [][]byte{nil, {}, digest[:31], append(digest[:], 0)} {
 		if _, err := QRHash(wrong); err == nil {
 			t.Errorf("a %d-byte value was accepted as a SHA-256 digest", len(wrong))
@@ -297,44 +294,147 @@ func TestTag6CarriesTheRawDigestAndNotItsText(t *testing.T) {
 	}
 }
 
-// The length byte counts bytes, and the whole stream frames as the standard says.
-func TestTag6FramesAsThirtyTwoBytesInTheStream(t *testing.T) {
-	digest := sha256.Sum256([]byte("an invoice"))
-	hash, err := QRHash(digest[:])
+// Tags 8 and 9 are raw DER, which is where the payload stops being text.
+func TestTags8And9CarryRawDERAndRefuseBase64(t *testing.T) {
+	der := []byte{0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02}
+
+	for _, c := range []struct {
+		name  string
+		build func([]byte) (QRField, error)
+		tag   QRTag
+	}{
+		{"tag 8", QRPublicKeyField, QRPublicKey},
+		{"tag 9", QRCAStampField, QRCAStamp},
+	} {
+		field, err := c.build(der)
+		if err != nil {
+			t.Fatalf("%s refused valid DER: %v", c.name, err)
+		}
+		if field.Tag != c.tag {
+			t.Errorf("%s: tag = %d, want %d", c.name, field.Tag, c.tag)
+		}
+		if !bytes.Equal(field.Value, der) {
+			t.Errorf("%s: the DER was not carried through unchanged", c.name)
+		}
+
+		// The base64 text of the same DER begins 'M', not 0x30.
+		text := []byte(base64.StdEncoding.EncodeToString(der))
+		if _, err := c.build(text); err == nil {
+			t.Errorf("%s accepted base64 text where raw DER belongs", c.name)
+		}
+		if _, err := c.build(nil); err == nil {
+			t.Errorf("%s accepted an empty value", c.name)
+		}
+	}
+}
+
+// Tag 7 is text: the base64 of the DER signature.
+func TestTag7CarriesTheBase64TextOfTheSignature(t *testing.T) {
+	der := []byte{0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02}
+
+	field, err := QRStampField(der)
+	if err != nil {
+		t.Fatalf("QRStampField refused valid DER: %v", err)
+	}
+	if want := base64.StdEncoding.EncodeToString(der); string(field.Value) != want {
+		t.Errorf("value = %q, want %q", field.Value, want)
+	}
+}
+
+// The whole point, in one assertion: rebuild ZATCA's published payload.
+//
+// The nine values are written out independently — the two base64 strings and
+// the two DER blobs transcribed from Technical Guideline V2 §6 — and the
+// expected result is the authority's own base64 string. If a constructor or the
+// framing is wrong anywhere, these will not meet.
+func TestTheOfficialWorkedPayloadIsReproduced(t *testing.T) {
+	digest, err := base64.StdEncoding.DecodeString(officialInvoiceHash)
+	if err != nil {
+		t.Fatalf("the published hash is not base64: %v", err)
+	}
+	stamp, err := base64.StdEncoding.DecodeString(officialStampBase64)
+	if err != nil {
+		t.Fatalf("the published signature is not base64: %v", err)
+	}
+
+	hash, err := QRHash(digest)
 	if err != nil {
 		t.Fatalf("QRHash: %v", err)
 	}
+	tag7, err := QRStampField(stamp)
+	if err != nil {
+		t.Fatalf("QRStampField: %v", err)
+	}
+	tag8, err := QRPublicKeyField(officialPublicKeyDER)
+	if err != nil {
+		t.Fatalf("QRPublicKeyField: %v", err)
+	}
+	tag9, err := QRCAStampField(officialCAStampDER)
+	if err != nil {
+		t.Fatalf("QRCAStampField: %v", err)
+	}
 
-	payload, err := EncodeQR(
-		QRText(QRSellerName, "Olaya Trading"),
-		QRText(QRSellerVAT, "311111111111113"),
-		QRText(QRTimestamp, "2026-08-23T10:15:00Z"),
-		QRText(QRInvoiceTotal, "115.00"),
-		QRText(QRVATTotal, "15.00"),
-		hash,
+	got, err := EncodeQR(
+		QRText(QRSellerName, "Ahmed Mohamed AL Ahmady"),
+		QRText(QRSellerVAT, "301121971500003"),
+		QRText(QRTimestamp, "2022-03-13T14:40:40Z"),
+		QRText(QRInvoiceTotal, "1108.90"),
+		QRText(QRVATTotal, "144.9"),
+		hash, tag7, tag8, tag9,
 	)
 	if err != nil {
 		t.Fatalf("EncodeQR: %v", err)
 	}
+	if got != officialQRPayload {
+		t.Errorf("the rebuilt payload does not match ZATCA's published one."+
+			"\ngot:  %s\nwant: %s", got, officialQRPayload)
+	}
+}
 
-	raw, err := base64.StdEncoding.DecodeString(payload)
+// A payload carrying tags 8 and 9 is not valid UTF-8 throughout, and must still
+// decode and validate.
+func TestTheOfficialWorkedPayloadValidates(t *testing.T) {
+	if err := ValidateQR(officialQRPayload); err != nil {
+		t.Fatalf("ZATCA's own payload was refused: %v", err)
+	}
+	fields, err := DecodeQR(officialQRPayload)
 	if err != nil {
-		t.Fatalf("the payload is not base64: %v", err)
+		t.Fatalf("DecodeQR: %v", err)
 	}
+	if len(fields) != 9 {
+		t.Fatalf("decoded %d fields, want 9", len(fields))
+	}
+}
 
-	// Walk to tag 6 and check its declared length is 32.
-	for i := 0; i < len(raw); {
-		tag, length := raw[i], int(raw[i+1])
-		if QRTag(tag) == QRInvoiceHash {
-			if length != 32 {
-				t.Fatalf("tag 6 declares %d bytes, want 32", length)
-			}
-			if !bytes.Equal(raw[i+2:i+2+length], digest[:]) {
-				t.Fatal("tag 6's bytes are not the digest")
-			}
-			return
-		}
-		i += 2 + length
-	}
-	t.Fatal("tag 6 is not in the stream")
+// --- ZATCA's worked example, Technical Guideline V2 §6 ----------------------
+
+const (
+	officialQRPayload = "ARdBaG1lZCBNb2hhbWVkIEFMIEFobWFkeQIPMzAxMTIxOTcxNTAwMDAzAxQyMDIyLTAzLTEzVDE0OjQwOjQwWgQHMTEwOC45MAUFMTQ0LjkGLFFuVkVleFc0bld2NENhRTM5YS82NkpwL09YTy9ldkhROHBEbEc3d2VxLzQ9B2BNRVVDSVFENXp4eVhPQjdOdldmNjJyVkVaQVlVNzFqcHk5SEVFblowcTlPOTZ3ckw2UUlnUUp6Q0dIYnc2WUJITFlWZE8xd25VaEJnS204ak1UeXZjazlNK3JQOXhZWT0IWDBWMBAGByqGSM49AgEGBSuBBAAKA0IABGGDDKDmhWAITDv7LXqLX2cmr6+qddUkpcLCvWs5rC2O29W/hS4ajAK4Qdnahym6MaijX75Cg3j4aao7ouYXJ9EJSDBGAiEA7mHT6yg85jtQGWp3M7tPT7Jk2+zsvVHGs3bU5Z7YE68CIQD60ebQamYjYvdebnFjNfx4X4dop7LsEBFCNSsLY0IFaQ=="
+
+	// As the Fatoora SDK prints it in the Developer Portal Manual.
+	officialInvoiceHash = "QnVEexW4nWv4CaE39a/66Jp/OXO/evHQ8pDlG7weq/4="
+
+	officialStampBase64 = "MEUCIQD5zxyXOB7NvWf62rVEZAYU71jpy9HEEnZ0q9O96wrL6QIgQJzCGHbw6YBHLYVdO1wnUhBgKm8jMTyvck9M+rP9xYY="
+)
+
+// SubjectPublicKeyInfo: SEQUENCE, id-ecPublicKey, secp256k1, uncompressed point.
+var officialPublicKeyDER = []byte{
+	0x30, 0x56, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02,
+	0x01, 0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x0a, 0x03, 0x42, 0x00, 0x04,
+	0x61, 0x83, 0x0c, 0xa0, 0xe6, 0x85, 0x60, 0x08, 0x4c, 0x3b, 0xfb, 0x2d,
+	0x7a, 0x8b, 0x5f, 0x67, 0x26, 0xaf, 0xaf, 0xaa, 0x75, 0xd5, 0x24, 0xa5,
+	0xc2, 0xc2, 0xbd, 0x6b, 0x39, 0xac, 0x2d, 0x8e, 0xdb, 0xd5, 0xbf, 0x85,
+	0x2e, 0x1a, 0x8c, 0x02, 0xb8, 0x41, 0xd9, 0xda, 0x87, 0x29, 0xba, 0x31,
+	0xa8, 0xa3, 0x5f, 0xbe, 0x42, 0x83, 0x78, 0xf8, 0x69, 0xaa, 0x3b, 0xa2,
+	0xe6, 0x17, 0x27, 0xd1,
+}
+
+// ZATCA's ECDSA signature over that certificate.
+var officialCAStampDER = []byte{
+	0x30, 0x46, 0x02, 0x21, 0x00, 0xee, 0x61, 0xd3, 0xeb, 0x28, 0x3c, 0xe6,
+	0x3b, 0x50, 0x19, 0x6a, 0x77, 0x33, 0xbb, 0x4f, 0x4f, 0xb2, 0x64, 0xdb,
+	0xec, 0xec, 0xbd, 0x51, 0xc6, 0xb3, 0x76, 0xd4, 0xe5, 0x9e, 0xd8, 0x13,
+	0xaf, 0x02, 0x21, 0x00, 0xfa, 0xd1, 0xe6, 0xd0, 0x6a, 0x66, 0x23, 0x62,
+	0xf7, 0x5e, 0x6e, 0x71, 0x63, 0x35, 0xfc, 0x78, 0x5f, 0x87, 0x68, 0xa7,
+	0xb2, 0xec, 0x10, 0x11, 0x42, 0x35, 0x2b, 0x0b, 0x63, 0x42, 0x05, 0x69,
 }
