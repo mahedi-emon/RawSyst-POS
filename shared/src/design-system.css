@@ -265,6 +265,27 @@ body {
   border-radius: var(--radius-sm);
 }
 
+/* A quantity cell. Shared by the POS counter and the back office's purchasing
+ * screen, so it belongs here rather than in either app's stylesheet — it was
+ * POS-only, which left the purchase-order quantity inputs unstyled. */
+.cart__qty {
+  inline-size: 72px;
+  min-block-size: var(--tap-desk);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  text-align: end;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.cart__qty:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 639px) {
+  .cart__qty { min-block-size: var(--tap-mobile); }
+}
+
 /* ---------------------------------------------------------------------------
  * Buttons
  *
@@ -766,4 +787,121 @@ body {
 
 @media (max-width: 639px) {
   .field__input { min-block-size: var(--tap-mobile); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Buttons
+ *
+ * These lived only in pos/src/styles.css, which the browser app does not
+ * import — so every button in the back office rendered as an unstyled native
+ * control: 21px tall, default grey, well under any tap target. It was invisible
+ * in review because the POS, which does import that file, looked perfect.
+ *
+ * That is the third time this exact shape of bug has appeared: box-sizing
+ * (P51) and the form controls (P52) were both POS-only in the same way. A
+ * component in shared/ may only name classes that this file defines.
+ *
+ * Sizing follows the same ladder as .field__input — desktop compact, mobile
+ * thumb-sized — rather than the POS's 56px, which is a till-specific rule and
+ * stays in the POS stylesheet as an override.
+ * ------------------------------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: var(--tap-desk);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) { background: var(--surface-sunken); }
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button--primary {
+  background: var(--brand);
+  color: var(--on-brand);
+  border-color: transparent;
+}
+
+.button--primary:hover:not(:disabled) { background: var(--brand-hover); }
+
+.button--quiet {
+  background: transparent;
+  border-color: transparent;
+}
+
+.button--quiet:hover:not(:disabled) { background: var(--surface-sunken); }
+
+/* A primary action that must not be mis-tapped: full width of its column. */
+.button--large {
+  min-block-size: var(--tap-pos);
+  inline-size: 100%;
+  font-size: 1.0625rem;
+}
+
+@media (max-width: 639px) {
+  .button { min-block-size: var(--tap-mobile); }
+}
+
+/* Focus is always visible. These apps are driven by keyboard and scanner far
+ * more than by mouse, and an invisible focus ring makes them unusable. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Sign-in
+ *
+ * Also POS-only until now, which left the browser app's first screen — the one
+ * every user meets before anything else — completely unstyled.
+ * ------------------------------------------------------------------------- */
+
+.login {
+  min-block-size: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+
+.login__card {
+  inline-size: min(400px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.login__title {
+  margin: 0;
+  font-size: 1.625rem;
+}
+
+.login__subtitle {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Both names appear in the component's history; both resolve here so a rename
+ * cannot silently leave an error message unstyled. */
+.login__problem,
+.login__error {
+  margin: 0;
+  color: var(--danger);
+  border-inline-start: 3px solid var(--danger);
+  padding-inline-start: var(--space-3);
 }
