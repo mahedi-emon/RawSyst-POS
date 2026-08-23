@@ -202,6 +202,12 @@ func (s CSRSubject) Validate() error {
 		return missing("the industry")
 	}
 
+	// Either case is accepted, and BuildCSR encodes it upper. ISO 3166-1 —
+	// which the manual names — defines its alpha-2 codes in upper case, and
+	// ZATCA's own config file writes C=SA, so encoding "sa" risks a CSR that is
+	// well formed and refused. Refusing lower case here instead would be the
+	// wrong fix: egs.trim already stores this field lower-cased, so every unit
+	// this system has ever registered would fail validation.
 	if len(s.CountryCode) != 2 || !isAlpha(s.CountryCode) {
 		return errs.New(errs.CodeInvalidInput,
 			"The country code must be the two-letter ISO 3166 code, such as SA.")
@@ -321,7 +327,7 @@ func certificationRequestInfo(s CSRSubject, templateName string, pub *ecdsa.Publ
 	// encoding: a distinguished name is a sequence, and two names with the same
 	// components in a different order are different names.
 	subjectDN := derWrap(derSequence, concat(
-		rdn(oidCountry, derPrintableString, s.CountryCode),
+		rdn(oidCountry, derPrintableString, strings.ToUpper(s.CountryCode)),
 		rdn(oidOrganizationalUnit, derUTF8String, s.OrganizationalUnit),
 		rdn(oidOrganization, derUTF8String, s.OrganizationName),
 		rdn(oidCommonName, derUTF8String, s.CommonName),

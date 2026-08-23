@@ -271,3 +271,21 @@ func TestEveryPublishedTemplateNameIsAccepted(t *testing.T) {
 		}
 	}
 }
+
+func TestALowerCaseCountryCodeIsEncodedUpper(t *testing.T) {
+	// egs.trim stores this field lower-cased, so a unit registered through the
+	// back office arrives here as "sa". ISO 3166-1 defines its alpha-2 codes in
+	// upper case and ZATCA's own config file writes C=SA, so it is normalised
+	// on the way into the request rather than refused on the way in.
+	subject := validSubject()
+	subject.CountryCode = "sa"
+
+	csr, err := BuildCSR(subject, TemplateNameTSTZATCACodeSigning,
+		stubSigner{pub: secp256k1TestKey()})
+	if err != nil {
+		t.Fatalf("a lower-case country code was refused: %v", err)
+	}
+	if text := opensslText(t, csr); !strings.Contains(text, "C=SA") {
+		t.Errorf("the country was not encoded upper-case\n%s", text)
+	}
+}
