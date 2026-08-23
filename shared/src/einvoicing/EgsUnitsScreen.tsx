@@ -19,6 +19,7 @@ import { listEgsUnits, type EgsUnit } from '../api/egs';
 import { architectureName, describeUnit, missingCsrFields } from './egs';
 import { EgsUnitForm } from './EgsUnitForm';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 interface Loaded {
   units: EgsUnit[];
@@ -146,16 +147,18 @@ function UnitRow({
     <tr>
       <td>
         <span className="detail__strong">{unit.label}</span>
-        <span className="ds-caption">{architectureName(unit.architecture)}</span>
+        <span className="ds-caption">{t(architectureName(unit.architecture) as Key)}</span>
       </td>
       <td>{unit.store || <span className="ds-subtle">{t('egs.wholeBusiness')}</span>}</td>
       <td>
-        <span className={`ds-badge ds-badge--${state.tone}`}>{state.label}</span>
-        {state.next && <span className="ds-caption">{state.next}</span>}
+        <span className={`ds-badge ds-badge--${state.tone}`}>{t(state.label)}</span>
+        {state.next && <span className="ds-caption">{t(state.next)}</span>}
         {/* Named rather than counted. "Three fields missing" makes somebody
             open the form to find out which three. */}
         {missing.length > 0 && (
-          <span className="ds-caption">Still needed: {missing.join(', ')}.</span>
+          <span className="ds-caption">
+            {t('egs.stillNeeded')}: {missing.map((k) => t(k)).join(', ')}.
+          </span>
         )}
       </td>
       <td className="num">{unit.terminals}</td>

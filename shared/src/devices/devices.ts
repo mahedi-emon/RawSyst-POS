@@ -1,3 +1,4 @@
+import type { Key } from '../i18n/strings';
 // The Devices screen's own decisions, separated from its rendering.
 //
 // Four things here decide something rather than lay something out: what state a
@@ -28,40 +29,40 @@ export function terminalState(t: Terminal): TerminalState {
 }
 
 export interface StateLabel {
-  label: string;
+  label: Key;
   tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
   /** One sentence saying what to do next, or nothing when there is nothing to
    *  do. A status badge that only names a state leaves a shop owner guessing. */
-  next?: string;
+  next?: Key;
 }
 
 export function describeState(t: Terminal): StateLabel {
   switch (terminalState(t)) {
     case 'active':
-      return { label: 'Ready', tone: 'success' };
+      return { label: 'device.ready', tone: 'success' };
     case 'waiting_to_be_paired':
       return {
-        label: 'Waiting to be paired',
+        label: 'device.waitingPaired',
         tone: 'info',
-        next: 'Type the code into the terminal to finish setting it up.',
+        next: 'device.waitingPairedNext',
       };
     case 'waiting_for_code':
       return {
-        label: 'Not set up',
+        label: 'device.notSetUpBadge',
         tone: 'neutral',
-        next: 'Get a code, then type it into the terminal.',
+        next: 'device.getCodeHint',
       };
     case 'paused':
       return {
-        label: 'Switched off',
+        label: 'device.switchedOff',
         tone: 'warning',
-        next: 'This terminal cannot sell until it is switched back on.',
+        next: 'device.switchedOffNext',
       };
     default:
       return {
-        label: 'Revoked',
+        label: 'device.revoked',
         tone: 'danger',
-        next: 'Revoking cannot be undone. Register a new terminal to replace it.',
+        next: 'device.revokedNext',
       };
   }
 }

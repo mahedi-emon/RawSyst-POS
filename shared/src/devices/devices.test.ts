@@ -10,6 +10,14 @@ import {
   terminalState,
 } from './devices';
 
+import { en } from '../i18n/strings';
+import type { Key } from '../i18n/strings';
+
+// describeState returns catalogue KEYS now, because the wording could not be
+// translated from a module constant. Resolving through the real English
+// catalogue keeps this assertion about the sentence a shop owner reads.
+const englishT = (key: Key) => en[key];
+
 const till = (over: Partial<Terminal> = {}): Terminal => ({
   id: 'd1',
   store_id: 's1',
@@ -52,7 +60,7 @@ describe('what state a terminal is really in', () => {
     // and the sentence explains it cannot be undone.
     const d = describeState(till({ status: 'revoked' }));
     expect(d.tone).toBe('danger');
-    expect(d.next).toMatch(/cannot be undone/i);
+    expect(englishT(d.next!)).toMatch(/cannot be undone/i);
   });
 });
 

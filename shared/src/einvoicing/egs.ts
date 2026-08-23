@@ -1,3 +1,4 @@
+import type { Key } from '../i18n/strings';
 // The E-invoicing screen's own decisions, separated from its rendering.
 //
 // Four things here decide something: how to describe a unit's certification
@@ -20,30 +21,30 @@ import type { Terminal } from '../api/devices';
  *  where the signing key lives. */
 export const architectures: Array<{
   id: Architecture;
-  name: string;
-  description: string;
+  name: Key;
+  description: Key;
 }> = [
   {
     id: 'smart_pos',
-    name: 'The till signs for itself',
+    name: 'arch.smartPos',
     description:
-      'Each till holds its own certificate and its own invoice sequence. The usual choice for a shop with a few counters.',
+      'arch.smartPosHint',
   },
   {
     id: 'branch_server',
-    name: 'One server for a branch',
+    name: 'arch.branchServer',
     description:
-      'A computer in the branch signs for every till in it. The tills hold no certificate of their own.',
+      'arch.branchServerHint',
   },
   {
     id: 'centralized_server',
-    name: 'One server for the whole business',
+    name: 'arch.central',
     description:
-      'A single system signs for every branch. Choose this only if your invoices are already generated centrally.',
+      'arch.centralHint',
   },
 ];
 
-export function architectureName(a: Architecture): string {
+export function architectureName(a: Architecture): Key | Architecture {
   return architectures.find((x) => x.id === a)?.name ?? a;
 }
 
@@ -56,12 +57,12 @@ export const invoiceTypes = [
 ];
 
 export interface UnitState {
-  label: string;
+  label: Key;
   tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
   /** One sentence saying what to do next, or nothing when there is nothing to
    *  do. Absent for a live unit and for one whose CSR is not ready yet, since
    *  the missing-fields list says that better. */
-  next?: string;
+  next?: Key;
 }
 
 /** What a unit's certification state means, in plain words.
@@ -72,45 +73,45 @@ export interface UnitState {
 export function describeUnit(u: EgsUnit): UnitState {
   switch (u.csid_status) {
     case 'live':
-      return { label: 'Registered with ZATCA', tone: 'success' };
+      return { label: 'egs.live', tone: 'success' };
     case 'production_csid':
-      return { label: 'Production certificate issued', tone: 'success' };
+      return { label: 'egs.productionIssued', tone: 'success' };
     case 'compliance_csid':
       return {
-        label: 'Passed compliance testing',
+        label: 'egs.compliancePassed',
         tone: 'info',
-        next: 'The next step is the production certificate.',
+        next: 'egs.compliancePassedNext',
       };
     case 'revoked':
       return {
-        label: 'Certificate revoked',
+        label: 'egs.revoked',
         tone: 'danger',
-        next: 'This unit cannot sign. Its past invoices stay valid and readable.',
+        next: 'egs.revokedNext',
       };
     case 'expired':
       return {
-        label: 'Certificate expired',
+        label: 'egs.expired',
         tone: 'danger',
-        next: 'This unit cannot sign until its certificate is renewed.',
+        next: 'egs.expiredNext',
       };
     default:
-      return { label: 'Not registered yet', tone: 'neutral' };
+      return { label: 'egs.notRegistered', tone: 'neutral' };
   }
 }
 
 /** The nine CSR fields, in the order the form asks for them, with the label
  *  each is shown under. Exported so the "still missing" list and the form
  *  cannot drift into naming the same field two ways. */
-export const csrFields: Array<{ key: keyof Csr; label: string }> = [
-  { key: 'common_name', label: 'Unit name' },
-  { key: 'egs_serial_number', label: 'Serial number' },
-  { key: 'organization_identifier', label: 'VAT number' },
-  { key: 'organization_unit', label: 'Branch or group member' },
-  { key: 'organization_name', label: 'Registered business name' },
-  { key: 'country', label: 'Country' },
-  { key: 'invoice_type', label: 'Invoices issued' },
-  { key: 'location', label: 'Address' },
-  { key: 'industry', label: 'Industry' },
+export const csrFields: Array<{ key: keyof Csr; label: Key }> = [
+  { key: 'common_name', label: 'csr.unitName' },
+  { key: 'egs_serial_number', label: 'csr.serialNumber' },
+  { key: 'organization_identifier', label: 'csr.vatNumber' },
+  { key: 'organization_unit', label: 'csr.branchOrMember' },
+  { key: 'organization_name', label: 'csr.registeredName' },
+  { key: 'country', label: 'csr.country' },
+  { key: 'invoice_type', label: 'csr.invoicesIssued' },
+  { key: 'location', label: 'csr.address' },
+  { key: 'industry', label: 'csr.industry' },
 ];
 
 /** Which of the nine are still blank.
@@ -119,7 +120,7 @@ export const csrFields: Array<{ key: keyof Csr; label: string }> = [
  *  unit — a shop should be able to set a till up today and find its industry
  *  classification tomorrow. So the screen lists what is outstanding rather than
  *  refusing the save. */
-export function missingCsrFields(csr: Csr): string[] {
+export function missingCsrFields(csr: Csr): Key[] {
   return csrFields.filter((f) => !csr[f.key]?.trim()).map((f) => f.label);
 }
 

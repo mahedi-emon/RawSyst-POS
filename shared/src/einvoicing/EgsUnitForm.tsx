@@ -173,14 +173,17 @@ export function EgsUnitForm({
               htmlFor="egs-arch"
               required
               error={fields.architecture}
-              hint={architectures.find((a) => a.id === architecture)?.description}
+              hint={(() => {
+                const found = architectures.find((a) => a.id === architecture);
+                return found ? t(found.description) : undefined;
+              })()}
             >
               <SelectInput
                 id="egs-arch"
                 value={architecture}
                 onChange={(v) => setArchitecture(v as Architecture)}
                 options={architectures}
-                label={(a) => a.name}
+                label={(a) => t(a.name)}
                 error={fields.architecture}
               />
             </Field>

@@ -262,10 +262,10 @@ function TerminalRow({
         {terminal.egs_unit && <span className="ds-caption">{terminal.egs_unit}</span>}
       </td>
       <td>
-        <span className={`ds-badge ds-badge--${state.tone}`}>{state.label}</span>
+        <span className={`ds-badge ds-badge--${state.tone}`}>{t(state.label)}</span>
         {/* The sentence that says what to do. Present only when there IS
             something to do, so it never becomes noise a reader learns to skip. */}
-        {state.next && <span className="ds-caption">{state.next}</span>}
+        {state.next && <span className="ds-caption">{t(state.next)}</span>}
         {cannotSell && <span className="ds-caption">{cannotSell}</span>}
         {gone && terminal.revoked_reason && (
           <span className="ds-caption">{terminal.revoked_reason}</span>

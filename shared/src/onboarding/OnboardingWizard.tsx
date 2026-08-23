@@ -234,7 +234,7 @@ function StepRail({
               <span className="rail__no" aria-hidden="true">
                 {done ? '✓' : i + 1}
               </span>
-              <span className="rail__title">{s.title}</span>
+              <span className="rail__title">{t(s.title)}</span>
             </button>
           </li>
         );
@@ -258,15 +258,18 @@ function StepBody({
   onAdvanced: (p: OnboardingProgress) => void;
   onFinished: () => void;
 }) {
+  const t = useT();
   const meta = stepMeta(step);
 
   return (
-    <section aria-label={meta.title}>
+    <section aria-label={t(meta.title)}>
       <p className="ds-caption setupw__count">
-        Step {stepNumber(step)} of {STEPS.length}
+        {t('setup.stepOf')
+          .replace('{n}', String(stepNumber(step)))
+          .replace('{total}', String(STEPS.length))}
       </p>
-      <h2 className="ds-h2">{meta.title}</h2>
-      <p className="ds-body-sm ds-muted setupw__purpose">{meta.purpose}</p>
+      <h2 className="ds-h2">{t(meta.title)}</h2>
+      <p className="ds-body-sm ds-muted setupw__purpose">{t(meta.purpose)}</p>
 
       {step === 'business_info' && (
         <BusinessStep progress={progress} readOnly={readOnly} onAdvanced={onAdvanced} />
@@ -379,18 +382,18 @@ function BusinessStep({
   return (
     <>
       <Field label={t('setup.registeredLegalName')} htmlFor="legal-name" required error={field('legal_name')}
-        hint="Exactly as it appears on your commercial registration.">
+        hint={t('setup.legalNameHint')}>
         <TextInput id="legal-name" value={v.legal_name} onChange={(x) => set('legal_name', x)}
           error={field('legal_name')} autoFocus />
       </Field>
 
       <Field label={t('setup.legalNameArabic')} htmlFor="legal-name-ar"
-        hint="Required on Saudi tax invoices. You can add it later.">
+        hint={t('setup.vatHint')}>
         <TextInput id="legal-name-ar" value={v.legal_name_ar}
           onChange={(x) => set('legal_name_ar', x)} />
       </Field>
 
-      <Field label={t('setup.tradingName')} htmlFor="trade-name" hint="What customers call you, if different.">
+      <Field label={t('setup.tradingName')} htmlFor="trade-name" hint={t('setup.tradingNameHint')}>
         <TextInput id="trade-name" value={v.trade_name} onChange={(x) => set('trade_name', x)} />
       </Field>
 
@@ -695,7 +698,7 @@ function FinishStep({
         <div className="ds-state">
           <p className="ds-state__title">{t('setup.stepsOpen')}</p>
           <p className="ds-state__body">
-            Finish {outstanding.map((s) => s.title).join(' and ')} before
+            Finish {outstanding.map((s) => t(s.title)).join(' • ')} before
             creating the business.
           </p>
         </div>

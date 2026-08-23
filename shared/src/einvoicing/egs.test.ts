@@ -1,4 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { en } from '../i18n/strings';
+import type { Key } from '../i18n/strings';
+
+// describeUnit, architectureName and missingCsrFields return catalogue KEYS
+// now, because the text they used to hold could not be translated from a module
+// constant. Resolving them through the real English catalogue keeps these
+// assertions about the words a shop owner actually reads.
+const englishT = (key: Key) => en[key];
+
 
 import { emptyCsr, type Csr, type EgsUnit } from '../api/egs';
 import type { Terminal } from '../api/devices';
@@ -69,19 +78,19 @@ describe('what a unit’s ZATCA state means', () => {
     // "revoked" needs to know they have not lost their records.
     const d = describeUnit(unit({ csid_status: 'revoked' }));
     expect(d.tone).toBe('danger');
-    expect(d.next).toMatch(/stay valid/i);
+    expect(englishT(d.next!)).toMatch(/stay valid/i);
   });
 
   it('names the architectures in words rather than in schema values', () => {
-    expect(architectureName('smart_pos')).not.toBe('smart_pos');
-    expect(architectureName('centralized_server')).toMatch(/whole business/i);
+    expect(englishT(architectureName('smart_pos') as Key)).not.toBe('smart_pos');
+    expect(englishT(architectureName('centralized_server') as Key)).toMatch(/whole business/i);
   });
 });
 
 describe('the nine CSR fields', () => {
   it('lists every one that is still blank, by the name the form uses', () => {
     expect(missingCsrFields(emptyCsr)).toHaveLength(9);
-    expect(missingCsrFields(emptyCsr)).toContain('VAT number');
+    expect(missingCsrFields(emptyCsr).map(englishT)).toContain('VAT number');
   });
 
   it('reports nothing outstanding once all nine are filled', () => {
@@ -89,7 +98,9 @@ describe('the nine CSR fields', () => {
   });
 
   it('treats whitespace as blank, so a stray space is not a filled field', () => {
-    expect(missingCsrFields({ ...fullCsr, industry: '   ' })).toEqual(['Industry']);
+    expect(missingCsrFields({ ...fullCsr, industry: '   ' }).map(englishT)).toEqual([
+      'Industry',
+    ]);
   });
 });
 

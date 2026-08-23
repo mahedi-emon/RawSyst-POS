@@ -855,6 +855,90 @@ export const en = {
   'order.emptyExplain': 'An order records what you have asked a supplier for. Nothing goes into stock until the goods actually arrive and you receive them.',
   'cust.emptyExplain': 'Add the people and businesses you sell to. Their payment terms set when each invoice falls due, and their credit limit caps what they may owe at once.',
   'field.optional': '(optional)',
+
+  // --- Setup steps ---------------------------------------------------
+  'step.business': 'Business',
+  'step.businessPurpose': 'The legal identity every invoice you issue will carry. It has to match your registration exactly.',
+  'step.stores': 'Stores',
+  'step.storesPurpose': 'Every sale is recorded against a store, and each store code appears in its invoice numbers.',
+  'step.tax': 'Tax',
+  'step.taxPurpose': 'What your country requires, loaded from the regulatory register — and the ZATCA dates from your own notification.',
+  'step.people': 'People',
+  'step.peoplePurpose': 'Who else works here. A single-person shop is a real business; you can add people at any time.',
+  'step.hardware': 'Hardware',
+  'step.hardwarePurpose': 'Tills, scanners and printers. A terminal pairs itself later, so nothing here blocks you from trading.',
+  'step.openingBalances': 'Opening balances',
+  'step.openingBalancesPurpose': 'What the business already owns and owes on the day it starts on RawSyst. A new business may have none.',
+  'step.finish': 'Finish',
+  'step.finishPurpose': 'Review what you entered, then create the business.',
+  'setup.stepOf': 'Step {n} of {total}',
+
+  // --- E-invoicing units and CSR fields ------------------------------
+  'arch.smartPos': 'The till signs for itself',
+  'arch.smartPosHint': 'Each till holds its own certificate and its own invoice sequence. The usual choice for a shop with a few counters.',
+  'arch.branchServer': 'One server for a branch',
+  'arch.branchServerHint': 'A computer in the branch signs for every till in it. The tills hold no certificate of their own.',
+  'arch.central': 'One server for the whole business',
+  'arch.centralHint': 'A single system signs for every branch. Choose this only if your invoices are already generated centrally.',
+  'egs.live': 'Registered with ZATCA',
+  'egs.productionIssued': 'Production certificate issued',
+  'egs.compliancePassed': 'Passed compliance testing',
+  'egs.compliancePassedNext': 'The next step is the production certificate.',
+  'egs.revoked': 'Certificate revoked',
+  'egs.revokedNext': 'This unit cannot sign. Its past invoices stay valid and readable.',
+  'egs.expired': 'Certificate expired',
+  'egs.expiredNext': 'This unit cannot sign until its certificate is renewed.',
+  'egs.notRegistered': 'Not registered yet',
+  'csr.unitName': 'Unit name',
+  'csr.serialNumber': 'Serial number',
+  'csr.vatNumber': 'VAT number',
+  'csr.branchOrMember': 'Branch or group member',
+  'csr.registeredName': 'Registered business name',
+  'csr.country': 'Country',
+  'csr.invoicesIssued': 'Invoices issued',
+  'csr.address': 'Address',
+  'csr.industry': 'Industry',
+
+  // --- E-invoicing, remainder ----------------------------------------
+  'egs.stillNeeded': 'Still needed',
+
+  // --- Attention items, device badges and form hints -----------------
+  'attn.outOfStockTitle': 'Items out of stock',
+  'attn.outOfStockDetail': 'These cannot be sold until stock is received.',
+  'attn.lowStockTitle': 'Items below reorder level',
+  'attn.lowStockDetail': 'Still sellable, but worth ordering.',
+  'attn.unreportedTitle': 'Invoices not yet reported',
+  'attn.unreportedDetail': 'Submission to ZATCA is overdue. Sales are recorded correctly; the reporting is outstanding.',
+  'device.notSetUpBadge': 'Not set up',
+  'device.getCodeHint': 'Get a code, then type it into the terminal.',
+  'setup.legalNameHint': 'Exactly as it appears on your commercial registration.',
+  'setup.vatHint': 'Required on Saudi tax invoices. You can add it later.',
+  'setup.tradingNameHint': 'What customers call you, if different.',
+  'tmpl.subheaderHint': 'Printed under your logo. An address, a branch, a strapline.',
+  'tmpl.paymentHint': 'How and when you expect to be paid. Bank details belong here.',
+  'tmpl.termsHint': 'The one customers argue about. Worth writing once, properly.',
+  'tmpl.footerHint': 'The last thing on the page. Usually a thank you.',
+  'tmpl.figuresFixed': 'Their figures, parties, dates and tax numbers are fixed and cannot be edited. These words are not.',
+
+  // --- Device states -------------------------------------------------
+  'device.ready': 'Ready',
+  'device.waitingPaired': 'Waiting to be paired',
+  'device.waitingPairedNext': 'Type the code into the terminal to finish setting it up.',
+  'device.switchedOff': 'Switched off',
+  'device.switchedOffNext': 'This terminal cannot sell until it is switched back on.',
+  'device.revoked': 'Revoked',
+  'device.revokedNext': 'Revoking cannot be undone. Register a new terminal to replace it.',
+
+  // --- Dashboard counts and long notes -------------------------------
+  'dash.acrossAccounts': 'across {n} accounts',
+  'dash.acrossItems': 'across {n} items',
+  'dash.nOutOfStock': '{n} out of stock',
+  'brand.rules': 'PNG or JPEG, up to {kb} KB, between 32 and 2048 pixels on each side. SVG is not accepted — it is a document rather than an image, and one uploaded here could carry code.',
+  'tmpl.stationery': 'Their figures, parties, dates and tax numbers are fixed and cannot be edited. These words are your stationery: a reprint of an old invoice comes out on today\'s.',
+
+  // --- Counts and release note ---------------------------------------
+  'common.nItems': '{n} items',
+  'dash.notInReleaseSuffix': 'are not part of this release. They are absent rather than empty — nothing here is showing you a zero for them.',
 } as const;
 
 /** Every string the interface can show. */
@@ -1674,6 +1758,90 @@ export const ar: Record<Key, string> = {
   'order.emptyExplain': 'يسجّل الطلب ما طلبته من المورد. ولا يدخل شيء إلى المخزون حتى تصل البضاعة فعليًا وتستلمها.',
   'cust.emptyExplain': 'أضف الأشخاص والمنشآت التي تبيع لها. تحدّد مدة السداد لديهم موعد استحقاق كل فاتورة، ويحدّ الحد الائتماني ما يمكن أن يترتب عليهم في وقت واحد.',
   'field.optional': '(اختياري)',
+
+  // --- Setup steps ---------------------------------------------------
+  'step.business': 'المنشأة',
+  'step.businessPurpose': 'الكيان القانوني الذي ستحمله كل فاتورة تصدرها. يجب أن يطابق سجلك تمامًا.',
+  'step.stores': 'الفروع',
+  'step.storesPurpose': 'تُسجَّل كل عملية بيع على فرع، ويظهر رمز الفرع في أرقام فواتيره.',
+  'step.tax': 'الضريبة',
+  'step.taxPurpose': 'ما يتطلبه بلدك، محمَّلًا من السجل التنظيمي — وتواريخ الهيئة من إشعارك أنت.',
+  'step.people': 'الموظفون',
+  'step.peoplePurpose': 'من يعمل معك. المتجر الفردي منشأة حقيقية؛ ويمكنك إضافة أشخاص في أي وقت.',
+  'step.hardware': 'الأجهزة',
+  'step.hardwarePurpose': 'الصناديق والماسحات والطابعات. تقترن نقطة البيع لاحقًا، فلا شيء هنا يمنعك من البيع.',
+  'step.openingBalances': 'الأرصدة الافتتاحية',
+  'step.openingBalancesPurpose': 'ما تملكه المنشأة وما عليها يوم بدايتها على RawSyst. قد لا يكون لدى منشأة جديدة شيء.',
+  'step.finish': 'الإنهاء',
+  'step.finishPurpose': 'راجع ما أدخلته، ثم أنشئ المنشأة.',
+  'setup.stepOf': 'الخطوة {n} من {total}',
+
+  // --- E-invoicing units and CSR fields ------------------------------
+  'arch.smartPos': 'الصندوق يوقّع بنفسه',
+  'arch.smartPosHint': 'يحتفظ كل صندوق بشهادته وتسلسل فواتيره. الخيار المعتاد لمتجر به عدة كاونترات.',
+  'arch.branchServer': 'خادم واحد للفرع',
+  'arch.branchServerHint': 'يوقّع حاسب في الفرع نيابة عن كل صندوق فيه. ولا تحمل الصناديق شهادات خاصة بها.',
+  'arch.central': 'خادم واحد للمنشأة كلها',
+  'arch.centralHint': 'نظام واحد يوقّع لكل الفروع. اختر هذا فقط إذا كانت فواتيرك تُنشأ مركزيًا بالفعل.',
+  'egs.live': 'مسجّلة لدى الهيئة',
+  'egs.productionIssued': 'صدرت شهادة الإنتاج',
+  'egs.compliancePassed': 'اجتازت اختبار المطابقة',
+  'egs.compliancePassedNext': 'الخطوة التالية هي شهادة الإنتاج.',
+  'egs.revoked': 'شهادة مُبطلة',
+  'egs.revokedNext': 'لا تستطيع هذه الوحدة التوقيع. تبقى فواتيرها السابقة صالحة ومقروءة.',
+  'egs.expired': 'انتهت صلاحية الشهادة',
+  'egs.expiredNext': 'لا تستطيع هذه الوحدة التوقيع حتى تُجدَّد شهادتها.',
+  'egs.notRegistered': 'غير مسجّلة بعد',
+  'csr.unitName': 'اسم الوحدة',
+  'csr.serialNumber': 'الرقم التسلسلي',
+  'csr.vatNumber': 'الرقم الضريبي',
+  'csr.branchOrMember': 'الفرع أو عضو المجموعة',
+  'csr.registeredName': 'الاسم المسجّل للمنشأة',
+  'csr.country': 'الدولة',
+  'csr.invoicesIssued': 'الفواتير الصادرة',
+  'csr.address': 'العنوان',
+  'csr.industry': 'النشاط',
+
+  // --- E-invoicing, remainder ----------------------------------------
+  'egs.stillNeeded': 'ما زال مطلوبًا',
+
+  // --- Attention items, device badges and form hints -----------------
+  'attn.outOfStockTitle': 'أصناف نفدت من المخزون',
+  'attn.outOfStockDetail': 'لا يمكن بيعها حتى يُستلم مخزون جديد.',
+  'attn.lowStockTitle': 'أصناف دون حد إعادة الطلب',
+  'attn.lowStockDetail': 'ما زالت قابلة للبيع، لكن يُستحسن طلبها.',
+  'attn.unreportedTitle': 'فواتير لم يُبلَّغ عنها بعد',
+  'attn.unreportedDetail': 'تأخّر الإرسال إلى الهيئة. المبيعات مسجّلة بشكل صحيح؛ والإبلاغ ما زال معلّقًا.',
+  'device.notSetUpBadge': 'غير مُعدّ',
+  'device.getCodeHint': 'احصل على رمز، ثم أدخله في نقطة البيع.',
+  'setup.legalNameHint': 'تمامًا كما يظهر في سجلك التجاري.',
+  'setup.vatHint': 'مطلوب في الفواتير الضريبية السعودية. يمكنك إضافته لاحقًا.',
+  'setup.tradingNameHint': 'الاسم الذي يعرفك به العملاء، إن كان مختلفًا.',
+  'tmpl.subheaderHint': 'يُطبع تحت شعارك. عنوان أو فرع أو عبارة تعريفية.',
+  'tmpl.paymentHint': 'كيف ومتى تتوقع أن تُدفع لك المبالغ. تفاصيل الحساب البنكي مكانها هنا.',
+  'tmpl.termsHint': 'البند الذي يجادل فيه العملاء. يستحق أن يُكتب مرة واحدة بعناية.',
+  'tmpl.footerHint': 'آخر ما في الصفحة. عادةً عبارة شكر.',
+  'tmpl.figuresFixed': 'أرقامها وأطرافها وتواريخها وأرقامها الضريبية ثابتة ولا يمكن تعديلها. أما هذه الكلمات فلا.',
+
+  // --- Device states -------------------------------------------------
+  'device.ready': 'جاهزة',
+  'device.waitingPaired': 'بانتظار الاقتران',
+  'device.waitingPairedNext': 'أدخل الرمز في نقطة البيع لإكمال إعدادها.',
+  'device.switchedOff': 'متوقفة',
+  'device.switchedOffNext': 'لا تستطيع نقطة البيع هذه البيع حتى يُعاد تشغيلها.',
+  'device.revoked': 'مُبطلة',
+  'device.revokedNext': 'لا يمكن التراجع عن الإبطال. سجّل نقطة بيع جديدة بديلة.',
+
+  // --- Dashboard counts and long notes -------------------------------
+  'dash.acrossAccounts': 'على {n} حساب',
+  'dash.acrossItems': 'على {n} صنف',
+  'dash.nOutOfStock': '{n} نفدت',
+  'brand.rules': 'صيغة PNG أو JPEG، بحجم أقصاه {kb} كيلوبايت، وبين 32 و2048 بكسل لكل ضلع. صيغة SVG غير مقبولة — فهي مستند لا صورة، وقد تحمل شفرة برمجية.',
+  'tmpl.stationery': 'أرقامها وأطرافها وتواريخها وأرقامها الضريبية ثابتة ولا يمكن تعديلها. أما هذه الكلمات فهي ترويستك: إعادة طباعة فاتورة قديمة تخرج بترويسة اليوم.',
+
+  // --- Counts and release note ---------------------------------------
+  'common.nItems': '{n} صنف',
+  'dash.notInReleaseSuffix': 'ليست جزءًا من هذا الإصدار. هي غائبة لا فارغة — ولا يعرض لك شيء هنا صفرًا عنها.',
 };
 
 /** The catalogues, by locale. */

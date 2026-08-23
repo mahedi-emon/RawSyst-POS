@@ -48,9 +48,10 @@ describe('the string catalogue', () => {
       'language.english',
       'shift.xReport',
       'shift.zReport',
-      // File formats. PNG and JPEG are written that way in Arabic too; a
+      // File formats. PNG, JPEG and SVG are written that way in Arabic too; a
       // transliteration would be a worse instruction, not a better one.
       'brand.formatHint',
+      'brand.rules',
     ]);
     // Two things are Latin by construction and are not translation failures:
     // interpolation placeholders like `{time}`, which are key names rather than

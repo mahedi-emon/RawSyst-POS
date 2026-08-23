@@ -268,6 +268,9 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
                 type="file"
                 accept={ACCEPTED}
                 className="ds-visually-hidden"
+                // Visually hidden and opened by the button below, so it has no
+                // visible label of its own to be named by.
+                aria-label={t('brand.uploadLogo')}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) void upload(file);
@@ -296,9 +299,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
                 )}
               </div>
               <p className="ds-caption brand__rules">
-                PNG or JPEG, up to {MAX_BYTES / 1024} KB, between 32 and 2048
-                pixels on each side. SVG is not accepted — it is a document
-                rather than an image, and one uploaded here could carry code.
+                {t('brand.rules').replace('{kb}', String(MAX_BYTES / 1024))}
               </p>
             </>
           ) : (

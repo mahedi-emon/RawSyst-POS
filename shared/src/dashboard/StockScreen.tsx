@@ -69,7 +69,7 @@ export function StockScreen({
                 {filter === 'out' ? t('stock.outOfStock') : t('stock.belowReorder')}
               </h2>
               <span className="ds-caption">
-                {d.count} item{d.count === 1 ? '' : 's'}
+                {t('common.nItems').replace('{n}', String(d.count))}
               </span>
             </div>
 

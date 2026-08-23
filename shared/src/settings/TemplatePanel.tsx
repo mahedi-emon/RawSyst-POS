@@ -173,10 +173,7 @@ export function TemplatePanel({ companyId }: { companyId: string }) {
             editing a footer might alter last quarter's invoices will never
             touch it. */}
         <p className="tmpl__note" role="note">
-          <strong>{t('tpl.notRetroactive')}</strong>{' '}
-          Their figures, parties, dates and tax numbers are fixed and cannot be
-          edited. These words are your stationery: a reprint of an old invoice
-          comes out on today&rsquo;s.
+          <strong>{t('tpl.notRetroactive')}</strong> {t('tmpl.stationery')}
         </p>
       </div>
     </div>
@@ -247,7 +244,7 @@ function TemplateForm({
 
       <Block
         label={t('tpl.header')}
-        hint="Printed under your logo. An address, a branch, a strapline."
+        hint={t('tmpl.subheaderHint')}
         id={`hdr-${draft.doc_type}`}
         value={draft.header_text}
         valueAr={draft.header_text_ar}
@@ -260,7 +257,7 @@ function TemplateForm({
 
       <Block
         label={t('common.paymentTerms')}
-        hint="How and when you expect to be paid. Bank details belong here."
+        hint={t('tmpl.paymentHint')}
         id={`pay-${draft.doc_type}`}
         value={draft.payment_terms}
         valueAr={draft.payment_terms_ar}
@@ -273,7 +270,7 @@ function TemplateForm({
 
       <Block
         label={t('tpl.returnsPolicy')}
-        hint="The one customers argue about. Worth writing once, properly."
+        hint={t('tmpl.termsHint')}
         id={`ret-${draft.doc_type}`}
         value={draft.return_policy}
         valueAr={draft.return_policy_ar}
@@ -287,7 +284,7 @@ function TemplateForm({
 
       <Block
         label={t('tpl.closingLine')}
-        hint="The last thing on the page. Usually a thank you."
+        hint={t('tmpl.footerHint')}
         id={`ftr-${draft.doc_type}`}
         value={draft.footer_text}
         valueAr={draft.footer_text_ar}
@@ -353,7 +350,7 @@ function TemplateForm({
             disabled={busy}
             onClick={() => void submit()}
           >
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? t('action.saving') : t('action.save')}
           </button>
         </div>
       )}

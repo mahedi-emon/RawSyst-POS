@@ -27,6 +27,28 @@ import type { Key } from '../i18n/strings';
 // A function of the translator rather than a module constant: a constant is
 // evaluated once at import, before any locale is known, so it would freeze the
 // first language the bundle happened to load with.
+/** The server sends English prose AND a stable kind. The kind is what can be
+ *  translated; the prose is kept only as a fallback for a kind this build has
+ *  not heard of, which is better than showing nothing at all. */
+const ATTENTION_TEXT: Record<string, { title: Key; detail: Key }> = {
+  out_of_stock: { title: 'attn.outOfStockTitle', detail: 'attn.outOfStockDetail' },
+  low_stock: { title: 'attn.lowStockTitle', detail: 'attn.lowStockDetail' },
+};
+
+/** Anything not in the map above is an invoice-reporting escalation, which the
+ *  server sends under several kinds that all mean the same thing to a reader. */
+function attentionTitle(item: Attention, t: (key: Key) => string): string {
+  const known = ATTENTION_TEXT[item.kind];
+  if (known) return t(known.title);
+  return item.kind ? t('attn.unreportedTitle') : item.title;
+}
+
+function attentionDetail(item: Attention, t: (key: Key) => string): string {
+  const known = ATTENTION_TEXT[item.kind];
+  if (known) return t(known.detail);
+  return item.kind ? t('attn.unreportedDetail') : item.detail;
+}
+
 function severityLabel(t: (key: Key) => string): Record<Attention['severity'], string> {
   return {
     critical: t('attention.urgent'),
@@ -51,7 +73,9 @@ export function AttentionList({
       <div className="ds-panel__head">
         <h2 className="ds-h3">{t('dash.needsAttention')}</h2>
         {sorted.length > 0 && (
-          <span className="ds-caption">{sorted.length} item{sorted.length === 1 ? '' : 's'}</span>
+          <span className="ds-caption">
+            {t('common.nItems').replace('{n}', String(sorted.length))}
+          </span>
         )}
       </div>
 
@@ -72,13 +96,13 @@ export function AttentionList({
               >
                 <div className="attention__main">
                   <span className="attention__title">
-                    {item.title}
+                    {attentionTitle(item, t)}
                     {item.count > 0 && (
                       <span className="attention__count num">{item.count}</span>
                     )}
                   </span>
                   <span className="attention__detail ds-body-sm ds-muted">
-                    {item.detail}
+                    {attentionDetail(item, t)}
                   </span>
                 </div>
 

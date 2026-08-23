@@ -175,8 +175,10 @@ export function Dashboard({
                   <span className="ds-subtle">{t('dash.nothingPostedToday')}</span>
                 ) : (
                   <span className="ds-muted">
-                    across {d.expenses.by_account.length} account
-                    {d.expenses.by_account.length === 1 ? '' : 's'}
+                    {t('dash.acrossAccounts').replace(
+                      '{n}',
+                      String(d.expenses.by_account.length),
+                    )}
                   </span>
                 )
               }
@@ -259,15 +261,17 @@ export function Dashboard({
             <section className="ds-panel" aria-label={t('common.stock')}>
               <div className="ds-panel__head">
                 <h2 className="ds-h3">{t('common.stock')}</h2>
-                <span className="ds-caption">at cost</span>
+                <span className="ds-caption">{t('common.atCost')}</span>
               </div>
               <div className="ds-panel__body">
                 <p className="dash__figure num">
                   {money(d.inventory.value, { currency })}
                 </p>
                 <p className="ds-body-sm ds-muted">
-                  across {d.inventory.variant_count} item
-                  {d.inventory.variant_count === 1 ? '' : 's'}
+                  {t('dash.acrossItems').replace(
+                    '{n}',
+                    String(d.inventory.variant_count),
+                  )}
                 </p>
                 {(d.inventory.out_of_stock > 0 || d.inventory.low_stock > 0) && (
                   <p className="dash__stockline ds-body-sm">
@@ -276,7 +280,7 @@ export function Dashboard({
                         className="ds-badge ds-badge--danger badge--opens"
                         onClick={() => onOpen({ screen: 'stock', filter: 'out' })}
                       >
-                        {d.inventory.out_of_stock} out of stock
+                        {t('dash.nOutOfStock').replace('{n}', String(d.inventory.out_of_stock))}
                       </button>
                     )}
                     {d.inventory.low_stock > 0 && (
@@ -471,9 +475,8 @@ function NotBuiltYet({ modules }: { modules: string[] }) {
     <section className="dash__soon" aria-label={t('dash.notAvailableYet')}>
       <h2 className="ds-caption">{t('dash.comingLater')}</h2>
       <p className="ds-body-sm ds-muted">
-        {modules.map((m) => names[m] ?? m).join(' · ')} are not part of this
-        release. They are absent rather than empty — nothing here is showing you
-        a zero for them.
+        {modules.map((m) => names[m] ?? m).join(' · ')}{' '}
+        {t('dash.notInReleaseSuffix')}
       </p>
     </section>
   );

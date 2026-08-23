@@ -1,3 +1,4 @@
+import type { Key } from '../i18n/strings';
 // What the wizard works out for itself.
 //
 // The server validates every step and is the authority — `validateStep` in
@@ -18,9 +19,12 @@ import type { OnboardingProgress, OnboardingStep } from '../api/onboarding';
 
 export interface StepMeta {
   key: OnboardingStep;
-  title: string;
+  /** Catalogue keys rather than English. This array is imported by the wizard
+   *  and read at render, so holding the text here would mean the setup screen
+   *  stayed in whichever language the bundle loaded with. */
+  title: Key;
   /** One sentence on why the step exists, shown under the heading. */
-  purpose: string;
+  purpose: Key;
   /** Optional steps can be confirmed empty. The server agrees: employees,
    *  hardware and opening balances all pass validation with nothing in them. */
   optional: boolean;
@@ -35,50 +39,50 @@ export interface StepMeta {
 export const STEPS: StepMeta[] = [
   {
     key: 'business_info',
-    title: 'Business',
+    title: 'step.business',
     purpose:
-      'The legal identity every invoice you issue will carry. It has to match your registration exactly.',
+      'step.businessPurpose',
     optional: false,
   },
   {
     key: 'stores',
-    title: 'Stores',
+    title: 'step.stores',
     purpose:
-      'Every sale is recorded against a store, and each store code appears in its invoice numbers.',
+      'step.storesPurpose',
     optional: false,
   },
   {
     key: 'tax',
-    title: 'Tax',
+    title: 'step.tax',
     purpose:
-      'What your country requires, loaded from the regulatory register — and the ZATCA dates from your own notification.',
+      'step.taxPurpose',
     optional: false,
   },
   {
     key: 'employees',
-    title: 'People',
+    title: 'step.people',
     purpose:
-      'Who else works here. A single-person shop is a real business; you can add people at any time.',
+      'step.peoplePurpose',
     optional: true,
   },
   {
     key: 'hardware',
-    title: 'Hardware',
+    title: 'step.hardware',
     purpose:
-      'Tills, scanners and printers. A terminal pairs itself later, so nothing here blocks you from trading.',
+      'step.hardwarePurpose',
     optional: true,
   },
   {
     key: 'opening_balances',
-    title: 'Opening balances',
+    title: 'step.openingBalances',
     purpose:
-      'What the business already owns and owes on the day it starts on RawSyst. A new business may have none.',
+      'step.openingBalancesPurpose',
     optional: true,
   },
   {
     key: 'finished',
-    title: 'Finish',
-    purpose: 'Review what you entered, then create the business.',
+    title: 'step.finish',
+    purpose: 'step.finishPurpose',
     optional: false,
   },
 ];
