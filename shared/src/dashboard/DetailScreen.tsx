@@ -41,6 +41,7 @@ export function DetailScreen({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const t = useT();
   return (
     <main className="detail">
       <header className="detail__head">
@@ -66,7 +67,7 @@ export function DetailScreen({
               onClick={onRefresh}
               disabled={refreshing}
             >
-              {refreshing ? 'Refreshing…' : 'Refresh'}
+              {refreshing ? t('action.refreshing') : t('action.refresh')}
             </button>
           )}
         </div>

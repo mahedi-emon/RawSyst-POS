@@ -55,7 +55,7 @@ export function StockScreen({
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
             >
-              {f === 'out' ? 'Out of stock' : 'Below reorder level'}
+              {f === 'out' ? t('stock.outOfStock') : t('stock.belowReorder')}
             </button>
           ))}
         </div>
@@ -66,7 +66,7 @@ export function StockScreen({
           <div className="ds-panel">
             <div className="ds-panel__head">
               <h2 className="ds-h3">
-                {filter === 'out' ? 'Out of stock' : 'Below reorder level'}
+                {filter === 'out' ? t('stock.outOfStock') : t('stock.belowReorder')}
               </h2>
               <span className="ds-caption">
                 {d.count} item{d.count === 1 ? '' : 's'}
@@ -78,13 +78,13 @@ export function StockScreen({
                 <EmptyState
                   title={
                     filter === 'out'
-                      ? 'Everything is in stock'
-                      : 'Nothing is below its reorder level'
+                      ? t('stock.allInStock')
+                      : t('stock.noneBelowReorder')
                   }
                   body={
                     filter === 'out'
-                      ? 'No active item has run out.'
-                      : 'Items appear here once they fall to the reorder level set against them. Items with no reorder level are never listed.'
+                      ? t('stock.noneRunOut')
+                      : t('stock.reorderHint')
                   }
                 />
               ) : (

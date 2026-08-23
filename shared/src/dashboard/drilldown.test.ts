@@ -7,6 +7,13 @@
 // loses a genuine fraction — so each is tested.
 
 import { describe, expect, it } from 'vitest';
+import { en } from '../i18n/strings';
+import type { Key } from '../i18n/strings';
+
+// invoiceStateHint takes a translator now, because its wording moved into the
+// catalogue. Feeding it the real English catalogue keeps these assertions
+// about the words an owner actually reads rather than about a stub.
+const englishT = (key: Key) => en[key];
 
 import { invoiceStateHint } from './InvoiceState';
 import { targetForLink, trimQuantity, formatAge } from './drilldown';
@@ -45,7 +52,7 @@ describe('putting an invoice state into words', () => {
   it('never claims an unsubmitted invoice reported', () => {
     // The single most damaging thing this screen could say while the P1 gate
     // is open.
-    const pending = invoiceStateHint('signed_pending_report');
+    const pending = invoiceStateHint('signed_pending_report', englishT);
     expect(pending).not.toMatch(/accepted/i);
     expect(pending).toMatch(/outstanding/i);
   });
@@ -53,17 +60,17 @@ describe('putting an invoice state into words', () => {
   it('reassures about what is actually fine', () => {
     // The sale, the receipt and the books are all correct; only the reporting
     // is outstanding. Saying so precisely is more reassuring than vagueness.
-    expect(invoiceStateHint('signed_pending_report')).toMatch(/recorded|valid/i);
+    expect(invoiceStateHint('signed_pending_report', englishT)).toMatch(/recorded|valid/i);
   });
 
   it('says plainly when ZATCA has accepted something', () => {
-    expect(invoiceStateHint('reported')).toMatch(/accepted/i);
-    expect(invoiceStateHint('cleared')).toMatch(/accepted/i);
+    expect(invoiceStateHint('reported', englishT)).toMatch(/accepted/i);
+    expect(invoiceStateHint('cleared', englishT)).toMatch(/accepted/i);
   });
 
   it('has nothing to say about a state it does not know', () => {
     // Rather than guessing at something reassuring.
-    expect(invoiceStateHint('some_new_state')).toBe('');
+    expect(invoiceStateHint('some_new_state', englishT)).toBe('');
   });
 });
 

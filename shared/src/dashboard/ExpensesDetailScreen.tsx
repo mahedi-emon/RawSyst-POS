@@ -56,7 +56,7 @@ export function ExpensesDetailScreen({
                 title={`No expenses were posted on ${shortDate(date)}`}
                 body={
                   accountId
-                    ? 'Nothing was posted to that account on this day.'
+                    ? t('expenses.nothingPosted')
                     : 'Expenses appear here as they are recorded against the books. Cost of sales is counted under profit, not here.'
                 }
               />
@@ -97,7 +97,7 @@ export function ExpensesDetailScreen({
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td>{accountId ? 'This account' : 'Total'}</td>
+                        <td>{accountId ? t('expenses.thisAccount') : 'Total'}</td>
                         <td className="num">{money(d.total, { currency: d.base_currency })}</td>
                       </tr>
                     </tfoot>

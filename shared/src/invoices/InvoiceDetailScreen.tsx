@@ -292,7 +292,7 @@ export function InvoiceDetailScreen({
           </div>
         </header>
 
-        <p className="ds-caption inv__statehint">{invoiceStateHint(invoice.state)}</p>
+        <p className="ds-caption inv__statehint">{invoiceStateHint(invoice.state, t)}</p>
 
         <dl className="inv__parties">
           <div>

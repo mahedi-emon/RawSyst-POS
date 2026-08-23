@@ -561,6 +561,81 @@ export const en = {
   'language.label': 'Language',
   'language.english': 'English',
   'language.arabic': 'العربية',
+
+  // --- Sign-in problems, stock and compliance ------------------------
+  'login.offline': 'This device cannot reach the server. Check the network, or ask an owner. Nothing already recorded on this device has been lost.',
+  'login.badCredentials': 'That email and password do not match an account here.',
+  'login.failed': 'Sign-in did not complete. Try again.',
+  'attention.worthKnowing': 'Worth knowing',
+  'stock.outOfStock': 'Out of stock',
+  'stock.belowReorder': 'Below reorder level',
+  'stock.allInStock': 'Everything is in stock',
+  'stock.noneBelowReorder': 'Nothing is below its reorder level',
+  'stock.noneRunOut': 'No active item has run out.',
+  'stock.reorderHint': 'Items appear here once they fall to the reorder level set against them. Items with no reorder level are never listed.',
+  'compliance.noneWaiting': 'No invoice is currently waiting.',
+
+  // --- Attention severities ------------------------------------------
+  'attention.urgent': 'Urgent',
+
+  // --- Invoice lifecycle, modules and detail screens -----------------
+  'invState.draftHint': 'Not yet a legal document. No chain position used.',
+  'invState.awaitingReporting': 'Awaiting reporting',
+  'invState.awaitingClearance': 'Awaiting clearance',
+  'invState.awaitingClearanceHint': 'A B2B invoice waiting to be cleared before it is issued.',
+  'invState.issuedUncleared': 'Issued uncleared',
+  'invState.submitted': 'Submitted',
+  'invState.submittedHint': 'Sent, awaiting an answer.',
+  'invState.cleared': 'Cleared',
+  'invState.acceptedByZatca': 'Accepted by ZATCA.',
+  'invState.reported': 'Reported',
+  'invState.rejectedHint': 'ZATCA refused it. It needs looking at.',
+  'invState.cancelled': 'Cancelled',
+  'invState.cancelledHint': 'No longer in the chain.',
+  'dash.didNotLoad': 'That did not load.',
+  'module.purchases': 'Purchases',
+  'module.payables': 'Payables',
+  'module.employees': 'Employees',
+  'action.refreshing': 'Refreshing…',
+  'expenses.nothingPosted': 'Nothing was posted to that account on this day.',
+  'expenses.thisAccount': 'This account',
+
+  // --- Refresh -------------------------------------------------------
+  'action.refresh': 'Refresh',
+
+  // --- Invoice lifecycle, remainder ----------------------------------
+  'common.draft': 'Draft',
+  'invState.awaitingReportingHint': 'The sale is recorded and the receipt is valid. Reporting to ZATCA is outstanding.',
+  'invState.issuedUnclearedHint': 'Issued during an extended outage, to be cleared when the service returns.',
+  'invState.rejected': 'Rejected',
+
+  // --- Customers -----------------------------------------------------
+  'cust.reverseOffline': 'This device cannot reach the server, so the payment was not reversed.',
+  'cust.reverseFailed': 'That payment could not be reversed.',
+  'cust.limitOffline': 'This device cannot reach the server, so the limit was not changed.',
+  'common.didNotSave': 'That did not save.',
+  'cust.changeLimit': 'Change limit',
+  'cust.setLimit': 'Set a limit',
+  'cust.saveLimit': 'Save limit',
+  'cust.reversing': 'Reversing…',
+  'cust.confirmReverse': 'Confirm reverse',
+  'cust.soldOnAccount': 'Sold on account',
+  'cust.returnedCredited': 'Returned — credited',
+  'cust.paymentReversed': 'Payment reversed',
+  'cust.paymentReceived': 'Payment received',
+  'common.wholesale': 'Wholesale',
+  'cust.codeHint': 'Give the customer a short code you will recognise.',
+  'cust.termsRange': 'Payment terms run from 0 to 365 days.',
+  'cust.limitHint': 'A credit limit is an amount, or empty for no account.',
+  'cust.saveOffline1': 'This device cannot reach the server, so the customer was not saved. ',
+  'cust.saveOffline2': 'Nothing has been lost — try again when the connection is back.',
+  'cust.new': 'New customer',
+  'cust.codeFixed': 'Fixed once set: it appears on invoices you have already issued.',
+  'cust.codeExample': 'How you will find them in a list, e.g. NOOR.',
+  'action.saveChanges': 'Save changes',
+
+  // --- Customer types ------------------------------------------------
+  'common.retail': 'Retail',
 } as const;
 
 /** Every string the interface can show. */
@@ -1086,6 +1161,81 @@ export const ar: Record<Key, string> = {
   'language.label': 'اللغة',
   'language.english': 'English',
   'language.arabic': 'العربية',
+
+  // --- Sign-in problems, stock and compliance ------------------------
+  'login.offline': 'لا يستطيع هذا الجهاز الوصول إلى الخادم. تحقّق من الشبكة أو اسأل المالك. لم يُفقد أي شيء مسجّل على هذا الجهاز.',
+  'login.badCredentials': 'لا يطابق هذا البريد الإلكتروني وكلمة المرور أي حساب هنا.',
+  'login.failed': 'لم يكتمل تسجيل الدخول. حاول مرة أخرى.',
+  'attention.worthKnowing': 'جدير بالملاحظة',
+  'stock.outOfStock': 'نفد من المخزون',
+  'stock.belowReorder': 'دون حد إعادة الطلب',
+  'stock.allInStock': 'كل الأصناف متوفرة',
+  'stock.noneBelowReorder': 'لا يوجد صنف دون حد إعادة الطلب',
+  'stock.noneRunOut': 'لم ينفد أي صنف نشط.',
+  'stock.reorderHint': 'تظهر الأصناف هنا عند وصولها إلى حد إعادة الطلب المحدّد لها. الأصناف التي لا حد لها لا تُدرج أبدًا.',
+  'compliance.noneWaiting': 'لا توجد فاتورة في الانتظار حاليًا.',
+
+  // --- Attention severities ------------------------------------------
+  'attention.urgent': 'عاجل',
+
+  // --- Invoice lifecycle, modules and detail screens -----------------
+  'invState.draftHint': 'ليست بعد مستندًا قانونيًا. لم تُستخدم أي خانة في السلسلة.',
+  'invState.awaitingReporting': 'بانتظار الإبلاغ',
+  'invState.awaitingClearance': 'بانتظار الإجازة',
+  'invState.awaitingClearanceHint': 'فاتورة بين منشأتين تنتظر الإجازة قبل إصدارها.',
+  'invState.issuedUncleared': 'صادرة دون إجازة',
+  'invState.submitted': 'أُرسلت',
+  'invState.submittedHint': 'أُرسلت وبانتظار الرد.',
+  'invState.cleared': 'مُجازة',
+  'invState.acceptedByZatca': 'قبلتها هيئة الزكاة والضريبة والجمارك.',
+  'invState.reported': 'مُبلَّغ عنها',
+  'invState.rejectedHint': 'رفضتها الهيئة. تحتاج إلى مراجعة.',
+  'invState.cancelled': 'ملغاة',
+  'invState.cancelledHint': 'لم تعد ضمن السلسلة.',
+  'dash.didNotLoad': 'تعذّر التحميل.',
+  'module.purchases': 'المشتريات',
+  'module.payables': 'الذمم الدائنة',
+  'module.employees': 'الموظفون',
+  'action.refreshing': 'جارٍ التحديث…',
+  'expenses.nothingPosted': 'لم يُسجَّل شيء على هذا الحساب في هذا اليوم.',
+  'expenses.thisAccount': 'هذا الحساب',
+
+  // --- Refresh -------------------------------------------------------
+  'action.refresh': 'تحديث',
+
+  // --- Invoice lifecycle, remainder ----------------------------------
+  'common.draft': 'مسودة',
+  'invState.awaitingReportingHint': 'البيع مسجّل والإيصال صالح. لم يتم الإبلاغ للهيئة بعد.',
+  'invState.issuedUnclearedHint': 'صدرت أثناء انقطاع طويل، وستُجاز عند عودة الخدمة.',
+  'invState.rejected': 'مرفوضة',
+
+  // --- Customers -----------------------------------------------------
+  'cust.reverseOffline': 'لا يستطيع هذا الجهاز الوصول إلى الخادم، لذلك لم يتم عكس الدفعة.',
+  'cust.reverseFailed': 'تعذّر عكس هذه الدفعة.',
+  'cust.limitOffline': 'لا يستطيع هذا الجهاز الوصول إلى الخادم، لذلك لم يتغيّر الحد.',
+  'common.didNotSave': 'لم يتم الحفظ.',
+  'cust.changeLimit': 'تعديل الحد',
+  'cust.setLimit': 'تحديد حد',
+  'cust.saveLimit': 'حفظ الحد',
+  'cust.reversing': 'جارٍ العكس…',
+  'cust.confirmReverse': 'تأكيد العكس',
+  'cust.soldOnAccount': 'بيع على الحساب',
+  'cust.returnedCredited': 'مرتجع — مُقيَّد دائنًا',
+  'cust.paymentReversed': 'دفعة معكوسة',
+  'cust.paymentReceived': 'دفعة مستلمة',
+  'common.wholesale': 'جملة',
+  'cust.codeHint': 'امنح العميل رمزًا قصيرًا يسهل عليك تمييزه.',
+  'cust.termsRange': 'تتراوح مدة السداد بين 0 و365 يومًا.',
+  'cust.limitHint': 'الحد الائتماني مبلغ، أو اتركه فارغًا لعدم فتح حساب.',
+  'cust.saveOffline1': 'لا يستطيع هذا الجهاز الوصول إلى الخادم، لذلك لم يُحفظ العميل. ',
+  'cust.saveOffline2': 'لم يُفقد شيء — أعد المحاولة عند عودة الاتصال.',
+  'cust.new': 'عميل جديد',
+  'cust.codeFixed': 'ثابت بعد تعيينه: يظهر على الفواتير التي أصدرتها بالفعل.',
+  'cust.codeExample': 'الطريقة التي ستجده بها في القائمة، رمز قصير من حروف أو أرقام.',
+  'action.saveChanges': 'حفظ التغييرات',
+
+  // --- Customer types ------------------------------------------------
+  'common.retail': 'تجزئة',
 };
 
 /** The catalogues, by locale. */

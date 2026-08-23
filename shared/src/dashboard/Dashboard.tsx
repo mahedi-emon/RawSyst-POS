@@ -78,7 +78,7 @@ export function Dashboard({
       } else {
         setLoad({
           state: 'error',
-          message: err instanceof Error ? err.message : 'That did not load.',
+          message: err instanceof Error ? err.message : t('dash.didNotLoad'),
         });
       }
     }
@@ -461,11 +461,11 @@ function NotBuiltYet({ modules }: { modules: string[] }) {
   const t = useT();
   if (modules.length === 0) return null;
   const names: Record<string, string> = {
-    purchases: 'Purchases',
-    suppliers: 'Suppliers',
-    payables: 'Payables',
-    customers: 'Customers',
-    employees: 'Employees',
+    purchases: t('module.purchases'),
+    suppliers: t('common.suppliers'),
+    payables: t('module.payables'),
+    customers: t('common.customers'),
+    employees: t('module.employees'),
   };
   return (
     <section className="dash__soon" aria-label={t('dash.notAvailableYet')}>

@@ -12,56 +12,60 @@
 // which implies something is happening, and not with a spinner, which implies
 // it will finish shortly.
 
-const STATES: Record<string, { label: string; tone: string; hint: string }> = {
-  draft: {
-    label: 'Draft',
-    tone: 'ds-badge--neutral',
-    hint: 'Not yet a legal document. No chain position used.',
-  },
-  signed_pending_report: {
-    label: 'Awaiting reporting',
-    tone: 'ds-badge--warning',
-    hint: 'The sale is recorded and the receipt is valid. Reporting to ZATCA is outstanding.',
-  },
-  signed_pending_clear: {
-    label: 'Awaiting clearance',
-    tone: 'ds-badge--warning',
-    hint: 'A B2B invoice waiting to be cleared before it is issued.',
-  },
-  uncleared_issued: {
-    label: 'Issued uncleared',
-    tone: 'ds-badge--warning',
-    hint: 'Issued during an extended outage, to be cleared when the service returns.',
-  },
-  submitted: {
-    label: 'Submitted',
-    tone: 'ds-badge--info',
-    hint: 'Sent, awaiting an answer.',
-  },
-  cleared: {
-    label: 'Cleared',
-    tone: 'ds-badge--success',
-    hint: 'Accepted by ZATCA.',
-  },
-  reported: {
-    label: 'Reported',
-    tone: 'ds-badge--success',
-    hint: 'Accepted by ZATCA.',
-  },
-  rejected: {
-    label: 'Rejected',
-    tone: 'ds-badge--danger',
-    hint: 'ZATCA refused it. It needs looking at.',
-  },
-  cancelled: {
-    label: 'Cancelled',
-    tone: 'ds-badge--neutral',
-    hint: 'No longer in the chain.',
-  },
-};
+import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
+
+type StateView = { label: string; tone: string; hint: string };
+
+// A function of the translator rather than a module constant. A constant is
+// built once at import, before any locale exists, so it would freeze whichever
+// language the bundle happened to load with and never change on a switch.
+function stateViews(t: (key: Key) => string): Record<string, StateView> {
+  const acceptedByZatca = t('invState.acceptedByZatca');
+  return {
+    draft: {
+      label: t('common.draft'),
+      tone: 'ds-badge--neutral',
+      hint: t('invState.draftHint'),
+    },
+    signed_pending_report: {
+      label: t('invState.awaitingReporting'),
+      tone: 'ds-badge--warning',
+      hint: t('invState.awaitingReportingHint'),
+    },
+    signed_pending_clear: {
+      label: t('invState.awaitingClearance'),
+      tone: 'ds-badge--warning',
+      hint: t('invState.awaitingClearanceHint'),
+    },
+    uncleared_issued: {
+      label: t('invState.issuedUncleared'),
+      tone: 'ds-badge--warning',
+      hint: t('invState.issuedUnclearedHint'),
+    },
+    submitted: {
+      label: t('invState.submitted'),
+      tone: 'ds-badge--info',
+      hint: t('invState.submittedHint'),
+    },
+    cleared: { label: t('invState.cleared'), tone: 'ds-badge--success', hint: acceptedByZatca },
+    reported: { label: t('invState.reported'), tone: 'ds-badge--success', hint: acceptedByZatca },
+    rejected: {
+      label: t('invState.rejected'),
+      tone: 'ds-badge--danger',
+      hint: t('invState.rejectedHint'),
+    },
+    cancelled: {
+      label: t('invState.cancelled'),
+      tone: 'ds-badge--neutral',
+      hint: t('invState.cancelledHint'),
+    },
+  };
+}
 
 export function InvoiceState({ state }: { state: string }) {
-  const known = STATES[state];
+  const t = useT();
+  const known = stateViews(t)[state];
 
   // An unknown state is shown as itself rather than guessed at. A state added
   // server-side must not be silently rendered as something reassuring.
@@ -75,7 +79,10 @@ export function InvoiceState({ state }: { state: string }) {
   );
 }
 
-/** The plain-language explanation, for screens with room for a sentence. */
-export function invoiceStateHint(state: string): string {
-  return STATES[state]?.hint ?? '';
+/** The plain-language explanation, for screens with room for a sentence.
+ *
+ * Takes the translator because the hints are catalogue entries now; a module
+ * constant could not have been translated at all. */
+export function invoiceStateHint(state: string, t: (key: Key) => string): string {
+  return stateViews(t)[state]?.hint ?? '';
 }

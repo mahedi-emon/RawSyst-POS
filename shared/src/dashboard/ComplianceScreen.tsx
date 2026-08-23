@@ -119,7 +119,7 @@ function GateNotice({ outstanding }: { outstanding: number }) {
 
         <p className="gate__body">
           {outstanding === 0
-            ? 'No invoice is currently waiting.'
+            ? t('compliance.noneWaiting')
             : `${outstanding} invoice${outstanding === 1 ? ' is' : 's are'} held here.`}{' '}
           They have not been submitted because this installation cannot yet sign
           invoices: the signing specification has not completed verification, and

@@ -21,13 +21,19 @@ import { sortAttention } from './logic';
 import type { DrillTarget } from './Dashboard';
 import { targetForLink } from './drilldown';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 
-const LABEL: Record<Attention['severity'], string> = {
-  critical: 'Urgent',
-  warning: 'Needs attention',
-  notice: 'Worth knowing',
-};
+// A function of the translator rather than a module constant: a constant is
+// evaluated once at import, before any locale is known, so it would freeze the
+// first language the bundle happened to load with.
+function severityLabel(t: (key: Key) => string): Record<Attention['severity'], string> {
+  return {
+    critical: t('attention.urgent'),
+    warning: t('dash.needsAttention'),
+    notice: t('attention.worthKnowing'),
+  };
+}
 
 export function AttentionList({
   items,
@@ -37,6 +43,7 @@ export function AttentionList({
   onOpen: (target: DrillTarget) => void;
 }) {
   const t = useT();
+  const label = severityLabel(t);
   const sorted = sortAttention(items);
 
   return (
@@ -79,7 +86,7 @@ export function AttentionList({
                   {/* The severity in words, so the stripe is reinforcement
                       rather than the only signal. */}
                   <span className={`ds-badge ${badge(item.severity)}`}>
-                    {LABEL[item.severity] ?? item.severity}
+                    {label[item.severity] ?? item.severity}
                   </span>
 
                   {/* Every row that has somewhere to go, goes there. A8. */}

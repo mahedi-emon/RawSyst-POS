@@ -43,19 +43,16 @@ export function LoginScreen() {
       // went wrong" would leave them retrying a password that was never the
       // problem.
       if (err instanceof Offline) {
-        setProblem(
-          // Also shared, so it says "this device" rather than "this till". The
+        // Also shared, so it says "this device" rather than "this till". The
         // reassurance about queued sales stays: it is true on a terminal and
         // harmlessly irrelevant on a laptop, where nothing was queued anyway.
-        'This device cannot reach the server. Check the network, or ask an ' +
-            'owner. Nothing already recorded on this device has been lost.',
-        );
+        setProblem(t('login.offline'));
       } else if (err instanceof RequestFailed && err.status === 401) {
-        setProblem('That email and password do not match an account here.');
+        setProblem(t('login.badCredentials'));
       } else if (err instanceof RequestFailed) {
         setProblem(err.message);
       } else {
-        setProblem('Sign-in did not complete. Try again.');
+        setProblem(t('login.failed'));
       }
     }
   }

@@ -30,6 +30,7 @@ import {
 import { canReversePayment, creditStanding } from './receivables';
 import { ReceiptForm } from './ReceiptForm';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 export function CustomerDetail({
   companyId,
@@ -94,7 +95,7 @@ export function CustomerDetail({
                 <div className="detail__titles">
                   <h1 className="ds-h1">{customer.name}</h1>
                   <p className="ds-caption">
-                    {customer.code} · {typeLabel(customer.customer_type)}
+                    {customer.code} · {typeLabel(customer.customer_type, t)}
                     {customer.payment_terms_days === 0
                       ? ' · paid at the till'
                       : ` · ${customer.payment_terms_days} day terms`}
@@ -199,7 +200,7 @@ export function CustomerDetail({
                                 .catch((err: unknown) => {
                                   if (err instanceof Offline) {
                                     setReverseFailure(
-                                      'This device cannot reach the server, so the payment was not reversed.',
+                                      t('cust.reverseOffline'),
                                     );
                                   } else if (err instanceof RequestFailed) {
                                     setReverseFailure(err.message);
@@ -207,7 +208,7 @@ export function CustomerDetail({
                                     setReverseFailure(
                                       err instanceof Error
                                         ? err.message
-                                        : 'That payment could not be reversed.',
+                                        : t('cust.reverseFailed'),
                                     );
                                   }
                                 })
@@ -268,11 +269,11 @@ function AccountStanding({
       onChanged();
     } catch (err) {
       if (err instanceof Offline) {
-        setFailure('This device cannot reach the server, so the limit was not changed.');
+        setFailure(t('cust.limitOffline'));
       } else if (err instanceof RequestFailed) {
         setFailure(err.message);
       } else {
-        setFailure(err instanceof Error ? err.message : 'That did not save.');
+        setFailure(err instanceof Error ? err.message : t('common.didNotSave'));
       }
     } finally {
       setBusy(false);
@@ -323,7 +324,7 @@ function AccountStanding({
 
         {maySetLimit && !editing && (
           <button className="ds-btn ds-btn--quiet" onClick={() => setEditing(true)}>
-            {customer.credit_limit ? 'Change limit' : 'Set a limit'}
+            {customer.credit_limit ? t('cust.changeLimit') : t('cust.setLimit')}
           </button>
         )}
       </div>
@@ -353,7 +354,7 @@ function AccountStanding({
               disabled={busy}
               onClick={() => void save()}
             >
-              {busy ? 'Saving…' : 'Save limit'}
+              {busy ? 'Saving…' : t('cust.saveLimit')}
             </button>
             <button
               className="ds-btn ds-btn--quiet"
@@ -403,7 +404,7 @@ function LedgerLine({
       <td className="num">{shortDate(row.date)}</td>
       <td>
         <span className="detail__strong">{row.reference}</span>
-        <span className="ds-caption">{kindLabel(row.kind)}</span>
+        <span className="ds-caption">{kindLabel(row.kind, t)}</span>
       </td>
       <td className="num">
         {row.due_date ? shortDate(row.due_date) : <span className="ds-subtle">—</span>}
@@ -424,7 +425,7 @@ function LedgerLine({
         {mayReverse && confirming && (
           <>
             <button className="ds-btn ds-btn--primary" disabled={busy} onClick={onConfirm}>
-              {busy ? 'Reversing…' : 'Confirm reverse'}
+              {busy ? t('cust.reversing') : t('cust.confirmReverse')}
             </button>
             <button className="ds-btn ds-btn--quiet" disabled={busy} onClick={onCancel}>
               {t('action.cancel')}
@@ -436,29 +437,29 @@ function LedgerLine({
   );
 }
 
-function kindLabel(kind: LedgerRow['kind']): string {
+function kindLabel(kind: LedgerRow['kind'], t: (key: Key) => string): string {
   switch (kind) {
     case 'sale':
-      return 'Sold on account';
+      return t('cust.soldOnAccount');
     // Named for what happened rather than for the document, because a customer
     // reading a statement needs to see this was goods coming back and not a
     // payment they never made.
     case 'credit':
-      return 'Returned — credited';
+      return t('cust.returnedCredited');
     case 'reversal':
-      return 'Payment reversed';
+      return t('cust.paymentReversed');
     default:
-      return 'Payment received';
+      return t('cust.paymentReceived');
   }
 }
 
-function typeLabel(type: Customer['customer_type']): string {
+function typeLabel(type: Customer['customer_type'], t: (key: Key) => string): string {
   switch (type) {
     case 'wholesale':
-      return 'Wholesale';
+      return t('common.wholesale');
     case 'vip':
       return 'VIP';
     default:
-      return 'Retail';
+      return t('common.retail');
   }
 }

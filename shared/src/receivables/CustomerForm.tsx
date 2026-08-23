@@ -30,6 +30,7 @@ import {
 } from '../api/receivables';
 import { useAuth } from '../auth/session';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 import {
   Field,
   FormActions,
@@ -39,11 +40,16 @@ import {
   type FieldErrors,
 } from '../ui/Form';
 
-const TYPES: { id: CustomerType; label: string }[] = [
-  { id: 'retail', label: 'Retail' },
-  { id: 'wholesale', label: 'Wholesale' },
-  { id: 'vip', label: 'VIP' },
-];
+// A function of the translator: a module constant is built once at import,
+// before a locale exists, so it would show whichever language loaded first.
+function customerTypes(t: (key: Key) => string): { id: CustomerType; label: string }[] {
+  return [
+    { id: 'retail', label: t('common.retail') },
+    { id: 'wholesale', label: t('common.wholesale') },
+    // A brand, not a word to translate.
+    { id: 'vip', label: 'VIP' },
+  ];
+}
 
 export function CustomerForm({
   companyId,
@@ -87,18 +93,18 @@ export function CustomerForm({
     // validation runs in Go.
     const local: FieldErrors = {};
     if (!existing && !code.trim()) {
-      local.code = 'Give the customer a short code you will recognise.';
+      local.code = t('cust.codeHint');
     }
     if (!name.trim()) local.name = "Enter the customer's name.";
 
     const days = Number(terms);
     if (!Number.isInteger(days) || days < 0 || days > 365) {
-      local.payment_terms_days = 'Payment terms run from 0 to 365 days.';
+      local.payment_terms_days = t('cust.termsRange');
     }
     if (showLimit && creditLimit.trim() !== '') {
       const limit = Number(creditLimit);
       if (!Number.isFinite(limit) || limit < 0) {
-        local.credit_limit = 'A credit limit is an amount, or empty for no account.';
+        local.credit_limit = t('cust.limitHint');
       }
     }
     if (Object.keys(local).length > 0) {
@@ -132,14 +138,14 @@ export function CustomerForm({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so the customer was not saved. ' +
-            'Nothing has been lost — try again when the connection is back.',
+          t('cust.saveOffline1') +
+            t('cust.saveOffline2'),
         );
       } else if (err instanceof RequestFailed) {
         if (err.fields) setFields(err.fields);
         setFailure(err.fields ? null : err.message);
       } else {
-        setFailure(err instanceof Error ? err.message : 'That did not save.');
+        setFailure(err instanceof Error ? err.message : t('common.didNotSave'));
       }
     } finally {
       setBusy(false);
@@ -149,7 +155,7 @@ export function CustomerForm({
   return (
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">{existing ? existing.name : 'New customer'}</h2>
+        <h2 className="ds-h3">{existing ? existing.name : t('cust.new')}</h2>
       </div>
 
       <div className="ds-panel__body form__body">
@@ -166,8 +172,8 @@ export function CustomerForm({
             error={fields.code}
             hint={
               existing
-                ? 'Fixed once set: it appears on invoices you have already issued.'
-                : 'How you will find them in a list, e.g. NOOR.'
+                ? t('cust.codeFixed')
+                : t('cust.codeExample')
             }
           >
             {existing ? (
@@ -198,7 +204,7 @@ export function CustomerForm({
               id="cust-type"
               value={type}
               onChange={(v) => setType(v as CustomerType)}
-              options={TYPES}
+              options={customerTypes(t)}
               label={(o) => o.label}
               error={fields.customer_type}
             />
@@ -245,7 +251,7 @@ export function CustomerForm({
         </div>
 
         <FormActions
-          submitLabel={existing ? 'Save changes' : 'Add customer'}
+          submitLabel={existing ? t('action.saveChanges') : 'Add customer'}
           busy={busy}
           onCancel={onCancel}
         />
