@@ -185,7 +185,7 @@ function ReceiptBody({
     if (outcome.kind !== 'ok') {
       setFailure(
         outcome.kind === 'nothing'
-          ? 'Say which invoices this payment settles, and how much against each.'
+          ? t('receipt.allocationHint')
           : `Invoice ${outcome.invoice} has ${outcome.outstanding} outstanding, ` +
             `less than the ${outcome.amount} allocated to it.`,
       );
@@ -208,8 +208,8 @@ function ReceiptBody({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so the payment was not recorded. ' +
-            'Nothing has been taken twice — try again when the connection is back.',
+          t('receipt.saveOffline') +
+            t('receipt.notTakenTwice'),
         );
       } else if (err instanceof RequestFailed) {
         setFailure(err.message);
@@ -324,8 +324,8 @@ function ReceiptBody({
                 <tr>
                   <td colSpan={3}>
                     {minor(unplaced) > 0n
-                      ? 'Not yet placed against any invoice'
-                      : 'Allocated more than was received'}
+                      ? t('receipt.unallocated')
+                      : t('receipt.overAllocated')}
                   </td>
                   <td className="num ds-down">{money(unplaced)}</td>
                 </tr>

@@ -793,7 +793,16 @@
   cursor: pointer;
 }
 
-.supplier__actions { display: flex; gap: var(--space-1); justify-content: flex-end; }
+/* Wraps. Three buttons do not fit across a 390px phone, and a flex row that
+ * cannot fit its children spills them off the START edge — which in Arabic is
+ * the right, so the whole page overflowed in RTL while looking fine in English
+ * where the same labels are narrower. */
+.supplier__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
 
 /* A value that cannot be changed reads as text, not as a disabled input. A
  * greyed-out box invites somebody to click it and wonder why nothing happens. */

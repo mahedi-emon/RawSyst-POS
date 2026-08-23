@@ -32,6 +32,7 @@ import { SupplierForm } from './SupplierForm';
 import { OrderForm } from './OrderForm';
 import { BillForm } from './BillForm';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 
 type Tab = 'orders' | 'bills' | 'suppliers' | 'ageing';
 
@@ -372,7 +373,7 @@ function Suppliers({
     } catch (err) {
       // The server refuses to retire a supplier who is still owed money, and
       // the refusal names the amount. Shown as-is: it says what to do.
-      setNotice(err instanceof Error ? err.message : 'That did not work.');
+      setNotice(err instanceof Error ? err.message : t('common.didNotWork'));
     }
   }
 
@@ -460,7 +461,7 @@ function SupplierRow({
       </td>
       <td>
         {supplier.payment_terms_days === 0
-          ? 'On delivery'
+          ? t('order.onDelivery')
           : `${supplier.payment_terms_days} days`}
       </td>
       <td className="num">
@@ -573,17 +574,24 @@ function AgeingView({ companyId }: { companyId: string }) {
   );
 }
 
-const ORDER_STATES: Record<string, { label: string; tone: string }> = {
-  draft: { label: 'Draft', tone: 'ds-badge--neutral' },
-  issued: { label: 'Sent to supplier', tone: 'ds-badge--info' },
-  receiving: { label: 'Part delivered', tone: 'ds-badge--warning' },
-  received: { label: 'Fully delivered', tone: 'ds-badge--success' },
-  closed: { label: 'Closed', tone: 'ds-badge--neutral' },
-  cancelled: { label: 'Cancelled', tone: 'ds-badge--neutral' },
-};
+// A function of the translator: a module constant is built once at import,
+// before a locale exists, so it would freeze the first language loaded.
+function orderStates(
+  t: (key: Key) => string,
+): Record<string, { label: string; tone: string }> {
+  return {
+    draft: { label: t('common.draft'), tone: 'ds-badge--neutral' },
+    issued: { label: t('order.sentToSupplier'), tone: 'ds-badge--info' },
+    receiving: { label: t('order.partDelivered'), tone: 'ds-badge--warning' },
+    received: { label: t('order.fullyDelivered'), tone: 'ds-badge--success' },
+    closed: { label: t('common.closed'), tone: 'ds-badge--neutral' },
+    cancelled: { label: t('common.cancelled'), tone: 'ds-badge--neutral' },
+  };
+}
 
 export function OrderStatus({ status }: { status: string }) {
-  const known = ORDER_STATES[status];
+  const t = useT();
+  const known = orderStates(t)[status];
   return (
     <span className={`ds-badge ${known?.tone ?? 'ds-badge--neutral'}`}>
       {known?.label ?? status.replace(/_/g, ' ')}
@@ -593,15 +601,16 @@ export function OrderStatus({ status }: { status: string }) {
 
 /** A bill's state, in words a buyer reads rather than a status enum. */
 export function BillStatus({ bill }: { bill: Bill }) {
+  const t = useT();
   const states: Record<string, { label: string; tone: string }> = {
-    draft: { label: 'Draft', tone: 'ds-badge--neutral' },
-    matched: { label: 'Checked', tone: 'ds-badge--success' },
+    draft: { label: t('common.draft'), tone: 'ds-badge--neutral' },
+    matched: { label: t('common.checked'), tone: 'ds-badge--success' },
     // The one that matters. Named for what it means to the reader — the money
     // is held — rather than for the internal state.
-    blocked: { label: 'Held — needs approval', tone: 'ds-badge--danger' },
-    approved: { label: 'Approved', tone: 'ds-badge--warning' },
-    paid: { label: 'Paid', tone: 'ds-badge--success' },
-    cancelled: { label: 'Cancelled', tone: 'ds-badge--neutral' },
+    blocked: { label: t('bill.heldNeedsApproval'), tone: 'ds-badge--danger' },
+    approved: { label: t('bill.approved'), tone: 'ds-badge--warning' },
+    paid: { label: t('common.paid'), tone: 'ds-badge--success' },
+    cancelled: { label: t('common.cancelled'), tone: 'ds-badge--neutral' },
   };
   const known = states[bill.status];
   return (

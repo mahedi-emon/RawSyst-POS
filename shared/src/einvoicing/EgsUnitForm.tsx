@@ -89,7 +89,7 @@ export function EgsUnitForm({
     // run in Go and, for the two formats, in the database.
     const local: FieldErrors = {};
     if (!label.trim()) local.label = 'Give this unit a name, like "Main branch".';
-    if (!central && !storeId) local.store_id = 'Say which branch this unit is in.';
+    if (!central && !storeId) local.store_id = t('egs.chooseBranch');
 
     const vat = vatNumberProblem(csr.organization_identifier);
     if (vat) local['csr.organization_identifier'] = vat;
@@ -115,8 +115,8 @@ export function EgsUnitForm({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so nothing was saved. ' +
-            'Try again when the connection is back.',
+          t('egs.saveOffline') +
+            t('common.tryWhenBack'),
         );
       } else if (err instanceof RequestFailed) {
         if (err.fields) setFields(err.fields);
@@ -132,7 +132,7 @@ export function EgsUnitForm({
   return (
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">{existing ? existing.label : 'New e-invoicing unit'}</h2>
+        <h2 className="ds-h3">{existing ? existing.label : t('egs.new')}</h2>
       </div>
 
       <div className="ds-panel__body form__body">

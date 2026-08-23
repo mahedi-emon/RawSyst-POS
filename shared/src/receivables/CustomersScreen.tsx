@@ -171,7 +171,7 @@ function Customers({
     } catch (err) {
       // The server refuses to retire a customer who still owes money, and the
       // refusal names the amount. Shown as-is: it says what to do.
-      setNotice(err instanceof Error ? err.message : 'That did not work.');
+      setNotice(err instanceof Error ? err.message : t('common.didNotWork'));
     }
   }
 
@@ -213,10 +213,10 @@ function Customers({
             <div className="ds-panel__body ds-scroll-x">
               {customers.length === 0 ? (
                 <EmptyState
-                  title={search ? 'Nobody matches that' : 'No customers yet'}
+                  title={search ? t('cust.noMatch') : t('cust.noneYet')}
                   body={
                     search
-                      ? 'Try a shorter search, or clear it to see everyone.'
+                      ? t('cust.searchHint')
                       : 'Add the people and businesses you sell to. Their payment terms set when each invoice falls due, and their credit limit caps what they may owe at once.'
                   }
                 />
@@ -289,7 +289,7 @@ function CustomerRow({
       </td>
       <td>
         {customer.payment_terms_days === 0
-          ? 'At the till'
+          ? t('cust.atTheTill')
           : `${customer.payment_terms_days} days`}
       </td>
       <td className={`num${owes ? '' : ' ds-subtle'}`}>{money(customer.balance)}</td>
@@ -332,16 +332,17 @@ function CustomerRow({
 
 /** What state a customer's credit account is in, in words rather than a number. */
 function AccountBadge({ kind }: { kind: ReturnType<typeof creditStanding>['kind'] }) {
+  const t = useT();
   const states: Record<
     ReturnType<typeof creditStanding>['kind'],
     { label: string; tone: string }
   > = {
-    none: { label: 'Pays at the till', tone: 'ds-badge--neutral' },
-    clear: { label: 'Credit available', tone: 'ds-badge--success' },
-    near_limit: { label: 'Near limit', tone: 'ds-badge--warning' },
+    none: { label: t('cust.paysAtTill'), tone: 'ds-badge--neutral' },
+    clear: { label: t('cust.creditAvailable'), tone: 'ds-badge--success' },
+    near_limit: { label: t('cust.nearLimit'), tone: 'ds-badge--warning' },
     // The one that matters at a counter. Named for what it means to a cashier —
     // nothing further can go on — rather than for the internal state.
-    at_limit: { label: 'At limit', tone: 'ds-badge--danger' },
+    at_limit: { label: t('cust.atLimit'), tone: 'ds-badge--danger' },
   };
   const known = states[kind];
   return <span className={`ds-badge ${known.tone}`}>{known.label}</span>;

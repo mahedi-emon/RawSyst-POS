@@ -132,7 +132,7 @@ export function VariantPicker({
       <input
         className="input"
         value={term}
-        placeholder={catalogue === null ? 'Loading items…' : 'Search by name or SKU'}
+        placeholder={catalogue === null ? t('picker.loading') : t('picker.search')}
         disabled={catalogue === null}
         aria-label={t('purch.searchCatalogue')}
         onChange={(e) => {
@@ -147,7 +147,7 @@ export function VariantPicker({
           {matches.length === 0 ? (
             <li className="picker__empty">
               {catalogue?.length === 0
-                ? 'No items in this catalogue yet.'
+                ? t('picker.empty')
                 : `Nothing matches “${term.trim()}”.`}
             </li>
           ) : (

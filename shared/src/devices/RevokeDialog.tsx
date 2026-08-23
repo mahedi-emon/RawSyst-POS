@@ -54,8 +54,8 @@ export function RevokeDialog({
     } catch (err) {
       if (err instanceof Offline) {
         setFailure(
-          'This device cannot reach the server, so nothing was revoked. ' +
-            'Try again when the connection is back.',
+          t('revoke.offline') +
+            t('common.tryWhenBack'),
         );
       } else if (err instanceof RequestFailed) {
         setFailure(err.message);
@@ -141,7 +141,7 @@ export function RevokeDialog({
             type="submit"
             disabled={!ready}
           >
-            {busy ? 'Revoking…' : 'Revoke this terminal'}
+            {busy ? t('revoke.revoking') : t('revoke.revokeTerminal')}
           </button>
           <button className="ds-btn ds-btn--quiet" type="button" onClick={onCancel}>
             {t('action.cancel')}

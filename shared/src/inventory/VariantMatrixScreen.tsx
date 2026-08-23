@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 import {
   fetchMatrix,
   listProducts,
@@ -73,7 +74,7 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
         );
       } catch (err) {
         setProducts([]);
-        setProblem(explain(err));
+        setProblem(explain(err, t));
       }
     },
     [client, companyId],
@@ -103,7 +104,7 @@ export function VariantMatrixScreen({ companyId }: { companyId: string }) {
         }
         setLoad({
           state: 'failed',
-          message: explain(err),
+          message: explain(err, t),
           offline: err instanceof Offline,
         });
       });
@@ -266,7 +267,7 @@ function Body({
     return (
       <Panel>
         <p className="ds-state__title">
-          {load.offline ? 'Stock could not be reached' : 'Stock could not be read'}
+          {load.offline ? t('stock.unreachable') : t('stock.unreadable')}
         </p>
         <p className="ds-state__body">{load.message}</p>
       </Panel>
@@ -289,7 +290,7 @@ function Body({
     return (
       <Panel>
         <p className="ds-state__title">
-          {product ? `${product.name} has no variants yet` : 'Nothing to show'}
+          {product ? `${product.name} has no variants yet` : t('common.nothingToShow')}
         </p>
         <p className="ds-state__body">
           A grid needs at least one attribute — a size, a colour — on each
@@ -435,16 +436,13 @@ function Panel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function explain(err: unknown): string {
+function explain(err: unknown, t: (key: Key) => string): string {
   if (err instanceof Offline) {
-    return (
-      'Stock levels are read from the server and cannot be shown while the ' +
-      'connection is down. What you last saw may be out of date.'
-    );
+    return t('stock.offlineFull');
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) return 'This login is not allowed to view the catalogue.';
+    if (err.status === 403) return t('stock.notAllowed');
     return err.message;
   }
-  return err instanceof Error ? err.message : 'Something went wrong.';
+  return err instanceof Error ? err.message : t('common.somethingWrong');
 }

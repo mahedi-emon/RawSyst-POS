@@ -36,6 +36,7 @@ import {
 } from '../api/onboarding';
 import { Field, FormError, TextInput } from '../ui/Form';
 import { useT } from '../i18n/locale';
+import type { Key } from '../i18n/strings';
 import {
   answersFor,
   isComplete,
@@ -83,7 +84,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
       }
       setLoad({
         state: 'failed',
-        message: explain(err),
+        message: explain(err, t),
         offline: err instanceof Offline,
       });
     }
@@ -124,7 +125,7 @@ export function OnboardingWizard({ onFinished }: { onFinished?: () => void } = {
       <Shell>
         <div className="ds-state">
           <p className="ds-state__title">
-            {load.offline ? 'Setup could not be reached' : 'Setup could not be read'}
+            {load.offline ? t('setup.unreachable') : t('setup.unreadable')}
           </p>
           <p className="ds-state__body">{load.message}</p>
           <button className="ds-btn ds-btn--secondary" onClick={() => void reload()}>
@@ -199,11 +200,12 @@ function Shell({ children }: { children: React.ReactNode }) {
  *  company's `zatca_status` and each unit's `csid_status`, neither of which
  *  this wizard advances. */
 function ReadinessBadge({ progress }: { progress: OnboardingProgress }) {
+  const t = useT();
   const state = readiness(progress);
   const tone =
     state === 'done' ? 'ds-badge--success' : state === 'ready' ? 'ds-badge--info' : 'ds-badge--neutral';
   const word =
-    state === 'done' ? 'Set up' : state === 'ready' ? 'Ready to finish' : 'In progress';
+    state === 'done' ? t('setup.setUp') : state === 'ready' ? t('setup.readyToFinish') : t('setup.inProgress');
   return <span className={`ds-badge ${tone}`}>{word}</span>;
 }
 
@@ -233,7 +235,7 @@ function StepRail({
               onClick={() => onPick(s.key)}
               // A step nobody can reach yet says why, rather than looking
               // broken.
-              title={reachable ? undefined : 'Finish the steps before this one first'}
+              title={reachable ? undefined : t('setup.finishPrevious')}
             >
               <span className="rail__no" aria-hidden="true">
                 {done ? '✓' : i + 1}
@@ -304,6 +306,7 @@ function useStepSubmit(
   onAdvanced: (p: OnboardingProgress) => void,
 ) {
   const { client } = useAuth();
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [serverFields, setServerFields] = useState<FieldErrors>({});
@@ -316,7 +319,7 @@ function useStepSubmit(
         await saveOnboardingStep(client, step, answers);
         return true;
       } catch (err) {
-        setFailure(explain(err));
+        setFailure(explain(err, t));
         return false;
       } finally {
         setBusy(false);
@@ -337,7 +340,7 @@ function useStepSubmit(
         // Field-level messages come back keyed as the form keys them, which is
         // why they are shown under their own input rather than as a banner.
         if (err instanceof RequestFailed && err.fields) setServerFields(err.fields);
-        setFailure(explain(err));
+        setFailure(explain(err, t));
       } finally {
         setBusy(false);
       }
@@ -657,7 +660,7 @@ function OptionalStep({
       <div className="setupw__actions">
         <button className="ds-btn ds-btn--primary" disabled={busy || readOnly}
           onClick={() => void submit({})}>
-          {busy ? 'Saving…' : done ? 'Continue' : 'Skip for now'}
+          {busy ? 'Saving…' : done ? t('action.continue') : t('setup.skipForNow')}
         </button>
       </div>
     </>
@@ -718,7 +721,7 @@ function FinishStep({
             <div><dt className="ds-caption">{t('setup.booksIn')}</dt><dd>{business.base_currency || '—'}</dd></div>
             <div>
               <dt className="ds-caption">{t('common.vat')}</dt>
-              <dd>{business.vat_registered ? business.vat_number || 'Registered' : 'Not registered'}</dd>
+              <dd>{business.vat_registered ? business.vat_number || t('setup.registered') : t('setup.notRegistered')}</dd>
             </div>
             <div>
               <dt className="ds-caption">{t('setup.stores')}</dt>
@@ -740,10 +743,10 @@ function FinishStep({
                 setBusy(true);
                 commitOnboardingCompany(client)
                   .then((r) => setCreated(r.company_id))
-                  .catch((err) => setFailure(explain(err)))
+                  .catch((err) => setFailure(explain(err, t)))
                   .finally(() => setBusy(false));
               }}>
-              {busy ? 'Creating…' : 'Create the business'}
+              {busy ? t('setup.creating') : t('setup.createBusiness')}
             </button>
           </div>
         </>
@@ -773,23 +776,20 @@ function StepActions({
         {t('setup.saveAndComeBack')}
       </button>
       <button className="ds-btn ds-btn--primary" disabled={busy || readOnly} onClick={onContinue}>
-        {busy ? 'Saving…' : 'Continue'}
+        {busy ? 'Saving…' : t('action.continue')}
       </button>
     </div>
   );
 }
 
 /** Turns a failure into something an owner can act on. */
-function explain(err: unknown): string {
+function explain(err: unknown, t: (key: Key) => string): string {
   if (err instanceof Offline) {
-    return (
-      'Your answers are kept on the server, so this step cannot be saved ' +
-      'until the connection is back. Nothing you have already saved is lost.'
-    );
+    return t('setup.offlineFull');
   }
   if (err instanceof RequestFailed) {
     if (err.status === 403) {
-      return 'This login is not allowed to change setup.';
+      return t('setup.notAllowed');
     }
     if (err.status === 409) {
       // The server's own sentence — "Setup is already finished for this

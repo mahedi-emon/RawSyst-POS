@@ -103,7 +103,7 @@ export function EnrolmentCode({
             onClick={onReissue}
             disabled={busy}
           >
-            {busy ? 'Getting a new code…' : 'Get a new code'}
+            {busy ? t('enrol.getting') : t('enrol.getNew')}
           </button>
         </div>
       </div>

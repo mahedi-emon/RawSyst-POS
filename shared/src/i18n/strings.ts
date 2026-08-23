@@ -723,6 +723,80 @@ export const en = {
   'tmpl.debitHint': 'A correction that increases what is owed.',
   'tmpl.offlineOnServer': 'Your document text is kept on the server, so it cannot be changed ',
   'tmpl.notAllowed': 'This login is not allowed to change document text.',
+
+  // --- Setup, customers and purchasing lists -------------------------
+  'setup.unreachable': 'Setup could not be reached',
+  'setup.unreadable': 'Setup could not be read',
+  'setup.readyToFinish': 'Ready to finish',
+  'setup.inProgress': 'In progress',
+  'setup.finishPrevious': 'Finish the steps before this one first',
+  'action.continue': 'Continue',
+  'setup.skipForNow': 'Skip for now',
+  'setup.registered': 'Registered',
+  'setup.notRegistered': 'Not registered',
+  'setup.creating': 'Creating…',
+  'setup.createBusiness': 'Create the business',
+  'setup.offlineOnServer': 'Your answers are kept on the server, so this step cannot be saved ',
+  'setup.notAllowed': 'This login is not allowed to change setup.',
+  'common.didNotWork': 'That did not work.',
+  'cust.noMatch': 'Nobody matches that',
+  'cust.noneYet': 'No customers yet',
+  'cust.searchHint': 'Try a shorter search, or clear it to see everyone.',
+  'cust.atTheTill': 'At the till',
+  'cust.paysAtTill': 'Pays at the till',
+  'cust.creditAvailable': 'Credit available',
+  'cust.nearLimit': 'Near limit',
+  'cust.atLimit': 'At limit',
+  'order.onDelivery': 'On delivery',
+  'order.sentToSupplier': 'Sent to supplier',
+  'order.partDelivered': 'Part delivered',
+  'order.fullyDelivered': 'Fully delivered',
+  'bill.heldNeedsApproval': 'Held — needs approval',
+  'bill.approved': 'Approved',
+
+  // --- Shared statuses -----------------------------------------------
+  'common.closed': 'Closed',
+  'common.cancelled': 'Cancelled',
+  'common.checked': 'Checked',
+  'common.paid': 'Paid',
+  'setup.setUp': 'Set up',
+  'setup.offlineFull': 'Your answers are kept on the server, so this step cannot be saved until the connection is back. Nothing you have already saved is lost.',
+
+  // --- Devices, receipts, stock and units ----------------------------
+  'device.notSetUp': 'Not set up yet',
+  'common.working': 'Working…',
+  'device.setUpAgain': 'Set up again',
+  'device.getCode': 'Get code',
+  'receipt.allocationHint': 'Say which invoices this payment settles, and how much against each.',
+  'receipt.saveOffline': 'This device cannot reach the server, so the payment was not recorded. ',
+  'receipt.notTakenTwice': 'Nothing has been taken twice — try again when the connection is back.',
+  'receipt.unallocated': 'Not yet placed against any invoice',
+  'receipt.overAllocated': 'Allocated more than was received',
+  'revoke.offline': 'This device cannot reach the server, so nothing was revoked. ',
+  'common.tryWhenBack': 'Try again when the connection is back.',
+  'revoke.revoking': 'Revoking…',
+  'revoke.revokeTerminal': 'Revoke this terminal',
+  'stock.unreachable': 'Stock could not be reached',
+  'stock.unreadable': 'Stock could not be read',
+  'common.nothingToShow': 'Nothing to show',
+  'stock.offlineOnServer': 'Stock levels are read from the server and cannot be shown while the ',
+  'stock.notAllowed': 'This login is not allowed to view the catalogue.',
+  'egs.chooseBranch': 'Say which branch this unit is in.',
+  'egs.saveOffline': 'This device cannot reach the server, so nothing was saved. ',
+  'egs.new': 'New e-invoicing unit',
+
+  // --- Stock, offline ------------------------------------------------
+  'stock.offlineFull': 'Stock levels are read from the server and cannot be shown while the connection is down. What you last saw may be out of date.',
+
+  // --- Pickers, enrolment and settlement -----------------------------
+  'picker.loading': 'Loading items…',
+  'picker.search': 'Search by name or SKU',
+  'picker.empty': 'No items in this catalogue yet.',
+  'enrol.getting': 'Getting a new code…',
+  'enrol.getNew': 'Get a new code',
+
+  // --- Settlement ----------------------------------------------------
+  'settle.depositFailed': 'That deposit could not be recorded. Nothing was changed.',
 } as const;
 
 /** Every string the interface can show. */
@@ -1410,6 +1484,80 @@ export const ar: Record<Key, string> = {
   'tmpl.debitHint': 'تصحيح يزيد المبلغ المستحق.',
   'tmpl.offlineOnServer': 'نص مستنداتك محفوظ على الخادم، لذلك لا يمكن تغييره ',
   'tmpl.notAllowed': 'لا يُسمح لهذا الحساب بتغيير نص المستندات.',
+
+  // --- Setup, customers and purchasing lists -------------------------
+  'setup.unreachable': 'تعذّر الوصول إلى الإعداد',
+  'setup.unreadable': 'تعذّرت قراءة الإعداد',
+  'setup.readyToFinish': 'جاهز للإنهاء',
+  'setup.inProgress': 'قيد التنفيذ',
+  'setup.finishPrevious': 'أكمل الخطوات السابقة أولًا',
+  'action.continue': 'متابعة',
+  'setup.skipForNow': 'تخطٍّ الآن',
+  'setup.registered': 'مسجّل',
+  'setup.notRegistered': 'غير مسجّل',
+  'setup.creating': 'جارٍ الإنشاء…',
+  'setup.createBusiness': 'إنشاء المنشأة',
+  'setup.offlineOnServer': 'إجاباتك محفوظة على الخادم، لذلك لا يمكن حفظ هذه الخطوة ',
+  'setup.notAllowed': 'لا يُسمح لهذا الحساب بتغيير الإعداد.',
+  'common.didNotWork': 'لم تنجح العملية.',
+  'cust.noMatch': 'لا أحد يطابق ذلك',
+  'cust.noneYet': 'لا يوجد عملاء بعد',
+  'cust.searchHint': 'جرّب بحثًا أقصر، أو امسحه لعرض الجميع.',
+  'cust.atTheTill': 'عند الصندوق',
+  'cust.paysAtTill': 'يدفع عند الصندوق',
+  'cust.creditAvailable': 'ائتمان متاح',
+  'cust.nearLimit': 'قارب الحد',
+  'cust.atLimit': 'بلغ الحد',
+  'order.onDelivery': 'عند التسليم',
+  'order.sentToSupplier': 'أُرسل إلى المورد',
+  'order.partDelivered': 'مُسلَّم جزئيًا',
+  'order.fullyDelivered': 'مُسلَّم بالكامل',
+  'bill.heldNeedsApproval': 'محجوزة — تحتاج موافقة',
+  'bill.approved': 'مُعتمدة',
+
+  // --- Shared statuses -----------------------------------------------
+  'common.closed': 'مغلق',
+  'common.cancelled': 'ملغى',
+  'common.checked': 'مُطابق',
+  'common.paid': 'مدفوع',
+  'setup.setUp': 'مكتمل',
+  'setup.offlineFull': 'إجاباتك محفوظة على الخادم، لذلك لا يمكن حفظ هذه الخطوة حتى عودة الاتصال. لم يُفقد شيء مما حفظته سابقًا.',
+
+  // --- Devices, receipts, stock and units ----------------------------
+  'device.notSetUp': 'لم يُعدّ بعد',
+  'common.working': 'جارٍ العمل…',
+  'device.setUpAgain': 'إعداد من جديد',
+  'device.getCode': 'الحصول على رمز',
+  'receipt.allocationHint': 'حدّد الفواتير التي تسددها هذه الدفعة، والمبلغ المخصص لكل منها.',
+  'receipt.saveOffline': 'لا يستطيع هذا الجهاز الوصول إلى الخادم، لذلك لم تُسجَّل الدفعة. ',
+  'receipt.notTakenTwice': 'لم يُخصم أي مبلغ مرتين — أعد المحاولة عند عودة الاتصال.',
+  'receipt.unallocated': 'لم تُخصَّص بعد لأي فاتورة',
+  'receipt.overAllocated': 'المُخصَّص أكبر من المستلم',
+  'revoke.offline': 'لا يستطيع هذا الجهاز الوصول إلى الخادم، لذلك لم يُلغَ شيء. ',
+  'common.tryWhenBack': 'أعد المحاولة عند عودة الاتصال.',
+  'revoke.revoking': 'جارٍ الإلغاء…',
+  'revoke.revokeTerminal': 'إلغاء نقطة البيع هذه',
+  'stock.unreachable': 'تعذّر الوصول إلى المخزون',
+  'stock.unreadable': 'تعذّرت قراءة المخزون',
+  'common.nothingToShow': 'لا يوجد ما يُعرض',
+  'stock.offlineOnServer': 'تُقرأ مستويات المخزون من الخادم ولا يمكن عرضها بينما ',
+  'stock.notAllowed': 'لا يُسمح لهذا الحساب بعرض الأصناف.',
+  'egs.chooseBranch': 'حدّد الفرع الذي توجد فيه هذه الوحدة.',
+  'egs.saveOffline': 'لا يستطيع هذا الجهاز الوصول إلى الخادم، لذلك لم يُحفظ شيء. ',
+  'egs.new': 'وحدة فوترة إلكترونية جديدة',
+
+  // --- Stock, offline ------------------------------------------------
+  'stock.offlineFull': 'تُقرأ مستويات المخزون من الخادم ولا يمكن عرضها أثناء انقطاع الاتصال. قد تكون آخر بيانات رأيتها قديمة.',
+
+  // --- Pickers, enrolment and settlement -----------------------------
+  'picker.loading': 'جارٍ تحميل الأصناف…',
+  'picker.search': 'ابحث بالاسم أو رمز الصنف',
+  'picker.empty': 'لا توجد أصناف في هذا الكتالوج بعد.',
+  'enrol.getting': 'جارٍ الحصول على رمز جديد…',
+  'enrol.getNew': 'الحصول على رمز جديد',
+
+  // --- Settlement ----------------------------------------------------
+  'settle.depositFailed': 'تعذّر تسجيل هذا الإيداع. لم يتغيّر شيء.',
 };
 
 /** The catalogues, by locale. */

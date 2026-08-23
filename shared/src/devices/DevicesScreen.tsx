@@ -253,7 +253,7 @@ function TerminalRow({
       <td>
         <span className="detail__strong">{terminal.terminal_label}</span>
         <span className="ds-caption">
-          {terminal.os || 'Not set up yet'}
+          {terminal.os || t('device.notSetUp')}
           {terminal.app_version ? ` · ${terminal.app_version}` : ''}
         </span>
       </td>
@@ -283,7 +283,7 @@ function TerminalRow({
           <div className="supplier__actions">
             {controls.code && (
               <button className="ds-btn ds-btn--quiet" onClick={onCode} disabled={busy}>
-                {busy ? 'Working…' : terminal.enrolled_at ? 'Set up again' : 'Get code'}
+                {busy ? t('common.working') : terminal.enrolled_at ? t('device.setUpAgain') : t('device.getCode')}
               </button>
             )}
             {controls.edit && (

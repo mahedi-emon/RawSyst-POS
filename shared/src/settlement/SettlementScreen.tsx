@@ -149,7 +149,7 @@ function Outstanding({
       setFailed(
         err instanceof Error
           ? err.message
-          : 'That deposit could not be recorded. Nothing was changed.',
+          : t('settle.depositFailed'),
       );
     } finally {
       setBusy(false);
