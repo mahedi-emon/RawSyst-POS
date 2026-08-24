@@ -94,8 +94,16 @@ test: ## Run unit tests (RACE= to disable the race detector)
 	go test $(RACE) -count=1 ./...
 
 .PHONY: test-db
+# -timeout is explicit because Go's default is 10 minutes PER PACKAGE and the
+# api package passed it. Under the race detector on a CI runner that package
+# alone takes longer than the default allows, and the failure arrives as
+# "panic: test timed out" with a goroutine dump -- which reads like a deadlock
+# rather than a suite that has simply grown.
+#
+# 30 minutes is not a target. It is a ceiling well clear of the real figure, so
+# a genuine hang still fails rather than hanging the runner forever.
 test-db: ## Run tests needing PostgreSQL (set RAWSYST_DB_DSN)
-	go test $(RACE) -count=1 -tags=integration ./...
+	go test $(RACE) -count=1 -tags=integration -timeout=30m ./...
 
 .PHONY: test-db-reset
 test-db-reset: ## Empty the test database and migrate it again

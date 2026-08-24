@@ -18,7 +18,7 @@ import { signIn as signInOnTerminal } from './offline/credential';
 import './styles.css';
 import '@rawsyst/shared/dashboard/dashboard.css';
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8080';
+const baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('the application root is missing from the page');
