@@ -1,6 +1,7 @@
 package zatca
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"os"
@@ -324,5 +325,73 @@ func TestTheSignedInvoicePassesEverythingButTheCertificate(t *testing.T) {
 	}
 	for _, w := range result.Warnings {
 		t.Logf("warning: %s %s — %s", w.Category, w.Code, w.Message)
+	}
+}
+
+// The hasher computes what §3 says, and agrees with the signing path.
+//
+// §3, in full: the previous-invoice hash is produced "by applying the same
+// transform as is used for the cryptographic stamp and as specified in section
+// 2.3.3 and taking the sha256 algorithm". So the chain's PIH and the value the
+// signature covers are one computation, and if these two ever disagreed the
+// chain would break silently — every later invoice linking to a hash nobody
+// else computes.
+func TestTheHasherAgreesWithTheSignature(t *testing.T) {
+	signed, _, _ := signTestInvoice(t)
+
+	got, err := StandardHasher{}.Hash(context.Background(), Document{XML: signed.XML})
+	if err != nil {
+		t.Fatalf("hashing: %v", err)
+	}
+	if got != signed.InvoiceHash {
+		t.Errorf("the hasher and the signature disagree:\n  hasher    %s\n  signature %s",
+			got, signed.InvoiceHash)
+	}
+}
+
+// It hashes the UNSIGNED document to the same value, which is what makes the
+// transform chain an exact inverse of the injection.
+func TestTheHashIsTheSameBeforeAndAfterSigning(t *testing.T) {
+	inv := sampleInvoice()
+	unsigned, err := BuildInvoiceXML(inv)
+	if err != nil {
+		t.Fatalf("building: %v", err)
+	}
+
+	before, err := StandardHasher{}.Hash(context.Background(), Document{XML: unsigned})
+	if err != nil {
+		t.Fatalf("hashing the unsigned document: %v", err)
+	}
+
+	signer, err := GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := SelfSignedDevelopmentCertificate(signer, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := SignInvoice(unsigned, cert, QRSeller{
+		Name: "S", VATNumber: "301121971500003", Timestamp: "2022-03-13T14:40:40Z",
+		Total: "1110.90", VATTotal: "144.90",
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+
+	after, err := StandardHasher{}.Hash(context.Background(), Document{XML: signed.XML})
+	if err != nil {
+		t.Fatalf("hashing the signed document: %v", err)
+	}
+	if before != after {
+		t.Errorf("signing changed the hash:\n  before %s\n  after  %s", before, after)
+	}
+}
+
+// An empty document is refused rather than hashed to the digest of nothing,
+// which is a real value that would sit on a chain looking legitimate.
+func TestHashingNothingIsRefused(t *testing.T) {
+	if _, err := (StandardHasher{}).Hash(context.Background(), Document{}); err == nil {
+		t.Error("an empty document was hashed")
 	}
 }

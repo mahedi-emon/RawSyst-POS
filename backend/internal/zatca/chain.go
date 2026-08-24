@@ -86,7 +86,12 @@ func NewChain(pool *db.Pool, hasher DocumentHasher) *Chain {
 	return &Chain{pool: pool, hasher: hasher}
 }
 
-// Allocate reserves the next position on a unit's chain and returns the link.
+// Reserve takes the next position on a unit's chain WITHOUT hashing anything.
+//
+// Split from hashing because the two cannot happen at once. The document
+// carries its own ICV and PIH, so it cannot be built until they are known; and
+// the hash is over the document, so it cannot be computed until the document
+// exists. Reserve, build, hash, record.
 //
 // The read and the increment happen in one statement, so two concurrent sales
 // on the same unit cannot receive the same ICV. The row lock serialises them;
@@ -96,35 +101,41 @@ func NewChain(pool *db.Pool, hasher DocumentHasher) *Chain {
 // This is the server-side allocator, used where the EGS unit is a centralized
 // or branch server. A smart POS owns its counter locally and reports what it
 // used — see Record.
-func (c *Chain) Allocate(
-	ctx context.Context, tx pgx.Tx, egsUnitID uuid.UUID, doc Document,
-) (Link, error) {
-	var icv int64
+func (c *Chain) Reserve(
+	ctx context.Context, tx pgx.Tx, egsUnitID uuid.UUID,
+) (icv int64, pih string, err error) {
 	var prevHash *string
 
-	err := tx.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		UPDATE egs_unit
 		SET last_icv = last_icv + 1
 		WHERE id = $1
 		RETURNING last_icv, last_invoice_hash`, egsUnitID).Scan(&icv, &prevHash)
 	if err != nil {
-		return Link{}, db.Translate(err,
+		return 0, "", db.Translate(err,
 			"That e-invoicing unit does not exist, so no invoice number could be issued.")
 	}
 
-	pih := GenesisPIH
+	pih = GenesisPIH
 	if prevHash != nil && *prevHash != "" {
 		pih = *prevHash
 	}
+	return icv, pih, nil
+}
 
-	doc.ICV = icv
-	doc.PIH = pih
-
-	hash, err := c.hasher.Hash(ctx, doc)
+// LinkFor hashes a document that already carries its reserved position.
+//
+// The hash is the real one: canonicalised through the transform chain and
+// SHA-256'd, per §3 of the Security Features standard. A document that cannot
+// be built is a document that cannot be hashed, and the sale fails rather than
+// taking a position on the chain it can never justify.
+func (c *Chain) LinkFor(
+	ctx context.Context, egsUnitID uuid.UUID, icv int64, pih string, xml []byte,
+) (Link, error) {
+	hash, err := c.hasher.Hash(ctx, Document{ICV: icv, PIH: pih, XML: xml})
 	if err != nil {
 		return Link{}, err
 	}
-
 	return Link{
 		EGSUnitID:     egsUnitID,
 		ICV:           icv,

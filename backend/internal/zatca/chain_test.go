@@ -115,11 +115,14 @@ func (f *fixture) issue(t *testing.T, n int) Link {
 			return err
 		}
 
-		var err error
-		link, err = f.chain.Allocate(ctx, tx, f.unitID, Document{
-			InvoiceUUID: invoiceUUID,
-			XML:         fmt.Appendf(nil, "<Invoice seq=%q/>", fmt.Sprint(n)),
-		})
+		// Reserve, then hash a document carrying that position. The two are
+		// separate because the document contains its own ICV and PIH.
+		icv, pih, err := f.chain.Reserve(ctx, tx, f.unitID)
+		if err != nil {
+			return err
+		}
+		link, err = f.chain.LinkFor(ctx, f.unitID, icv, pih,
+			fmt.Appendf(nil, "<Invoice seq=%q></Invoice>", fmt.Sprint(n)))
 		if err != nil {
 			return err
 		}
@@ -473,8 +476,12 @@ func TestChainsAreIsolatedPerUnit(t *testing.T) {
 			RETURNING id`, f.tenantID, f.companyID, uuid.New()).Scan(&invoiceID); e != nil {
 			return e
 		}
-		var e error
-		link, e = f.chain.Allocate(ctx, tx, secondUnit, Document{InvoiceUUID: uuid.New()})
+		icv, pih, e := f.chain.Reserve(ctx, tx, secondUnit)
+		if e != nil {
+			return e
+		}
+		link, e = f.chain.LinkFor(ctx, secondUnit, icv, pih,
+			[]byte("<Invoice unit=\"second\"></Invoice>"))
 		if e != nil {
 			return e
 		}

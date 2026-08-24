@@ -95,12 +95,14 @@ func newHarness(t *testing.T) *harness {
 
 	provSvc := provisioning.NewService(pool)
 
-	// A development hasher, because these tests exercise the HTTP surface
-	// rather than ZATCA's document format. The production hasher refuses
-	// outright until the format is verified — see zatca.HasherFor.
+	// The real hasher. There is only one now: the canonicalisation, the UBL
+	// field set and the QR encoding are all verified, so hashing is an ordinary
+	// computation rather than something to be stubbed out. A development hasher
+	// that differed from production would break the chain the moment a database
+	// moved between them.
 	rules := registry.New(pool, false)
 	submitter := zatca.SubmitterFor(false)
-	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.DevelopmentHasher{})).
+	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.StandardHasher{})).
 		WithPool(pool).WithRegistry(rules).WithSubmitter(submitter)
 
 	// The same registration production makes: replayed sales go through the

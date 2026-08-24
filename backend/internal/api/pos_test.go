@@ -33,9 +33,14 @@ type shopFixture struct {
 	egsUnitID   uuid.UUID
 	deviceID    uuid.UUID
 	variantID   uuid.UUID
-	userID      uuid.UUID
-	sessionID   uuid.UUID
-	token       string
+	// businessID is a VAT-registered customer. A standard (B2B) invoice must
+	// name its buyer — ZATCA requires the legal name and the 15-digit VAT
+	// number on the face of it — so a test that rings one up needs a real
+	// customer rather than an anonymous counter sale.
+	businessID uuid.UUID
+	userID     uuid.UUID
+	sessionID  uuid.UUID
+	token      string
 	// email is carried so a test can sign in as this user through the real
 	// login route rather than only with a minted token.
 	email string
@@ -104,8 +109,10 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 		}
 
 		if e := tx.QueryRow(ctx, `
-			INSERT INTO egs_unit (tenant_id, company_id, store_id, label, architecture)
-			VALUES ($1,$2,$3,'till-1','smart_pos') RETURNING id`,
+			INSERT INTO egs_unit
+			  (tenant_id, company_id, store_id, label, architecture,
+			   csr_organization_name, csr_organization_identifier)
+			VALUES ($1,$2,$3,'till-1','smart_pos','Demo Retail Co','311111111111113') RETURNING id`,
 			f.tenantID, f.companyID, f.storeID).Scan(&f.egsUnitID); e != nil {
 			return e
 		}

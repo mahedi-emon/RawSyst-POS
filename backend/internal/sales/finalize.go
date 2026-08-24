@@ -231,14 +231,28 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 
-	if err := s.writeInvoice(ctx, tx, term, sale, computed, invoiceID); err != nil {
+	humanNumber, err := s.writeInvoice(ctx, tx, term, sale, computed, invoiceID)
+	if err != nil {
 		return Finalized{}, err
 	}
 
 	// The chain last among the writes, so nothing after it can fail and strand
 	// a consumed counter.
-	link, err := s.chain.Allocate(ctx, tx, term.EGSUnitID,
-		zatca.Document{InvoiceUUID: sale.InvoiceUUID})
+	//
+	// Three steps rather than one, because the document carries its own ICV and
+	// PIH and the hash is over the document: reserve the position, build the
+	// UBL with it, then hash what was built. A sale whose unit is not
+	// registered enough to produce a document fails HERE, before the counter
+	// moves — a consumed ICV cannot be handed back and a gap is permanent.
+	icv, pih, err := s.chain.Reserve(ctx, tx, term.EGSUnitID)
+	if err != nil {
+		return Finalized{}, err
+	}
+	document, err := buildSaleDocument(ctx, tx, term, sale, computed, humanNumber, icv, pih)
+	if err != nil {
+		return Finalized{}, err
+	}
+	link, err := s.chain.LinkFor(ctx, term.EGSUnitID, icv, pih, document)
 	if err != nil {
 		return Finalized{}, err
 	}
@@ -378,7 +392,7 @@ type costing struct {
 func (s *Service) writeInvoice(
 	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale,
 	computed ComputedSale, invoiceID uuid.UUID,
-) error {
+) (string, error) {
 	rate := sale.FXRate
 	if rate.IsZero() {
 		rate = decimal.NewFromInt(1)
@@ -391,7 +405,7 @@ func (s *Service) writeInvoice(
 	// ICV allocation and this one can be reformatted freely.
 	humanNumber, err := claimHumanNumber(ctx, tx, term.StoreID, sale.IssuedAt, sale.DocType)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -407,7 +421,7 @@ func (s *Service) writeInvoice(
 		computed.SubtotalNet, computed.DiscountTotal,
 		computed.TaxTotal, computed.TotalInclusive, initialState(sale.DocType),
 		term.CashSessionID, humanNumber, sale.CustomerID); err != nil {
-		return db.Translate(err, "That sale could not be recorded.")
+		return "", db.Translate(err, "That sale could not be recorded.")
 	}
 
 	for i, l := range computed.Lines {
@@ -422,7 +436,7 @@ func (s *Service) writeInvoice(
 			l.Qty, l.UnitPrice, l.LineDiscount, l.InvoiceDiscountAlloc,
 			l.TaxTreatment, l.TaxRate, l.TaxAmount,
 			l.NetAmount, l.GrossAmount, l.COGSAmount); err != nil {
-			return db.Translate(err,
+			return "", db.Translate(err,
 				"A line on that sale could not be recorded.")
 		}
 	}
@@ -434,12 +448,12 @@ func (s *Service) writeInvoice(
 			VALUES ($1,$2,$3,$4,$5,$6)`,
 			term.TenantID, invoiceID, i+1, td.Method, td.Amount,
 			nullText(td.Reference)); err != nil {
-			return db.Translate(err,
+			return "", db.Translate(err,
 				"A payment on that sale could not be recorded.")
 		}
 	}
 
-	return nil
+	return humanNumber, nil
 }
 
 // initialState says which ZATCA route a document takes.

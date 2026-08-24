@@ -161,15 +161,27 @@ func (s *Service) ProcessReturn(
 	}
 
 	// 8. The credit note, linked to what it corrects.
-	creditNoteID, err := s.writeCreditNote(ctx, tx, term, ret, original, computed)
+	creditNoteID, creditNoteNumber, err := s.writeCreditNote(ctx, tx, term, ret, original, computed)
 	if err != nil {
 		return Refunded{}, err
 	}
 
 	// A credit note is an invoice in ZATCA's eyes and takes its own position on
 	// the chain (E1). Skipping it would break the counter's continuity.
-	link, err := s.chain.Allocate(ctx, tx, term.EGSUnitID,
-		zatca.Document{InvoiceUUID: ret.CreditNoteUUID})
+	//
+	// Reserve, build, hash — the same three steps a sale takes, and for the same
+	// reason: the document carries its own ICV and PIH, and the hash is over the
+	// document.
+	icv, pih, err := s.chain.Reserve(ctx, tx, term.EGSUnitID)
+	if err != nil {
+		return Refunded{}, err
+	}
+	document, err := buildCreditNoteDocument(ctx, tx, term, ret, original, computed,
+		creditNoteNumber, icv, pih)
+	if err != nil {
+		return Refunded{}, err
+	}
+	link, err := s.chain.LinkFor(ctx, term.EGSUnitID, icv, pih, document)
 	if err != nil {
 		return Refunded{}, err
 	}
@@ -341,10 +353,10 @@ func (s *Service) returnableLines(
 func (s *Service) writeCreditNote(
 	ctx context.Context, tx pgx.Tx, term Terminal, ret Return,
 	original originalInvoice, computed ComputedReturn,
-) (uuid.UUID, error) {
+) (uuid.UUID, string, error) {
 	humanNumber, err := claimHumanNumber(ctx, tx, term.StoreID, ret.IssuedAt, "credit_note")
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, "", err
 	}
 
 	// A credit note follows the ROUTE OF THE INVOICE IT CORRECTS. A note
@@ -370,7 +382,7 @@ func (s *Service) writeCreditNote(
 		computed.TaxTotal, computed.TotalInclusive, state,
 		term.CashSessionID, humanNumber, original.customerID).Scan(&creditNoteID)
 	if err != nil {
-		return uuid.Nil, db.Translate(err, "That credit note could not be issued.")
+		return uuid.Nil, "", db.Translate(err, "That credit note could not be issued.")
 	}
 
 	for i, l := range computed.Lines {
@@ -385,12 +397,12 @@ func (s *Service) writeCreditNote(
 			l.Qty.Neg(), l.UnitPrice, l.InvoiceDiscountAlloc, l.TaxTreatment,
 			l.TaxRate, l.TaxAmount, l.NetAmount, l.GrossAmount, l.COGSAmount,
 			l.OriginalLineID); err != nil {
-			return uuid.Nil, db.Translate(err,
+			return uuid.Nil, "", db.Translate(err,
 				"A line on that credit note could not be recorded.")
 		}
 	}
 
-	return creditNoteID, nil
+	return creditNoteID, humanNumber, nil
 }
 
 // postReturn writes the two reversing entries.

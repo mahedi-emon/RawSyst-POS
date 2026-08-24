@@ -377,3 +377,60 @@ func TestTheSimplifiedInvoiceFailsZATCAsValidatorOnlyForWantOfACertificate(t *te
 		}
 	}
 }
+
+// The address this product can supply today, and what ZATCA thinks of it.
+//
+// `store` holds a single free-text `address` column and `egs_unit` a single
+// `csr_location`. ZATCA wants five separate fields. Asked directly, the
+// validator accepts the document — valid=true — and returns three warnings:
+//
+//	BR-KSA-09  seller address must contain street name (BT-35), building
+//	           number (KSA-17), postal code (BT-38), city (BT-37),
+//	           district (KSA-3), country code (BT-40)
+//	BR-KSA-37  the seller address building number must contain 4 digits
+//	BR-KSA-66  seller postal code (BT-38) must be 5 digits
+//
+// So this is a data-model gap rather than a mapping bug, and it is recorded
+// here in the validator's own words instead of in a comment somebody has to
+// take on trust. SA.ZATCA.API_RESPONSES already notes that ZATCA warns such
+// warnings "might become rejections in the future", which is what makes this
+// worth fixing rather than tolerating.
+//
+// Splitting the free text on commas is NOT the fix: it would put whatever
+// happened to be typed into fields a tax authority reads.
+func TestTheReducedAddressIsAcceptedButWarned(t *testing.T) {
+	if os.Getenv("ZATCA_VALIDATOR") == "" {
+		t.Skip("set ZATCA_VALIDATOR=1 to check against ZATCA's live validator")
+	}
+
+	in := standardInvoice()
+	in.Supplier.Address = Address{
+		Street:      "Prince Sultan Road, Al-Murabba",
+		City:        "Main Branch",
+		CountryCode: "SA",
+	}
+	doc, err := BuildInvoiceXML(in)
+	if err != nil {
+		t.Fatalf("building: %v", err)
+	}
+	result := validateWithZATCA(t, doc)
+
+	// Accepted, so a shop can trade while the address model is completed.
+	for _, e := range result.Errors {
+		t.Errorf("unexpected error: %s %s — %s", e.Category, e.Code, e.Message)
+	}
+	if !result.Valid {
+		t.Error("a reduced address made the document invalid, not merely warned")
+	}
+
+	// And every warning is about the address, not about anything else we build.
+	known := map[string]bool{"BR-KSA-09": true, "BR-KSA-37": true, "BR-KSA-66": true}
+	for _, w := range result.Warnings {
+		if !known[w.Code] {
+			t.Errorf("a warning that is not about the address: %s — %s", w.Code, w.Message)
+		}
+	}
+	if len(result.Warnings) == 0 {
+		t.Log("ZATCA no longer warns about the reduced address; the gap may be closed")
+	}
+}

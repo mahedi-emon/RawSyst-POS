@@ -176,8 +176,24 @@ func TestACreditNoteFollowsTheRouteOfTheInvoiceItCorrects(t *testing.T) {
 	ctx := t.Context()
 
 	// A B2B sale: cleared before issue.
+	// A standard invoice is B2B and must name its buyer: ZATCA wants the legal
+	// name and the 15-digit VAT number on the face of it, so the document
+	// cannot be built without one. Created here rather than in the shared seed,
+	// because other tests count the customers a shop has.
+	var buyerID uuid.UUID
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			INSERT INTO customer
+			  (tenant_id, company_id, code, name, customer_type, vat_number)
+			VALUES ($1,$2,'BIZ','Olaya Trading LLC','wholesale','311111111111113')
+			RETURNING id`, f.tenantID, f.companyID).Scan(&buyerID)
+	}); err != nil {
+		t.Fatalf("seed a business customer: %v", err)
+	}
+
 	sale := oneItemSale(f, newUUID(), "1", "115.00", "115.00")
 	sale["doc_type"] = "standard"
+	sale["customer_id"] = buyerID.String()
 	created := h.do(t, "POST", "/api/v1/pos/sales", f.token, sale)
 	if created.StatusCode != 201 {
 		t.Fatalf("B2B sale: %s", readBody(t, created))

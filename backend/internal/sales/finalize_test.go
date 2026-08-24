@@ -44,12 +44,14 @@ type shop struct {
 	entryNo                                   int64
 }
 
-type stubHasher struct{}
-
-func (stubHasher) SchemaVersion() string { return "1.2" }
-func (stubHasher) Hash(_ context.Context, d zatca.Document) (string, error) {
-	return "hash-" + d.InvoiceUUID.String(), nil
-}
+// The sales tests hash for real.
+//
+// There used to be a stub here returning "hash-" + the invoice UUID. It hid a
+// whole class of bug: the moment the chain stopped passing InvoiceUUID and
+// started passing the document, every hash became "hash-00000000-..." and
+// collided on the unique index — which is what a stub keyed on the wrong field
+// does. Hashing is an ordinary computation now, so these tests do it, and a
+// sale whose document cannot be built fails here rather than in production.
 
 func newShop(t *testing.T) *shop {
 	t.Helper()
@@ -69,7 +71,7 @@ func newShop(t *testing.T) *shop {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	chain := zatca.NewChain(pool, stubHasher{})
+	chain := zatca.NewChain(pool, zatca.StandardHasher{})
 	s := &shop{pool: pool, chain: chain, svc: NewService(chain), entryNo: 1}
 
 	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
@@ -101,9 +103,17 @@ func newShop(t *testing.T) *shop {
 			s.tenantID, s.companyID).Scan(&s.storeID); err != nil {
 			return err
 		}
+		// Registered, not merely created. A unit with no legal name and no VAT
+		// number cannot produce a UBL document, and since the chain hash is
+		// taken over that document it cannot sell either — which is the rule
+		// working, not a fixture detail. Every sale test needs a unit a shop
+		// could actually trade on.
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO egs_unit (tenant_id, company_id, store_id, label, architecture)
-			VALUES ($1,$2,$3,'till','smart_pos') RETURNING id`,
+			INSERT INTO egs_unit
+			  (tenant_id, company_id, store_id, label, architecture,
+			   csr_organization_name, csr_organization_identifier)
+			VALUES ($1,$2,$3,'till','smart_pos','Demo Retail Co','311111111111113')
+			RETURNING id`,
 			s.tenantID, s.companyID, s.storeID).Scan(&s.unitID); err != nil {
 			return err
 		}
