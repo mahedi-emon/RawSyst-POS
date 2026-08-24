@@ -48,9 +48,26 @@ const AuthContext = createContext<AuthState | null>(null);
 /** Where the session is kept between launches.
  *
  * The refresh token is durable by design — a till restarted mid-shift must not
- * make a cashier sign in again in front of a queue of customers. It lives in
- * the app's own storage rather than anywhere a browser extension or another
- * origin could reach, which is one of the reasons this is a desktop app.
+ * make a cashier sign in again in front of a queue of customers.
+ *
+ * # The honest position on where it lives
+ *
+ * In the Tauri POS this is the app's own storage: its own webview, no
+ * extensions, no other origin, and the machine is a till in a shop. That is a
+ * reasonable place for a durable token.
+ *
+ * In the BROWSER back office it is ordinary localStorage, and the reasoning
+ * above does not carry over. An extension or a successful XSS can read it. The
+ * comment here used to claim the desktop justification for both, which was
+ * true of one caller and quietly wrong about the other — the kind of note that
+ * stops somebody asking the question again.
+ *
+ * It is an accepted risk rather than an oversight: moving to an httpOnly
+ * cookie means the API issuing and rotating it, a CSRF defence for every
+ * mutating route, and a different story for the desktop app that does not
+ * carry cookies the same way. Worth doing, not worth doing carelessly. What is
+ * NOT stored here is anything ZATCA issues: the CSID secret never reaches the
+ * browser at all, because no API response carries a field for it.
  */
 const SESSION_KEY = 'rawsyst.session';
 
