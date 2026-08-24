@@ -454,6 +454,8 @@ const (
 	derSequence        = 0x30
 	derSet             = 0x31
 	derOctetString     = 0x04
+	derInteger         = 0x02
+	derUTCTime         = 0x17
 
 	derContextConstructed = 0xa0
 )

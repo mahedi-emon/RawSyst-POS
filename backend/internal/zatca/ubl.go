@@ -337,6 +337,11 @@ type xBillingReference struct {
 	InvoiceRef xBillingReferenceLine `xml:"cac:InvoiceDocumentReference"`
 }
 
+type xSignature struct {
+	ID              string `xml:"cbc:ID"`
+	SignatureMethod string `xml:"cbc:SignatureMethod"`
+}
+
 type xDelivery struct {
 	ActualDeliveryDate string `xml:"cbc:ActualDeliveryDate,omitempty"`
 }
@@ -430,6 +435,16 @@ type xInvoice struct {
 	BillingReference *xBillingReference             `xml:"cac:BillingReference,omitempty"`
 	AdditionalDocs   []xAdditionalDocumentReference `xml:"cac:AdditionalDocumentReference"`
 
+	// UBL 2.1 places Signature between the document references and the supplier,
+	// and BR-KSA-30 requires it: "The document cryptographic stamp (KSA-15) must
+	// contain the exact urn:oasis:names:specification:ubl:dsig:enveloped:xades
+	// value for signature method."
+	//
+	// It is a POINTER to the stamp rather than the stamp itself, which is why
+	// the transform chain removes it before hashing — see canonical.go. So it is
+	// written into the unsigned document and costs the digest nothing.
+	Signature xSignature `xml:"cac:Signature"`
+
 	Supplier xSupplierParty `xml:"cac:AccountingSupplierParty"`
 	Customer xSupplierParty `xml:"cac:AccountingCustomerParty"`
 
@@ -482,6 +497,12 @@ func BuildInvoiceXML(in Invoice) ([]byte, error) {
 				Object: xBinaryObject{MimeCode: "text/plain", Value: in.PIH},
 			},
 		},
+	}
+
+	// BR-KSA-29 names the value both identifiers carry.
+	doc.Signature = xSignature{
+		ID:              ublSignatureInvoice,
+		SignatureMethod: extensionURIXAdES,
 	}
 
 	doc.Supplier = xSupplierParty{Party: party(in.Supplier, true)}
