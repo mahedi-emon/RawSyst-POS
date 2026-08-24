@@ -1036,3 +1036,15 @@
   color: var(--brand);
   text-decoration: underline;
 }
+
+/* The same correction as the design system's: the bump belonged to the input
+ * device rather than to the viewport width, and a tablet is a finger. Kept in
+ * this file for the reason the block above gives -- both rules set --tap-desk
+ * here, and this file is imported last. */
+@media (pointer: coarse) {
+  .segmented__btn,
+  .attention__open,
+  .supplier__toggle {
+    min-block-size: var(--tap-mobile);
+  }
+}

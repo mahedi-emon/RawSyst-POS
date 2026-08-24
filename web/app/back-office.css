@@ -70,7 +70,10 @@
 
 .setupw__head {
   display: flex;
-  align-items: start;
+  /* flex-start, not start: `start` has mixed support in flex containers and
+     autoprefixer warns on it. The grid rules below keep `start`, where it is
+     well supported and means the same thing. */
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
 }
@@ -151,7 +154,7 @@
 .setupw__check {
   display: flex;
   gap: var(--space-3);
-  align-items: start;
+  align-items: flex-start;
   margin-block: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border);
@@ -1026,6 +1029,16 @@
  * ------------------------------------------------------------------------- */
 
 @media (max-width: 639px) {
+  .rail__step,
+  .tmpl__tab {
+    min-block-size: var(--tap-mobile);
+  }
+}
+
+/* Touch sizing for the two controls this file owns. See the note in
+ * shared/src/design-system.css: the bump follows the input device, so a tablet
+ * gets it and a narrow desktop window does not. */
+@media (pointer: coarse) {
   .rail__step,
   .tmpl__tab {
     min-block-size: var(--tap-mobile);

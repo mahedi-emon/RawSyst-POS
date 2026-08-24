@@ -1161,3 +1161,48 @@ body {
   padding: var(--space-5);
   border-inline-start: 3px solid var(--warning);
 }
+
+/* --- Tap targets on a touch device, not merely a narrow one ---------------
+ *
+ * The rules above bump these at `max-width: 639px`, and the comment beside
+ * them states the intent exactly: the bump is scoped to "the width where the
+ * input device changes".
+ *
+ * 639px is where a PHONE ends, and a tablet is still a finger. A browser walk
+ * measuring every interactive element at 768px found 69 controls under 44px
+ * that were comfortable at 390px and comfortable at 1440px, and awkward only
+ * on the device most likely to be propped on a counter.
+ *
+ * So this asks the question the intent was always about. `pointer: coarse` is
+ * true for a finger and false for a mouse, whatever the window is doing, which
+ * also covers a touch laptop and correctly leaves a narrow desktop window
+ * alone -- a 500px browser window on a monitor is still driven by a mouse and
+ * should stay compact.
+ *
+ * Layered on top of the width rules rather than replacing them: those work,
+ * and rewriting eleven breakpoints across three files to fix a tablet would
+ * risk more than it repairs.
+ */
+@media (pointer: coarse) {
+  .lang__opt,
+  .field__input,
+  .button,
+  .ds-btn,
+  select.field__input,
+  textarea.field__input {
+    min-block-size: var(--tap-mobile);
+  }
+
+  /* A badge is inline text; as a button it needs a thumb-sized box. */
+  button.ds-badge {
+    min-block-size: var(--tap-mobile);
+    padding-inline: var(--space-3);
+  }
+
+  /* The label is the real target around a native checkbox, which renders
+   * 13-20px however it is styled. */
+  label:has(> input[type='checkbox']),
+  label:has(> input[type='radio']) {
+    min-block-size: var(--tap-mobile);
+  }
+}

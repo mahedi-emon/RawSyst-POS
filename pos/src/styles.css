@@ -742,7 +742,7 @@ body {
 .shift__check {
   display: flex;
   gap: var(--space-3);
-  align-items: start;
+  align-items: flex-start;
   margin-block-start: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border);
