@@ -406,14 +406,45 @@ func allocateFee(
 		return shares
 	}
 
+	// Allocated against the RUNNING TOTAL, not tender by tender.
+	//
+	// Rounding each share on its own and handing the remainder to the last
+	// tender accumulates: twenty tenders of 3.33 and one of 0.01, with a fee
+	// of 7.77, round up to 7.80 between them and leave the last tender a share
+	// of MINUS 0.03. A negative fee share credits that sale with more than it
+	// was worth, and the settlement no longer describes what the acquirer did.
+	//
+	// Taking each share as the difference between successive cumulative
+	// targets bounds the error at one hallala for the whole batch rather than
+	// one per tender, and because the final target is the fee itself the
+	// shares still sum back to it exactly.
+	//
+	// This is the same defect, and the same fix, as the invoice-discount
+	// allocation in sales/pricing.go. It was written twice because the shape
+	// of the problem -- split an amount across lines, make the parts sum to
+	// the whole -- turns up in both places and the obvious approach is wrong
+	// in both.
 	allocated := decimal.Zero
+	cumulative := decimal.Zero
 	for i, c := range covered {
-		if i == len(covered)-1 {
-			shares[i] = fee.Sub(allocated)
-			continue
+		cumulative = cumulative.Add(c.amount)
+
+		target := fee.Mul(cumulative).Div(gross).Round(moneyScale)
+		share := target.Sub(allocated)
+
+		// A tender cannot carry more fee than it is worth. Reachable when the
+		// fee approaches the gross, where a share's exact value IS the tender.
+		// The excess is left for the next tender, which picks it up because
+		// the next share is measured against the cumulative target.
+		if share.GreaterThan(c.amount) {
+			share = c.amount
 		}
-		shares[i] = fee.Mul(c.amount).Div(gross).Round(moneyScale)
-		allocated = allocated.Add(shares[i])
+		if share.IsNegative() {
+			share = decimal.Zero
+		}
+
+		shares[i] = share
+		allocated = allocated.Add(share)
 	}
 	return shares
 }
