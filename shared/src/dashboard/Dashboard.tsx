@@ -114,9 +114,16 @@ export function Dashboard({
         <label className="dash__date">
           <span className="ds-caption">{t('common.showing')}</span>
           <input
+            className="field__input"
             type="date"
             value={date ?? d.date}
-            max={d.date >= new Date().toISOString().slice(0, 10) ? undefined : undefined}
+            /* Capped at the SHOP'S today, which is what the server reports,
+               not at the browser's. A till in Riyadh at one in the morning is
+               on a date the browser's UTC clock still calls yesterday, and
+               capping on that would refuse the very day the owner wants.
+               (This previously read `cond ? undefined : undefined`, which is
+               to say it capped nothing at all.) */
+            max={d.date}
             onChange={(e) => setDate(e.target.value || undefined)}
           />
         </label>
