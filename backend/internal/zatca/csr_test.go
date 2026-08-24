@@ -88,6 +88,18 @@ func buildTestCSR(t *testing.T) []byte {
 //
 // -noout -text parses and prints; it does not verify the signature, which the
 // stub signer cannot produce.
+//
+// -nameopt compat is load-bearing, and its absence is what broke CI while
+// every developer machine stayed green. OpenSSL's default for printing a
+// distinguished name is a BUILD option, not a constant: Ubuntu's build uses
+// `oneline`, which renders "C = SA" with spaces around the equals, while the
+// Git-for-Windows build uses `compat`, which renders "C=SA" without them. A
+// test asserting on the substring "C=SA" therefore passed locally and failed
+// on Linux, and the failure looked like a broken CSR rather than a formatting
+// default nobody had pinned.
+//
+// Pinning it here means the assertion is about what the request CONTAINS
+// rather than about how a particular distribution chose to print it.
 func opensslText(t *testing.T, csr []byte) string {
 	t.Helper()
 	bin, err := exec.LookPath("openssl")
@@ -98,7 +110,8 @@ func opensslText(t *testing.T, csr []byte) string {
 	if err := os.WriteFile(path, csr, 0o600); err != nil {
 		t.Fatalf("writing the request: %v", err)
 	}
-	out, err := exec.Command(bin, "req", "-in", path, "-noout", "-text").CombinedOutput()
+	out, err := exec.Command(bin,
+		"req", "-in", path, "-noout", "-text", "-nameopt", "compat").CombinedOutput()
 	if err != nil {
 		t.Fatalf("openssl refused the request: %v\n%s", err, out)
 	}
