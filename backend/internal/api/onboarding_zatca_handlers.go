@@ -200,3 +200,51 @@ func (s *Server) handleZATCARequestProductionCSID(w http.ResponseWriter, r *http
 		"request_id": result.RequestID,
 	})
 }
+
+// handleZATCARenewCSID replaces a certificate that is near or past expiry.
+//
+// Needs an OTP where promotion did not, because it is authenticated
+// differently: promotion presents the compliance credential, which is itself
+// evidence a password was given, while ZATCA's renewal endpoint requires a
+// fresh one alongside the production credential.
+func (s *Server) handleZATCARenewCSID(w http.ResponseWriter, r *http.Request) {
+	if err := s.onboardingAvailable(); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	unitID, err := s.onboardingUnitID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var body struct {
+		Environment string `json:"environment"`
+		CSR         string `json:"csr"`
+		OTP         string `json:"otp"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	env, err := onboardingEnvironment(body.Environment)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	result, err := s.onboarding.RenewProductionCSID(
+		r.Context(), unitID, env, []byte(body.CSR), body.OTP)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	httpx.JSON(w, http.StatusCreated, map[string]any{
+		"status":     "renewed",
+		"csid":       result.Credential.CSID,
+		"expires_at": result.Credential.ExpiresAt,
+		"request_id": result.RequestID,
+	})
+}

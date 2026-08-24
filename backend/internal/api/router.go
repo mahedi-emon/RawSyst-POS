@@ -435,6 +435,11 @@ func (s *Server) Routes() []Route {
 			s.handleZATCARequestProductionCSID,
 			"promotes a compliance CSID to a production one; no password, because " +
 				"the compliance credential is itself the proof one was given"},
+		{http.MethodPost, "/api/v1/einvoicing/units/{unitID}/onboarding/renew",
+			AccessPermission, "einvoicing.onboard",
+			s.handleZATCARenewCSID,
+			"replaces a certificate near expiry; the old one is superseded and " +
+				"kept, because invoices reported under it outlive it"},
 
 		{http.MethodGet, "/api/v1/customers", AccessPermission, "customers.view",
 			s.handleListCustomers, "customers, with what each owes and what is left of their limit"},

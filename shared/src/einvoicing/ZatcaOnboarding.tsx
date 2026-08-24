@@ -36,6 +36,7 @@ import {
   readOnboardingStatus,
   requestComplianceCsid,
   requestProductionCsid,
+  renewProductionCsid,
   type CredentialSummary,
   type EgsUnit,
   type OnboardingStatus,
@@ -80,6 +81,14 @@ export function ZatcaOnboarding({ unit }: { unit: EgsUnit }) {
         {(status: OnboardingStatus) => (
           <>
             <StatusPanel status={status} />
+
+            {mayOnboard && needsRenewal(status) && (
+              <RenewalForm
+                unitId={unit.id}
+                environment={environment}
+                onDone={reload}
+              />
+            )}
 
             {mayOnboard ? (
               <Steps
@@ -444,6 +453,119 @@ function ProductionForm({
         {busy ? t('zatca.promoting') : t('zatca.promote')}
       </button>
       {!ready && <p className="ds-body-sm ds-muted">{t('zatca.finishStep2First')}</p>}
+    </div>
+  );
+}
+
+/** Renewal is offered when the certificate is expiring or already has.
+ *
+ *  An expired certificate still shows the form: that is exactly when somebody
+ *  needs it, and hiding it because the deadline passed would be perverse. */
+function needsRenewal(status: OnboardingStatus): boolean {
+  if (status.production?.status !== 'issued') return false;
+  return status.needs_renewal || !status.connected;
+}
+
+function RenewalForm({
+  unitId,
+  environment,
+  onDone,
+}: {
+  unitId: string;
+  environment: ZatcaEnvironment;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const { client } = useAuth();
+
+  const [csr, setCsr] = useState('');
+  const [otp, setOtp] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ csr?: string; otp?: string }>({});
+
+  const submit = async () => {
+    const found: { csr?: string; otp?: string } = {};
+    if (!csr.trim()) found.csr = t('zatca.csrRequired');
+    if (!/^[0-9]{6}$/.test(otp.trim())) found.otp = t('zatca.otpFormat');
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+
+    setBusy(true);
+    setFailure(null);
+    try {
+      await renewProductionCsid(client, unitId, {
+        environment,
+        csr: csr.trim(),
+        otp: otp.trim(),
+      });
+      setOtp('');
+      setCsr('');
+      onDone();
+    } catch (e) {
+      setFailure(e instanceof Error ? e.message : String(e));
+      // Single-use, so it will not work a second time whatever went wrong.
+      setOtp('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="ds-panel zatca__renew">
+      <h3 className="zatca__stepTitle">{t('zatca.renewTitle')}</h3>
+      <p className="ds-body-sm ds-muted">{t('zatca.renewBlurb')}</p>
+
+      <div className="zatca__form">
+        <Field
+          label={t('zatca.csr')}
+          htmlFor={`renew-csr-${unitId}`}
+          required
+          error={errors.csr}
+          hint={t('zatca.csrHint')}
+        >
+          <textarea
+            id={`renew-csr-${unitId}`}
+            className="input zatca__csr"
+            rows={4}
+            value={csr}
+            spellCheck={false}
+            placeholder="-----BEGIN CERTIFICATE REQUEST-----"
+            onChange={(e) => setCsr(e.target.value)}
+            aria-invalid={errors.csr ? true : undefined}
+          />
+        </Field>
+
+        <Field
+          label={t('zatca.otp')}
+          htmlFor={`renew-otp-${unitId}`}
+          required
+          error={errors.otp}
+          hint={t('zatca.otpHint')}
+        >
+          <TextInput
+            id={`renew-otp-${unitId}`}
+            value={otp}
+            onChange={(v) => setOtp(v.replace(/[^0-9]/g, ''))}
+            error={errors.otp}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="123456"
+          />
+        </Field>
+
+        <FormError message={failure} />
+
+        <button
+          type="button"
+          className="ds-btn ds-btn--primary"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? t('zatca.renewing') : t('zatca.renew')}
+        </button>
+      </div>
     </div>
   );
 }

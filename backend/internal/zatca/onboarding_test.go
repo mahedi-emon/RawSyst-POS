@@ -40,10 +40,15 @@ type fakeZATCA struct {
 	complianceCSR string
 	productionCSR string
 
+	method          string
+	checkedDocument bool
+
 	// What to answer with.
 	complianceStatus int
 	productionStatus int
 	failureBody      string
+	checkStatus      int
+	checkBody        string
 }
 
 // certificateFor builds a DER certificate with a known expiry, so the stored
@@ -66,6 +71,7 @@ func newFakeZATCA(t *testing.T, certDER []byte) *fakeZATCA {
 	z := &fakeZATCA{
 		complianceStatus: http.StatusOK,
 		productionStatus: http.StatusOK,
+		checkStatus:      http.StatusOK,
 	}
 
 	mux := http.NewServeMux()
@@ -105,9 +111,22 @@ func newFakeZATCA(t *testing.T, certDER []byte) *fakeZATCA {
 			base64.StdEncoding.EncodeToString(certDER), "compliance-secret", "")
 	})
 
+	mux.HandleFunc(PathComplianceInvoice, func(w http.ResponseWriter, r *http.Request) {
+		z.authHeader = r.Header.Get("Authorization")
+		z.checkedDocument = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(z.checkStatus)
+		if z.checkBody != "" {
+			_, _ = w.Write([]byte(z.checkBody))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(DocumentResponse{Status: "PASS"})
+	})
+
 	mux.HandleFunc(PathProductionCSID, func(w http.ResponseWriter, r *http.Request) {
 		z.authHeader = r.Header.Get("Authorization")
 		z.otpHeader = r.Header.Get(HeaderOTP)
+		z.method = r.Method
 
 		var body struct {
 			CSR string `json:"csr"`
@@ -476,5 +495,202 @@ func TestOnboardingAnUnknownTillIsRefused(t *testing.T) {
 	}
 	if z.complianceCSR != "" {
 		t.Error("a request was sent to ZATCA for a till that does not exist")
+	}
+}
+
+// A compliance check runs the till's own signed sample past ZATCA before any
+// real invoice is issued, which is the entire point of the compliance
+// credential: a format problem found here costs nothing, and the same problem
+// found on a real invoice has already consumed an ICV.
+func TestAComplianceCheckRunsAgainstTheComplianceCredential(t *testing.T) {
+	f := newFixture(t)
+	z := newFakeZATCA(t, certificateFor(t, 365*24*time.Hour))
+	o := onboardingFor(t, f, z)
+	ctx := f.asTenant()
+
+	compliance, err := o.RequestComplianceCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "123456")
+	if err != nil {
+		t.Fatalf("compliance onboarding: %v", err)
+	}
+
+	resp, err := o.RunComplianceCheck(ctx, f.unitID, EnvironmentSimulation,
+		[]byte("<Invoice>signed sample</Invoice>"), "hash=")
+	if err != nil {
+		t.Fatalf("compliance check: %v", err)
+	}
+	if !CompliancePassed(resp) {
+		t.Errorf("a clean check did not pass: outcome %q", resp.Outcome)
+	}
+	if !z.checkedDocument {
+		t.Error("no document reached the compliance endpoint")
+	}
+
+	want := Credentials{
+		BinarySecurityToken: compliance.Credential.CSID,
+		Secret:              "compliance-secret",
+	}.Authorization()
+	if z.authHeader != want {
+		t.Error("the compliance check did not authenticate with the compliance credential")
+	}
+}
+
+// Warnings must not block promotion. ZATCA returns advisory warnings on
+// documents it accepts, and treating one as a failure would strand a shop that
+// is actually compliant.
+func TestComplianceWarningsDoNotBlockPromotion(t *testing.T) {
+	passed := CompliancePassed(Response{Outcome: OutcomeAcceptedWithWarnings})
+	if !passed {
+		t.Error("an accepted-with-warnings check was treated as a failure")
+	}
+	if CompliancePassed(Response{Outcome: OutcomeRejected}) {
+		t.Error("a rejected check was treated as a pass")
+	}
+	if CompliancePassed(Response{Outcome: OutcomeTransportFailure}) {
+		t.Error("a transport failure was treated as a pass")
+	}
+}
+
+// A check needs a credential to run against, and must say so rather than
+// failing somewhere less obvious.
+func TestAComplianceCheckNeedsACredential(t *testing.T) {
+	f := newFixture(t)
+	z := newFakeZATCA(t, certificateFor(t, 365*24*time.Hour))
+	o := onboardingFor(t, f, z)
+
+	_, err := o.RunComplianceCheck(f.asTenant(), f.unitID, EnvironmentSimulation,
+		[]byte("<Invoice/>"), "hash=")
+	if err == nil {
+		t.Fatal("a compliance check ran with no credential")
+	}
+	if !strings.Contains(err.Error(), "one-time password") {
+		t.Errorf("the error does not say what is needed: %v", err)
+	}
+	if z.checkedDocument {
+		t.Error("a document was sent with no credential to authenticate it")
+	}
+}
+
+// Renewal uses PATCH and needs a fresh OTP -- promotion does not, because the
+// compliance credential is itself the proof one was given, but ZATCA's renewal
+// endpoint requires the header.
+func TestRenewalUsesPatchAndNeedsAFreshOTP(t *testing.T) {
+	f := newFixture(t)
+	z := newFakeZATCA(t, certificateFor(t, 365*24*time.Hour))
+	o := onboardingFor(t, f, z)
+	ctx := f.asTenant()
+
+	if _, err := o.RequestComplianceCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "123456"); err != nil {
+		t.Fatalf("compliance: %v", err)
+	}
+	if _, err := o.RequestProductionCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR)); err != nil {
+		t.Fatalf("promotion: %v", err)
+	}
+
+	if _, err := o.RenewProductionCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "654321"); err != nil {
+		t.Fatalf("renewal: %v", err)
+	}
+
+	if z.method != http.MethodPatch {
+		t.Errorf("renewal used %s, want PATCH", z.method)
+	}
+	if z.otpHeader != "654321" {
+		t.Errorf("renewal sent OTP %q, want 654321", z.otpHeader)
+	}
+}
+
+// A renewal must not be attempted without an OTP, and must not reach ZATCA.
+func TestRenewalWithoutAnOTPIsRefusedLocally(t *testing.T) {
+	f := newFixture(t)
+	z := newFakeZATCA(t, certificateFor(t, 365*24*time.Hour))
+	o := onboardingFor(t, f, z)
+	ctx := f.asTenant()
+
+	if _, err := o.RequestComplianceCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "123456"); err != nil {
+		t.Fatalf("compliance: %v", err)
+	}
+	if _, err := o.RequestProductionCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR)); err != nil {
+		t.Fatalf("promotion: %v", err)
+	}
+	z.method = ""
+
+	for _, bad := range []string{"", "12345", "abcdef"} {
+		if _, err := o.RenewProductionCSID(ctx, f.unitID,
+			EnvironmentSimulation, []byte(testCSR), bad); err == nil {
+			t.Errorf("renewal was accepted with the password %q", bad)
+		}
+	}
+	if z.method == http.MethodPatch {
+		t.Error("a renewal request reached ZATCA with no valid password")
+	}
+}
+
+// The old certificate is superseded, never erased. Invoices reported under it
+// outlive it, and the row answers "which certificate signed invoice 4,182".
+func TestRenewalKeepsTheOldCertificateAsHistory(t *testing.T) {
+	f := newFixture(t)
+	z := newFakeZATCA(t, certificateFor(t, 365*24*time.Hour))
+	o := onboardingFor(t, f, z)
+	ctx := f.asTenant()
+
+	if _, err := o.RequestComplianceCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "123456"); err != nil {
+		t.Fatalf("compliance: %v", err)
+	}
+	if _, err := o.RequestProductionCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR)); err != nil {
+		t.Fatalf("promotion: %v", err)
+	}
+
+	before, err := o.creds.List(ctx, f.unitID)
+	if err != nil {
+		t.Fatalf("listing: %v", err)
+	}
+
+	if _, err := o.RenewProductionCSID(ctx, f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "654321"); err != nil {
+		t.Fatalf("renewal: %v", err)
+	}
+
+	after, err := o.creds.List(ctx, f.unitID)
+	if err != nil {
+		t.Fatalf("listing: %v", err)
+	}
+	if len(after) != len(before)+1 {
+		t.Errorf("history holds %d rows after renewal, want %d -- the old "+
+			"certificate must be kept, not overwritten", len(after), len(before)+1)
+	}
+
+	// And exactly one production credential is live.
+	live := 0
+	for _, c := range after {
+		if c.Kind == KindProduction && c.Status == StatusIssued {
+			live++
+		}
+	}
+	if live != 1 {
+		t.Errorf("%d live production credentials after renewal, want exactly 1", live)
+	}
+}
+
+// Renewing a till that was never onboarded must say so rather than starting a
+// fresh onboarding by accident.
+func TestRenewingAnUnonboardedTillIsRefused(t *testing.T) {
+	f := newFixture(t)
+	z := newFakeZATCA(t, certificateFor(t, 365*24*time.Hour))
+	o := onboardingFor(t, f, z)
+
+	_, err := o.RenewProductionCSID(f.asTenant(), f.unitID,
+		EnvironmentSimulation, []byte(testCSR), "123456")
+	if err == nil {
+		t.Fatal("a till with no production certificate was renewed")
+	}
+	if !strings.Contains(err.Error(), "Onboard it first") {
+		t.Errorf("the error does not point at onboarding: %v", err)
 	}
 }

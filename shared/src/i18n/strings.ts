@@ -995,6 +995,12 @@ export const en = {
 
   // --- ZATCA onboarding ----------------------------------------------
   'zatca.connectAction': 'Connect',
+
+  // --- ZATCA onboarding ----------------------------------------------
+  'zatca.renewTitle': 'Renew the certificate',
+  'zatca.renewBlurb': 'This till\'s certificate is expiring. Renew it before it does, so reporting is never interrupted. You will need a new one-time password from your Fatoora portal.',
+  'zatca.renew': 'Renew',
+  'zatca.renewing': 'Renewing…',
 } as const;
 
 /** Every string the interface can show. */
@@ -1954,6 +1960,12 @@ export const ar: Record<Key, string> = {
 
   // --- ZATCA onboarding ----------------------------------------------
   'zatca.connectAction': 'ربط',
+
+  // --- ZATCA onboarding ----------------------------------------------
+  'zatca.renewTitle': 'تجديد الشهادة',
+  'zatca.renewBlurb': 'شهادة نقطة البيع على وشك الانتهاء. جدّدها قبل ذلك حتى لا يتوقف الإرسال. ستحتاج كلمة مرور جديدة لمرة واحدة من بوابة فاتورة.',
+  'zatca.renew': 'تجديد',
+  'zatca.renewing': 'جارٍ التجديد…',
 };
 
 /** The catalogues, by locale. */

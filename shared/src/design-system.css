@@ -1151,3 +1151,13 @@ body {
   .zatca__step { grid-template-columns: 1fr; gap: var(--space-2); }
   .zatca__stepMark { width: 1.75rem; height: 1.75rem; font-size: 0.875rem; }
 }
+
+/* Renewal sits above the steps, not as a fourth one: a shop renewing is not
+ * onboarding again, they are fixing one thing, and the warning border says
+ * which. */
+.zatca__renew {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border-inline-start: 3px solid var(--warning);
+}

@@ -28,9 +28,11 @@ import (
 //     because the compliance CSID is itself the proof that one was presented.
 //     This is what reports and clears real invoices.
 //
-// Between them a solution is expected to pass compliance checks. That step is
-// driven from here too, so a shop cannot promote a unit that has never
-// successfully produced a document ZATCA accepted.
+// Between them a solution is expected to pass compliance checks, which
+// RunComplianceCheck performs against the compliance credential. Running one
+// before promoting moves the discovery of a format problem onto a document
+// with no legal effect, rather than onto the first real invoice -- which would
+// already have consumed its ICV and need a credit note to correct.
 //
 // # Where the private key is, and why this function never sees it
 //
@@ -488,4 +490,164 @@ func nextAction(s OnboardingStatus, now time.Time) string {
 	default:
 		return "This till's production credential is not usable. Onboard it again."
 	}
+}
+
+// RunComplianceCheck asks ZATCA to check one document against the compliance
+// credential.
+//
+// # Why this exists between the two CSIDs
+//
+// ZATCA's onboarding sequence expects a solution to pass compliance checks
+// before it is issued a production credential. Skipping straight to promotion
+// means the first document ZATCA ever sees from this till is a REAL invoice,
+// and a format problem then surfaces as a rejected invoice that has already
+// consumed its ICV and needs a credit note to correct.
+//
+// Running a check first moves that discovery to a document with no legal
+// effect, which is the entire point of the compliance credential.
+//
+// # Why the caller supplies the document
+//
+// Because it must be signed by the till's own key, and this process does not
+// have one -- the stamping key never leaves the terminal. The terminal signs a
+// sample, hands it up, and this relays it.
+func (o *Onboarding) RunComplianceCheck(
+	ctx context.Context, unitID uuid.UUID, env Environment,
+	signedXML []byte, invoiceHash string,
+) (Response, error) {
+	if !env.Valid() {
+		return Response{}, errs.Newf(errs.CodeInvalidInput,
+			"%q is not a ZATCA environment.", env)
+	}
+	if len(signedXML) == 0 || strings.TrimSpace(invoiceHash) == "" {
+		return Response{}, errs.New(errs.CodeInvalidInput,
+			"A compliance check needs a signed document and its hash, both "+
+				"produced by the till.")
+	}
+
+	compliance, err := o.creds.Find(ctx, unitID, env, KindCompliance)
+	if err != nil {
+		return Response{}, errs.New(errs.CodeComplianceBlocked,
+			"This till has no compliance credential, so there is nothing to "+
+				"check a document against. Enter the one-time password from the "+
+				"Fatoora portal first.")
+	}
+
+	var out Response
+	err = o.creds.withSecret(ctx, compliance.ID, func(csid string, secret []byte) error {
+		client, e := NewClient(Config{
+			BaseURL:     o.endpointFor(env),
+			Credentials: Credentials{BinarySecurityToken: csid, Secret: string(secret)},
+			HTTPClient:  o.httpClient,
+		})
+		if e != nil {
+			return e
+		}
+
+		resp, status, e := client.CheckCompliance(ctx, DocumentRequest{
+			InvoiceHash: invoiceHash,
+			Invoice:     base64.StdEncoding.EncodeToString(signedXML),
+		})
+		out = interpret(resp, status, e)
+		return nil
+	})
+	if err != nil {
+		return Response{}, err
+	}
+	return out, nil
+}
+
+// CompliancePassed reports whether a check came back clean enough to promote.
+//
+// Warnings do NOT block. ZATCA returns advisory warnings on documents it
+// accepts, and treating one as a failure would strand a shop that is compliant
+// -- the warning is surfaced instead, unaltered, so somebody can judge it.
+func CompliancePassed(r Response) bool {
+	return r.Outcome == OutcomeAccepted || r.Outcome == OutcomeAcceptedWithWarnings
+}
+
+// RenewProductionCSID replaces a certificate that is near or past expiry.
+//
+// # Why this needs an OTP when promotion did not
+//
+// Because it is authenticated differently. Promotion presents the COMPLIANCE
+// credential, which is itself evidence that a one-time password was given.
+// Renewal presents the PRODUCTION credential and a fresh OTP -- ZATCA's
+// renewal endpoint requires the header, which is why the client refuses
+// without one.
+//
+// # Why the old credential is superseded rather than overwritten
+//
+// Because invoices reported under it outlive it. The row is the evidence of
+// how those documents came to be stamped, and a renewal that overwrote it
+// would erase the answer to "which certificate signed invoice 4,182" for every
+// invoice before today.
+func (o *Onboarding) RenewProductionCSID(
+	ctx context.Context, unitID uuid.UUID, env Environment, csrPEM []byte, otp string,
+) (OnboardingResult, error) {
+	if !env.Valid() {
+		return OnboardingResult{}, errs.Newf(errs.CodeInvalidInput,
+			"%q is not a ZATCA environment.", env)
+	}
+	otp = strings.TrimSpace(otp)
+	if len(otp) != 6 || !isDigits(otp) {
+		return OnboardingResult{}, errs.New(errs.CodeInvalidInput,
+			"Renewal needs the six-digit one-time password from the Fatoora portal.")
+	}
+	if !o.creds.CanStoreSecrets() {
+		return OnboardingResult{}, errNoCipher()
+	}
+
+	existing, err := o.creds.Find(ctx, unitID, env, KindProduction)
+	if err != nil {
+		return OnboardingResult{}, errs.New(errs.CodeComplianceBlocked,
+			"This till has no production certificate to renew. Onboard it first.")
+	}
+
+	unit, err := o.readUnit(ctx, unitID)
+	if err != nil {
+		return OnboardingResult{}, err
+	}
+
+	// The renewal call is made with the EXPIRING credential, so it happens
+	// before the old row is retired -- superseding first would leave nothing to
+	// authenticate with if the call then failed.
+	var resp CSIDResponse
+	var status int
+	err = o.creds.withSecret(ctx, existing.ID, func(csid string, secret []byte) error {
+		client, e := NewClient(Config{
+			BaseURL:     o.endpointFor(env),
+			Credentials: Credentials{BinarySecurityToken: csid, Secret: string(secret)},
+			HTTPClient:  o.httpClient,
+		})
+		if e != nil {
+			return e
+		}
+		resp, status, e = client.RenewProductionCSID(ctx, csrPEM, otp)
+		return e
+	})
+	if err != nil {
+		// Recorded against the OLD row, which is still the live one: the
+		// renewal never happened, so that is where the reason belongs.
+		o.recordFailure(ctx, existing.ID, describeOnboardingFailure(status, err))
+		return OnboardingResult{}, err
+	}
+
+	// ZATCA has issued a new certificate. Only now is the old one retired, and
+	// in the same transaction that reserves the slot for its replacement, so
+	// there is never a moment with two live production credentials or none.
+	var credentialID uuid.UUID
+	if err := o.pool.Tx(ctx, func(tx pgx.Tx) error {
+		if e := o.creds.Supersede(ctx, tx, unitID, env, KindProduction); e != nil {
+			return e
+		}
+		var e error
+		credentialID, e = o.creds.BeginOnboarding(ctx, tx,
+			unit.TenantID, unit.CompanyID, unitID, env, KindProduction, string(csrPEM))
+		return e
+	}); err != nil {
+		return OnboardingResult{}, err
+	}
+
+	return o.store(ctx, credentialID, unitID, env, KindProduction, resp)
 }

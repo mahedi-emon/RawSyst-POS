@@ -213,3 +213,18 @@ export function requestProductionCsid(
     body,
   );
 }
+
+/** Replaces a certificate near expiry. Needs a fresh one-time password:
+ *  ZATCA's renewal endpoint requires one alongside the production credential,
+ *  unlike promotion, which is authenticated by the compliance credential. */
+export function renewProductionCsid(
+  client: Client,
+  unitId: string,
+  body: { environment: ZatcaEnvironment; csr: string; otp: string },
+): Promise<CsidIssued> {
+  return client.send<CsidIssued>(
+    'POST',
+    `/api/v1/einvoicing/units/${unitId}/onboarding/renew`,
+    body,
+  );
+}
