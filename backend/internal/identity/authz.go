@@ -29,7 +29,13 @@ type Grants struct {
 	// list keeps the resolve query cheap and the check O(1).
 	storeIDs     map[uuid.UUID]struct{}
 	warehouseIDs map[uuid.UUID]struct{}
-	companyIDs   map[uuid.UUID]struct{}
+
+	// There is deliberately no company dimension here. It is enforced by
+	// actor.CanAccessCompany against the claim the token carries, resolved once
+	// at sign-in by Service.companyScopesFor. A second copy on Grants would be
+	// the same rule in two places, and two mechanisms for one rule drift apart
+	// -- which is exactly how the dimension came to be declared, stored, read
+	// back and never actually enforced.
 
 	// nil means no ceiling. Blueprint example: cashier up to SAR 50, manager up
 	// to SAR 500, owner unlimited.
@@ -76,18 +82,6 @@ func (g *Grants) InWarehouse(warehouseID uuid.UUID) bool {
 		return true
 	}
 	_, ok := g.warehouseIDs[warehouseID]
-	return ok
-}
-
-// InCompany reports whether the actor is scoped to a legal entity.
-func (g *Grants) InCompany(companyID uuid.UUID) bool {
-	if g == nil {
-		return false
-	}
-	if len(g.companyIDs) == 0 {
-		return true
-	}
-	_, ok := g.companyIDs[companyID]
 	return ok
 }
 
@@ -226,13 +220,12 @@ func (a *Authorizer) Resolve(ctx context.Context, act actor.Actor) (*Grants, err
 		permissions:  make(map[string]struct{}, 32),
 		storeIDs:     make(map[uuid.UUID]struct{}),
 		warehouseIDs: make(map[uuid.UUID]struct{}),
-		companyIDs:   make(map[uuid.UUID]struct{}),
 	}
 
 	// Scope is a UNION across assignments, and an unscoped assignment wins.
 	// Someone holding both "manager of Olaya" and "auditor, all branches"
 	// should see all branches: the wider grant was given deliberately.
-	unscopedStore, unscopedWarehouse, unscopedCompany := false, false, false
+	unscopedStore, unscopedWarehouse := false, false
 	var maxLimit *decimal.Decimal
 	sawUnlimited := false
 	assignments := 0
@@ -270,11 +263,9 @@ func (a *Authorizer) Resolve(ctx context.Context, act actor.Actor) (*Grants, err
 			assignments++
 			g.permissions[permission] = struct{}{}
 
-			if companyID == nil {
-				unscopedCompany = true
-			} else {
-				g.companyIDs[*companyID] = struct{}{}
-			}
+			// Read and discarded: the column is what companyScopesFor reads at
+			// sign-in, and this resolver has no company check to feed.
+			_ = companyID
 			if len(storeIDs) == 0 {
 				unscopedStore = true
 			}
@@ -306,9 +297,6 @@ func (a *Authorizer) Resolve(ctx context.Context, act actor.Actor) (*Grants, err
 	}
 	if unscopedWarehouse {
 		g.warehouseIDs = map[uuid.UUID]struct{}{}
-	}
-	if unscopedCompany {
-		g.companyIDs = map[uuid.UUID]struct{}{}
 	}
 	if !sawUnlimited {
 		g.amountLimit = maxLimit

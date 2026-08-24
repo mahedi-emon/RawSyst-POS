@@ -205,20 +205,6 @@ func CheckWarehouseScope(ctx context.Context, warehouseID uuid.UUID) error {
 	return errs.New(errs.CodeNotFound, "That warehouse was not found.")
 }
 
-// CheckCompanyScope reports whether the actor may act within a legal entity.
-// Relevant for group tenants, where one Owner login spans several companies
-// that keep separate books and separate VAT registrations.
-func CheckCompanyScope(ctx context.Context, companyID uuid.UUID) error {
-	g := GrantsFrom(ctx)
-	if g == nil {
-		return errs.New(errs.CodeUnauthenticated, "You are not signed in.")
-	}
-	if g.InCompany(companyID) {
-		return nil
-	}
-	return errs.New(errs.CodeNotFound, "That company was not found.")
-}
-
 func bearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	const prefix = "Bearer "

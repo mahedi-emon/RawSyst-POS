@@ -32,6 +32,15 @@ import (
 // The time dimension is deliberately absent from this list: it is enforced in
 // the resolve query's valid_from/valid_until predicate rather than by a Go
 // call, so an expired assignment never becomes a grant in the first place.
+//
+// The COMPANY dimension is covered by TestTheCompanyScopeIsEnforced below
+// rather than here, because it is not an identity.Check* call. It is checked by
+// actor.CanAccessCompany against a claim in the token, and it had gone the
+// whole way round the same loop this test guards against: the column existed,
+// the resolver read it, the claim was defined, the parser read it back, and the
+// checker consulted it -- but nothing ever FILLED the claim, so an empty list
+// meant "every company" and the check passed for everyone. A test that only
+// looked for callers would have found one and reported the dimension enforced.
 func TestEveryScopeCheckIsCalled(t *testing.T) {
 	checks := []string{
 		"CheckStoreScope",
@@ -95,4 +104,62 @@ func internalDir(t *testing.T) string {
 		t.Fatalf("expected to find the internal tree at %s: %v", dir, err)
 	}
 	return dir
+}
+
+// The company dimension must be both CHECKED and FED.
+//
+// Checking without feeding is what went wrong: actor.CanAccessCompany was
+// called from four handler files and read Actor.CompanyIDs, which nothing ever
+// populated. An empty list means "every company in the tenant", so a user
+// confined to one company could act in another and the check reported success.
+//
+// So this asserts both halves. Either one alone is a dimension that looks
+// enforced and is not.
+func TestTheCompanyScopeIsEnforced(t *testing.T) {
+	root := internalDir(t)
+
+	var checkedIn, fedIn []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".go") {
+			return err
+		}
+		if strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(body)
+
+		// Checked: somebody asks whether this actor may touch a company.
+		if strings.Contains(text, "CanAccessCompany(") &&
+			!strings.HasPrefix(rel, "platform/actor/") {
+			checkedIn = append(checkedIn, rel)
+		}
+		// Fed: somebody puts the answer into the actor in the first place.
+		if strings.Contains(text, "CompanyIDs = ") || strings.Contains(text, "CompanyIDs:") {
+			fedIn = append(fedIn, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk the source tree: %v", err)
+	}
+
+	if len(checkedIn) == 0 {
+		t.Error("nothing calls actor.CanAccessCompany. A tenant with several " +
+			"companies has no separation between their books.")
+	}
+	if len(fedIn) == 0 {
+		t.Error("nothing ever sets Actor.CompanyIDs, so CanAccessCompany reads " +
+			"an empty list, which means every company in the tenant. The check " +
+			"is called and passes for everyone -- which is worse than not " +
+			"having it, because it reads as enforced.")
+	}
+	t.Logf("company scope checked in: %s", strings.Join(checkedIn, ", "))
+	t.Logf("company scope fed in:     %s", strings.Join(fedIn, ", "))
 }

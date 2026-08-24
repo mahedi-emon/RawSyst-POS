@@ -250,6 +250,19 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 	}
 	a.DeviceID = c.DeviceID
 
+	// The companies this user is confined to, carried in the token so every
+	// later request can be checked against them without a database round trip.
+	//
+	// Nothing filled this in before, and the consequence was quiet: the claim
+	// existed, the parser read it back, and CanAccessCompany consulted it --
+	// but an empty list means "every company in the tenant", so the check
+	// always passed. A user scoped to one company could act in another.
+	scopes, err := s.companyScopesFor(ctx, a.TenantID, userID)
+	if err != nil {
+		return Session{}, err
+	}
+	a.CompanyIDs = scopes
+
 	refreshToken, refreshHash, err := NewRefreshToken()
 	if err != nil {
 		return Session{}, err
@@ -409,6 +422,15 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (Session, er
 		a.DeviceID = *deviceID
 	}
 
+	// Re-read on refresh rather than copied from the old token, so narrowing
+	// somebody's scope takes effect at the next refresh instead of lasting as
+	// long as they keep the session alive.
+	scopes, err := s.companyScopesFor(ctx, a.TenantID, userID)
+	if err != nil {
+		return Session{}, err
+	}
+	a.CompanyIDs = scopes
+
 	newToken, newHash, err := NewRefreshToken()
 	if err != nil {
 		return Session{}, err
@@ -506,6 +528,79 @@ func (s *Service) Logout(ctx context.Context, sessionID uuid.UUID) error {
 			WHERE id = $1 AND revoked_at IS NULL`, sessionID)
 		return err
 	})
+}
+
+// companyScopesFor returns the legal entities a user is confined to.
+//
+// nil means unconfined -- every company in their tenant -- which is both the
+// common case and what CanAccessCompany reads an empty list as.
+//
+// The union rule matches the authorizer's: an unscoped assignment WINS. Someone
+// holding "manager of Alpha Trading" and "auditor, all companies" is an auditor
+// of all companies, because the wider grant was given deliberately. Intersecting
+// instead would silently take away access somebody was meant to have.
+//
+// Expired and future-dated assignments are excluded here for the same reason
+// the resolver excludes them: a seasonal role should stop granting scope when it
+// stops granting permissions, not carry a stale company along with it.
+func (s *Service) companyScopesFor(
+	ctx context.Context, tenantID uuid.UUID, userID uuid.UUID,
+) ([]uuid.UUID, error) {
+	// A platform administrator belongs to no tenant, so there are no company
+	// assignments to read. What they may reach is limited by migration 0006 to
+	// administration tables, not by this dimension.
+	if tenantID == uuid.Nil {
+		return nil, nil
+	}
+
+	var scoped []uuid.UUID
+	unscoped := false
+
+	// As the TENANT, not as the platform. user_role_assignment carries
+	// `USING (tenant_id = current_tenant_id())` and no is_platform_admin()
+	// escape, so a platform transaction matches no rows at all -- and zero rows
+	// reads as "no confinement", which is the fail-OPEN direction. The first cut
+	// of this made exactly that mistake and the scope test caught it.
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT company_id
+			  FROM user_role_assignment
+			 WHERE user_id = $1
+			   AND (valid_from  IS NULL OR valid_from  <= now())
+			   AND (valid_until IS NULL OR valid_until  > now())`, userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		seen := map[uuid.UUID]bool{}
+		for rows.Next() {
+			var companyID *uuid.UUID
+			if err := rows.Scan(&companyID); err != nil {
+				return err
+			}
+			if companyID == nil {
+				unscoped = true
+				continue
+			}
+			if !seen[*companyID] {
+				seen[*companyID] = true
+				scoped = append(scoped, *companyID)
+			}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		// Refused rather than defaulted to unscoped. Failing open here would
+		// turn a database blip into a silent widening of access, which is the
+		// one direction an authorization failure must never take.
+		return nil, db.Translate(err, "Your access could not be resolved.")
+	}
+
+	if unscoped {
+		return nil, nil
+	}
+	return scoped, nil
 }
 
 // RevokeAllForUser ends every session a user holds. Used on password change,
