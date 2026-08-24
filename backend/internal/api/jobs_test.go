@@ -140,8 +140,11 @@ func TestNothingIsReportedWhileSubmissionIsUnavailable(t *testing.T) {
 	}
 	invoiceID := decodeJSON(t, resp)["invoice_id"].(string)
 
-	// The production client, which refuses.
-	w, _ := h.workerWith(t, f, zatca.SubmitterFor(true))
+	// A submitter that cannot submit, because this installation holds no
+	// encryption key and therefore no credential. The invoice must stay queued
+	// and must NOT be marked as reported.
+	w, _ := h.workerWith(t, f, zatca.SubmitterFrom(
+		zatca.NewCredentialStore(h.pool, nil), zatca.EnvironmentSandbox))
 	ctx := t.Context()
 	if _, err := w.Drain(ctx, 10); err != nil {
 		t.Fatalf("drain: %v", err)

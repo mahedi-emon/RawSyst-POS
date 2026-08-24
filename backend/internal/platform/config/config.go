@@ -25,6 +25,18 @@ type Config struct {
 	Auth        Auth
 	DataRegion  string // sa | eu | asia | other — the region THIS stack serves
 	ServiceName string
+
+	// ZATCAEnvironment is which ZATCA stack this deployment talks to:
+	// sandbox, simulation or production.
+	//
+	// Separate from Env, and deliberately so. A staging deployment talks to
+	// ZATCA's SIMULATION stack, and a developer may point a local stack at the
+	// sandbox; tying the two together would mean the only way to test against
+	// simulation was to call the whole deployment "production".
+	//
+	// Defaults to sandbox, which is the environment where a mistake is
+	// harmless. Nothing defaults to production.
+	ZATCAEnvironment string
 }
 
 // Environment distinguishes deployments. It gates behaviour that must never
@@ -100,6 +112,8 @@ func Load() (Config, error) {
 		Env:         env,
 		ServiceName: getString("RAWSYST_SERVICE_NAME", "rawsyst-api"),
 		DataRegion:  strings.ToLower(getString("RAWSYST_DATA_REGION", "sa")),
+		ZATCAEnvironment: strings.ToLower(
+			getString("RAWSYST_ZATCA_ENVIRONMENT", "sandbox")),
 		HTTP: HTTP{
 			Addr:            getString("RAWSYST_HTTP_ADDR", ":8080"),
 			ReadTimeout:     getDuration("RAWSYST_HTTP_READ_TIMEOUT", 15*time.Second),
@@ -131,6 +145,25 @@ func Load() (Config, error) {
 
 	if cfg.DB.DSN == "" {
 		problems = append(problems, "RAWSYST_DB_DSN is required")
+	}
+
+	switch cfg.ZATCAEnvironment {
+	case "sandbox", "simulation", "production":
+	default:
+		problems = append(problems, fmt.Sprintf(
+			"RAWSYST_ZATCA_ENVIRONMENT must be sandbox, simulation or production (got %q)",
+			cfg.ZATCAEnvironment))
+	}
+
+	// Reporting real invoices from a deployment that does not think it is
+	// production is almost always a misconfiguration, and the consequence is
+	// not recoverable: the invoices are legally reported. Refused rather than
+	// warned about.
+	if cfg.ZATCAEnvironment == "production" && env != EnvProduction {
+		problems = append(problems, fmt.Sprintf(
+			"RAWSYST_ZATCA_ENVIRONMENT is production but RAWSYST_ENV is %q. "+
+				"That would report real invoices to the tax authority from a "+
+				"non-production deployment", env))
 	}
 
 	// A short or absent signing secret is a silent authentication bypass, so it

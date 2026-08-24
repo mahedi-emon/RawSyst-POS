@@ -23,6 +23,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
@@ -85,16 +86,27 @@ func run() error {
 
 	provSvc := provisioning.NewService(pool)
 
-	// The hasher is the one part of ZATCA that is not yet implemented: the
-	// byte-level UBL 2.1 XML and the QR TLV encoding are still unverified
-	// against primary sources, so the seam is left explicit rather than filled
-	// in by guesswork. In production it refuses; elsewhere it produces a
-	// clearly-labelled placeholder so the rest of the system can be exercised.
-	//
 	// Signing never happens here in any environment — the key lives in the
-	// terminal's OS keystore and never reaches this process.
+	// terminal's OS keystore and never reaches this process. What this stack
+	// holds is the credential ZATCA issues at onboarding, which authenticates
+	// the reporting and clearance calls and cannot stamp anything.
 	chain := zatca.NewChain(pool, zatca.HasherFor(cfg.Env.IsProduction()))
-	submitter := zatca.SubmitterFor(cfg.Env.IsProduction())
+	// The keyring that protects the ZATCA credential at rest. Absent in
+	// development, where there are no real credentials to protect; config
+	// refuses to start without it in staging and production.
+	var cipher *secrets.Cipher
+	if len(cfg.Auth.DataEncryptionKeys) > 0 {
+		var err error
+		cipher, err = secrets.New(cfg.Auth.DataEncryptionKeys...)
+		if err != nil {
+			log.Error("the data encryption keyring is unusable", slog.Any("error", err))
+			os.Exit(1)
+		}
+	}
+
+	credentials := zatca.NewCredentialStore(pool, cipher)
+	submitter := zatca.SubmitterFrom(credentials,
+		zatca.Environment(cfg.ZATCAEnvironment))
 	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules).WithSubmitter(submitter)
 
 	// The sync engine replays a terminal's offline queue through the SAME sale

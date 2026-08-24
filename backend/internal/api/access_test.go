@@ -101,7 +101,11 @@ func newHarness(t *testing.T) *harness {
 	// that differed from production would break the chain the moment a database
 	// moved between them.
 	rules := registry.New(pool, false)
-	submitter := zatca.SubmitterFor(false)
+	// No encryption key in this fixture, so submission is unavailable and
+	// invoices stay queued -- which is what these access tests want: they are
+	// about who may reach a route, not about ZATCA accepting anything.
+	submitter := zatca.SubmitterFrom(
+		zatca.NewCredentialStore(pool, nil), zatca.EnvironmentSandbox)
 	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.StandardHasher{})).
 		WithPool(pool).WithRegistry(rules).WithSubmitter(submitter)
 

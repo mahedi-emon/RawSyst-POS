@@ -10,16 +10,13 @@ import (
 
 // Submission to ZATCA, behind a seam.
 //
-// The transport is not implemented, and that is deliberate rather than
-// unfinished. Submitting requires the signed UBL 2.1 document, whose byte-level
-// format is still unverified against ZATCA's published standard — the same
-// blocker that keeps DocumentHasher stubbed. A client that posted something
-// plausible would get invoices rejected at scale, and an invoice ZATCA rejected
-// still consumed its ICV.
+// This file defines what submission looks like. APISubmitter in submit_api.go
+// does it, using a credential stored by the onboarding flow.
 //
-// So this file defines what submission looks like and gates the doing of it.
-// When the verification pass completes, a real client implements Submitter and
-// nothing else in the system changes.
+// The seam is kept rather than collapsed because there are genuinely two
+// implementations: the real client, and the refusal below for an installation
+// that cannot submit at all. What there is NOT, and must never be, is a third
+// that pretends to succeed — see UnavailableSubmitter for why.
 
 // Route is which ZATCA endpoint a document goes to.
 //
@@ -73,6 +70,17 @@ type Submission struct {
 	ICV         int64
 	Route       Route
 
+	// EGSUnitID names the till whose credential authenticates this. Required:
+	// the credential is per unit, and a submission that did not say which unit
+	// could only guess.
+	EGSUnitID uuid.UUID
+
+	// InvoiceHash is the base64 SHA-256 of the canonical document. ZATCA's body
+	// carries it alongside the document and checks one against the other, so an
+	// empty one is rejected for a reason that reads as a hash problem rather
+	// than a missing field.
+	InvoiceHash string
+
 	// SignedXML is the canonical signed UBL 2.1 DOCUMENT, as built and signed
 	// on the terminal. This is what ZATCA receives.
 	//
@@ -117,34 +125,34 @@ type Submitter interface {
 	Available() bool
 }
 
-// SubmitterFor returns the client appropriate to the environment.
+// UnavailableSubmitter refuses to submit, and says why.
 //
-// The same gate as HasherFor, and for the same reason. An unverified document
-// format and an unimplemented transport are one problem, and they must fail the
-// same way rather than one of them quietly succeeding.
-func SubmitterFor(isProduction bool) Submitter {
-	return UnverifiedSubmitter{production: isProduction}
-}
-
-// UnverifiedSubmitter refuses to submit, in every environment.
+// Used when an installation is not configured to hold credentials at all, so
+// there is nothing to authenticate with.
 //
-// There is no development variant that pretends to succeed, and that asymmetry
-// with DocumentHasher is deliberate. A placeholder HASH lets the rest of the
-// system be exercised locally and is obviously fake in the database. A
+// There is deliberately no variant that pretends to succeed, and that
+// asymmetry with DocumentHasher is the point. A placeholder HASH lets the rest
+// of the system be exercised locally and is obviously fake in the database. A
 // placeholder SUBMISSION would mark an invoice as reported to a tax authority
 // that never received it — the one state this system must never enter by
 // accident, because everything downstream then treats a legal obligation as
 // discharged.
 //
-// So an invoice queued for submission stays queued until a verified client
-// exists. That is visible, alerting, and true.
-type UnverifiedSubmitter struct{ production bool }
+// So an invoice queued for submission stays queued. That is visible, alerting,
+// and true.
+type UnavailableSubmitter struct {
+	// Reason is shown to the Owner, and should say what to configure.
+	Reason string
+}
 
-func (UnverifiedSubmitter) Available() bool { return false }
+func (UnavailableSubmitter) Available() bool { return false }
 
-func (u UnverifiedSubmitter) Submit(context.Context, Submission) (Response, error) {
-	return Response{Outcome: OutcomeNotAttempted}, errs.New(errs.CodeComplianceBlocked,
-		"E-invoicing submission is not yet available on this installation: the "+
-			"document format has not been verified against ZATCA's published "+
-			"standard. Invoices remain queued and none has been reported.")
+func (u UnavailableSubmitter) Submit(context.Context, Submission) (Response, error) {
+	reason := u.Reason
+	if reason == "" {
+		reason = "this installation is not configured to report e-invoices"
+	}
+	return Response{Outcome: OutcomeNotAttempted}, errs.Newf(errs.CodeComplianceBlocked,
+		"E-invoicing submission is not available: %s. Invoices remain queued "+
+			"and none has been reported.", reason)
 }

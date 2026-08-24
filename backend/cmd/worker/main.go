@@ -20,6 +20,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -58,12 +59,22 @@ func run() error {
 	queue := jobs.NewQueue(pool)
 	worker := jobs.NewWorker(queue, log, name)
 
-	// The ZATCA client refuses in every environment until the document format
-	// is verified. Registering it anyway is deliberate: invoices queue up, the
-	// staleness sweep escalates, and an Owner sees a growing backlog with a
-	// truthful reason — rather than the system looking healthy because nothing
-	// was ever attempted.
-	submitter := zatca.SubmitterFor(cfg.Env.IsProduction())
+	// The keyring that protects the ZATCA credential at rest. Absent in
+	// development, where there are no real credentials to protect; config
+	// refuses to start without it in staging and production.
+	var cipher *secrets.Cipher
+	if len(cfg.Auth.DataEncryptionKeys) > 0 {
+		var err error
+		cipher, err = secrets.New(cfg.Auth.DataEncryptionKeys...)
+		if err != nil {
+			log.Error("the data encryption keyring is unusable", slog.Any("error", err))
+			os.Exit(1)
+		}
+	}
+
+	credentials := zatca.NewCredentialStore(pool, cipher)
+	submitter := zatca.SubmitterFrom(credentials,
+		zatca.Environment(cfg.ZATCAEnvironment))
 	worker.Register(jobs.KindZATCASubmit, jobs.NewZATCASubmitter(pool, submitter))
 	worker.Register(jobs.KindZATCAStaleness, jobs.NewStalenessSweeper(pool))
 
@@ -73,11 +84,15 @@ func run() error {
 	// would have heard it from its accountant months later.
 	worker.Register(jobs.KindAccountingTieOut, jobs.NewTieOutSweeper(pool))
 
+	// Registering the submitter even when it cannot submit is deliberate:
+	// invoices queue up, the staleness sweep escalates, and an Owner sees a
+	// growing backlog with a truthful reason — rather than the system looking
+	// healthy because nothing was ever attempted.
 	if !submitter.Available() {
 		log.Warn("ZATCA submission is not available",
 			slog.String("reason",
-				"the document format has not been verified against ZATCA's "+
-					"published standard"),
+				"this installation cannot hold the credential ZATCA issues; "+
+					"set RAWSYST_DATA_ENCRYPTION_KEYS"),
 			slog.String("effect",
 				"invoices will queue and escalate; none will be reported"))
 	}

@@ -89,6 +89,13 @@ type invoiceForSubmission struct {
 	stamp string
 	qrTLV string
 
+	// egsUnitID names the till whose ZATCA credential authenticates this
+	// submission, and invoiceHash is the value ZATCA checks the document
+	// against. Both come off the chain row, which is where they were written
+	// when the invoice took its position.
+	egsUnitID   uuid.UUID
+	invoiceHash string
+
 	attempts int
 }
 
@@ -122,13 +129,13 @@ func (z *ZATCASubmitter) Run(ctx context.Context, j Job) error {
 	if !z.client.Available() {
 		if err := z.record(ctx, tenantID, inv, p.InvoiceID, zatca.Response{
 			Outcome: zatca.OutcomeNotAttempted,
-			Error: "The document format has not been verified against ZATCA's " +
-				"published standard, so nothing was sent.",
+			Error: "This installation cannot report e-invoices, so nothing " +
+				"was sent. Invoices remain queued.",
 		}); err != nil {
 			return err
 		}
 		return errs.New(errs.CodeComplianceBlocked,
-			"E-invoicing submission is not yet available on this installation. "+
+			"E-invoicing submission is not available on this installation. "+
 				"This invoice remains queued and has NOT been reported.")
 	}
 
@@ -150,6 +157,9 @@ func (z *ZATCASubmitter) Run(ctx context.Context, j Job) error {
 	route := zatca.RouteFor(inv.docType)
 	resp, submitErr := z.client.Submit(ctx, zatca.Submission{
 		InvoiceUUID: inv.uuid, ICV: inv.icv, Route: route,
+		// The credential is per till, so the submission has to say which.
+		EGSUnitID:   inv.egsUnitID,
+		InvoiceHash: inv.invoiceHash,
 		// The DOCUMENT, not the signature over it. Sending the stamp here
 		// would post a signature with nothing attached to it.
 		SignedXML: []byte(inv.xml),
@@ -197,13 +207,15 @@ func (z *ZATCASubmitter) read(
 			SELECT i.uuid, i.doc_type, i.state, i.company_id,
 			       z.icv, coalesce(z.xml, ''), coalesce(z.stamp, ''),
 			       coalesce(z.qr_tlv, ''),
+			       z.egs_unit_id, coalesce(z.invoice_hash, ''),
 			       (SELECT count(*) FROM zatca_submission_attempt a
 			        WHERE a.invoice_id = i.id)
 			FROM sales_invoice i
 			JOIN zatca_invoice z ON z.invoice_id = i.id
 			WHERE i.id = $1`, invoiceID).
 			Scan(&inv.uuid, &inv.docType, &inv.state, &inv.companyID,
-				&inv.icv, &inv.xml, &inv.stamp, &inv.qrTLV, &inv.attempts)
+				&inv.icv, &inv.xml, &inv.stamp, &inv.qrTLV,
+				&inv.egsUnitID, &inv.invoiceHash, &inv.attempts)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return Permanent{errs.New(errs.CodeNotFound,
 				"That invoice no longer exists, so there is nothing to submit.")}
