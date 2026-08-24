@@ -3,6 +3,7 @@ package provisioning
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -219,10 +220,7 @@ func (s *Service) validateStep(step string, all json.RawMessage) error {
 
 	case StepStores:
 		var v struct {
-			Stores []struct {
-				Code string `json:"code"`
-				Name string `json:"name"`
-			} `json:"stores"`
+			Stores []StoreAnswer `json:"stores"`
 		}
 		if err := json.Unmarshal(raw, &v); err != nil {
 			return errs.New(errs.CodeInvalidInput, "Those store details could not be read.")
@@ -248,6 +246,10 @@ func (s *Service) validateStep(step string, all json.RawMessage) error {
 						"they identify the store in every document number.", code)
 			}
 			seen[code] = true
+
+			if err := st.validateAddress(i + 1); err != nil {
+				return err
+			}
 		}
 
 	case StepTax:
@@ -408,6 +410,182 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, db.Translate(err, "")
 	}
 	return companyID, nil
+}
+
+// StoreAnswer is one branch as the wizard collects it.
+//
+// The address is the Saudi National Address, because that is what ZATCA asks
+// for on the face of every invoice — BR-KSA-09 names all six parts and links to
+// https://splonline.com.sa/en/national-address-1/ directly. Collecting it here
+// rather than later is deliberate: a shop that finishes setup without it can
+// take money and cannot issue a compliant invoice for it, which is the worst
+// order to discover the problem in.
+type StoreAnswer struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+
+	Street           string `json:"street"`
+	BuildingNumber   string `json:"building_number"`
+	AdditionalNumber string `json:"additional_number"`
+	District         string `json:"district"`
+	City             string `json:"city"`
+	PostalCode       string `json:"postal_code"`
+	CountryCode      string `json:"country_code"`
+}
+
+var (
+	fourDigitNumber = regexp.MustCompile(`^[0-9]{4}$`)
+	fiveDigitNumber = regexp.MustCompile(`^[0-9]{5}$`)
+	twoLetterCode   = regexp.MustCompile(`^[A-Za-z]{2}$`)
+)
+
+// validateAddress applies BR-KSA-09, BR-KSA-37 and BR-KSA-66.
+//
+// Reported per field, and each sentence says what the value is FOR. "Invalid
+// building number" tells somebody nothing; "must be exactly 4 digits, from your
+// National Address" tells them where to look it up.
+func (a StoreAnswer) validateAddress(position int) error {
+	e := errs.Newf(errs.CodeInvalidInput,
+		"Store %d needs its National Address before it can issue invoices.", position)
+
+	for _, f := range []struct{ field, value, why string }{
+		{"street", a.Street, "Street name, as it appears on your National Address."},
+		{"district", a.District, "District, as it appears on your National Address."},
+		{"city", a.City, "City, as it appears on your National Address."},
+	} {
+		if strings.TrimSpace(f.value) == "" {
+			e.WithField(f.field, f.why)
+		}
+	}
+	if !fourDigitNumber.MatchString(strings.TrimSpace(a.BuildingNumber)) {
+		e.WithField("building_number",
+			"The building number is exactly 4 digits, for example 2322.")
+	}
+	if !fiveDigitNumber.MatchString(strings.TrimSpace(a.PostalCode)) {
+		e.WithField("postal_code",
+			"The postal code is exactly 5 digits, for example 23333.")
+	}
+	// Optional, but wrong is worse than absent.
+	if v := strings.TrimSpace(a.AdditionalNumber); v != "" && !fourDigitNumber.MatchString(v) {
+		e.WithField("additional_number",
+			"The additional number is 4 digits, or leave it empty.")
+	}
+	if v := strings.TrimSpace(a.CountryCode); v != "" && !twoLetterCode.MatchString(v) {
+		e.WithField("country_code", "Use the two-letter country code, such as SA.")
+	}
+
+	if len(e.Fields) > 0 {
+		return e
+	}
+	return nil
+}
+
+// CommitStores creates the branches the wizard collected.
+//
+// Nothing did this before. The wizard asked for stores, wrote the answers into
+// its scratch JSONB, and stopped — so a shop finished setup with no store at
+// all, and since every sale is recorded against one, it could not trade. The
+// only stores that ever existed came from the development seeder.
+//
+// Idempotent by code within the company, so a retried request does not create a
+// second branch with the same code — the code appears in every document number
+// and a duplicate would corrupt the numbering.
+func (s *Service) CommitStores(ctx context.Context, companyID uuid.UUID) ([]uuid.UUID, error) {
+	progress, err := s.GetProgress(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(progress.StepData, &payload); err != nil {
+		return nil, errs.New(errs.CodeInvalidInput, "Setup answers could not be read.")
+	}
+	raw, ok := payload[StepStores]
+	if !ok {
+		return nil, errs.New(errs.CodeInvalidInput, "Fill in the store step first.")
+	}
+
+	var v struct {
+		Stores []StoreAnswer `json:"stores"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, errs.New(errs.CodeInvalidInput, "Those store details could not be read.")
+	}
+	if len(v.Stores) == 0 {
+		return nil, errs.New(errs.CodeInvalidInput,
+			"Add at least one store. Every sale is recorded against a store.")
+	}
+	for i, st := range v.Stores {
+		if err := st.validateAddress(i + 1); err != nil {
+			return nil, err
+		}
+	}
+
+	a := actor.From(ctx)
+	var created []uuid.UUID
+
+	err = s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		// The plan ceiling, checked here rather than trusted from the client.
+		var existing, ceiling int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM store WHERE company_id = $1`, companyID).
+			Scan(&existing); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx,
+			`SELECT max_stores FROM tenant_limit WHERE tenant_id = $1`, a.TenantID).
+			Scan(&ceiling); err != nil {
+			return err
+		}
+		if existing+len(v.Stores) > ceiling {
+			return errs.Newf(errs.CodeLimitReached,
+				"Your plan allows %d stores and this would make %d.",
+				ceiling, existing+len(v.Stores))
+		}
+
+		created = created[:0]
+		for _, st := range v.Stores {
+			country := strings.ToUpper(strings.TrimSpace(st.CountryCode))
+			var id uuid.UUID
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO store
+				  (tenant_id, company_id, code, name,
+				   street, building_number, additional_number,
+				   district, city, postal_code, country_code)
+				VALUES ($1,$2,upper($3),$4,$5,$6,$7,$8,$9,$10,
+				        coalesce(nullif($11,''), upper((SELECT country FROM company WHERE id = $2))))
+				ON CONFLICT (company_id, code) DO UPDATE
+				  SET name              = excluded.name,
+				      street            = excluded.street,
+				      building_number   = excluded.building_number,
+				      additional_number = excluded.additional_number,
+				      district          = excluded.district,
+				      city              = excluded.city,
+				      postal_code       = excluded.postal_code,
+				      country_code      = excluded.country_code
+				RETURNING id`,
+				a.TenantID, companyID,
+				strings.TrimSpace(st.Code), strings.TrimSpace(st.Name),
+				strings.TrimSpace(st.Street),
+				strings.TrimSpace(st.BuildingNumber),
+				nullIfBlank(st.AdditionalNumber),
+				strings.TrimSpace(st.District),
+				strings.TrimSpace(st.City),
+				strings.TrimSpace(st.PostalCode),
+				country).Scan(&id); err != nil {
+				return err
+			}
+			created = append(created, id)
+		}
+		return nil
+	})
+	if err != nil {
+		if errs.As(err) != nil {
+			return nil, err
+		}
+		return nil, db.Translate(err, "Those stores could not be created.")
+	}
+	return created, nil
 }
 
 func nullIfBlank(s string) any {

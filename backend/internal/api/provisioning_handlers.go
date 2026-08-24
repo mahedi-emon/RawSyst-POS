@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -109,4 +110,34 @@ func (s *Server) handleOnboardingCommitCompany(w http.ResponseWriter, r *http.Re
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, map[string]any{"company_id": companyID})
+}
+
+// handleOnboardingCommitStores turns the wizard's store answers into branches.
+//
+// Separate from the company commit because a tenant can add branches later, and
+// because the two fail for different reasons: a company is refused by the plan's
+// company ceiling, a store by its store ceiling or by an incomplete National
+// Address.
+func (s *Server) handleOnboardingCommitStores(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		CompanyID string `json:"company_id"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	companyID, err := uuid.Parse(body.CompanyID)
+	if err != nil {
+		httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+			"Say which company these stores belong to."))
+		return
+	}
+
+	ids, err := s.provisioning.CommitStores(r.Context(), companyID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, map[string]any{"store_ids": ids})
 }

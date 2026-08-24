@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -55,19 +57,22 @@ type seller struct {
 // has a unit per business, and the invoice must carry the one that signed it.
 func readSeller(ctx context.Context, tx pgx.Tx, egsUnitID uuid.UUID) (seller, error) {
 	var s seller
-	var name, vat, location, storeAddress, storeName, country *string
+	var name, vat *string
+	var street, building, additional, district, city, postal, country *string
+	var companyCountry *string
 
 	err := tx.QueryRow(ctx, `
 		SELECT u.csr_organization_name,
 		       u.csr_organization_identifier,
-		       u.csr_location,
-		       st.address, st.name,
+		       st.street, st.building_number, st.additional_number,
+		       st.district, st.city, st.postal_code, st.country_code,
 		       c.country
 		FROM egs_unit u
 		JOIN company c ON c.id = u.company_id
 		LEFT JOIN store st ON st.id = u.store_id
 		WHERE u.id = $1`, egsUnitID).
-		Scan(&name, &vat, &location, &storeAddress, &storeName, &country)
+		Scan(&name, &vat, &street, &building, &additional,
+			&district, &city, &postal, &country, &companyCountry)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return seller{}, errs.New(errs.CodeNotFound,
 			"That e-invoicing unit was not found, so no invoice could be built.")
@@ -76,7 +81,7 @@ func readSeller(ctx context.Context, tx pgx.Tx, egsUnitID uuid.UUID) (seller, er
 		// Distinguished from "not found" on purpose. Mapping every failure to a
 		// missing row hides a broken query behind a plausible business error,
 		// which is how a column that does not exist reads as an unregistered
-		// till.
+		// till. That happened once already.
 		return seller{}, db.Translate(err,
 			"The seller details for that e-invoicing unit could not be read.")
 	}
@@ -91,45 +96,73 @@ func readSeller(ctx context.Context, tx pgx.Tx, egsUnitID uuid.UUID) (seller, er
 	s.Name = text(name)
 	s.VATNumber = text(vat)
 
-	// The unit's registered location first, the store's address second.
-	//
-	// Neither is STRUCTURED. ZATCA's BR-KSA-63 to BR-KSA-69 ask for street,
-	// building number, district, city and postal code as separate fields, and
-	// this product stores a single free-text address on a store and a single
-	// free-text location on a unit. That is a real gap in the data model rather
-	// than something to invent here: splitting a free-text address on commas
-	// would put whatever happened to be typed into fields a tax authority
-	// reads.
-	line := text(location)
-	if line == "" {
-		line = text(storeAddress)
+	// The country falls back to the company's when the store has not set one,
+	// so an existing shop is not forced to restate what its company already
+	// says. Upper-cased because BT-40 is ISO 3166-1 alpha-2.
+	countryCode := text(country)
+	if countryCode == "" {
+		countryCode = upperTwo(text(companyCountry))
 	}
+
 	s.Address = zatca.Address{
-		Street:      line,
-		City:        text(storeName),
-		CountryCode: "SA",
-	}
-	if c := text(country); c != "" {
-		s.Address.CountryCode = upperTwo(c)
+		Street:       text(street),
+		BuildingNo:   text(building),
+		AdditionalNo: text(additional),
+		Subdivision:  text(district),
+		City:         text(city),
+		PostalZone:   text(postal),
+		CountryCode:  countryCode,
 	}
 
 	// Named individually, because "the unit is incomplete" sends somebody
-	// hunting through nine fields.
+	// hunting through nine fields and six address ones.
 	missing := errs.New(errs.CodeComplianceBlocked,
-		"This e-invoicing unit is not complete, so it cannot issue an invoice yet.")
+		"This shop is not set up for e-invoicing yet, so it cannot issue an invoice.")
 	if s.Name == "" {
 		missing.WithField("csr.organization_name",
 			"The registered business name is needed on every invoice.")
 	}
-	if s.VATNumber == "" {
+	if !vatNumberPattern.MatchString(s.VATNumber) {
 		missing.WithField("csr.organization_identifier",
-			"The VAT number is needed on every invoice.")
+			"A 15-digit VAT number starting and ending with 3 is needed on every invoice.")
 	}
+
+	// BR-KSA-09 names all six of these, and links to the Saudi National
+	// Address. Each is reported against the field a shop fills in rather than
+	// against the UBL element, because the person reading this is looking at a
+	// store form.
+	for _, required := range []struct{ field, value, why string }{
+		{"address.street", s.Address.Street, "Street name is required on the invoice (BR-KSA-09)."},
+		{"address.district", s.Address.Subdivision, "District is required on the invoice (BR-KSA-09)."},
+		{"address.city", s.Address.City, "City is required on the invoice (BR-KSA-09)."},
+		{"address.country_code", s.Address.CountryCode, "Country is required on the invoice (BR-KSA-09)."},
+	} {
+		if strings.TrimSpace(required.value) == "" {
+			missing.WithField(required.field, required.why)
+		}
+	}
+	// BR-KSA-37 and BR-KSA-66 are format rules, so an empty value and a
+	// malformed one get different sentences.
+	if !fourDigits.MatchString(s.Address.BuildingNo) {
+		missing.WithField("address.building_number",
+			"The building number must be exactly 4 digits (BR-KSA-37).")
+	}
+	if !fiveDigits.MatchString(s.Address.PostalZone) {
+		missing.WithField("address.postal_code",
+			"The postal code must be exactly 5 digits (BR-KSA-66).")
+	}
+
 	if len(missing.Fields) > 0 {
 		return seller{}, missing
 	}
 	return s, nil
 }
+
+var (
+	fourDigits       = regexp.MustCompile(`^[0-9]{4}$`)
+	fiveDigits       = regexp.MustCompile(`^[0-9]{5}$`)
+	vatNumberPattern = regexp.MustCompile(`^3[0-9]{13}3$`)
+)
 
 func upperTwo(s string) string {
 	if len(s) < 2 {

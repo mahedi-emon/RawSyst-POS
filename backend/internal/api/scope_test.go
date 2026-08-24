@@ -83,8 +83,8 @@ func (h *harness) secondBranch(t *testing.T, f *shopFixture) (uuid.UUID, uuid.UU
 		// store_code_format allows [A-Z0-9-] only, so the hex has to be raised.
 		code := "B" + strings.ToUpper(uuid.NewString()[:6])
 		if e := tx.QueryRow(t.Context(), `
-			INSERT INTO store (tenant_id, company_id, code, name)
-			VALUES ($1,$2,$3,'Second Branch') RETURNING id`,
+			INSERT INTO store (tenant_id, company_id, code, name, street, building_number, district, city, postal_code, country_code)
+			VALUES ($1,$2,$3,'Second Branch','Prince Sultan Road','2322','Al-Murabba','Riyadh','23333','SA') RETURNING id`,
 			f.tenantID, f.companyID, code).Scan(&storeID); e != nil {
 			return e
 		}

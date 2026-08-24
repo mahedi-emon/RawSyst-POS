@@ -129,7 +129,7 @@ func TestTheZATCAObligationIsRecordedAsTheTaxpayerStatedIt(t *testing.T) {
 	}{
 		{"business_info", businessAnswers()},
 		{"stores", map[string]any{
-			"stores": []map[string]any{{"code": "RYD", "name": "Olaya branch"}},
+			"stores": []map[string]any{{"code": "RYD", "name": "Olaya branch", "street": "Prince Sultan Road", "building_number": "2322", "district": "Al-Murabba", "city": "Riyadh", "postal_code": "23333", "country_code": "SA"}},
 		}},
 		// UI spec §6 puts the ZATCA dates on the Tax step, and this is where
 		// the wizard sends them.
@@ -201,7 +201,7 @@ func TestABusinessWithNoZATCANotificationStillCommits(t *testing.T) {
 	}{
 		{"business_info", businessAnswers()},
 		{"stores", map[string]any{
-			"stores": []map[string]any{{"code": "JED", "name": "Jeddah"}},
+			"stores": []map[string]any{{"code": "JED", "name": "Jeddah", "street": "Prince Sultan Road", "building_number": "2322", "district": "Al-Murabba", "city": "Riyadh", "postal_code": "23333", "country_code": "SA"}},
 		}},
 		{"tax", map[string]any{"zatca_wave": "", "zatca_deadline": ""}},
 		{"employees", map[string]any{}},
@@ -392,7 +392,7 @@ func TestFinishedSetupRefusesFurtherEdits(t *testing.T) {
 	}{
 		{"business_info", businessAnswers()},
 		{"stores", map[string]any{
-			"stores": []map[string]any{{"code": "RYD", "name": "Olaya"}},
+			"stores": []map[string]any{{"code": "RYD", "name": "Olaya", "street": "Prince Sultan Road", "building_number": "2322", "district": "Al-Murabba", "city": "Riyadh", "postal_code": "23333", "country_code": "SA"}},
 		}},
 		{"tax", map[string]any{}},
 		{"employees", map[string]any{}},

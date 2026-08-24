@@ -175,6 +175,10 @@ func (s *Server) Routes() []Route {
 			s.handleOnboardingCompleteStep, ""},
 		{http.MethodPost, "/api/v1/onboarding/company", AccessPermission, "identity.edit",
 			s.handleOnboardingCommitCompany, ""},
+		{http.MethodPost, "/api/v1/onboarding/stores", AccessPermission, "identity.edit",
+			s.handleOnboardingCommitStores,
+			"creates the branches the wizard collected; nothing did before, so a shop " +
+				"finished setup with no store and could not record a sale against one"},
 
 		// --- catalogue ---
 		//

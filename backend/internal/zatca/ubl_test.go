@@ -434,3 +434,52 @@ func TestTheReducedAddressIsAcceptedButWarned(t *testing.T) {
 		t.Log("ZATCA no longer warns about the reduced address; the gap may be closed")
 	}
 }
+
+// The complete Saudi National Address, and ZATCA's verdict on it.
+//
+// BR-KSA-09 names six fields; BR-KSA-37 wants the building number to be four
+// digits and BR-KSA-66 wants the postal code to be five. This is the same
+// document as the test above with those six filled in, and it must come back
+// with NOTHING against it — not merely valid, but unwarned.
+//
+// That distinction is the whole point of migration 0063. A document that is
+// valid-with-warnings is accepted today and, on ZATCA's own notice that
+// warnings "might become rejections in the future", is a liability rather than
+// a pass.
+func TestTheCompleteAddressClearsEveryAddressWarning(t *testing.T) {
+	if os.Getenv("ZATCA_VALIDATOR") == "" {
+		t.Skip("set ZATCA_VALIDATOR=1 to check against ZATCA's live validator")
+	}
+
+	in := standardInvoice()
+	in.Supplier.Address = Address{
+		Street:       "Prince Sultan Road",
+		BuildingNo:   "2322", // KSA-17, four digits
+		AdditionalNo: "2223",
+		Subdivision:  "Al-Murabba", // KSA-3, the district
+		City:         "Riyadh",
+		PostalZone:   "23333", // BT-38, five digits
+		CountryCode:  "SA",
+	}
+	doc, err := BuildInvoiceXML(in)
+	if err != nil {
+		t.Fatalf("building: %v", err)
+	}
+	result := validateWithZATCA(t, doc)
+
+	for _, e := range result.Errors {
+		t.Errorf("error: %s %s — %s", e.Category, e.Code, e.Message)
+	}
+	for _, w := range result.Warnings {
+		switch w.Code {
+		case "BR-KSA-09", "BR-KSA-37", "BR-KSA-66":
+			t.Errorf("the address warning migration 0063 exists to fix is still "+
+				"raised: %s — %s", w.Code, w.Message)
+		default:
+			t.Errorf("an unexpected warning: %s — %s", w.Code, w.Message)
+		}
+	}
+	if !result.Valid {
+		t.Error("a complete address did not produce a valid document")
+	}
+}

@@ -447,14 +447,14 @@ func TestChainsAreIsolatedPerUnit(t *testing.T) {
 	err := f.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		var storeID uuid.UUID
 		if e := tx.QueryRow(ctx, `
-			INSERT INTO store (tenant_id, company_id, code, name)
-			VALUES ($1,$2,'OLAYA','Olaya') RETURNING id`,
+			INSERT INTO store (tenant_id, company_id, code, name, street, building_number, district, city, postal_code, country_code)
+			VALUES ($1,$2,'OLAYA','Olaya','Prince Sultan Road','2322','Al-Murabba','Riyadh','23333','SA') RETURNING id`,
 			f.tenantID, f.companyID).Scan(&storeID); e != nil {
 			return e
 		}
 		return tx.QueryRow(ctx, `
-			INSERT INTO egs_unit (tenant_id, company_id, store_id, label, architecture)
-			VALUES ($1,$2,$3,'till-1','smart_pos') RETURNING id`,
+			INSERT INTO egs_unit (tenant_id, company_id, store_id, label, architecture, csr_organization_name, csr_organization_identifier)
+			VALUES ($1,$2,$3,'till-1','smart_pos','Demo Retail Co','311111111111113') RETURNING id`,
 			f.tenantID, f.companyID, storeID).Scan(&secondUnit)
 	})
 	if err != nil {

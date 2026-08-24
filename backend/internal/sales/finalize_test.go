@@ -98,8 +98,8 @@ func newShop(t *testing.T) *shop {
 
 	err = pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO store (tenant_id, company_id, code, name)
-			VALUES ($1,$2,'MAIN','Main') RETURNING id`,
+			INSERT INTO store (tenant_id, company_id, code, name, street, building_number, district, city, postal_code, country_code)
+			VALUES ($1,$2,'MAIN','Main','Prince Sultan Road','2322','Al-Murabba','Riyadh','23333','SA') RETURNING id`,
 			s.tenantID, s.companyID).Scan(&s.storeID); err != nil {
 			return err
 		}
