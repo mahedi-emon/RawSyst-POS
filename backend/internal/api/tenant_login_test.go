@@ -3,6 +3,9 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
@@ -67,6 +70,34 @@ func planted(
 		t.Fatalf("assign role in the second tenant: %v", err)
 	}
 	return tenantID
+}
+
+// loginNative signs in announcing the native client, which is the only one
+// that receives a refresh token in the body. A browser gets an httpOnly cookie
+// instead, so a test that needs the token in hand has to ask as the till does.
+func loginNative(t *testing.T, h *harness, body map[string]any) (int, map[string]any) {
+	t.Helper()
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost,
+		h.server.URL+"/api/v1/auth/login", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("building the sign-in: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(clientKindHeader, clientKindNative)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("signing in: %v", err)
+	}
+	if resp.StatusCode >= 500 {
+		t.Fatalf("login: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	if resp.StatusCode == 204 {
+		resp.Body.Close()
+		return resp.StatusCode, nil
+	}
+	return resp.StatusCode, decodeJSON(t, resp)
 }
 
 func login(t *testing.T, h *harness, body map[string]any) (int, map[string]any) {
@@ -331,7 +362,9 @@ func TestASessionFromAChoiceBehavesLikeAnyOther(t *testing.T) {
 	f := h.seedShop(t, "owner")
 	planted(t, h, f.email, testPassword, "Second Shop")
 
-	status, body := login(t, h, map[string]any{
+	// As the till, because this asserts on the refresh token itself and a
+	// browser is deliberately never handed one.
+	status, body := loginNative(t, h, map[string]any{
 		"email": f.email, "password": testPassword,
 		"tenant_id": f.tenantID.String(),
 	})
@@ -412,7 +445,9 @@ func TestSigningOutRevokesTheSessionServerSide(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner")
 
-	status, body := login(t, h, map[string]any{
+	// As the till: a browser is deliberately never given the refresh token,
+	// and this test is about the token outliving a sign-out.
+	status, body := loginNative(t, h, map[string]any{
 		"email": f.email, "password": testPassword,
 	})
 	if status != 200 {

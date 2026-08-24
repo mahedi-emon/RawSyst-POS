@@ -126,7 +126,11 @@ func run() error {
 		// Onboarding is only wired when this installation can hold the
 		// credential ZATCA issues; without a key the routes say so rather than
 		// silently missing.
-		WithOnboarding(zatca.NewOnboarding(pool, credentials))
+		WithOnboarding(zatca.NewOnboarding(pool, credentials)).
+		// Secure cookies everywhere but a developer's laptop. A browser
+		// silently DROPS a Secure cookie sent over plain HTTP, which presents
+		// as a sign-in that appears to succeed and then has no session.
+		WithSecureCookies(cfg.Env != config.EnvDevelopment)
 
 	handler := srv.Handler(
 		httpx.RequestID,

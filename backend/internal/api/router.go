@@ -95,6 +95,20 @@ type Server struct {
 	// cannot hold a ZATCA credential, and the routes report that rather than
 	// failing to start.
 	onboarding *zatca.Onboarding
+
+	// secureCookies marks the session cookies Secure, so a browser will only
+	// send them over TLS. False only in development, where the browser talks
+	// to the API over plain HTTP on localhost and would silently DROP a Secure
+	// cookie -- which presents as a sign-in that appears to work and then has
+	// no session, the least diagnosable failure available here.
+	secureCookies bool
+}
+
+// WithSecureCookies marks session cookies Secure. Call it for any deployment
+// served over TLS, which is every deployment except a developer's laptop.
+func (s *Server) WithSecureCookies(secure bool) *Server {
+	s.secureCookies = secure
+	return s
 }
 
 // WithOnboarding enables the ZATCA onboarding routes.

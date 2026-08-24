@@ -85,6 +85,22 @@ function saveSession(s: Session | null) {
   else localStorage.removeItem(SESSION_KEY);
 }
 
+/** Whether anything reachable by script is holding a refresh token.
+ *
+ *  Exported for the test that asserts the browser never keeps one. A plain
+ *  read of localStorage in the test would pass while some other store held it.
+ */
+export function storedRefreshToken(): string | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Session>;
+    return parsed.refreshToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({
   baseUrl,
   children,
@@ -107,7 +123,19 @@ export function AuthProvider({
    *  way. That is a browser during development, never a real till. */
   signInWith?: (email: string, password: string) => Promise<Session | null>;
 }) {
-  const client = useMemo(() => new Client(baseUrl, loadSession()), [baseUrl]);
+  // signInWith is only supplied by the Tauri POS, which pairs against a
+  // terminal secret. Its presence is what tells the client it is the native
+  // app: the browser gets the safe behaviour without having to ask for it.
+  const native = signInWith !== undefined;
+
+  const client = useMemo(() => {
+    const c = new Client(baseUrl, loadSession(), native);
+    // A refresh replaces the access token, and on a native client the refresh
+    // token with it. Persisting from here keeps storage in step without every
+    // caller having to remember to.
+    c.onSession = (s) => saveSession(s);
+    return c;
+  }, [baseUrl, native]);
 
   const [me, setMe] = useState<Me | null>(null);
   const [status, setStatus] = useState<AuthState['status']>(

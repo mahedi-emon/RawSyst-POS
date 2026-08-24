@@ -20,7 +20,18 @@ import { CardTableLabels } from '@rawsyst/shared/ui/CardTableLabels';
 import { BackOffice } from './BackOffice';
 import { ServiceWorker } from './ServiceWorker';
 
-const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8080';
+// localhost, not 127.0.0.1, and the difference is not cosmetic.
+//
+// The refresh token is an httpOnly cookie now, and cookies are scoped by HOST.
+// A dev server serving the page from localhost:3000 while calling an API at
+// 127.0.0.1:8080 sets the cookie against a host the page is not on, so the
+// browser never sends it back: sign-in appears to work and the session cannot
+// be refreshed. Nothing errors, which is what makes it expensive to find.
+//
+// In a real deployment the API must be same-SITE with the app -- api.example.com
+// beside app.example.com is fine, since SameSite is about the registrable
+// domain -- or the Strict cookie will not travel and refresh will not work.
+const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 export function Providers() {
   return (

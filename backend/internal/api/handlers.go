@@ -1,8 +1,10 @@
 package api
 
 import (
+	"net"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -55,7 +57,7 @@ type loginRequest struct {
 
 type loginResponse struct {
 	AccessToken        string    `json:"access_token"`
-	RefreshToken       string    `json:"refresh_token"`
+	RefreshToken       string    `json:"refresh_token,omitempty"`
 	ExpiresAt          time.Time `json:"expires_at"`
 	MustChangePassword bool      `json:"must_change_password"`
 
@@ -132,12 +134,25 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, loginResponse{
+	csrf, err := newCSRFToken()
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	s.setSessionCookies(w, session.RefreshToken, csrf, s.secureCookies)
+
+	// The browser is told nothing it could store. Only the native app, which
+	// asks explicitly, gets the refresh token where script can read it -- so a
+	// client that says nothing gets the safe behaviour.
+	resp := loginResponse{
 		AccessToken:        session.AccessToken,
-		RefreshToken:       session.RefreshToken,
 		ExpiresAt:          session.ExpiresAt,
 		MustChangePassword: session.MustChangePassword,
-	})
+	}
+	if wantsTokenInBody(r) {
+		resp.RefreshToken = session.RefreshToken
+	}
+	httpx.JSON(w, http.StatusOK, resp)
 }
 
 type refreshRequest struct {
@@ -145,32 +160,69 @@ type refreshRequest struct {
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	// The body is optional now: a browser sends nothing and the cookie carries
+	// the token. Decode failures are tolerated for that reason.
 	var req refreshRequest
-	if err := httpx.Decode(r, &req); err != nil {
-		httpx.Error(w, r, err)
-		return
-	}
-	if req.RefreshToken == "" {
+	_ = httpx.Decode(r, &req)
+
+	token, fromCookie := refreshTokenFrom(r, req.RefreshToken)
+	if token == "" {
 		httpx.Error(w, r, errs.New(errs.CodeUnauthenticated,
 			"Your session has expired. Please sign in again."))
 		return
 	}
 
-	session, err := s.auth.Refresh(r.Context(), req.RefreshToken)
+	// A cookie is attached by the browser whether or not the page meant to
+	// send it, so a cookie-authenticated request has to prove it came from a
+	// page on this origin. A body-authenticated one carries a token the caller
+	// had to already hold, which is proof enough on its own.
+	if fromCookie {
+		if err := checkCSRF(r); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+
+	session, err := s.auth.Refresh(r.Context(), token)
 	if err != nil {
+		// Clear the cookies on refusal. Leaving a dead token in the browser
+		// means every later refresh fails the same way, and reuse detection
+		// would keep revoking a session that is already gone.
+		if fromCookie {
+			s.clearSessionCookies(w, s.secureCookies)
+		}
 		httpx.Error(w, r, err)
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, loginResponse{
-		AccessToken:  session.AccessToken,
-		RefreshToken: session.RefreshToken,
-		ExpiresAt:    session.ExpiresAt,
-	})
+	resp := loginResponse{
+		AccessToken: session.AccessToken,
+		ExpiresAt:   session.ExpiresAt,
+	}
+
+	if fromCookie {
+		// Rotated, so the new token replaces the old one in the same response
+		// that spends it.
+		csrf, e := newCSRFToken()
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		s.setSessionCookies(w, session.RefreshToken, csrf, s.secureCookies)
+	} else {
+		resp.RefreshToken = session.RefreshToken
+	}
+	httpx.JSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	a := actor.From(r.Context())
+
+	// Cleared before the revoke is attempted. If the revoke fails the browser
+	// must still lose its token -- a sign-out that leaves a working session
+	// behind on a shared till is worse than one that reports an error.
+	s.clearSessionCookies(w, s.secureCookies)
+
 	if err := s.auth.Logout(r.Context(), a.SessionID); err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -296,6 +348,17 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 // which overwrites it. Trusting it from a directly-reachable server would let a
 // caller forge the address recorded in the audit log — and blueprint D4 makes
 // "where" one of the six fields the log exists to preserve.
+// The address is stored in a PostgreSQL `inet` column, which is strict about
+// what it accepts. An IPv6 RemoteAddr looks like "[::1]:54321", and taking
+// everything before the last colon yields "[::1]" -- brackets included, which
+// inet rejects outright. That turned every sign-in from an IPv6 client into a
+// 500: the audit insert failed and took the login with it.
+//
+// It hid because a developer machine reached the API on 127.0.0.1 and CI never
+// exercised the path over IPv6. It would have hit production on the first
+// client with an IPv6 address, which today is most of them.
+//
+// net.SplitHostPort understands the bracket form and returns "::1".
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		for i := 0; i < len(xff); i++ {
@@ -305,13 +368,13 @@ func clientIP(r *http.Request) string {
 		}
 		return trimSpace(xff)
 	}
-	host := r.RemoteAddr
-	for i := len(host) - 1; i >= 0; i-- {
-		if host[i] == ':' {
-			return host[:i]
-		}
+
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
 	}
-	return host
+	// No port at all, which is unusual but not worth failing a sign-in over.
+	// Brackets are stripped so an address written "[::1]" still stores.
+	return strings.Trim(r.RemoteAddr, "[]")
 }
 
 func trimSpace(s string) string {
