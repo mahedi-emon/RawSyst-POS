@@ -122,7 +122,11 @@ func run() error {
 	mw = mw.WithDevices(deviceSvc)
 
 	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool),
-		func() error { return pool.Health(ctx) }, version)
+		func() error { return pool.Health(ctx) }, version).
+		// Onboarding is only wired when this installation can hold the
+		// credential ZATCA issues; without a key the routes say so rather than
+		// silently missing.
+		WithOnboarding(zatca.NewOnboarding(pool, credentials))
 
 	handler := srv.Handler(
 		httpx.RequestID,

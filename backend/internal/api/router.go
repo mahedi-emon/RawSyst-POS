@@ -33,6 +33,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
 // Access says who may reach a route.
@@ -89,6 +90,17 @@ type Server struct {
 	settlement   *settlement.Service
 	health       func() error
 	version      string
+
+	// onboarding is optional: an installation with no data encryption key
+	// cannot hold a ZATCA credential, and the routes report that rather than
+	// failing to start.
+	onboarding *zatca.Onboarding
+}
+
+// WithOnboarding enables the ZATCA onboarding routes.
+func (s *Server) WithOnboarding(o *zatca.Onboarding) *Server {
+	s.onboarding = o
+	return s
 }
 
 func NewServer(
@@ -389,8 +401,9 @@ func (s *Server) Routes() []Route {
 		// A unit owns one ICV/PIH chain and carries the VAT registration that
 		// chain hangs from, so managing one is not the same act as pairing a
 		// till and does not use devices.manage. There is deliberately no route
-		// to onboard a unit or set a CSID: those need formats P1 has not
-		// verified, and the columns are read-only until it has.
+		// A CSID is never SET by a client. It is obtained from ZATCA by the
+		// onboarding routes below and written server-side; the columns remain
+		// read-only to every request that carries one.
 		{http.MethodGet, "/api/v1/einvoicing/units", AccessPermission, "einvoicing.view",
 			s.handleListEGSUnits,
 			"the signing units in this business, and how many tills and invoices each carries"},
@@ -402,6 +415,26 @@ func (s *Server) Routes() []Route {
 		{http.MethodPut, "/api/v1/einvoicing/units/{unitID}", AccessPermission, "einvoicing.manage",
 			s.handleAmendEGSUnit,
 			"corrects the name, branch and CSR details; the architecture is fixed at creation"},
+
+		// Onboarding. Status is einvoicing.VIEW, because a store manager whose
+		// till stopped selling needs to see that its certificate expired;
+		// requesting a CSID is einvoicing.ONBOARD, which only the Owner holds,
+		// because it binds the business's tax identity and consumes a one-time
+		// password the taxpayer had to fetch themselves.
+		{http.MethodGet, "/api/v1/einvoicing/units/{unitID}/onboarding",
+			AccessPermission, "einvoicing.view",
+			s.handleZATCAOnboardingStatus,
+			"where this till has got to with ZATCA, and what to do next"},
+		{http.MethodPost, "/api/v1/einvoicing/units/{unitID}/onboarding/compliance",
+			AccessPermission, "einvoicing.onboard",
+			s.handleZATCARequestComplianceCSID,
+			"exchanges a certificate request and the Fatoora one-time password " +
+				"for a compliance CSID; the password is never stored"},
+		{http.MethodPost, "/api/v1/einvoicing/units/{unitID}/onboarding/production",
+			AccessPermission, "einvoicing.onboard",
+			s.handleZATCARequestProductionCSID,
+			"promotes a compliance CSID to a production one; no password, because " +
+				"the compliance credential is itself the proof one was given"},
 
 		{http.MethodGet, "/api/v1/customers", AccessPermission, "customers.view",
 			s.handleListCustomers, "customers, with what each owes and what is left of their limit"},

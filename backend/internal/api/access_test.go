@@ -535,3 +535,113 @@ func TestUnknownFieldsAreRejected(t *testing.T) {
 		t.Fatalf("status = %d, want 400 for an unknown field", resp.StatusCode)
 	}
 }
+
+// Onboarding a till with ZATCA binds the business's tax identity to a
+// certificate and consumes a one-time password the taxpayer had to fetch from
+// their own Fatoora account. Only the Owner may do it.
+//
+// The seeing/doing split from 0043 is the thing under test: everyone who reads
+// compliance state must still be able to SEE onboarding status, including the
+// reason ZATCA gave for a refusal, because a till that stopped selling is
+// usually noticed by whoever is standing at it.
+func TestOnlyTheOwnerMayOnboardATillWithZATCA(t *testing.T) {
+	h := newHarness(t)
+
+	for _, c := range []struct {
+		role       string
+		mayOnboard bool
+		maySee     bool
+	}{
+		{"owner", true, true},
+		{"accountant", false, true},
+		{"store_manager", false, true},
+		{"auditor", false, true},
+		{"cashier", false, false},
+	} {
+		t.Run(c.role, func(t *testing.T) {
+			email := h.seedUserWithRole(t, c.role)
+			token := h.login(t, email)
+
+			resp := h.do(t, http.MethodGet, "/api/v1/auth/me", token, nil)
+			defer resp.Body.Close()
+			var me struct {
+				Permissions []string `json:"permissions"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&me); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+
+			holds := func(want string) bool {
+				for _, p := range me.Permissions {
+					if p == want {
+						return true
+					}
+				}
+				return false
+			}
+
+			if got := holds("einvoicing.onboard"); got != c.mayOnboard {
+				if c.mayOnboard {
+					t.Errorf("%s cannot onboard a till, but must be able to", c.role)
+				} else {
+					t.Errorf("%s holds einvoicing.onboard. Onboarding registers the "+
+						"business with the tax authority and belongs to the Owner alone",
+						c.role)
+				}
+			}
+			if got := holds("einvoicing.view"); got != c.maySee {
+				if c.maySee {
+					t.Errorf("%s cannot see onboarding status, but needs to: a till "+
+						"that stops selling is noticed by whoever is standing at it", c.role)
+				} else {
+					t.Errorf("%s holds einvoicing.view unexpectedly", c.role)
+				}
+			}
+		})
+	}
+}
+
+// And the route itself must enforce it, not just the permission list. A
+// permission a client cannot see is worthless if the handler does not check it.
+func TestTheOnboardingRouteRefusesAnyoneButTheOwner(t *testing.T) {
+	h := newHarness(t)
+	unit := uuid.New().String()
+
+	for _, c := range []struct {
+		role      string
+		wantAllow bool
+	}{
+		{"owner", true},
+		{"accountant", false},
+		{"store_manager", false},
+		{"cashier", false},
+	} {
+		t.Run(c.role, func(t *testing.T) {
+			email := h.seedUserWithRole(t, c.role)
+			token := h.login(t, email)
+
+			resp := h.do(t, http.MethodPost,
+				"/api/v1/einvoicing/units/"+unit+"/onboarding/compliance", token,
+				map[string]string{
+					"environment": "simulation",
+					"csr":         "-----BEGIN CERTIFICATE REQUEST-----",
+					"otp":         "123456",
+				})
+			defer resp.Body.Close()
+
+			if c.wantAllow {
+				// The Owner gets past authorization. What happens next depends
+				// on the installation holding a key and the till existing, and
+				// this test asserts neither -- only that it is not a 403.
+				if resp.StatusCode == http.StatusForbidden {
+					t.Error("the Owner was refused permission to onboard a till")
+				}
+				return
+			}
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("%s got status %d posting to the onboarding route, want 403",
+					c.role, resp.StatusCode)
+			}
+		})
+	}
+}

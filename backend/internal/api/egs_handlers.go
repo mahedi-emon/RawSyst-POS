@@ -12,10 +12,13 @@ import (
 
 // EGS units — the signing units a terminal's invoice chain belongs to.
 //
-// Four routes and no more. There is no route that onboards a unit, requests a
-// CSID or submits anything, because every one of those needs byte-level formats
-// ZATCA has published and this repository has not yet verified. The CSID fields
-// travel outward on every response and inward on none.
+// These four manage the unit itself. Onboarding lives in
+// onboarding_zatca_handlers.go, under a separate permission, because
+// registering with a tax authority is a different size of decision from
+// correcting a branch name.
+//
+// The CSID fields travel outward on every response and inward on none: a
+// client never asserts one, it is obtained from ZATCA and written server-side.
 
 func (s *Server) egsScope(r *http.Request) (egs.Scope, error) {
 	a := actor.From(r.Context())
