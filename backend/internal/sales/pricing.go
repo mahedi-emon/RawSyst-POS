@@ -165,6 +165,7 @@ func Compute(in SaleInput) (ComputedSale, error) {
 
 	out := ComputedSale{Lines: make([]ComputedLine, 0, len(in.Lines))}
 	allocated := decimal.Zero
+	cumulativeGross := decimal.Zero
 
 	for i, l := range in.Lines {
 		if err := catalog.ValidateTreatment(in.Rules, l.TaxTreatment); err != nil {
@@ -172,22 +173,47 @@ func Compute(in SaleInput) (ComputedSale, error) {
 		}
 
 		lineGross := l.Qty.Mul(l.UnitPrice).Sub(l.LineDiscount)
+		cumulativeGross = cumulativeGross.Add(lineGross)
 
-		// Allocate the invoice discount proportionally, giving the LAST line
-		// whatever remains. Rounding each share independently loses or gains a
-		// hallala; handing the remainder to the final line makes the parts sum
-		// back to the whole exactly, which is what a partial return depends on.
+		// Allocate the invoice discount against the RUNNING TOTAL rather than
+		// line by line, and take each line's share as the difference between
+		// successive cumulative targets.
+		//
+		// The obvious approach — round each line's own share and hand the
+		// remainder to the last line — accumulates. Twenty lines each rounding
+		// down by 0.004 leave the final line holding 0.08 more discount than it
+		// is worth, and it goes NEGATIVE: net -0.07, tax -0.01, and an invoice
+		// total below zero. That is not a rounding blemish. It is a tax invoice
+		// with negative VAT on it, which ZATCA rejects and a VAT return would
+		// carry.
+		//
+		// Rounding the cumulative figure instead bounds the error at one
+		// hallala for the whole invoice rather than one per line, and because
+		// the final cumulative target is the discount itself, the shares still
+		// sum back to it exactly — which is what a partial return depends on.
 		share := decimal.Zero
 		if in.InvoiceDiscount.IsPositive() && grossBeforeInvoiceDiscount.IsPositive() {
-			if i == len(in.Lines)-1 {
-				share = in.InvoiceDiscount.Sub(allocated)
-			} else {
-				share = in.InvoiceDiscount.
-					Mul(lineGross).
-					Div(grossBeforeInvoiceDiscount).
-					Round(moneyScale)
-				allocated = allocated.Add(share)
+			target := in.InvoiceDiscount.
+				Mul(cumulativeGross).
+				Div(grossBeforeInvoiceDiscount).
+				Round(moneyScale)
+			share = target.Sub(allocated)
+
+			// A line can only give up what it is worth. When rounding pushes a
+			// share past that — reachable at a 100% discount, where a line's
+			// exact share IS its gross — the excess is left unallocated here
+			// and picked up by the next line automatically, because the next
+			// share is measured against the cumulative target rather than
+			// against this one.
+			if share.GreaterThan(lineGross) {
+				// Rounded DOWN to the four decimals the column stores, so
+				// storage cannot round it back up and reintroduce the negative.
+				share = lineGross.RoundDown(4)
 			}
+			if share.IsNegative() {
+				share = decimal.Zero
+			}
+			allocated = allocated.Add(share)
 		}
 
 		afterDiscount := lineGross.Sub(share)
@@ -240,6 +266,19 @@ func taxable(rules catalog.TaxRules, treatment string) bool {
 	case catalog.TaxModelSalesTax:
 		return treatment == "taxable"
 	default:
+		// "reduced" is taxable, and this engine would charge it the STANDARD
+		// rate, because SaleInput carries one rate rather than a rate per
+		// treatment.
+		//
+		// That is wrong, and it is currently unreachable rather than fixed.
+		// Only Bangladesh lists the treatment, its rule is seeded unverified,
+		// and registry.New(pool, requireVerified) refuses an unverified rule in
+		// production -- so no Bangladeshi sale can be priced there at all.
+		//
+		// Whoever ships Bangladesh must give the rate resolution a treatment,
+		// not just a country and a date. Charging a reduced-rate line at the
+		// standard rate overcharges the customer and overstates the return, and
+		// it would do so silently.
 		return treatment == "standard" || treatment == "reduced"
 	}
 }

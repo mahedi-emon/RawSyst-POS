@@ -68,3 +68,4 @@ pos/src-tauri/gen/schemas/
 # build, and was tracked by accident — it turned up as a change in every
 # commit that happened to run one.
 *.tsbuildinfo
+zatca-docs/
