@@ -33,6 +33,23 @@
   gap: var(--space-5);
   max-inline-size: 1600px;
   margin-inline: auto;
+
+  /* Fill the shell before the max-width has anything to cap.
+   *
+   * The shell is a flex COLUMN, and `margin-inline: auto` on a flex item
+   * makes it shrink to its content and sit in the middle -- so this measured
+   * 823px inside a 1440px window, and the same 823px inside a 1920px one.
+   * The 1600px ceiling never came into play at all.
+   *
+   * The comment above says an owner with a 27-inch monitor bought it to see
+   * more at once. The layout was quietly doing the opposite, and only on the
+   * wide screens the note was written for -- it fills correctly at 768 and
+   * 390, which is why it read as fine on every narrow check.
+   *
+   * inline-size: 100% gives the item a definite basis to fill from. The auto
+   * margins still centre it once the window is wider than 1600px, which is
+   * the case they were written for. */
+  inline-size: 100%;
 }
 
 .dash__head {
@@ -287,6 +304,13 @@
   gap: var(--space-4);
   max-inline-size: 1600px;
   margin-inline: auto;
+
+  /* The same flex-item shrink .dash carries, and for the same reason: the
+   * shell is a flex column, so auto inline margins size this to its content
+   * rather than to the window. Measured inside a 1440px window it came out
+   * at 680px on Buying, 635px on Customers and 646px on Settlement -- each
+   * screen a different width, decided by whatever happened to be in it. */
+  inline-size: 100%;
 }
 
 .detail__head {
