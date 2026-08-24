@@ -1000,3 +1000,154 @@ body {
   border-inline-start: 3px solid var(--danger);
   padding-inline-start: var(--space-3);
 }
+
+/* ---------------------------------------------------------------------------
+ * ZATCA onboarding
+ *
+ * A numbered list that reads as a checklist, because that is what it is: three
+ * steps done once per till, in an order that matters. The numbers become ticks
+ * as each completes, so a returning owner sees where they stopped without
+ * reading a word.
+ *
+ * No new colours and no new type scale — everything is a token already in this
+ * file. The only thing this section really adds is the step rail.
+ * ------------------------------------------------------------------------- */
+
+.zatca { display: grid; gap: var(--space-5); }
+
+.zatca__head { display: grid; gap: var(--space-2); }
+
+/* The environment picker: a segmented control. Three options, all visible,
+ * because choosing the wrong one is the most expensive mistake on this screen
+ * and a dropdown would hide two of them behind a tap. */
+.zatca__envs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* Scrolls rather than wrapping on a narrow phone: a wrapped segmented
+   * control stops reading as one control. */
+  overflow-x: auto;
+}
+
+.zatca__env {
+  flex: 1 1 auto;
+  min-height: var(--tap-mobile);
+  padding: 0 var(--space-4);
+  white-space: nowrap;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.zatca__env--on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+.zatca__status { display: grid; gap: var(--space-3); }
+.zatca__statusHead { display: flex; align-items: center; gap: var(--space-3); }
+
+/* What to do next, in the server's words. Larger than body text because on
+ * most visits it is the only line anybody reads. */
+.zatca__next { margin: 0; font-size: 1.0625rem; line-height: 1.5; }
+
+.zatca__steps {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zatca__step {
+  display: grid;
+  /* The rail, then the content. A fixed first column keeps the numbers in a
+   * line down the page whatever length the titles are. */
+  grid-template-columns: auto 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.zatca__stepMark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.zatca__step--done .zatca__stepMark {
+  background: var(--success-subtle);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.zatca__stepBody { display: grid; gap: var(--space-2); min-width: 0; }
+.zatca__stepTitle { margin: 0; font-size: 1rem; font-weight: 600; }
+
+.zatca__warn { margin: 0; color: var(--warning); }
+
+.zatca__form { display: grid; gap: var(--space-4); margin-top: var(--space-2); }
+
+/* A certificate request is long, wraps arbitrarily and is read for its shape
+ * rather than its words, so it gets the mono face and no spellcheck squiggles.
+ * break-all rather than break-word: base64 has no word boundaries to respect. */
+.zatca__csr {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  resize: vertical;
+  word-break: break-all;
+}
+
+.zatca__detail {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+
+.zatca__detailSummary {
+  min-height: var(--tap-mobile);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.zatca__csid { font-family: var(--font-mono); font-size: 0.8125rem; }
+
+/* ZATCA's own wording, unaltered. Given room to be read rather than squeezed
+ * into a table cell: an onboarding refusal names the registration field that
+ * was wrong, and that sentence is the whole reason somebody opened this. */
+.zatca__error {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-subtle);
+  border-inline-start: 3px solid var(--danger);
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.zatca__readonly { margin: 0; }
+
+/* On a phone the rail costs width the content needs, so the numbers move
+ * inline with their titles and the body reclaims the full measure. */
+@media (max-width: 30rem) {
+  .zatca__step { grid-template-columns: 1fr; gap: var(--space-2); }
+  .zatca__stepMark { width: 1.75rem; height: 1.75rem; font-size: 0.875rem; }
+}

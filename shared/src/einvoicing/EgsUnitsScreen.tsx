@@ -18,6 +18,7 @@ import { listDeviceStores, type DeviceStore } from '../api/devices';
 import { listEgsUnits, type EgsUnit } from '../api/egs';
 import { architectureName, describeUnit, missingCsrFields } from './egs';
 import { EgsUnitForm } from './EgsUnitForm';
+import { ZatcaOnboarding } from './ZatcaOnboarding';
 import { useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 
@@ -32,6 +33,7 @@ export function EgsUnitsScreen({ companyId }: { companyId: string }) {
 
   const [editing, setEditing] = useState<EgsUnit | null>(null);
   const [creating, setCreating] = useState(false);
+  const [connecting, setConnecting] = useState<EgsUnit | null>(null);
 
   const mayManage = can('einvoicing.manage');
 
@@ -66,6 +68,22 @@ export function EgsUnitsScreen({ companyId }: { companyId: string }) {
 
       <RemoteBody remote={remote} onRetry={reload}>
         {(loaded: Loaded) => {
+          if (connecting) {
+            return (
+              <div className="ds-panel">
+                <div className="ds-panel__body">
+                  <button
+                    className="ds-btn ds-btn--quiet"
+                    onClick={() => setConnecting(null)}
+                  >
+                    {t('action.back')}
+                  </button>
+                  <ZatcaOnboarding unit={connecting} />
+                </div>
+              </div>
+            );
+          }
+
           if (creating || editing) {
             const done = () => {
               setCreating(false);
@@ -116,6 +134,7 @@ export function EgsUnitsScreen({ companyId }: { companyId: string }) {
                           unit={u}
                           mayManage={mayManage}
                           onEdit={() => setEditing(u)}
+                          onConnect={() => setConnecting(u)}
                         />
                       ))}
                     </tbody>
@@ -134,10 +153,12 @@ function UnitRow({
   unit,
   mayManage,
   onEdit,
+  onConnect,
 }: {
   unit: EgsUnit;
   mayManage: boolean;
   onEdit: () => void;
+  onConnect: () => void;
 }) {
   const t = useT();
   const state = describeUnit(unit);
@@ -166,6 +187,9 @@ function UnitRow({
       {mayManage && (
         <td>
           <div className="supplier__actions">
+            <button className="ds-btn ds-btn--quiet" onClick={onConnect}>
+              {t('zatca.connectAction')}
+            </button>
             <button className="ds-btn ds-btn--quiet" onClick={onEdit}>
               {t('action.edit')}
             </button>

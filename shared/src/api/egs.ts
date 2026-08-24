@@ -115,3 +115,101 @@ export function amendEgsUnit(
     body,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Onboarding with ZATCA.
+//
+// The private key is NOT here, and that is the design rather than an omission.
+// docs/system-design/01-invoice-zatca-engine.md §7 records it as a locked rule:
+// the key pair is generated on the terminal, kept in the OS keystore, and never
+// leaves the device. What travels is the certificate REQUEST, which carries the
+// public half and the registration details, and never the private one.
+//
+// Nothing here ever receives the CSID secret. The server has no field for it on
+// any response, so the browser cannot be given one to mislay.
+
+/** Which ZATCA stack a credential belongs to. Sandbox and production issue
+ *  credentials that do not work against each other, so this is never guessed. */
+export type ZatcaEnvironment = 'sandbox' | 'simulation' | 'production';
+
+export type CredentialStatus =
+  | 'requested'
+  | 'issued'
+  | 'failed'
+  | 'revoked'
+  | 'superseded';
+
+/** One credential, as a screen shows it. No secret, by construction. */
+export interface CredentialSummary {
+  status: CredentialStatus;
+  csid: string;
+  issued_at: string | null;
+  expires_at: string | null;
+  /** What ZATCA said when it refused, verbatim. Onboarding refusals name the
+   *  registration field that was wrong, and a paraphrase would discard it. */
+  last_error: string;
+  attempts: number;
+  key_version: number;
+}
+
+export interface OnboardingStatus {
+  egs_unit_id: string;
+  environment: ZatcaEnvironment;
+  compliance: CredentialSummary | null;
+  production: CredentialSummary | null;
+  /** True only for a usable PRODUCTION credential. A compliance CSID means
+   *  onboarding has started, not that invoices can be reported. */
+  connected: boolean;
+  needs_renewal: boolean;
+  /** What to do next, in words, from the server so both clients agree. */
+  next_action: string;
+}
+
+export interface CsidIssued {
+  status: string;
+  csid: string;
+  expires_at: string | null;
+  request_id: number;
+}
+
+export function readOnboardingStatus(
+  client: Client,
+  unitId: string,
+  environment: ZatcaEnvironment,
+): Promise<OnboardingStatus> {
+  return client.send<OnboardingStatus>(
+    'GET',
+    `/api/v1/einvoicing/units/${unitId}/onboarding?environment=${environment}`,
+  );
+}
+
+/** Step 1: the certificate request and the one-time password from the
+ *  taxpayer's own Fatoora portal, in exchange for a compliance CSID.
+ *
+ *  The OTP goes in the BODY, never the query string: query strings reach
+ *  access logs, proxy logs and browser history. */
+export function requestComplianceCsid(
+  client: Client,
+  unitId: string,
+  body: { environment: ZatcaEnvironment; csr: string; otp: string },
+): Promise<CsidIssued> {
+  return client.send<CsidIssued>(
+    'POST',
+    `/api/v1/einvoicing/units/${unitId}/onboarding/compliance`,
+    body,
+  );
+}
+
+/** Step 2: promote to production. No OTP -- the compliance credential is
+ *  itself the proof that one was presented. */
+export function requestProductionCsid(
+  client: Client,
+  unitId: string,
+  body: { environment: ZatcaEnvironment; csr: string },
+): Promise<CsidIssued> {
+  return client.send<CsidIssued>(
+    'POST',
+    `/api/v1/einvoicing/units/${unitId}/onboarding/production`,
+    body,
+  );
+}

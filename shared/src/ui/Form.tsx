@@ -72,6 +72,8 @@ export function TextInput({
   inputMode,
   type = 'text',
   autoFocus,
+  autoComplete,
+  maxLength,
 }: {
   id: string;
   value: string;
@@ -81,6 +83,14 @@ export function TextInput({
   inputMode?: 'text' | 'decimal' | 'numeric' | 'email' | 'tel';
   type?: string;
   autoFocus?: boolean;
+  /** Passed through so a one-time code can be offered by the phone keyboard:
+   *  autoComplete="one-time-code" is what makes iOS and Android suggest the
+   *  code from the message rather than making somebody memorise six digits and
+   *  switch apps. */
+  autoComplete?: string;
+  /** Stops a field taking more than it can mean -- an OTP is six digits, and
+   *  a seventh is a typo the browser can refuse before the server has to. */
+  maxLength?: number;
 }) {
   return (
     <input
@@ -91,6 +101,8 @@ export function TextInput({
       value={value}
       placeholder={placeholder}
       autoFocus={autoFocus}
+      autoComplete={autoComplete}
+      maxLength={maxLength}
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? `${id}-error` : undefined}
       onChange={(e) => onChange(e.target.value)}
