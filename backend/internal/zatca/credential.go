@@ -335,6 +335,55 @@ func (s *CredentialStore) Find(
 	return c, nil
 }
 
+// Latest returns the most recent attempt of a kind, whatever became of it.
+//
+// Distinct from Find, and the distinction is the point. Find answers "what can
+// this till authenticate with", so it considers only live rows -- a submitter
+// must never pick up a failed credential. Latest answers "what happened last",
+// which is what a settings screen shows, and a FAILED attempt is precisely the
+// thing a shop needs to see: it carries the reason ZATCA gave.
+//
+// Ordered newest first because a retry after a failure creates a new row --
+// the partial unique index only reserves the slot for live ones.
+func (s *CredentialStore) Latest(
+	ctx context.Context, unitID uuid.UUID, env Environment, kind CredentialKind,
+) (Credential, error) {
+	var c Credential
+	var keyVersion *int
+	var lastError *string
+
+	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT id, egs_unit_id, environment, kind, status,
+			       coalesce(csid,''), certificate,
+			       requested_at, issued_at, expires_at,
+			       last_error, attempts, last_attempt_at, secret_key_version
+			  FROM zatca_credential
+			 WHERE egs_unit_id = $1 AND environment = $2 AND kind = $3
+			 ORDER BY requested_at DESC
+			 LIMIT 1`,
+			unitID, string(env), string(kind)).
+			Scan(&c.ID, &c.EGSUnitID, &c.Environment, &c.Kind, &c.Status,
+				&c.CSID, &c.Certificate, &c.RequestedAt, &c.IssuedAt, &c.ExpiresAt,
+				&lastError, &c.Attempts, &c.LastAttemptAt, &keyVersion)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Credential{}, errs.New(errs.CodeNotFound,
+			"This till has not been onboarded for e-invoicing in that environment yet.")
+	}
+	if err != nil {
+		return Credential{}, db.Translate(err, "That credential could not be read.")
+	}
+
+	if lastError != nil {
+		c.LastError = *lastError
+	}
+	if keyVersion != nil {
+		c.SecretKeyVersion = *keyVersion
+	}
+	return c, nil
+}
+
 // List returns every credential for a unit, newest first, without secrets.
 func (s *CredentialStore) List(ctx context.Context, unitID uuid.UUID) ([]Credential, error) {
 	var out []Credential

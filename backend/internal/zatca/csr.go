@@ -456,6 +456,7 @@ const (
 	derOctetString     = 0x04
 	derInteger         = 0x02
 	derUTCTime         = 0x17
+	derGeneralizedTime = 0x18
 
 	derContextConstructed = 0xa0
 )

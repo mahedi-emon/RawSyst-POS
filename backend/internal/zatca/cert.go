@@ -79,17 +79,75 @@ func ParseCertificate(der []byte, signer crypto.Signer) (Certificate, error) {
 	}
 
 	// issuer Name
-	_, issuerBody, _, err := derParse(rest)
+	_, issuerBody, rest, err := derParse(rest)
 	if err != nil {
 		return Certificate{}, bad
+	}
+
+	// validity ::= SEQUENCE { notBefore Time, notAfter Time }
+	//
+	// Read rather than skipped, because a certificate that has quietly expired
+	// is the difference between "invoices are being reported" and "invoices
+	// have been silently failing for a fortnight". Renewal needs a date, and
+	// the only authoritative one is the certificate's own.
+	var notAfter time.Time
+	if _, validity, _, err := derParse(rest); err == nil {
+		// notBefore first, then notAfter.
+		if _, _, afterNotBefore, err := derParse(validity); err == nil {
+			if tag, body, _, err := derParse(afterNotBefore); err == nil {
+				notAfter = parseCertTime(tag, body)
+			}
+		}
 	}
 
 	return Certificate{
 		DER:          der,
 		IssuerName:   renderName(issuerBody),
 		SerialNumber: serial.String(),
+		NotAfter:     notAfter,
 		Signer:       signer,
 	}, nil
+}
+
+// parseCertTime reads an X.509 Time, which is one of two encodings.
+//
+// UTCTime carries a TWO-digit year, and RFC 5280 pins the pivot: values 50-99
+// are 19xx and 00-49 are 20xx. Getting that wrong would read a 2049 expiry as
+// 1949 and treat a valid certificate as long dead.
+func parseCertTime(tag byte, body []byte) time.Time {
+	switch tag {
+	case derUTCTime:
+		t, err := time.Parse("060102150405Z0700", string(body))
+		if err != nil {
+			if t, err = time.Parse("060102150405Z", string(body)); err != nil {
+				return time.Time{}
+			}
+		}
+		t = t.UTC()
+
+		// Go's "06" layout pivots at 69: it reads 69-99 as 19xx and 00-68 as
+		// 20xx. RFC 5280 §4.1.2.5.1 pivots at 50 -- "values 50-99 are 19xx,
+		// 00-49 are 20xx" -- so the years 50 to 68 disagree, and Go reads them
+		// a century late. Corrected here rather than tolerated: a certificate
+		// whose expiry is read as 2068 instead of 1968 is one that never looks
+		// like it needs renewing.
+		if len(body) >= 2 {
+			if yy := int(body[0]-'0')*10 + int(body[1]-'0'); yy >= 50 && t.Year() >= 2050 {
+				t = t.AddDate(-100, 0, 0)
+			}
+		}
+		return t
+	case derGeneralizedTime:
+		t, err := time.Parse("20060102150405Z0700", string(body))
+		if err != nil {
+			if t, err = time.Parse("20060102150405Z", string(body)); err != nil {
+				return time.Time{}
+			}
+		}
+		return t.UTC()
+	default:
+		return time.Time{}
+	}
 }
 
 // renderName turns an RDNSequence into the one-line form X509IssuerName wants.

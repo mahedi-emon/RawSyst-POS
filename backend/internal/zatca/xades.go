@@ -90,6 +90,11 @@ type Certificate struct {
 	IssuerName   string
 	SerialNumber string
 
+	// NotAfter is the certificate's own expiry, read from its validity field.
+	// Zero when it could not be parsed, which is treated as "unknown" rather
+	// than "expired" -- guessing would stop a working till.
+	NotAfter time.Time
+
 	Signer crypto.Signer
 }
 

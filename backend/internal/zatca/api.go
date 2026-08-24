@@ -360,12 +360,32 @@ func (c *Client) RenewProductionCSID(
 
 // readCSID parses a certificate response.
 func readCSID(raw []byte, status int) (CSIDResponse, int, error) {
+	// A non-2xx is a REFUSAL and must be an error.
+	//
+	// This used to fall through: the body parsed into an empty response, the
+	// empty-token check was guarded on status == 200, and a 400 returned a nil
+	// error. Onboarding then carried on as though it had a certificate, and the
+	// only thing that stopped it was a later nil check with no idea what ZATCA
+	// had actually objected to. The reason a shop needs -- which of the nine
+	// CSR fields is wrong -- was in the body that got dropped.
+	//
+	// ZATCA's wording is carried verbatim for the same reason: onboarding
+	// refusals are field-level, and a paraphrase discards the field name.
+	if status < 200 || status > 299 {
+		detail := strings.TrimSpace(string(raw))
+		if detail == "" {
+			detail = "no reason was given"
+		}
+		return CSIDResponse{}, status, errs.Newf(errs.CodeComplianceBlocked,
+			"ZATCA refused this onboarding request (HTTP %d): %s", status, detail)
+	}
+
 	var out CSIDResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return CSIDResponse{}, status, errs.New(errs.CodeUnavailable,
 			"ZATCA returned a certificate response this installation could not read.")
 	}
-	if out.BinarySecurityToken == "" && status == http.StatusOK {
+	if out.BinarySecurityToken == "" {
 		return out, status, errs.New(errs.CodeUnavailable,
 			"ZATCA accepted the request but returned no certificate.")
 	}
