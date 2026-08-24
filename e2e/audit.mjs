@@ -201,10 +201,26 @@ async function walk(page, width, language, problems) {
   {
     for (const section of sections) {
       const link = page.locator('.app__navlink', { hasText: section }).first();
-      if ((await link.count()) === 0) continue;
+      if ((await link.count()) === 0) {
+        problems.push({
+          what: 'a navigation entry vanished mid-walk',
+          where: `${language}/${width.name}/${section}`,
+        });
+        continue;
+      }
       try {
         await link.click({ timeout: 5000 });
-      } catch {
+      } catch (err) {
+        // Reported rather than skipped. A section that cannot be opened is the
+        // most serious thing this script can find, and an earlier version
+        // swallowed it -- the run came back one check short of the expected
+        // count and said "no problems found", which is how a broken screen
+        // hides inside a green report.
+        problems.push({
+          what: 'a section could not be opened',
+          where: `${language}/${width.name}/${section}`,
+          detail: String(err.message || err).slice(0, 120),
+        });
         continue;
       }
       await page.waitForTimeout(900);
