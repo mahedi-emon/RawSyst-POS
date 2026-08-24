@@ -939,6 +939,20 @@ export const en = {
   // --- Counts and release note ---------------------------------------
   'common.nItems': '{n} items',
   'dash.notInReleaseSuffix': 'are not part of this release. They are absent rather than empty — nothing here is showing you a zero for them.',
+
+  // --- National Address (BR-KSA-09) ----------------------------------
+  'setup.street': 'Street',
+  'setup.streetHint': 'The street name from your National Address (BR-KSA-09).',
+  'setup.buildingNumber': 'Building number',
+  'setup.buildingNumberHint': 'Exactly 4 digits, e.g. 2322 — required on every invoice (BR-KSA-37).',
+  'setup.district': 'District',
+  'setup.districtHint': 'Neighbourhood from your National Address (BR-KSA-09).',
+  'setup.city': 'City',
+  'setup.cityHint': 'The city on your National Address (BR-KSA-09).',
+  'setup.postalCode': 'Postal code',
+  'setup.postalCodeHint': 'Exactly 5 digits, e.g. 23333 — required on every invoice (BR-KSA-66).',
+  'setup.additionalNumber': 'Additional number',
+  'setup.additionalNumberHint': '4 digits, from your National Address. Optional.',
 } as const;
 
 /** Every string the interface can show. */
@@ -1842,6 +1856,20 @@ export const ar: Record<Key, string> = {
   // --- Counts and release note ---------------------------------------
   'common.nItems': '{n} صنف',
   'dash.notInReleaseSuffix': 'ليست جزءًا من هذا الإصدار. هي غائبة لا فارغة — ولا يعرض لك شيء هنا صفرًا عنها.',
+
+  // --- National Address (BR-KSA-09) ----------------------------------
+  'setup.street': 'الشارع',
+  'setup.streetHint': 'اسم الشارع من العنوان الوطني (BR-KSA-09).',
+  'setup.buildingNumber': 'رقم المبنى',
+  'setup.buildingNumberHint': 'أربعة أرقام بالضبط، مثل 2322 — مطلوب في كل فاتورة (BR-KSA-37).',
+  'setup.district': 'الحي',
+  'setup.districtHint': 'اسم الحي من العنوان الوطني (BR-KSA-09).',
+  'setup.city': 'المدينة',
+  'setup.cityHint': 'المدينة كما في العنوان الوطني (BR-KSA-09).',
+  'setup.postalCode': 'الرمز البريدي',
+  'setup.postalCodeHint': 'خمسة أرقام بالضبط، مثل 23333 — مطلوب في كل فاتورة (BR-KSA-66).',
+  'setup.additionalNumber': 'الرقم الإضافي',
+  'setup.additionalNumberHint': 'أربعة أرقام من عنوانك الوطني. اختياري.',
 };
 
 /** The catalogues, by locale. */

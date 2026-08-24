@@ -136,6 +136,37 @@ export interface BusinessInfo {
 export interface StoreInfo {
   code: string;
   name: string;
+
+  // The Saudi National Address. Six fields ZATCA names in BR-KSA-09, plus one
+  // optional secondary number that no BR rule requires. Collected on the
+  // stores step because a shop that finishes setup without them can take money
+  // and CANNOT issue a compliant tax invoice for it — the worst order to
+  // discover the problem in.
+  street: string;
+  building_number: string;
+  additional_number: string;
+  district: string;
+  city: string;
+  postal_code: string;
+  country_code: string;
+}
+
+// The empty StoreInfo, used when adding a new row so every field exists on
+// the object even when the operator has not typed one — otherwise the form
+// would send `undefined` for the address fields and the server would refuse
+// them as missing.
+export function emptyStore(): StoreInfo {
+  return {
+    code: '',
+    name: '',
+    street: '',
+    building_number: '',
+    additional_number: '',
+    district: '',
+    city: '',
+    postal_code: '',
+    country_code: '',
+  };
 }
 
 /** The ZATCA obligation, as the taxpayer was told it. Both fields are optional
@@ -203,6 +234,8 @@ export function validateStores(stores: StoreInfo[]): {
   }
 
   const seen = new Map<string, number>();
+  const fourDigits = /^[0-9]{4}$/;
+  const fiveDigits = /^[0-9]{5}$/;
   stores.forEach((s, i) => {
     const row: FieldErrors = {};
     if (!s.name.trim()) row.name = 'Give this store a name.';
@@ -215,6 +248,28 @@ export function validateStores(stores: StoreInfo[]): {
       row.code = `Store ${seen.get(code)! + 1} already uses ${code}. Codes identify the store in every document number.`;
     } else {
       seen.set(code, i);
+    }
+
+    // The National Address, in ZATCA's own terms. Each message says why — a
+    // shop reading "invalid postal code" learns nothing they did not know.
+    if (!s.street.trim()) {
+      row.street = 'Street name, as it appears on your National Address.';
+    }
+    if (!s.district.trim()) {
+      row.district = 'District, as it appears on your National Address.';
+    }
+    if (!s.city.trim()) {
+      row.city = 'City, as it appears on your National Address.';
+    }
+    if (!fourDigits.test(s.building_number.trim())) {
+      row.building_number = 'The building number is exactly 4 digits, for example 2322.';
+    }
+    if (!fiveDigits.test(s.postal_code.trim())) {
+      row.postal_code = 'The postal code is exactly 5 digits, for example 23333.';
+    }
+    // Optional, but a wrong value is worse than an empty one.
+    if (s.additional_number.trim() && !fourDigits.test(s.additional_number.trim())) {
+      row.additional_number = 'The additional number is 4 digits, or leave it empty.';
     }
 
     if (Object.keys(row).length > 0) rows[i] = row;

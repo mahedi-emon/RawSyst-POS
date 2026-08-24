@@ -53,6 +53,7 @@ import {
   type BusinessInfo,
   type FieldErrors,
   type StoreInfo,
+  emptyStore,
   type TaxInfo,
 } from './onboarding';
 
@@ -467,7 +468,7 @@ function StoresStep({
   const t = useT();
   const saved = answersFor(progress, 'stores') as { stores?: StoreInfo[] };
   const [stores, setStores] = useState<StoreInfo[]>(
-    saved.stores?.length ? saved.stores : [{ code: '', name: '' }],
+    saved.stores?.length ? saved.stores : [emptyStore()],
   );
   const [rows, setRows] = useState<Record<number, FieldErrors>>({});
   const [formError, setFormError] = useState<string | undefined>();
@@ -492,6 +493,49 @@ function StoresStep({
               onChange={(x) => edit(i, 'code', x.toUpperCase())} error={rows[i]?.code}
               placeholder="RYD" />
           </Field>
+
+          <div className="setupw__pair">
+            <Field label={t('setup.street')} htmlFor={`store-street-${i}`} required error={rows[i]?.street}
+              hint={t('setup.streetHint')}>
+              <TextInput id={`store-street-${i}`} value={s.street}
+                onChange={(x) => edit(i, 'street', x)} error={rows[i]?.street}
+                placeholder="Prince Sultan Road" />
+            </Field>
+            <Field label={t('setup.buildingNumber')} htmlFor={`store-bn-${i}`} required error={rows[i]?.building_number}
+              hint={t('setup.buildingNumberHint')}>
+              <TextInput id={`store-bn-${i}`} value={s.building_number} inputMode="numeric"
+                onChange={(x) => edit(i, 'building_number', x)} error={rows[i]?.building_number}
+                placeholder="2322" />
+            </Field>
+          </div>
+          <div className="setupw__pair">
+            <Field label={t('setup.district')} htmlFor={`store-district-${i}`} required error={rows[i]?.district}
+              hint={t('setup.districtHint')}>
+              <TextInput id={`store-district-${i}`} value={s.district}
+                onChange={(x) => edit(i, 'district', x)} error={rows[i]?.district}
+                placeholder="Al-Murabba" />
+            </Field>
+            <Field label={t('setup.city')} htmlFor={`store-city-${i}`} required error={rows[i]?.city}
+              hint={t('setup.cityHint')}>
+              <TextInput id={`store-city-${i}`} value={s.city}
+                onChange={(x) => edit(i, 'city', x)} error={rows[i]?.city}
+                placeholder="Riyadh" />
+            </Field>
+          </div>
+          <div className="setupw__pair">
+            <Field label={t('setup.postalCode')} htmlFor={`store-zip-${i}`} required error={rows[i]?.postal_code}
+              hint={t('setup.postalCodeHint')}>
+              <TextInput id={`store-zip-${i}`} value={s.postal_code} inputMode="numeric"
+                onChange={(x) => edit(i, 'postal_code', x)} error={rows[i]?.postal_code}
+                placeholder="23333" />
+            </Field>
+            <Field label={t('setup.additionalNumber')} htmlFor={`store-addl-${i}`} error={rows[i]?.additional_number}
+              hint={t('setup.additionalNumberHint')}>
+              <TextInput id={`store-addl-${i}`} value={s.additional_number} inputMode="numeric"
+                onChange={(x) => edit(i, 'additional_number', x)} error={rows[i]?.additional_number}
+                placeholder="2223" />
+            </Field>
+          </div>
           {stores.length > 1 && (
             <button className="ds-btn ds-btn--quiet setupw__drop"
               onClick={() => setStores((c) => c.filter((_, j) => j !== i))}>
@@ -502,7 +546,7 @@ function StoresStep({
       ))}
 
       <button className="ds-btn ds-btn--secondary"
-        onClick={() => setStores((c) => [...c, { code: '', name: '' }])}>
+        onClick={() => setStores((c) => [...c, emptyStore()])}>
         {t('setup.addAnotherStore')}
       </button>
 

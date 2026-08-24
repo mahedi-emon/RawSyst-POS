@@ -11,6 +11,7 @@ import {
   stepMeta,
   stepNumber,
   taxContextFor,
+  emptyStore,
   validateBusiness,
   validateStores,
   validateTax,
@@ -150,6 +151,18 @@ describe('business details', () => {
   });
 });
 
+// A National-Address-complete fixture. Tests that mean to exercise the code
+// check compose from this so the address check is not the one that fires.
+const aStore = {
+  ...emptyStore(),
+  street: 'Prince Sultan Road',
+  building_number: '2322',
+  district: 'Al-Murabba',
+  city: 'Riyadh',
+  postal_code: '23333',
+  country_code: 'SA',
+};
+
 describe('stores', () => {
   it('requires at least one, because every sale belongs to a store', () => {
     const found = validateStores([]);
@@ -157,7 +170,7 @@ describe('stores', () => {
   });
 
   it('requires a name and a code on each', () => {
-    const found = validateStores([{ code: '', name: '' }]);
+    const found = validateStores([{ ...emptyStore() }]);
     expect(found.rows[0]?.name).toBeTruthy();
     expect(found.rows[0]?.code).toMatch(/invoice numbers/);
   });
@@ -166,8 +179,8 @@ describe('stores', () => {
     // Codes identify the store in every document number, so a duplicate would
     // make two branches' invoices indistinguishable.
     const found = validateStores([
-      { code: 'RYD', name: 'Olaya' },
-      { code: 'ryd', name: 'Malaz' },
+      { ...aStore, code: 'RYD', name: 'Olaya' },
+      { ...aStore, code: 'ryd', name: 'Malaz' },
     ]);
     expect(found.rows[1]?.code).toMatch(/Store 1 already uses RYD/);
     expect(found.rows[0]).toBeUndefined();
@@ -175,8 +188,8 @@ describe('stores', () => {
 
   it('accepts distinct stores', () => {
     const found = validateStores([
-      { code: 'RYD', name: 'Olaya' },
-      { code: 'JED', name: 'Jeddah' },
+      { ...aStore, code: 'RYD', name: 'Olaya' },
+      { ...aStore, code: 'JED', name: 'Jeddah' },
     ]);
     expect(found.form).toBeUndefined();
     expect(Object.keys(found.rows)).toHaveLength(0);
