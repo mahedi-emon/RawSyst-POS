@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 )
 
 // Config is the fully resolved runtime configuration.
@@ -58,14 +60,26 @@ type DB struct {
 // Auth holds token and password settings.
 //
 // Secrets are read from the environment here, but in production they must be
-// injected from a secret manager rather than a file on disk. The ZATCA CSID
-// signing key is deliberately absent: it never reaches the server at all, and
-// lives only in the POS terminal's OS keystore.
+// injected from a secret manager rather than a file on disk. The ZATCA device
+// STAMPING key is deliberately absent: it never reaches the server at all, and
+// lives only in the POS terminal's OS keystore, which
+// docs/system-design/01-invoice-zatca-engine.md §7 records as a locked rule.
+//
+// DataEncryptionKey is a different thing and belongs here: it protects the
+// credentials the server legitimately holds -- the CSID ZATCA issues and the
+// secret that authenticates the reporting and clearance calls. §7 assigns the
+// cloud exactly that role, "onboarding credentials and the compliance-CSID
+// request flow only".
 type Auth struct {
 	JWTSecret       []byte
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 	Issuer          string
+
+	// DataEncryptionKeys are the keyring for secrets stored in the database,
+	// newest first. More than one only during a rotation: the first seals new
+	// values, the rest still open old ones.
+	DataEncryptionKeys []secrets.Key
 }
 
 // Load reads configuration from the environment, applies defaults, and
@@ -126,6 +140,61 @@ func Load() (Config, error) {
 		problems = append(problems, fmt.Sprintf(
 			"RAWSYST_JWT_SECRET must be at least %d bytes (got %d)",
 			minSecretLen, len(cfg.Auth.JWTSecret)))
+	}
+
+	// The keyring for credentials at rest, newest key first.
+	//
+	// The version is written explicitly as "<version>:<base64>" rather than
+	// implied by position, and that matters: an implicit scheme where the
+	// current key is always v1 and the previous always v2 survives exactly one
+	// rotation. On the second, a fresh "v1" would collide with the original v1
+	// and every value sealed under it would fail its tag check -- unreadable
+	// credentials with no way back, which is the worst failure this package can
+	// have.
+	//
+	// Required in staging and production and OPTIONAL in development: a
+	// developer running the stack locally has no ZATCA credentials to protect,
+	// and demanding a key to run the test suite would get a throwaway one
+	// committed within a week. Where it is absent, storing a credential fails
+	// loudly at the point of storing rather than silently writing plaintext.
+	if raw := strings.TrimSpace(os.Getenv("RAWSYST_DATA_ENCRYPTION_KEYS")); raw != "" {
+		for _, entry := range strings.Split(raw, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			version, encoded, ok := strings.Cut(entry, ":")
+			if !ok {
+				problems = append(problems,
+					"RAWSYST_DATA_ENCRYPTION_KEYS entries look like \"1:<base64>\", "+
+						"newest first")
+				continue
+			}
+			v, err := strconv.Atoi(strings.TrimSpace(version))
+			if err != nil || v < 1 || v > 255 {
+				problems = append(problems, fmt.Sprintf(
+					"RAWSYST_DATA_ENCRYPTION_KEYS: %q is not a version between 1 and 255",
+					version))
+				continue
+			}
+			key, err := secrets.ParseKey(byte(v), strings.TrimSpace(encoded))
+			if err != nil {
+				problems = append(problems, "RAWSYST_DATA_ENCRYPTION_KEYS: "+err.Error())
+				continue
+			}
+			if len(key.Material) != secrets.KeyLength {
+				problems = append(problems, fmt.Sprintf(
+					"RAWSYST_DATA_ENCRYPTION_KEYS: key v%d must decode to %d bytes (got %d)",
+					v, secrets.KeyLength, len(key.Material)))
+				continue
+			}
+			cfg.Auth.DataEncryptionKeys = append(cfg.Auth.DataEncryptionKeys, key)
+		}
+	} else if env == EnvStaging || env == EnvProduction {
+		problems = append(problems,
+			"RAWSYST_DATA_ENCRYPTION_KEYS is required outside development: it "+
+				"protects the ZATCA CSID secret at rest, and without it a "+
+				"deployment cannot store the credentials it needs to report invoices")
 	}
 
 	if cfg.DB.MinConns > cfg.DB.MaxConns {
