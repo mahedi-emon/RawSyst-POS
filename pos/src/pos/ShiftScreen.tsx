@@ -417,16 +417,27 @@ function CurrentShift({
   );
 }
 
-/** The shift so far. Deliberately does not include the expected drawer — that
- *  belongs to the X report and to the close, and putting it here would hand it
- *  to a cashier on every screen refresh. */
+/** The shift so far.
+ *
+ *  On a blind-close till the server sends no takings figures at all, and this
+ *  renders what it was sent rather than filling the gaps with zeroes. The
+ *  earlier version of this panel listed "Opening float", "Cash takings" and
+ *  "Cash moved" one under the other, under a comment saying the expected drawer
+ *  was deliberately withheld — and those three numbers added together ARE the
+ *  expected drawer. A blind close that publishes the addends is not one. */
 function Takings({ report, currency }: { report: ShiftReport; currency: string | null }) {
   const t = useT();
   const rows: Array<[string, string]> = [
     ['Opening float', report.opening_float],
-    ['Cash takings', report.cash_takings],
-    ['Card and other', report.non_cash_takings],
-    ['Cash moved', report.cash_movements],
+    ...(report.cash_takings === undefined
+      ? []
+      : ([['Cash takings', report.cash_takings]] as Array<[string, string]>)),
+    ...(report.non_cash_takings === undefined
+      ? []
+      : ([['Card and other', report.non_cash_takings]] as Array<[string, string]>)),
+    ...(report.cash_movements === undefined
+      ? []
+      : ([['Cash moved', report.cash_movements]] as Array<[string, string]>)),
     ['Refunds', report.refund_total],
   ];
 

@@ -92,11 +92,16 @@ type MatchLine struct {
 	Description string `json:"description,omitempty"`
 	Ordered     string `json:"ordered,omitempty"`
 	Received    string `json:"received,omitempty"`
-	Billed      string `json:"billed,omitempty"`
-	Variance    string `json:"variance"`
-	VariancePct string `json:"variance_pct,omitempty"`
-	Outcome     string `json:"outcome"`
-	Detail      string `json:"detail,omitempty"`
+	// PreviouslyBilled is how much of what arrived earlier invoices have
+	// already claimed. Reported separately from Received rather than netted
+	// into it, because a buyer looking at a blocked bill needs to see both
+	// facts: the goods did arrive, and they have already been invoiced.
+	PreviouslyBilled string `json:"previously_billed,omitempty"`
+	Billed           string `json:"billed,omitempty"`
+	Variance         string `json:"variance"`
+	VariancePct      string `json:"variance_pct,omitempty"`
+	Outcome          string `json:"outcome"`
+	Detail           string `json:"detail,omitempty"`
 }
 
 // RecordBill enters a supplier's invoice, matches it, and posts it if it passes.
@@ -330,6 +335,19 @@ func (s *Service) postBill(
 // Four dimensions per B5.2: quantity, price, tax and total. Each is recorded
 // whether it passes or not, because "we checked and it was fine" is itself
 // evidence an auditor asks for.
+//
+// They are deliberately orthogonal, so one disagreement is reported once rather
+// than showing up on three dimensions and looking like three problems:
+//
+//	qty    billed against RECEIVED AND NOT ALREADY BILLED, at no tolerance
+//	price  unit cost against the agreed unit cost, per line
+//	tax    measured on the bill's own net, at each side's rate
+//	total  billed net against agreed net, over the whole order
+//
+// B5.2 names discount as a fifth. Nothing in purchasing records one — not
+// purchase_order, not po_line, not bill_line — so there is no agreed figure to
+// compare a billed one against, and a dimension invented out of nothing would
+// be a false assurance rather than a control. It is left out on purpose.
 func (s *Service) runMatch(
 	ctx context.Context, tx pgx.Tx, scope Scope, billID uuid.UUID,
 	in NewBill, tolerancePct, toleranceAmount decimal.Decimal,
@@ -355,6 +373,33 @@ func (s *Service) runMatch(
 
 	breached := false
 
+	// Running totals for the fourth dimension, over the lines that actually
+	// have an order line behind them. A line the order never had is already a
+	// breach on its own account; folding its value into a total comparison
+	// would double-report it.
+	agreedTotal, billedTotal := decimal.Zero, decimal.Zero
+	matched := 0
+
+	// What THIS bill puts on each order line, totalled before the walk begins.
+	//
+	// po_outstanding reports the billed quantity from bill_line, and this
+	// bill's own lines are already written by the time the match runs — so the
+	// figure it returns includes them. Subtracting what this document claims
+	// leaves what the EARLIER documents claimed, which is the only part that
+	// should reduce what is still available to invoice.
+	thisBill := map[uuid.UUID]decimal.Decimal{}
+	for _, l := range in.Lines {
+		if l.POLineID != nil {
+			thisBill[*l.POLineID] = thisBill[*l.POLineID].Add(l.Qty)
+		}
+	}
+
+	// How much of each order line's receipts has been answered by an invoice
+	// so far. It starts at what earlier bills claimed and rises as this bill's
+	// own lines are walked, so a bill that names one order line twice cannot
+	// be paid twice over for the same delivery either.
+	consumed := map[uuid.UUID]decimal.Decimal{}
+
 	for _, line := range in.Lines {
 		if line.POLineID == nil {
 			// A line the order never had. Always a breach: it is the shape a
@@ -373,13 +418,17 @@ func (s *Service) runMatch(
 			continue
 		}
 
-		var ordered, received, unitCost decimal.Decimal
-		var description string
+		var ordered, received, billedOnPOLine, unitCost, agreedRate decimal.Decimal
+		var description, agreedTreatment string
 		if err := tx.QueryRow(ctx, `
-			SELECT qty_ordered, qty_received, unit_cost, description
-			FROM po_outstanding($1) WHERE po_line_id = $2`,
+			SELECT o.qty_ordered, o.qty_received, o.qty_billed, o.unit_cost,
+			       o.description, l.tax_treatment, l.tax_rate
+			FROM po_outstanding($1) o
+			JOIN po_line l ON l.id = o.po_line_id
+			WHERE o.po_line_id = $2`,
 			*in.POID, *line.POLineID).
-			Scan(&ordered, &received, &unitCost, &description); err != nil {
+			Scan(&ordered, &received, &billedOnPOLine, &unitCost, &description,
+				&agreedTreatment, &agreedRate); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				m := MatchLine{
 					Dimension: "qty", Description: line.Description,
@@ -397,16 +446,48 @@ func (s *Service) runMatch(
 			return nil, false, err
 		}
 
-		// Quantity: billed against RECEIVED, not against ordered. A supplier
-		// who ships 90 of 100 and bills for 100 is the case this control
-		// exists to catch, and comparing to the order would miss it entirely.
-		qtyVariance := line.Qty.Sub(received)
+		// Quantity: billed against what was RECEIVED AND IS NOT ALREADY ON AN
+		// INVOICE, not against ordered.
+		//
+		// Against received alone this control has a hole a supplier can drive a
+		// second invoice through. A hundred arrive and are billed; the same
+		// hundred are billed again under a different invoice number, so the
+		// unique key on (supplier, supplier_ref) does not fire; each bill on its
+		// own reads "billed 100 against 100 received" and passes. Nothing else
+		// in the flow compares the two documents, so the shop pays for the goods
+		// twice and the accrual is discharged twice with it.
+		//
+		// Comparing to what is still outstanding closes it, and closes the same
+		// hole in the other direction: a supplier who ships 90 of 100 and bills
+		// for 100 is still caught, because 100 against 90 outstanding is exactly
+		// the comparison that was there before when nothing had been billed yet.
+		poLineID := *line.POLineID
+		if _, walked := consumed[poLineID]; !walked {
+			earlier := billedOnPOLine.Sub(thisBill[poLineID])
+			if earlier.IsNegative() {
+				// Only reachable if a bill line were written between the insert
+				// above and this read, which the transaction prevents. Floored
+				// rather than trusted: a negative here would INVENT quantity to
+				// bill against.
+				earlier = decimal.Zero
+			}
+			consumed[poLineID] = earlier
+		}
+		alreadyBilled := consumed[poLineID]
+		outstanding := received.Sub(alreadyBilled)
+		consumed[poLineID] = alreadyBilled.Add(line.Qty)
+
+		qtyVariance := line.Qty.Sub(outstanding)
 		qtyMatch := MatchLine{
 			Dimension: "qty", Description: description,
 			Ordered: ordered.String(), Received: received.String(),
 			Billed: line.Qty.String(), Variance: qtyVariance.String(),
 		}
-		qtyMatch.Outcome, qtyMatch.Detail = judgeQty(qtyVariance, received)
+		if alreadyBilled.IsPositive() {
+			qtyMatch.PreviouslyBilled = alreadyBilled.String()
+		}
+		qtyMatch.Outcome, qtyMatch.Detail =
+			judgeQty(qtyVariance, outstanding, alreadyBilled)
 		if qtyMatch.Outcome == "breach" {
 			breached = true
 		}
@@ -416,6 +497,20 @@ func (s *Service) runMatch(
 		}
 
 		// Price: billed unit cost against the agreed one.
+		//
+		// The tolerance needs converting first. "2% or SAR 50" describes money
+		// the shop decided not to argue over, and SAR 50 compared against a
+		// UNIT price stops being a sum of money and becomes a rate: fifty
+		// riyals per unit, times however many units were bought. A thousand
+		// units at SAR 10.00 agreed, billed at SAR 59.99, is out by SAR 49.99 a
+		// unit — under the tolerance — and SAR 49,990 on the line. So the
+		// absolute figure is spread across the units it will be multiplied by.
+		// The percentage needs no such treatment, being scale-free already.
+		unitTolerance := toleranceAmount
+		if line.Qty.IsPositive() {
+			unitTolerance = toleranceAmount.Div(line.Qty)
+		}
+
 		priceVariance := line.UnitCost.Sub(unitCost)
 		priceMatch := MatchLine{
 			Dimension: "price", Description: description,
@@ -423,13 +518,98 @@ func (s *Service) runMatch(
 			Variance: priceVariance.String(),
 		}
 		priceMatch.Outcome, priceMatch.VariancePct, priceMatch.Detail =
-			judgeAmount(priceVariance, unitCost, tolerancePct, toleranceAmount,
+			judgeAmount(priceVariance, unitCost, tolerancePct, unitTolerance,
 				"The unit price is above what was agreed.")
 		if priceMatch.Outcome == "breach" {
 			breached = true
 		}
 		out = append(out, priceMatch)
 		if err := recordMatch(ctx, tx, scope, billID, nil, priceMatch); err != nil {
+			return nil, false, err
+		}
+
+		// Tax, the third dimension the design names.
+		//
+		// po_line carries the treatment AGREED with the supplier, which is not
+		// necessarily how the item is sold — imported goods are frequently
+		// zero-rated inbound and standard-rated on sale. A supplier who bills
+		// fifteen per cent on a line agreed at zero has changed neither the
+		// quantity nor the unit price, so both comparisons above pass, and the
+		// shop pays VAT it never agreed to.
+		//
+		// Measured on the bill's OWN net, at each rate. Using the agreed net
+		// instead would fold a price disagreement into this figure and report
+		// one overcharge twice, on two dimensions, as though it were two.
+		billedNet := line.Qty.Mul(line.UnitCost).Round(4)
+		taxBilled := billedNet.Mul(line.TaxRate).Round(4)
+		taxAgreed := billedNet.Mul(agreedRate).Round(4)
+
+		taxDetail := "More VAT than was agreed for this line."
+		treatment := line.TaxTreatment
+		if treatment == "" {
+			treatment = "standard"
+		}
+		if treatment != agreedTreatment {
+			// Worth naming, because the amount alone does not explain itself:
+			// an approver needs to know the supplier has re-categorised the
+			// supply, not merely arrived at a different number.
+			taxDetail = "Billed as " + treatment + " where " + agreedTreatment +
+				" was agreed."
+		}
+
+		taxMatch := MatchLine{
+			Dimension: "tax", Description: description,
+			Ordered: taxAgreed.String(), Billed: taxBilled.String(),
+			Variance: taxBilled.Sub(taxAgreed).String(),
+		}
+		taxMatch.Outcome, taxMatch.VariancePct, taxMatch.Detail =
+			judgeAmount(taxBilled.Sub(taxAgreed), taxAgreed,
+				tolerancePct, toleranceAmount, taxDetail)
+		if taxMatch.Outcome == "breach" {
+			breached = true
+		}
+		out = append(out, taxMatch)
+		if err := recordMatch(ctx, tx, scope, billID, nil, taxMatch); err != nil {
+			return nil, false, err
+		}
+
+		agreedTotal = agreedTotal.Add(line.Qty.Mul(unitCost).Round(4))
+		billedTotal = billedTotal.Add(billedNet)
+		matched++
+	}
+
+	// Total value, the fourth dimension, and not redundant once every line has
+	// been priced.
+	//
+	// The absolute tolerance is granted once PER LINE. Ten lines each forgiven
+	// most of SAR 50 forgive most of SAR 500 between them, and a supplier who
+	// knows the tolerance can spread an overcharge so that no single line ever
+	// trips it. Three lines of 100 units at SAR 10.00 agreed, billed at SAR
+	// 10.45, are each out by SAR 45 against the SAR 50 a line is allowed — and
+	// the bill is out by SAR 135 against the SAR 60 the order is allowed.
+	//
+	// Both sides use the BILLED quantities, so only price is in play here. A
+	// quantity disagreement has its own dimension above, at no tolerance at all,
+	// and putting the ordered quantity on one side of this comparison would
+	// report that same disagreement a second time as though it were a second
+	// problem. Net, not gross, for the same reason with respect to tax.
+	if matched > 0 {
+		totalVariance := billedTotal.Sub(agreedTotal)
+		totalMatch := MatchLine{
+			Dimension: "total",
+			Ordered:   agreedTotal.String(), Billed: billedTotal.String(),
+			Variance: totalVariance.String(),
+		}
+		totalMatch.Outcome, totalMatch.VariancePct, totalMatch.Detail =
+			judgeAmount(totalVariance, agreedTotal,
+				tolerancePct, toleranceAmount,
+				"The bill totals more than the goods were agreed to cost, even "+
+					"though no single line is out by enough to say so.")
+		if totalMatch.Outcome == "breach" {
+			breached = true
+		}
+		out = append(out, totalMatch)
+		if err := recordMatch(ctx, tx, scope, billID, nil, totalMatch); err != nil {
 			return nil, false, err
 		}
 	}
@@ -439,20 +619,33 @@ func (s *Service) runMatch(
 
 // judgeQty decides a quantity comparison.
 //
-// Asymmetric on purpose. Being billed for LESS than arrived is in the shop's
-// favour and needs no approval — a supplier undercharging is their problem, and
-// blocking payment over it wastes a buyer's afternoon. Being billed for more is
-// the fraud case, and any amount of it is a breach: there is no tolerance for
-// goods that never came, because a quantity is a count rather than a
+// Asymmetric on purpose. Being billed for LESS than is outstanding is in the
+// shop's favour and needs no approval — a supplier undercharging, or invoicing
+// a delivery in instalments, is not something to block a buyer's afternoon
+// over. Being billed for more is the fraud case, and any amount of it is a
+// breach: there is no tolerance for goods that never came or that somebody has
+// already been paid for, because a quantity is a count rather than a
 // measurement and cannot be out by rounding.
-func judgeQty(variance, received decimal.Decimal) (outcome, detail string) {
+func judgeQty(
+	variance, outstanding, alreadyBilled decimal.Decimal,
+) (outcome, detail string) {
 	if variance.IsZero() {
 		return "pass", ""
 	}
 	if variance.IsNegative() {
-		return "pass", "Billed for less than arrived, which is in your favour."
+		return "pass", "Billed for less than is outstanding, which is in your favour."
 	}
-	if received.IsZero() {
+	if alreadyBilled.IsPositive() {
+		// Named apart from "more than has been received", because the two have
+		// different answers. Goods that never came are a delivery dispute with
+		// the supplier; goods already invoiced are a duplicate to be credited,
+		// and telling a buyer the wrong one sends them to the wrong
+		// conversation.
+		return "breach", "Earlier invoices have already billed " +
+			alreadyBilled.String() + " of what was received on this line, so " +
+			"only " + outstanding.String() + " is still outstanding."
+	}
+	if !outstanding.IsPositive() {
 		return "breach", "Billed for goods that have not been received at all."
 	}
 	return "breach", "Billed for more than has been received."
@@ -481,8 +674,7 @@ func judgeAmount(
 		if byPercent.GreaterThan(allowed) {
 			allowed = byPercent
 		}
-		pct = variance.Div(baseline).Mul(decimal.NewFromInt(100)).
-			Round(2).String()
+		pct = percentOf(variance, baseline)
 	}
 
 	if variance.LessThanOrEqual(allowed) {
@@ -492,6 +684,31 @@ func judgeAmount(
 	return "breach", pct, breachDetail
 }
 
+// pctLimit is the largest percentage three_way_match.variance_pct can hold:
+// numeric(9,4) is nine digits with four after the point, so 99999.9999.
+var pctLimit = decimal.RequireFromString("100000")
+
+// percentOf is the variance as a percentage of the baseline, or nothing when
+// that percentage will not fit the column it is stored in.
+//
+// A tiny baseline makes the percentage enormous — a line agreed at one hallala
+// and billed at ten thousand riyals is ninety-nine million per cent — and
+// writing that into numeric(9,4) is a `numeric field overflow`, which aborts
+// the whole transaction. The bill is then not recorded at all and the buyer
+// gets a server error however many times they retry, so the very worst
+// overcharge is the one nobody can enter, let alone block.
+//
+// Returning nothing rather than a clamped figure, because a clamped one would
+// be a wrong number presented as a right one. The absolute variance is stored
+// at full precision beside it and says everything the percentage would.
+func percentOf(variance, baseline decimal.Decimal) string {
+	pct := variance.Div(baseline).Mul(decimal.NewFromInt(100)).Round(2)
+	if pct.Abs().GreaterThanOrEqual(pctLimit) {
+		return ""
+	}
+	return pct.String()
+}
+
 func recordMatch(
 	ctx context.Context, tx pgx.Tx, scope Scope,
 	billID uuid.UUID, lineID *uuid.UUID, m MatchLine,
@@ -499,31 +716,43 @@ func recordMatch(
 	_, err := tx.Exec(ctx, `
 		INSERT INTO three_way_match
 		  (tenant_id, bill_id, bill_line_id, dimension,
-		   ordered, received, billed, variance, variance_pct, outcome, detail)
+		   ordered, received, previously_billed, billed, variance,
+		   variance_pct, outcome, detail)
 		VALUES ($1,$2,$3,$4,
 		        nullif($5,'')::numeric, nullif($6,'')::numeric,
-		        nullif($7,'')::numeric, $8::numeric,
-		        nullif($9,'')::numeric, $10, $11)`,
+		        nullif($7,'')::numeric, nullif($8,'')::numeric, $9::numeric,
+		        nullif($10,'')::numeric, $11, $12)`,
 		scope.TenantID, billID, lineID, m.Dimension,
-		m.Ordered, m.Received, m.Billed, m.Variance, m.VariancePct,
-		m.Outcome, nullText(m.Detail))
+		m.Ordered, m.Received, m.PreviouslyBilled, m.Billed, m.Variance,
+		m.VariancePct, m.Outcome, nullText(m.Detail))
 	return err
 }
 
 // accruedFor is how much of a bill answers goods already received and accrued.
 //
 // Per line, by quantity: the receipt's own unit cost — which includes its share
-// of landed cost — times whichever is smaller, what arrived or what is being
-// billed. Using the bill's price instead would let a supplier's overcharge
+// of landed cost — times whichever is smaller, what is still accrued or what is
+// being billed. Using the bill's price instead would let a supplier's overcharge
 // discharge more accrual than was ever raised, and the GRNI balance would drift
 // away from the goods it represents.
+//
+// "Still accrued" and "received" are the same figure only for the first invoice
+// against a delivery. On the second they are not, and taking the received
+// quantity would discharge the accrual a second time for goods it was only ever
+// raised on once — driving Goods Received Not Invoiced through zero and into a
+// debit, which is a liability account reporting that the shop is owed money by
+// its own stockroom. The match now blocks the duplicate that produces this, so
+// this figure should never be asked for it; it is derived correctly anyway,
+// because an approver may let a blocked bill through and the ledger must still
+// be right when they do.
 func (s *Service) accruedFor(
 	ctx context.Context, tx pgx.Tx, billID uuid.UUID,
 ) (decimal.Decimal, error) {
 	var accrued decimal.Decimal
 	err := tx.QueryRow(ctx, `
 		SELECT coalesce(sum(
-			least(bl.qty_billed, r.received) * r.unit_cost
+			least(bl.qty_billed, greatest(r.received - coalesce(e.billed, 0), 0))
+			* r.unit_cost
 		), 0)
 		FROM bill_line bl
 		JOIN (
@@ -538,6 +767,17 @@ func (s *Service) accruedFor(
 			FROM grn_line gl
 			GROUP BY gl.po_line_id
 		) r ON r.po_line_id = bl.po_line_id
+		-- What EARLIER bills already answered on this order line. This bill's
+		-- own lines are excluded by id, so a bill is never measured against
+		-- itself.
+		LEFT JOIN (
+			SELECT bl2.po_line_id, sum(bl2.qty_billed) AS billed
+			FROM bill_line bl2
+			JOIN purchase_bill pb ON pb.id = bl2.bill_id
+			WHERE bl2.bill_id <> $1 AND bl2.po_line_id IS NOT NULL
+			  AND pb.status <> 'cancelled'
+			GROUP BY bl2.po_line_id
+		) e ON e.po_line_id = bl.po_line_id
 		WHERE bl.bill_id = $1 AND bl.po_line_id IS NOT NULL`,
 		billID).Scan(&accrued)
 	return accrued.Round(4), err

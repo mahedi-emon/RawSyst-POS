@@ -435,20 +435,47 @@ func (s *Service) postReturn(
 	reversalEntry.RuleKey = "return.reversal"
 	reversalEntry.Memo = "Return: " + ret.Reason
 
-	reversal, err = accounting.PostByRule(ctx, tx, reversalEntry, term.Country,
-		accounting.Transaction{
-			Amounts: accounting.Amounts{
-				"subtotal_net":    computed.SubtotalNet,
-				"tax_total":       computed.TaxTotal,
-				"total_inclusive": computed.TotalInclusive,
-			},
-			Groups: map[string]accounting.Group{"refunds": refunds},
-		})
-	if err != nil {
-		return reversal, cogs, err
+	// A credit note can legitimately come to nothing, and an entry with nothing
+	// in it is not an entry.
+	//
+	// Two ways it happens. A line sold at no charge coming back — pricing
+	// refuses only a NEGATIVE unit price, so a free sample or a giveaway is an
+	// ordinary line — and a partial return of a line so cheap that its
+	// cumulative credit has not moved a hallala since the last one: a hundred
+	// pieces at a net of 0.50 credit 0.01 on the first return and nothing on the
+	// second.
+	//
+	// Posting it fails, because usableLines drops every zero line and what is
+	// left is not the two an entry needs. That refusal used to take the whole
+	// return down with it — everything above runs in the caller's transaction, so
+	// the stock restoration rolled back as well, leaving goods physically in the
+	// shop that the records still said were sold, and the retry failed
+	// identically. Declining to write an empty journal entry is much the smaller
+	// thing.
+	//
+	// The inclusive total covers the whole rule. Net and tax are each
+	// non-negative and sum to it, so a zero total means both are zero; and the
+	// refunds must settle the total exactly while each one must be positive, so
+	// there are none. Every figure this rule reads is zero.
+	if computed.TotalInclusive.IsPositive() {
+		reversal, err = accounting.PostByRule(ctx, tx, reversalEntry, term.Country,
+			accounting.Transaction{
+				Amounts: accounting.Amounts{
+					"subtotal_net":    computed.SubtotalNet,
+					"tax_total":       computed.TaxTotal,
+					"total_inclusive": computed.TotalInclusive,
+				},
+				Groups: map[string]accounting.Group{"refunds": refunds},
+			})
+		if err != nil {
+			return reversal, cogs, err
+		}
 	}
 
-	// 4 — the cost of sale comes back into stock.
+	// 4 — the cost of sale comes back into stock. Reached even when nothing was
+	// credited, because goods given away still cost the shop what they cost, and
+	// value returning to stock has to appear in the ledger or the valuation parts
+	// from the Inventory account.
 	if !computed.COGSTotal.IsPositive() {
 		return reversal, cogs, nil
 	}

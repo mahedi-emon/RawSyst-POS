@@ -257,8 +257,14 @@ func (s *Service) ReceiveGoods(
 		// carry no share: the shop is not paying to warehouse something it sent
 		// straight back, and loading their freight onto the units it did keep
 		// would overstate those units' cost.
+		//
+		// The kept quantities go too, as the fallback for a consignment of free
+		// goods — value cannot divide a cost when every line is worth nothing,
+		// and quantity still can.
 		weights := make([]decimal.Decimal, len(items))
+		kept := make([]decimal.Decimal, len(items))
 		for i, item := range items {
+			kept[i] = item.kept
 			switch basis {
 			case "quantity":
 				weights[i] = item.kept
@@ -266,7 +272,7 @@ func (s *Service) ReceiveGoods(
 				weights[i] = item.kept.Mul(item.unitCost)
 			}
 		}
-		allocation := allocateLandedCost(in.LandedCost, basis, weights)
+		allocation := allocateLandedCost(in.LandedCost, weights, kept)
 
 		accrued := decimal.Zero
 		correction, recosted := decimal.Zero, decimal.Zero

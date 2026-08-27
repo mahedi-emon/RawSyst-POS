@@ -93,17 +93,38 @@ type ComputedReturn struct {
 
 // ComputeReturn works out what to credit.
 //
-// # Why a full return is a special case
+// # Credits are cumulative, not proportional
 //
-// Returning everything must refund exactly what was charged. Computing it as
-// proportion × amount does not guarantee that: for a line of 3 at a net of
-// 33.33, each unit is 11.11, and three of them is 33.33 only by luck — with
-// 100.00 across 3 it is 33.33 × 3 = 99.99, and the customer is short a
-// hallala on a full return of a whole invoice.
+// A line brought back in pieces must credit exactly what was charged for it by
+// the time the last piece arrives — no more and no less. Taking each return as
+// its own proportion of the line does not do that: a line of 3 at a net of
+// 100.00 returned a unit at a time credits 33.33 three times, and the business
+// quietly keeps a hallala on every partial-return sequence that does not divide
+// evenly.
 //
-// So when the entire remaining quantity goes back, the stored amounts are used
-// verbatim. Only a genuinely partial return computes a proportion, and there
-// the rounding difference is real rather than an artefact.
+// So a return credits the difference between two CUMULATIVE figures: what the
+// line's credits should stand at once this return is counted, less what they
+// already stand at. The last return's target is the whole amount, so the line
+// necessarily nets back to what was charged.
+//
+// # Why the obvious remainder rule is not enough
+//
+// Crediting a proportion each time and letting the LAST return absorb whatever
+// is left also sums correctly, and that is what this used to do. It lets the
+// last credit go NEGATIVE. Each partial rounds up by as much as half a hallala,
+// and enough of them take more than the line was worth between them.
+//
+// A hundred sachets at a net of 30.60, returned one at a time, does it: each of
+// the first ninety-nine credits round(30.60 / 100, 2) = 0.31, which is 30.69
+// between them, and the hundredth is handed 30.60 - 30.69 = -0.09. The posting
+// engine refuses a negative amount rather than writing a negative debit, so the
+// last return of a line the shop really did take back could not be recorded at
+// all — not on the retry either.
+//
+// This is the same defect and the same fix as allocate in accounting,
+// allocateFee in settlement, allocateLandedCost in purchasing and the
+// invoice-discount allocation in pricing.go. The difference is that here the
+// parts arrive over weeks rather than all at once.
 func ComputeReturn(originals []OriginalLine, requests []ReturnRequest) (ComputedReturn, error) {
 	if len(requests) == 0 {
 		return ComputedReturn{}, errs.New(errs.CodeInvalidInput,
@@ -164,29 +185,18 @@ func ComputeReturn(originals []OriginalLine, requests []ReturnRequest) (Computed
 			IsFullReturn: req.Qty.Equal(remaining),
 		}
 
-		if line.IsFullReturn {
-			// The line is now fully returned, so credit exactly what is left
-			// unrefunded. For a single whole-line return that is the original
-			// amount; for the last of several partials it absorbs the rounding
-			// remainder the earlier ones left behind.
-			//
-			// Without this the customer is short. Three one-unit returns of a
-			// line of 3 at a net of 100.00 each compute 33.33, totalling 99.99 —
-			// the business quietly keeps a hallala on every partial-return
-			// sequence that does not divide evenly. It is the same remainder
-			// problem the invoice-discount allocation solves by giving the last
-			// line what is left.
-			line.NetAmount = orig.NetAmount.Sub(orig.NetReturned)
-			line.TaxAmount = orig.TaxAmount.Sub(orig.TaxReturned)
-			line.InvoiceDiscountAlloc = orig.InvoiceDiscountAlloc.Sub(orig.DiscountAllocReturned)
-			line.COGSAmount = orig.COGSAmount.Sub(orig.COGSReturned)
-		} else {
-			proportion := req.Qty.Div(orig.QtySold)
-			line.NetAmount = orig.NetAmount.Mul(proportion).Round(moneyScale)
-			line.TaxAmount = orig.TaxAmount.Mul(proportion).Round(moneyScale)
-			line.InvoiceDiscountAlloc = orig.InvoiceDiscountAlloc.Mul(proportion).Round(moneyScale)
-			line.COGSAmount = orig.COGSAmount.Mul(proportion).Round(moneyScale)
+		// All four amounts on the same cumulative rule, so a line credited in
+		// pieces reverses to exactly what was charged and no piece is negative.
+		credit := returnShare{
+			exhausted: line.IsFullReturn,
+			returned:  orig.QtyReturned.Add(req.Qty),
+			sold:      orig.QtySold,
 		}
+		line.NetAmount = credit.of(orig.NetAmount, orig.NetReturned)
+		line.TaxAmount = credit.of(orig.TaxAmount, orig.TaxReturned)
+		line.InvoiceDiscountAlloc = credit.of(
+			orig.InvoiceDiscountAlloc, orig.DiscountAllocReturned)
+		line.COGSAmount = credit.of(orig.COGSAmount, orig.COGSReturned)
 
 		line.GrossAmount = line.NetAmount.Add(line.TaxAmount)
 
@@ -199,6 +209,45 @@ func ComputeReturn(originals []OriginalLine, requests []ReturnRequest) (Computed
 	}
 
 	return out, nil
+}
+
+// returnShare is the cumulative rule one return applies to each of a line's
+// amounts: the net, the tax, the invoice discount allocated to it and its cost
+// of sales.
+//
+// One value applied four times, because the four have to move together. A tax
+// credit that does not match the net it was charged on leaves the VAT return
+// disagreeing with the sales figure it is computed from, and a cost credit that
+// does not match the quantity restored parts the valuation from the ledger.
+type returnShare struct {
+	// exhausted is true when this return takes the last of the line. It is what
+	// makes the credits sum to exactly what was charged, because the final
+	// target is the whole amount rather than a proportion of it.
+	exhausted bool
+
+	// returned is how much of the line has come back INCLUDING this return, and
+	// sold is what the line was sold in. Their ratio is the cumulative target.
+	returned, sold decimal.Decimal
+}
+
+// of is what this return credits of one amount.
+func (s returnShare) of(total, credited decimal.Decimal) decimal.Decimal {
+	if s.exhausted {
+		// Everything still unreversed, so the line comes back to exactly what
+		// was charged however the earlier partials rounded.
+		return total.Sub(credited)
+	}
+
+	// Safe to divide: a line with nothing left to return has already been
+	// refused, and something left to return means sold exceeds what has come
+	// back and is therefore above zero.
+	target := total.Mul(s.returned).Div(s.sold).Round(moneyScale)
+
+	// A target only rises as more of the line comes back, so the difference
+	// cannot be negative — provided every earlier credit on the line was taken
+	// the same way, which is the reason this is not merely a tidier spelling of
+	// the proportional rule.
+	return target.Sub(credited)
 }
 
 // ReturnEffects enumerates what a return must do, so nothing is quietly

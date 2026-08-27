@@ -144,3 +144,150 @@ func TestTheFeeFollowsWhatEachTenderIsWorth(t *testing.T) {
 		}
 	}
 }
+
+// THE DEFECT THIS FILE FOUND ON ITS SECOND PASS.
+//
+// The per-tender cap that stops a share exceeding its own tender passes the
+// held-back excess to the NEXT tender, because the next share is measured
+// against a cumulative target. The last tender has no next one.
+//
+// So a batch whose final share is capped allocates less than the fee, and
+// nothing said so: the batch header still records the whole fee, the ledger
+// still posts the whole fee, and only the per-sale figures — which is what a
+// margin-by-payment-method report is built from — quietly come up short.
+//
+// An acquirer taking very nearly the whole batch is what makes it reachable.
+// That is a chargeback-heavy or a fraud-hold settlement rather than an ordinary
+// day, which is exactly the settlement somebody will be reading line by line.
+func TestEveryShareTogetherIsTheFeeOnTheStatement(t *testing.T) {
+	// Amounts chosen so the cap bites: a fee within a hallala of the gross
+	// leaves each share equal to its own tender, and the rounding of the
+	// cumulative targets has nowhere to go but the cap.
+	for _, tc := range []struct {
+		name    string
+		amounts []string
+		fee     string
+	}{
+		{"the acquirer took almost all of it",
+			[]string{"0.01", "0.01", "0.01", "100.00"}, "100.02"},
+		{"a tiny tail after a large tender",
+			[]string{"100.00", "0.01"}, "100.00"},
+		{"three equal thirds of an odd fee",
+			[]string{"33.33", "33.33", "33.34"}, "99.99"},
+		{"many tenders and a fee that does not divide",
+			repeat("3.33", 20, "0.01"), "66.60"},
+		{"a fee of one hallala across a large batch",
+			repeat("10.00", 50, "0.01"), "0.01"},
+		{"the whole gross but a hallala",
+			[]string{"5.00", "5.00", "5.00"}, "14.99"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			covered, gross := batchOf(tc.amounts...)
+			fee := dec(tc.fee)
+			if fee.GreaterThanOrEqual(gross) {
+				t.Fatalf("the case is not one Record can produce: a deposit is "+
+					"positive, so the fee %s is always below the gross %s",
+					fee, gross)
+			}
+
+			shares := allocateFee(fee, gross, covered)
+
+			total := decimal.Zero
+			for i, s := range shares {
+				if s.IsNegative() {
+					t.Errorf("tender %d carries a fee of %s; a negative fee "+
+						"credits a sale with more than it was worth", i, s)
+				}
+				if s.GreaterThan(covered[i].amount) {
+					t.Errorf("tender %d is worth %s and carries %s of fee; it "+
+						"cannot cost more to receive than it was",
+						i, covered[i].amount, s)
+				}
+				total = total.Add(s)
+			}
+			if !total.Equal(fee) {
+				t.Errorf("the shares come to %s against a fee of %s on the bank "+
+					"statement; the difference is %s that no sale is shown to "+
+					"have paid", total, fee, fee.Sub(total))
+			}
+		})
+	}
+}
+
+// The same three invariants, swept rather than hand-picked.
+//
+// The hand-written cases above all sit on the hallala grid, and on that grid
+// the per-tender cap provably cannot bite: the exact share of a tender worth
+// n hallalas is below n hallalas whenever the fee is below the gross, and
+// rounding two cumulative targets to the same grid can separate them by at
+// most one hallala more. So those cases exercise the arithmetic and cannot
+// reach the edge of it.
+//
+// sales_tender.amount is numeric(18,4), not numeric(18,2). A tender worth
+// three and a half hallalas is representable, arrives whenever a foreign
+// currency is converted, and is exactly where the cap does bite — the share
+// rounds up past an amount that is not itself a whole hallala, the cap holds
+// it back, and on the LAST tender there is no later share to pass the excess
+// to. The batch then reports a fee the per-sale figures do not add up to.
+//
+// A sweep rather than a worked example, because the case needs the fee, the
+// gross and the position of one tender to line up, and a test that names one
+// such alignment proves less than one that tries several thousand.
+func TestTheSharesSumToTheFeeAtEveryScaleATenderCanCarry(t *testing.T) {
+	// A deterministic walk, so a failure is reproducible and a green run is
+	// not luck. The generator is a plain LCG rather than math/rand so the
+	// sequence does not move with the Go version.
+	seed := uint64(20260828)
+	next := func(n uint64) uint64 {
+		seed = seed*6364136223846793005 + 1442695040888963407
+		return (seed >> 33) % n
+	}
+
+	for iteration := 0; iteration < 4000; iteration++ {
+		count := int(next(6)) + 2
+		covered := make([]coveredTender, 0, count)
+		gross := decimal.Zero
+		for i := 0; i < count; i++ {
+			// Four decimal places, which is what the column holds, and small
+			// enough that a fee near the gross leaves fractions of a hallala
+			// in play.
+			amount := decimal.New(int64(next(20000)+1), -4)
+			covered = append(covered, coveredTender{amount: amount})
+			gross = gross.Add(amount)
+		}
+
+		// The fee is what the acquirer kept, so it is the gross less a deposit
+		// that Record insists is positive: strictly below the gross, and on
+		// the hallala grid because that is the scale a bank statement is in.
+		grossHallalas := gross.Shift(2).IntPart()
+		if grossHallalas < 2 {
+			continue
+		}
+		fee := decimal.New(int64(next(uint64(grossHallalas-1)))+1, -2)
+
+		shares := allocateFee(fee, gross, covered)
+
+		total := decimal.Zero
+		for i, s := range shares {
+			if s.IsNegative() {
+				t.Fatalf("iteration %d: tender %d of %s carries a fee of %s",
+					iteration, i, covered[i].amount, s)
+			}
+			if s.GreaterThan(covered[i].amount) {
+				t.Fatalf("iteration %d: tender %d is worth %s and carries %s "+
+					"of fee", iteration, i, covered[i].amount, s)
+			}
+			total = total.Add(s)
+		}
+		if !total.Equal(fee) {
+			amounts := make([]string, len(covered))
+			for i, c := range covered {
+				amounts[i] = c.amount.String()
+			}
+			t.Fatalf("iteration %d: tenders %v with a gross of %s and a fee of "+
+				"%s split into shares summing to %s, which is %s the bank "+
+				"statement says was charged and no sale is shown to have paid",
+				iteration, amounts, gross, fee, total, fee.Sub(total))
+		}
+	}
+}

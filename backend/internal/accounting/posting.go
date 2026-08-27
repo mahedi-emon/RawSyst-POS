@@ -14,7 +14,22 @@ import (
 )
 
 // moneyScale is the precision a posted amount carries.
+//
+// Two decimals, and it cannot quietly become four: base_debit and base_credit
+// are what every tie-out in the product compares against — inventory to the
+// Inventory account (0020, 0055), the exchange clearing account to zero (0030),
+// customer balances to receivables (0035, 0036), supplier balances to payables
+// (0058) — and each of those reads the ledger at this scale.
 const moneyScale int32 = 2
+
+// minLedgerUnit is the smallest amount a posted line can carry: one unit at
+// moneyScale.
+//
+// The schema does not merely prefer a line to be non-zero. journal_line's
+// base_one_side CHECK wants base_debit > 0 on a debit line, and sides_agree
+// wants (debit > 0) = (base_debit > 0), so a line with a real amount whose base
+// share rounds away to nothing satisfies neither and cannot be written.
+var minLedgerUnit = decimal.New(1, -moneyScale)
 
 // Side is which column an amount lands in.
 type Side string
@@ -166,8 +181,14 @@ func Post(ctx context.Context, tx pgx.Tx, e Entry) (Result, error) {
 	// perfectly balanced entry in riyals would fail to balance in the base
 	// currency, for no reason anyone could explain from the invoice.
 	baseTotal := debits.Mul(rate).Round(moneyScale)
-	baseDebits := allocate(baseTotal, amountsOn(lines, Debit))
-	baseCredits := allocate(baseTotal, amountsOn(lines, Credit))
+	baseDebits, err := allocate(baseTotal, amountsOn(lines, Debit))
+	if err != nil {
+		return Result{}, err
+	}
+	baseCredits, err := allocate(baseTotal, amountsOn(lines, Credit))
+	if err != nil {
+		return Result{}, err
+	}
 
 	var di, ci int
 	for i, l := range lines {
@@ -275,35 +296,141 @@ func amountsOn(lines []Line, side Side) []decimal.Decimal {
 	return out
 }
 
-// allocate splits total in proportion to parts, with the LAST part taking
-// whatever remains.
+// allocate splits total across parts in proportion, at ledger precision.
 //
-// The same rule the invoice discount allocation and the partial-return credit
-// follow: computing every part independently leaves the parts not summing to
-// the whole, and the difference is money that quietly disappears. Here it would
-// be an entry that balances in one currency and not in the other.
-func allocate(total decimal.Decimal, parts []decimal.Decimal) []decimal.Decimal {
+// Three things must hold of the result, and journal_line enforces every one of
+// them with a CHECK rather than trusting the caller:
+//
+//   - The shares sum to exactly total. The same figure is allocated to both
+//     sides, so an entry that balances in the transaction currency balances in
+//     the base currency too — which is what assert_entry_balanced tests, on the
+//     base columns, at commit.
+//   - No share is negative (journal_line_amounts_non_negative).
+//   - No share is zero. base_one_side wants base_debit > 0 on a debit line and
+//     sides_agree wants (debit > 0) = (base_debit > 0); a line with a positive
+//     amount and a zero base amount fails both.
+//
+// A CHECK does not misstate a figure. It aborts the transaction — so the sale,
+// the receipt or the payment being recorded does not happen, and it will not
+// happen on the retry either.
+//
+// # Cumulative targets, not a remainder on the last part
+//
+// Rounding each part's own share and handing the difference to the last part
+// makes the shares sum to the whole, but the last one can come out NEGATIVE:
+// several legs that each round up by a fraction take more than the whole between
+// them, and the last is handed what is left, which is less than nothing.
+//
+// Seven tenders on a foreign-currency sale is enough. Six legs of equal value
+// and one of a hallala, at a rate that puts the converted total at 9.05 against
+// parts summing to 6.01: each of the six takes round(9.05 x 1 / 6.01, 2) = 1.51,
+// which is 9.06 between them, and the seventh is handed 9.05 - 9.06 = -0.01.
+//
+// Taking each share as the difference between successive CUMULATIVE targets
+// cannot go negative, because the targets only ever rise, and still sums exactly
+// because the final target IS the total.
+//
+// This is the same defect and the same fix as allocateFee in settlement, the
+// invoice-discount allocation in sales/pricing.go and allocateLandedCost in
+// purchasing. Four sites, which is the argument for each of them saying so.
+//
+// # The floor, which proportion alone cannot give
+//
+// Proportion cannot keep a share off zero. A tender of one hallala on a sale in
+// a currency worth less than half the base currency converts to under half a
+// base hallala and rounds to nothing: the arithmetic is right and the entry is
+// still unwritable. Any rate below 0.5 does it, which is every weaker currency
+// a shop might take — and this product is built for companies trading across
+// three countries at once.
+//
+// Every share is therefore floored at one ledger unit, paid for out of the
+// largest shares so the sum stays exact. It moves a share by less than a
+// hallala, and it is the only allocation the schema's own invariant permits.
+func allocate(
+	total decimal.Decimal, parts []decimal.Decimal,
+) ([]decimal.Decimal, error) {
 	out := make([]decimal.Decimal, len(parts))
 	if len(parts) == 0 {
-		return out
+		return out, nil
 	}
 
 	sum := decimal.Zero
 	for _, p := range parts {
+		if !p.IsPositive() {
+			// usableLines has already dropped the zeroes and refused the
+			// negatives, so nothing reaches this today. It is refused rather
+			// than worked around because the obvious workaround — the whole
+			// total on one part and nothing on the rest — writes precisely the
+			// zero share the floor below exists to prevent.
+			return nil, errs.New(errs.CodeInternal,
+				"An entry line has no amount to allocate the base currency by.")
+		}
 		sum = sum.Add(p)
 	}
-	if sum.IsZero() {
-		out[len(out)-1] = total
-		return out
+
+	// Below one unit per line there is no valid allocation at all, whatever the
+	// proportions. Saying so beats writing an entry the database will reject:
+	// the CHECK can only report which constraint failed, and "that accounting
+	// entry could not be written" is not something a cashier can act on.
+	floor := minLedgerUnit.Mul(decimal.NewFromInt(int64(len(parts))))
+	if total.LessThan(floor) {
+		return nil, errs.Newf(errs.CodeInvalidInput,
+			"This comes to %s in the company's own currency, which will not divide "+
+				"across %d lines: the ledger records amounts down to %s and every "+
+				"line needs at least that much. Record it in the company's currency.",
+			total.StringFixed(moneyScale), len(parts),
+			minLedgerUnit.StringFixed(moneyScale))
 	}
 
-	running := decimal.Zero
-	for i := 0; i < len(parts)-1; i++ {
-		out[i] = total.Mul(parts[i]).Div(sum).Round(moneyScale)
-		running = running.Add(out[i])
+	allocated := decimal.Zero
+	cumulative := decimal.Zero
+	for i, p := range parts {
+		cumulative = cumulative.Add(p)
+		target := total.Mul(cumulative).Div(sum).Round(moneyScale)
+		out[i] = target.Sub(allocated)
+		allocated = allocated.Add(out[i])
 	}
-	out[len(out)-1] = total.Sub(running)
-	return out
+
+	raiseToFloor(out)
+	return out, nil
+}
+
+// raiseToFloor lifts any share that rounded below one ledger unit, taking what
+// that costs from the largest shares so the total is unchanged.
+//
+// Only the shares proportion could not express are moved. The largest are the
+// ones that can spare a unit without falling below the floor themselves, and
+// total being at least one unit per line is what guarantees one of them can.
+func raiseToFloor(out []decimal.Decimal) {
+	deficit := decimal.Zero
+	for i, share := range out {
+		if short := minLedgerUnit.Sub(share); short.IsPositive() {
+			deficit = deficit.Add(short)
+			out[i] = minLedgerUnit
+		}
+	}
+
+	for deficit.IsPositive() {
+		largest := 0
+		for i, share := range out {
+			if share.GreaterThan(out[largest]) {
+				largest = i
+			}
+		}
+
+		spare := out[largest].Sub(minLedgerUnit)
+		if !spare.IsPositive() {
+			// Every share already sits on the floor, so the total was exactly
+			// one unit a line and there is nothing to take. Unreachable: the
+			// caller refuses anything smaller than that.
+			return
+		}
+		if spare.GreaterThan(deficit) {
+			spare = deficit
+		}
+		out[largest] = out[largest].Sub(spare)
+		deficit = deficit.Sub(spare)
+	}
 }
 
 // resolvePeriod finds the fiscal period a date falls in.

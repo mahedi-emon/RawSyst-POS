@@ -75,9 +75,11 @@ type Report struct {
 	TaxTotal    string `json:"tax_total"`
 	RefundTotal string `json:"refund_total"`
 
-	CashTakings    string `json:"cash_takings"`
-	NonCashTakings string `json:"non_cash_takings"`
-	CashMovements  string `json:"cash_movements"`
+	// The three takings figures are omitted alongside ExpectedCash on a blind
+	// close. See withholdTheDrawer for why hiding the total alone did not work.
+	CashTakings    string `json:"cash_takings,omitempty"`
+	NonCashTakings string `json:"non_cash_takings,omitempty"`
+	CashMovements  string `json:"cash_movements,omitempty"`
 
 	// ExpectedCash is omitted on a blind close until the count is committed, so
 	// a cashier cannot make the drawer agree with the screen.
@@ -229,13 +231,49 @@ func (s *Service) report(
 		}
 		if blind && !mayRevealExpected && r.State == "open" {
 			// Withheld only while the session is open. Once closed, the count is
-			// committed and hiding the figure would stop anyone reconciling it.
-			r.ExpectedCash = ""
+			// committed and hiding the figures would stop anyone reconciling it.
+			withholdTheDrawer(&r)
 		}
 		out = r
 		return nil
 	})
 	return out, err
+}
+
+// withholdTheDrawer removes every figure a cashier could add up to the total
+// they are about to be asked to count blind.
+//
+// Hiding ExpectedCash alone did not do it, and the arithmetic says why:
+//
+//	expected = opening_float + cash_takings + cash_movements
+//
+// which is the definition cash_session_expected is written from. All three
+// addends were on the cashier's own screen — the POS shift panel listed
+// "Opening float", "Cash takings" and "Cash moved" one under the other — under
+// a comment explaining that the expected drawer was deliberately not shown. A
+// cashier who is short can add three numbers and put back the difference, and
+// then the variance, which is the only signal there is, reads zero on every
+// shift for ever. Blueprint B7 asks for a blind close and design 11 §9 says
+// sales are "tracked silently"; a total withheld from a screen that shows its
+// parts is neither.
+//
+// NonCashTakings goes too. gross_sales less refund_total less non-cash takings
+// is the cash takings exactly, for a shop that sells only for cash and card —
+// which is most shops. Leaving it would swap one subtraction for another.
+//
+// What remains is what a cashier legitimately needs and cannot reconstruct the
+// drawer from: how many sales they rang, what those sales came to, the tax on
+// them, what was refunded, and the float they counted in themselves at open.
+//
+// A supervisor's X report is not touched — it carries report.view, which is the
+// whole reason the two routes have different permissions — and neither is a
+// closed session, where the count is already committed and hiding the figures
+// would stop anyone reconciling the variance they are being asked to explain.
+func withholdTheDrawer(r *Report) {
+	r.CashTakings = ""
+	r.NonCashTakings = ""
+	r.CashMovements = ""
+	r.ExpectedCash = ""
 }
 
 func readReport(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID) (Report, error) {
@@ -438,9 +476,26 @@ func (s *Service) RecordMovement(
 	}
 
 	return s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		// FOR SHARE, and the reason is the whole point of this record.
+		//
+		// Close takes FOR UPDATE, computes the expected cash and freezes it in
+		// one transaction. An unlocked read here would return 'open' from its
+		// own snapshot while that close was in flight, and the movement would
+		// land AFTER the figure it was supposed to be part of: a safe drop of
+		// 500 recorded at the moment of the Z report shows up in the report's
+		// cash_movements but not in the expected_cash it is compared against,
+		// so the drawer reads 500 short and the cashier is asked to explain a
+		// difference that is an artefact of two clocks.
+		//
+		// FOR SHARE conflicts with Close's FOR UPDATE, so one of two things
+		// happens and both are correct: the movement commits first and the
+		// close counts it, or the close commits first and this read — which
+		// PostgreSQL re-evaluates against the committed row once the lock is
+		// granted — sees 'closed' and refuses below.
 		var state string
 		e := tx.QueryRow(ctx,
-			`SELECT state FROM cash_session WHERE id = $1`, sessionID).Scan(&state)
+			`SELECT state FROM cash_session WHERE id = $1 FOR SHARE`,
+			sessionID).Scan(&state)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return errs.New(errs.CodeNotFound, "That till session was not found.")
 		}

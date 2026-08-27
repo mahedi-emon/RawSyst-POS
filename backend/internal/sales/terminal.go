@@ -75,6 +75,14 @@ func (s *Service) FinalizeInTx(
 	ctx context.Context, tx pgx.Tx, tenantID, deviceID uuid.UUID,
 	sale Sale, warehouseID uuid.UUID,
 ) (Finalized, error) {
+	// The till does not get to name a reserved settlement method, for the same
+	// reason it does not get to name the VAT rate or the currency below. This is
+	// the choke point for both callers, so a replayed offline sale is refused on
+	// the same grounds as a live one.
+	if err := checkMethodsAreOfferable(tenderMethods(sale.Tenders)); err != nil {
+		return Finalized{}, err
+	}
+
 	term, profile, err := resolveTerminal(ctx, tx, tenantID, deviceID, warehouseID)
 	if err != nil {
 		return Finalized{}, err
@@ -132,6 +140,15 @@ func (s *Service) applyTaxProfile(
 func (s *Service) Refund(
 	ctx context.Context, tenantID, deviceID uuid.UUID, ret Return, warehouseID uuid.UUID,
 ) (Refunded, error) {
+	// As on a sale, and before the database is needed: a request that names a
+	// method it may not name is refused on its own terms. ProcessExchange
+	// reaches ProcessReturn directly with the clearing leg it built itself, so
+	// this refuses the method for every return a client can ask for without
+	// standing in the way of the one that is real.
+	if err := checkMethodsAreOfferable(refundMethods(ret.Refunds)); err != nil {
+		return Refunded{}, err
+	}
+
 	if s.pool == nil {
 		return Refunded{}, errs.New(errs.CodeInternal,
 			"The sales service was built without a database connection.")
@@ -220,9 +237,28 @@ func resolveTerminal(
 	// Every sale belongs to a shift. A till with no open session has no drawer
 	// anyone has counted into, so its takings could never be reconciled — and a
 	// cash difference discovered later could not be attributed to anyone.
+	//
+	// FOR SHARE because "there is an open session" has to still be true when
+	// this transaction commits, not merely when it was asked.
+	//
+	// The Z report takes FOR UPDATE, computes the expected cash and freezes it
+	// atomically. Without a lock here a sale already in flight — a slow card
+	// authorisation, a batch of offline sales being replayed by sync — reads
+	// 'open' from its own snapshot, commits after the close, and attaches its
+	// cash tender to a session whose expected figure was fixed without it. The
+	// Z report then shows the sale in its takings and not in its expected cash,
+	// and the drawer reads over by exactly that sale.
+	//
+	// FOR SHARE conflicts with FOR UPDATE and with nothing else, so concurrent
+	// sales on one till still proceed together. Either the sale commits first
+	// and the close counts it, or the close commits first and this row no
+	// longer satisfies `state = 'open'` — PostgreSQL re-checks the qualifier
+	// against the committed version before granting the lock, so the sale is
+	// refused rather than misfiled.
 	var sessionID uuid.UUID
 	err = tx.QueryRow(ctx, `
-		SELECT id FROM cash_session WHERE device_id = $1 AND state = 'open'`,
+		SELECT id FROM cash_session
+		WHERE device_id = $1 AND state = 'open' FOR SHARE`,
 		deviceID).Scan(&sessionID)
 
 	if errors.Is(err, pgx.ErrNoRows) {

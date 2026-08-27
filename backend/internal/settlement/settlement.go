@@ -388,13 +388,19 @@ func lockTenders(
 
 // allocateFee splits the acquirer's fee across the payments it was charged on.
 //
-// Proportionally, with the LAST payment taking whatever remains. Rounding each
-// share independently loses or gains a hallala, and the shares have to sum back
-// to the fee on the bank statement exactly — the same rounding-remainder rule
-// the invoice discount, the FIFO layer draw and the shortfall settlement all
-// use. The fee posts as one figure regardless, so this only decides what each
-// sale is shown to have cost; being out by a hallala there is how a
+// Proportionally, and the shares sum back to the fee on the bank statement
+// EXACTLY — the same rounding-remainder rule the invoice discount, the FIFO
+// layer draw, the base-currency allocation and the shortfall settlement all
+// follow. The fee posts as one figure regardless, so this only decides what
+// each sale is shown to have cost; being out by a hallala there is how a
 // margin-per-method report stops agreeing with the P&L.
+//
+// Three constraints hold at once, and each of them broke the other two when it
+// was added on its own:
+//
+//	sum(shares) == fee     the bank statement is the authority
+//	0 <= share             a negative fee credits a sale it should charge
+//	share <= its tender    a tender cannot cost more to receive than it was
 func allocateFee(
 	fee, gross decimal.Decimal, covered []coveredTender,
 ) []decimal.Decimal {
@@ -446,6 +452,33 @@ func allocateFee(
 		shares[i] = share
 		allocated = allocated.Add(share)
 	}
+
+	// The clamp above is correct per tender and breaks the sum: whatever it
+	// held back is passed to the NEXT tender, and the last tender has no next
+	// one. A batch that ends on a clamped share allocates less than the fee,
+	// and then the per-sale card cost no longer adds up to the figure on the
+	// bank statement — which is the one number a shop reconciles against.
+	//
+	// So whatever is left goes back onto the tenders with room for it, in the
+	// order they were taken. There is always room: the fee is gross minus a
+	// deposit that must be positive, so it is strictly less than the gross,
+	// and the gross is the sum of the very headroom being counted here.
+	remainder := fee.Sub(allocated)
+	for i := range shares {
+		if !remainder.IsPositive() {
+			break
+		}
+		headroom := covered[i].amount.Sub(shares[i])
+		if !headroom.IsPositive() {
+			continue
+		}
+		if headroom.GreaterThan(remainder) {
+			headroom = remainder
+		}
+		shares[i] = shares[i].Add(headroom)
+		remainder = remainder.Sub(headroom)
+	}
+
 	return shares
 }
 

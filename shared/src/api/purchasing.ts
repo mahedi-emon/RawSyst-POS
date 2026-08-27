@@ -231,6 +231,11 @@ export interface MatchLine {
   description?: string;
   ordered?: string;
   received?: string;
+  /** How much of what arrived an EARLIER invoice already claimed. Absent when
+   *  none did, which is every first bill against a delivery. The quantity
+   *  comparison is billed against received minus this, so a second invoice for
+   *  goods already paid for is a breach rather than a pass. */
+  previously_billed?: string;
   billed?: string;
   variance: string;
   variance_pct?: string;

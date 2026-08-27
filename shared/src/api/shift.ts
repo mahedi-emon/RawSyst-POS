@@ -4,14 +4,19 @@
 // the session number, the one-open-session rule, the expected figure and the
 // variance, and this module states what happened and reads the answer.
 //
-// # The expected figure may simply be absent
+// # Four figures may simply be absent
 //
-// On a blind-close till the server omits `expected_cash` from a cashier's view
-// until the count is committed. That is blueprint B7 and it is enforced there,
-// not here — a cashier who could see the target can make the drawer agree with
-// it, and then the variance reads zero on every shift. The field is optional in
-// this type for that reason, and a screen that defaulted it to '0' would undo
-// the whole control.
+// On a blind-close till the server withholds the whole drawer from a cashier's
+// view until the count is committed: `expected_cash` and, because they add up
+// to it, `cash_takings`, `cash_movements` and `non_cash_takings`. That is
+// blueprint B7 and it is enforced there, not here — a cashier who can see the
+// target, or add three numbers to reach it, can make the drawer agree with it,
+// and then the variance reads zero on every shift.
+//
+// They are optional in this type for that reason. A screen that defaulted any
+// of them to '0' would undo the control: it would render "Cash takings 0.00"
+// beside real sales, which is worse than rendering nothing because it is a
+// wrong number rather than an absent one.
 //
 // # Nothing here is queued offline
 //
@@ -55,11 +60,13 @@ export interface ShiftReport {
   tax_total: string;
   refund_total: string;
 
-  cash_takings: string;
-  non_cash_takings: string;
-  cash_movements: string;
+  /** Withheld on a blind close until the count is committed, along with the
+   *  three below: together with the opening float they ARE the expected
+   *  drawer. See above. */
+  cash_takings?: string;
+  non_cash_takings?: string;
+  cash_movements?: string;
 
-  /** Withheld on a blind close until the count is committed. See above. */
   expected_cash?: string;
   counted_cash?: string;
   variance?: string;

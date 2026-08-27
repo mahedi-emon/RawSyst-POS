@@ -138,6 +138,82 @@ func TestAnyFullReturnSequenceCreditsExactlyWhatWasCharged(t *testing.T) {
 	}
 }
 
+// THE DEFECT THIS FILE FOUND.
+//
+// A hundred sachets at a net of 30.60, brought back one at a time.
+//
+// Worked by hand: each unit's own share is round(30.60 / 100, 2) = 0.31 --
+// rounded UP, because the true share is 0.306. Ninety-nine of those come to
+// 30.69, already more than the line was ever worth, and the hundredth return
+// was handed 30.60 - 30.69 = MINUS 0.09. The tax is worse: 4.59 across a
+// hundred rounds to 0.05 a unit, which is 4.95 over ninety-nine, and the last
+// return came out at -0.36.
+//
+// A negative credit is not a small inaccuracy. usableLines refuses a negative
+// amount rather than writing a negative debit, so the credit note could not be
+// posted -- and a customer at the counter with the last sachet of a hundred
+// they had every right to bring back would be told the till cannot take it, on
+// that attempt and on every retry.
+//
+// None of the shapes above reaches this. It takes a net below
+// 0.005 x qty x (qty - 1) for the accumulated half-hallalas to outrun the line,
+// which means a quantity in the dozens and a unit price in small change --
+// sweets, sachets, fasteners, the things a grocery sells by the piece.
+func TestManyCheapUnitsReturnedOneAtATimeNeverCreditANegative(t *testing.T) {
+	orig := origLine("100", "30.60", "4.59", "18.40", "1.20")
+
+	ones := make([]string, 100)
+	for i := range ones {
+		ones[i] = "1"
+	}
+
+	// playReturns refuses a negative credit on any return in the sequence,
+	// which is the assertion this test exists for.
+	got := playReturns(t, orig, ones)
+
+	// And a hundred credits still have to come to exactly what was charged.
+	for _, c := range []struct {
+		what      string
+		got, want decimal.Decimal
+	}{
+		{"net", got.net, orig.NetAmount},
+		{"tax", got.tax, orig.TaxAmount},
+		{"cost", got.cogs, orig.COGSAmount},
+		{"discount", got.discount, orig.InvoiceDiscountAlloc},
+	} {
+		if !c.got.Equal(c.want) {
+			t.Errorf("a hundred returns credited %s of %s against %s charged",
+				c.got, c.what, c.want)
+		}
+	}
+}
+
+// Weighed goods, brought back in fractions of a kilo.
+//
+// Nothing in the rule needs a whole number, and a grocery that sells dates by
+// weight takes them back the same way. These quantities sum to the 2.5 kg sold
+// without one of them being a unit, and the credits still have to come to
+// exactly what was charged -- which the one-at-a-time sequences above cannot
+// say, because they can only count in ones.
+func TestAWeighedLineReturnedInFractionsCreditsExactly(t *testing.T) {
+	orig := origLine("2.5", "87.53", "13.13", "52.50", "3.11")
+
+	got := playReturns(t, orig, []string{"0.25", "0.75", "0.4", "0.6", "0.5"})
+
+	if !got.qty.Equal(dec("2.5")) {
+		t.Fatalf("the sequence returned %s kg, expected 2.5", got.qty)
+	}
+	if !got.net.Equal(orig.NetAmount) {
+		t.Errorf("credited %s net against %s charged", got.net, orig.NetAmount)
+	}
+	if !got.tax.Equal(orig.TaxAmount) {
+		t.Errorf("credited %s tax against %s charged", got.tax, orig.TaxAmount)
+	}
+	if !got.cogs.Equal(orig.COGSAmount) {
+		t.Errorf("credited %s of cost against %s booked", got.cogs, orig.COGSAmount)
+	}
+}
+
 // A sequence that stops short must have credited strictly less than the whole,
 // on every figure. Otherwise a customer could be refunded in full for a
 // partial return and keep the goods.
@@ -253,4 +329,134 @@ func TestACreditUsesTheStoredRateNotTodays(t *testing.T) {
 	}
 	eq(t, "tax", got.TaxTotal, "5.00")
 	eq(t, "rate", got.Lines[0].TaxRate, "0.05")
+}
+
+// THE SECOND DEFECT THIS FILE FOUND, and the one that cost a shop its stock
+// records.
+//
+// A hundred pieces at a net of 0.50, brought back two at a time. Worked by
+// hand: the first piece's cumulative target is round(0.50 x 1/100, 2) =
+// round(0.005, 2) = 0.01, so it credits a hallala. The second piece's target is
+// round(0.50 x 2/100, 2) = round(0.01, 2) = 0.01 -- the SAME hallala -- so the
+// second return credits nothing at all. Correctly: two pieces of a fifty-hallala
+// line are worth one hallala between them, and the first return already gave it
+// back.
+//
+// The cost does not move in step, and that is the whole point of this test. Cost
+// 0.30 across a hundred targets round(0.003, 2) = 0.00 on the first piece and
+// round(0.006, 2) = 0.01 on the second, so the return that credits NO money
+// still has a hallala of stock value to put back.
+//
+// postReturn used to post the revenue reversal unconditionally. With every
+// amount zero, usableLines drops every line, and PostByRule refuses with "an
+// accounting entry needs at least one debit and one credit" -- and because the
+// whole return is one transaction, the refusal took inventory.Restore down with
+// it. The goods were on the counter, the records still said sold, and every
+// retry failed identically. So the guard cannot be an early return either: skip
+// the reversal, still post the cost.
+func TestAPartialReturnCanCreditNothingAndStillHaveACostToReverse(t *testing.T) {
+	orig := origLine("100", "0.50", "0.08", "0.30", "0")
+
+	// The first piece back, which takes the line's only hallala.
+	first, err := ComputeReturn([]OriginalLine{orig},
+		[]ReturnRequest{{LineID: orig.LineID, Qty: dec("1")}})
+	if err != nil {
+		t.Fatalf("first return: %v", err)
+	}
+	eq(t, "the first piece's credit", first.TotalInclusive, "0.01")
+
+	// The second piece back, carrying forward what the first credited exactly as
+	// the service does when it reads the stored credit note back.
+	o := orig
+	o.QtyReturned = dec("1")
+	o.NetReturned = first.SubtotalNet
+	o.TaxReturned = first.TaxTotal
+	o.DiscountAllocReturned = first.DiscountTotal
+	o.COGSReturned = first.COGSTotal
+
+	second, err := ComputeReturn([]OriginalLine{o},
+		[]ReturnRequest{{LineID: o.LineID, Qty: dec("1")}})
+	if err != nil {
+		t.Fatalf("second return: %v", err)
+	}
+
+	// Nothing to credit -- which is right, and must not be an error.
+	eq(t, "the second piece's credit", second.TotalInclusive, "0.00")
+	eq(t, "its net", second.SubtotalNet, "0.00")
+	eq(t, "its tax", second.TaxTotal, "0.00")
+
+	// But there IS stock value coming back, so a guard that returned early here
+	// would leave the Inventory account short of the valuation by this much,
+	// which is exactly what inventory.GLDifference reports on.
+	if !second.COGSTotal.IsPositive() {
+		t.Fatalf("the second return has no cost to reverse (%s), so this no "+
+			"longer exercises a zero credit with a live cost entry",
+			second.COGSTotal)
+	}
+	eq(t, "its cost", second.COGSTotal, "0.01")
+}
+
+// The same zero credit without any rounding involved: a line given away.
+//
+// pricing refuses only a NEGATIVE unit price, so nothing stops a free line, and
+// it does not need an invoice of its own -- a giveaway rides along on a paid
+// invoice as a second line, which is how a shop actually rings up "buy one, get
+// one" or a no-charge warranty replacement. The invoice total is positive, so
+// the sale posts; returning ONLY the free line credits nothing.
+//
+// It still cost the shop what it cost, so the stock value has to come back.
+func TestAFreeLineReturnsWithNoCreditButACostToReverse(t *testing.T) {
+	free := origLine("2", "0", "0", "1.00", "0")
+	free.UnitPrice = dec("0")
+
+	// Half of it, where the rule takes a proportion.
+	partial, err := ComputeReturn([]OriginalLine{free},
+		[]ReturnRequest{{LineID: free.LineID, Qty: dec("1")}})
+	if err != nil {
+		t.Fatalf("returning one of a free pair: %v", err)
+	}
+	eq(t, "the credit", partial.TotalInclusive, "0.00")
+	eq(t, "the cost", partial.COGSTotal, "0.50")
+
+	// And the whole of it, where the rule takes the remainder instead. Both
+	// branches of returnShare.of have to reach a zero credit, because the branch
+	// taken depends only on whether the line is exhausted.
+	whole, err := ComputeReturn([]OriginalLine{free},
+		[]ReturnRequest{{LineID: free.LineID, Qty: dec("2")}})
+	if err != nil {
+		t.Fatalf("returning a free pair in full: %v", err)
+	}
+	if !whole.Lines[0].IsFullReturn {
+		t.Error("returning both is not marked a full return, so this test is " +
+			"not exercising the exhausted branch")
+	}
+	eq(t, "the credit", whole.TotalInclusive, "0.00")
+	eq(t, "the cost", whole.COGSTotal, "1.00")
+}
+
+// A credit note worth nothing is settled by refunding nothing, which is the
+// premise the guard in postReturn rests on: it may skip the reversal entry
+// knowing there are no refund legs it would be dropping.
+//
+// Pinned rather than assumed, because the two halves are separate rules. A
+// refund of zero is refused for being zero, so a zero credit note cannot carry
+// even one leg -- it has to carry none.
+func TestAZeroCreditNoteIsSettledByRefundingNothing(t *testing.T) {
+	if err := ValidateRefunds(dec("0.00"), nil); err != nil {
+		t.Errorf("a credit note worth nothing demanded a refund: %v", err)
+	}
+	if err := ValidateRefunds(dec("0.00"), []decimal.Decimal{}); err != nil {
+		t.Errorf("a credit note worth nothing demanded a refund: %v", err)
+	}
+
+	// And nothing may be refunded against it, so there is no third case where
+	// the reversal entry would have had a leg to post.
+	if err := ValidateRefunds(dec("0.00"),
+		[]decimal.Decimal{dec("0.00")}); err == nil {
+		t.Error("a refund of nothing was accepted as a refund")
+	}
+	if err := ValidateRefunds(dec("0.00"),
+		[]decimal.Decimal{dec("0.01")}); err == nil {
+		t.Error("a hallala was paid out against a credit note worth nothing")
+	}
 }

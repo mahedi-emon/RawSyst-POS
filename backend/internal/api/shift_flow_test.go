@@ -116,15 +116,27 @@ func TestCashMovesBothWaysAndTheDrawerFollows(t *testing.T) {
 		t.Fatalf("expected drawer after a 20 float = %s, want 70", got)
 	}
 
-	// The cashier's own view nets the movements without ever revealing the
-	// expected figure this blind-close till is withholding.
+	// The supervisor's X report nets the movements: 200 in, 150 out, 20 back.
+	x := h.do(t, "GET", "/api/v1/shifts/"+id+"/x-report", supervisor, nil)
+	if x.StatusCode != http.StatusOK {
+		t.Fatalf("X report: status %d — %s", x.StatusCode, readBody(t, x))
+	}
+	if got := decodeJSON(t, x)["cash_movements"]; got != "-130" {
+		t.Errorf("cash movements on the X report = %v, want -130", got)
+	}
+
+	// The cashier's own view withholds them, because on a blind-close till they
+	// are one of the three addends of the figure they are about to be asked to
+	// count against. See shift.withholdTheDrawer.
 	resp := h.do(t, "GET", "/api/v1/shifts/"+id, f.token, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("peek: status %d — %s", resp.StatusCode, readBody(t, resp))
 	}
 	peek := decodeJSON(t, resp)
-	if peek["cash_movements"] != "-130" {
-		t.Errorf("cash movements = %v, want -130", peek["cash_movements"])
+	if _, shown := peek["cash_movements"]; shown {
+		t.Errorf("a blind-close till showed the cashier %v of cash moved, which "+
+			"with the float and the takings is the expected drawer",
+			peek["cash_movements"])
 	}
 	if _, shown := peek["expected_cash"]; shown {
 		t.Error("a blind-close till showed the cashier the expected figure")

@@ -230,6 +230,26 @@ function HeldNotice({ bill }: { bill: Bill }) {
   );
 }
 
+/** What each comparison was made on.
+ *
+ * All four the server can send are named here. A dimension that falls through
+ * would show the server's own lowercase word — English, untranslated, and
+ * meaningless to an Arabic-reading buyer — so the fallback is deliberately the
+ * raw value rather than a guess at a nicer one, and it is visibly wrong enough
+ * to get reported. */
+const DIMENSION_LABEL: Record<string, Key | undefined> = {
+  qty: 'common.quantity',
+  price: 'common.unitPrice',
+  tax: 'common.vat',
+  total: 'common.total',
+};
+
+function DimensionName({ dimension }: { dimension: string }) {
+  const t = useT();
+  const key = DIMENSION_LABEL[dimension];
+  return <>{key ? t(key) : dimension}</>;
+}
+
 /** Every comparison the server made, passes included.
  *
  * The passing rows are the point as much as the failing ones: "we checked and
@@ -253,6 +273,7 @@ function MatchEvidence({ lines }: { lines: MatchLine[] }) {
               <th scope="col">{t('purch.checked')}</th>
               <th scope="col" className="num">{t('common.ordered')}</th>
               <th scope="col" className="num">{t('common.arrived')}</th>
+              <th scope="col" className="num">{t('common.alreadyBilled')}</th>
               <th scope="col" className="num">{t('common.billed')}</th>
               <th scope="col">{t('purch.result')}</th>
             </tr>
@@ -261,9 +282,14 @@ function MatchEvidence({ lines }: { lines: MatchLine[] }) {
             {lines.map((m, i) => (
               <tr key={i}>
                 <td>{m.description || <span className="ds-subtle">{t('purch.wholeBill')}</span>}</td>
-                <td>{m.dimension === 'qty' ? 'Quantity' : m.dimension === 'price' ? t('common.unitPrice') : m.dimension}</td>
+                <td>
+                  <DimensionName dimension={m.dimension} />
+                </td>
                 <td className="num">{m.ordered ? trimQuantity(m.ordered) : '—'}</td>
                 <td className="num">{m.received ? trimQuantity(m.received) : '—'}</td>
+                <td className="num">
+                  {m.previously_billed ? trimQuantity(m.previously_billed) : '—'}
+                </td>
                 <td className="num">{m.billed ? trimQuantity(m.billed) : '—'}</td>
                 <td>
                   <Outcome line={m} />
