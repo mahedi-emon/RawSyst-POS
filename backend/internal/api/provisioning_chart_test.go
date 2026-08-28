@@ -107,11 +107,28 @@ func TestEveryRoleThePostingRulesNameIsInTheChart(t *testing.T) {
 		// posting_rule is global rather than per tenant, so it carries the rules
 		// other tests insert too. Those use a `test.` prefix and are not part of
 		// the seeded C9.2 set.
+		// The roles of the versions that WOULD RESOLVE, at every date any rule
+		// changes shape. See the longer note on the same query in
+		// equitycontribution_test.go: a superseded version can never be
+		// resolved and therefore can never post, so a role it names is not a
+		// rule the chart has to answer for.
 		rows, e := tx.Query(ctx, `
+			WITH switchover AS (
+				SELECT DISTINCT rule_key, effective_from AS on
+				FROM posting_rule WHERE rule_key NOT LIKE 'test.%'
+			),
+			resolved AS (
+				SELECT DISTINCT ON (s.rule_key, s.on) r.lines
+				FROM switchover s
+				JOIN posting_rule r ON r.rule_key = s.rule_key
+				  AND r.effective_from <= s.on
+				  AND (r.effective_to IS NULL OR r.effective_to > s.on)
+				ORDER BY s.rule_key, s.on,
+				         (r.country IS NOT NULL) DESC, r.version DESC
+			)
 			SELECT DISTINCT line->>'role'
-			FROM posting_rule, jsonb_array_elements(lines) AS line
+			FROM resolved, jsonb_array_elements(lines) AS line
 			WHERE line->>'role' IS NOT NULL
-			  AND rule_key NOT LIKE 'test.%'
 			ORDER BY 1`)
 		if e != nil {
 			return e

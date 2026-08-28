@@ -241,6 +241,35 @@ func (s *Service) CompanyForDevice(
 	return companyID, err
 }
 
+// CompanyForProduct is which company a product belongs to.
+//
+// Row-level security confines the lookup to the caller's TENANT, which is not
+// the same boundary. Two companies in one tenant keep separate books and
+// separate VAT registrations, and an Owner may confine a bookkeeper to one of
+// them — so a handler that resolves a product by its id alone reaches every
+// company in the group whatever the caller's scope says. The company is
+// returned so the handler can put it through `actor.CanAccessCompany`, which is
+// the only place that confinement is enforced: row-level security's predicate
+// is the tenant and cannot see the difference.
+//
+// Absent reads as "not found" rather than as a permission error, for the same
+// reason it does everywhere else — confirming that an id exists but belongs to
+// somebody else is itself a disclosure.
+func (s *Service) CompanyForProduct(
+	ctx context.Context, tenantID, productID uuid.UUID,
+) (uuid.UUID, error) {
+	var companyID uuid.UUID
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		e := tx.QueryRow(ctx,
+			`SELECT company_id FROM product WHERE id = $1`, productID).Scan(&companyID)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeNotFound, "That product was not found.")
+		}
+		return e
+	})
+	return companyID, err
+}
+
 // SellableVariant is one line of the catalogue a till caches locally.
 //
 // Only what a terminal needs to ring up a sale: what it is called, what it

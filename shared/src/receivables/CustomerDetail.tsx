@@ -401,7 +401,7 @@ function LedgerLine({
   const t = useT();
   return (
     <tr>
-      <td className="num">{shortDate(row.date)}</td>
+      <td className="ds-date">{shortDate(row.date)}</td>
       <td>
         <span className="detail__strong">{row.reference}</span>
         <span className="ds-caption">{kindLabel(row.kind, t)}</span>

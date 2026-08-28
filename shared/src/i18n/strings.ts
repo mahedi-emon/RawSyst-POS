@@ -427,7 +427,7 @@ export const en = {
   'cust.overview': 'Accounts, balances and what is overdue',
   'cust.addCustomer': 'Add customer',
   'cust.searchCustomers': 'Search customers',
-  'cust.searchBy': 'Search by name, code or phone',
+  'cust.searchBy': 'Name, code or phone',
   'cust.whatWereOwed': 'What we’re owed',
   'cust.accountHistory': 'Account history',
   'cust.nothingOnAccount': 'Nothing on this account yet',

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
@@ -23,6 +25,41 @@ import (
 //
 // The caller holds the tenant context (db.Pool.TxAsTenant), so row-level
 // security is already in force on every statement below.
+
+// namedStock turns a foreign-key violation on a stock movement into something
+// the person who caused it can act on.
+//
+// Every stock movement names a variant and a warehouse, and neither is checked
+// before the row is written — the database's own key is what catches an id that
+// does not exist. That is the right place for the guarantee and the wrong place
+// for the message: the raw driver error travelled all the way to the API and
+// came out as a 500, "Something went wrong on our side."
+//
+// It is not wrong on our side. A till scanning an item that is not in this
+// company's catalogue, or a sale replayed by sync naming a variant that has
+// since been withdrawn, is a request the shop can correct — and a cashier told
+// the server is broken will call the shop's IT rather than rescan the item.
+//
+// The constraint name says which of the two it was, so the message can too.
+func namedStock(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		return err
+	}
+	switch {
+	case strings.Contains(pgErr.ConstraintName, "variant_id"):
+		return errs.New(errs.CodeInvalidInput,
+			"That item is not in this company's catalogue, so stock cannot be "+
+				"moved for it. Check the barcode, or add the item first.")
+	case strings.Contains(pgErr.ConstraintName, "warehouse_id"):
+		return errs.New(errs.CodeInvalidInput,
+			"That stock location does not exist in this company.")
+	}
+	return err
+}
 
 // Receipt is stock arriving: a purchase, an opening balance, a transfer in.
 type Receipt struct {
@@ -115,7 +152,7 @@ func Receive(ctx context.Context, tx pgx.Tx, r Receipt) (decimal.Decimal, error)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID, r.Qty, r.Reason,
 		nullText(r.SourceType), r.SourceID, value, nullText(r.Note)); err != nil {
-		return decimal.Zero, err
+		return decimal.Zero, namedStock(err)
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -224,7 +261,7 @@ func Restore(ctx context.Context, tx pgx.Tx, r Restoration) error {
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID,
 		r.Qty, r.Reason, nullText(r.SourceType), r.SourceID, r.DeviceID,
 		r.Value, nullText(r.Note))
-	return err
+	return namedStock(err)
 }
 
 type layerPart struct{ qty, unitCost decimal.Decimal }
@@ -338,7 +375,7 @@ func Consume(ctx context.Context, tx pgx.Tx, iss Issue) (CostResult, error) {
 		iss.TenantID, iss.CompanyID, iss.VariantID, iss.WarehouseID,
 		iss.Qty.Neg(), iss.Reason, nullText(iss.SourceType), iss.SourceID,
 		iss.DeviceID, result.TotalCost.Neg(), nullText(iss.Note)); err != nil {
-		return CostResult{}, err
+		return CostResult{}, namedStock(err)
 	}
 
 	// C13: the cost of units no layer covered is PROVISIONAL and corrects on

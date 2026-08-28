@@ -195,12 +195,40 @@ func (s *Server) handleGenerateMatrix(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := actor.From(r.Context())
+	if err := s.mayReachProduct(r, productID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
 	out, err := s.catalog.GenerateMatrix(r.Context(), a.TenantID, in)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+// mayReachProduct refuses a product belonging to a company the caller is
+// confined out of.
+//
+// The other catalogue routes name the company in the query string and check it
+// there. These two name a PRODUCT, which looks like a document and silently
+// carries a company with it — so the check was never written, and a bookkeeper
+// confined to one company could read another's variant grid, with its prices
+// and its stock on hand, and generate variants inside it.
+//
+// Row-level security does not cover this. Its predicate is the tenant, and both
+// companies are inside it.
+func (s *Server) mayReachProduct(r *http.Request, productID uuid.UUID) error {
+	a := actor.From(r.Context())
+	companyID, err := s.catalog.CompanyForProduct(r.Context(), a.TenantID, productID)
+	if err != nil {
+		return err
+	}
+	if !a.CanAccessCompany(companyID) {
+		return errs.New(errs.CodeNotFound, "That product was not found.")
+	}
+	return nil
 }
 
 func (s *Server) handleReadMatrix(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +239,11 @@ func (s *Server) handleReadMatrix(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := actor.From(r.Context())
+	if err := s.mayReachProduct(r, productID); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
 	// The read path carries the stock facts UI spec §4 draws each cell from.
 	// Generation uses a leaner query: it asks which combinations are taken and
 	// has no use for quantities.

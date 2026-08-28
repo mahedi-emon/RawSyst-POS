@@ -552,6 +552,22 @@ func (s *Service) OpenFor(
 ) ([]OpenInvoice, error) {
 	out := []OpenInvoice{}
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		// The customer has to be one of this company's before their open
+		// invoices are listed. An unknown customer, or a sister company's,
+		// otherwise comes back as an empty list — indistinguishable from a
+		// customer who has paid everything, which is the answer somebody about
+		// to take a payment least wants to be given wrongly.
+		var exists bool
+		if e := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM customer WHERE id = $1 AND company_id = $2)`,
+			customerID, scope.CompanyID).Scan(&exists); e != nil {
+			return e
+		}
+		if !exists {
+			return errs.New(errs.CodeNotFound, "That customer was not found.")
+		}
+
 		rows, e := tx.Query(ctx, `
 			SELECT invoice_id, human_number, issue_date::text, due_date::text,
 			       round(on_account, 2)::text, round(credited, 2)::text,

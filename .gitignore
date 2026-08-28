@@ -69,3 +69,7 @@ pos/src-tauri/gen/schemas/
 # commit that happened to run one.
 *.tsbuildinfo
 zatca-docs/
+
+# Screenshots the visual pass writes. Output of a check, not source.
+/.shots/
+/shots/

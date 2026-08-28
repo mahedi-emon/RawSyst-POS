@@ -26,6 +26,45 @@
  */
 
 /* ---------------------------------------------------------------------------
+ * The typefaces, actually loaded
+ * ---------------------------------------------------------------------------
+ *
+ * --font-latin has named Inter and --font-mono has named JetBrains Mono since
+ * this file was written, and NEITHER WAS EVER FETCHED. Every screen in both
+ * front ends fell through to the next name in the stack: Segoe UI on Windows,
+ * and Consolas for anything marked as a number.
+ *
+ * That one omission is most of why the product looked unfinished. Consolas is a
+ * terminal face — wide, loosely spaced, with slab-like digits — so every price,
+ * every invoice number and every date read as console output rather than as a
+ * figure on a document. And a design system whose type is whatever the machine
+ * happens to have is not a design system; it looks different on the shopkeeper's
+ * Windows till, the owner's Mac and the accountant's Linux box.
+ *
+ * Self-hosted through @fontsource rather than linked from a CDN, for two
+ * reasons that both matter here:
+ *
+ *   - The POS is an offline-first Tauri app. A shop whose broadband is down
+ *     must not lose its typeface, and a webfont request that hangs shows a
+ *     cashier nothing at all until it times out.
+ *   - Saudi PDPL work is easier without every till announcing itself to a
+ *     third-party font host on every boot.
+ *
+ * Inter is loaded as a VARIABLE font: one file covers every weight the system
+ * uses, which is smaller than the four static cuts it replaces.
+ *
+ * IBM Plex Sans Arabic is loaded for real too. Blueprint G3 asks for full RTL
+ * mirroring rather than translated strings in a Latin face, and Arabic set in
+ * a fallback is exactly the tell that a product was built in English first.
+ */
+@import '@fontsource-variable/inter/index.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/ibm-plex-sans-arabic/400.css';
+@import '@fontsource/ibm-plex-sans-arabic/500.css';
+@import '@fontsource/ibm-plex-sans-arabic/600.css';
+
+/* ---------------------------------------------------------------------------
  * Colour
  * ------------------------------------------------------------------------- */
 
@@ -88,7 +127,7 @@
   --debit: #c02626;
 
   /* Type */
-  --font-latin: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-latin: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-arabic: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
@@ -214,11 +253,30 @@ html {
 }
 
 /* Arabic runs ~15% larger at the same nominal size to match Latin x-height
- * perception. Applied by language, so a mixed Arabic/English product name in
- * one cell still reads evenly — acceptance gate M6. */
+ * perception — acceptance gate M6.
+ *
+ * # The multiplier is applied ONCE, at the root
+ *
+ * It used to be `:lang(ar) { font-size: 1.15em }`, and `:lang()` is inherited:
+ * it matches <html>, and <body>, and every div, section, table and cell inside
+ * them. `em` is relative to the PARENT, so the boost compounded at every level
+ * of nesting. Four levels deep — which is an ordinary table cell — Arabic came
+ * out at 1.15⁴ ≈ 1.75× the Latin size, and deeper elements were bigger than
+ * shallower ones, so the type scale did not merely grow, it inverted. The
+ * navigation was set larger than the page heading.
+ *
+ * Setting the root size once cannot compound, and every rem-based size in the
+ * system scales from it exactly as intended.
+ *
+ * The family still switches on `:lang(ar)` at any depth, which is the half of
+ * the original rule that was doing the job the comment described: an Arabic
+ * product name inside an English sentence gets the Arabic face. */
 :lang(ar) {
   font-family: var(--font-arabic);
-  font-size: 1.15em;
+}
+
+html:lang(ar) {
+  font-size: 17.25px; /* 15px × 1.15, stated rather than computed by cascade */
 }
 
 body {
@@ -236,6 +294,41 @@ body {
   font-feature-settings: 'tnum' 1;
   text-align: end;
   white-space: nowrap;
+}
+
+/* Dates are not figures.
+ *
+ * They were being marked `.num`, which put them in the monospace face and
+ * pushed them to the END of their column. Both are wrong for a date and one of
+ * them was visibly wrong: the header sat at the start of the column and the
+ * values at the end, so every list of documents had one column that looked
+ * misaligned — because it was.
+ *
+ * A date needs the alignment part of `.num` and none of the rest. Tabular
+ * figures so a column of them lines up under each other, the interface face
+ * rather than the terminal one, and read from the same edge as the header
+ * above it and the words beside it. */
+.ds-date {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  text-align: start;
+  white-space: nowrap;
+
+  /* A date reads left to right even on a right-to-left page.
+   *
+   * "28 Aug 2026" is three runs the bidi algorithm classes differently: two
+   * weak (the numbers) and one strong left-to-right (the month). Dropped into
+   * an Arabic paragraph they are reordered around the strong run and the date
+   * comes out as "Aug 2026 28" — not merely mirrored, but WRONG, and wrong in
+   * a way that still looks like a date, which is the worst kind. It was on
+   * every purchase order, bill and invoice row in the Arabic interface.
+   *
+   * `isolate` stops the date disturbing the text around it; `direction: ltr`
+   * fixes the order inside it. The box still sits where the column wants it —
+   * see the RTL block below — so only the characters run the other way, which
+   * is how a date is written in Arabic anyway. */
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .ds-display { font-size: 2.6rem; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
@@ -483,7 +576,7 @@ body {
   color: var(--text);
 }
 
-.ds-state__body { max-inline-size: 42ch; font-size: 0.9rem; }
+.ds-state__body { max-inline-size: 52ch; font-size: 0.9rem; }
 
 /* ---------------------------------------------------------------------------
  * RTL
@@ -505,6 +598,38 @@ body {
   direction: ltr;
   text-align: start;
 }
+
+/* A column HEADING is a word, not a number.
+ *
+ * `.num` marks a column so its figures line up, and it is carried on the <th>
+ * as well so the header sits over them. Forcing the whole class to LTR
+ * therefore reversed the Arabic word in the header too: "القيمة" came out with
+ * its leading character stranded at the wrong end. Only the cells hold
+ * figures, so only the cells are turned. */
+[dir='rtl'] .ds-table th.num,
+[dir='rtl'] .ds-table th.numeric {
+  direction: rtl;
+  /* LEFT, which is where the figures below it sit.
+   *
+   * `.num` puts the cells in LTR so the digits are not reversed, and `start`
+   * inside an LTR box is the left edge — so in an Arabic table a column of
+   * money hugs the left of its cell, which is the end of the reading order and
+   * is where it belongs. The heading has to follow the column rather than the
+   * page, or it stands over nothing. `direction: rtl` is kept so the Arabic
+   * word itself is not turned round with it. */
+  text-align: left;
+}
+
+/* A date is forced to LTR at all times, so `start` inside it means LEFT even
+ * on an Arabic page. That would pull the column away from the edge its header
+ * sits on, so the box is aligned explicitly here while the characters keep
+ * their own order.
+ *
+ * Specific enough to beat `[dir='rtl'] .ds-table td`, which is where the
+ * column alignment otherwise comes from. */
+[dir='rtl'] .ds-date,
+[dir='rtl'] .ds-table td.ds-date,
+[dir='rtl'] .ds-table th.ds-date { text-align: right; }
 
 /* A sparkline reads left-to-right as time in both directions of script, so it
  * is flipped back to keep "later" on the side the eye expects after mirroring
@@ -624,6 +749,29 @@ body {
     text-align: start;
     flex: 0 0 auto;
     padding-inline-end: var(--space-3);
+
+    /* The label is a WORD, and it was inheriting the cell's font.
+     *
+     * On a numeric cell that meant the monospace face, so in every card list
+     * on a phone the labels "Owed" and "Limit" were set in a terminal font
+     * while "Customer", "Terms" and "Account" beside them were not. Three
+     * labels in one card in two typefaces, decided by whether the value
+     * happened to be money.
+     *
+     * Stated rather than inherited: the label belongs to the interface, not to
+     * the figure it introduces. Direction too — a numeric cell is forced LTR
+     * so its digits are not reversed, which was turning the Arabic label round
+     * with them. */
+    font-family: var(--font-latin);
+    direction: inherit;
+  }
+
+  :lang(ar) .ds-table td[data-label]::before {
+    font-family: var(--font-arabic);
+  }
+
+  [dir='rtl'] .ds-table td[data-label]::before {
+    direction: rtl;
   }
 
   /* Figures keep their alignment against the label rather than against a

@@ -292,15 +292,10 @@ func TestOneClientCannotSeeAnothersLogo(t *testing.T) {
 		{"the image", http.MethodGet, otherPath + "/image"},
 	} {
 		resp := h.do(t, c.method, c.path, b.token, nil)
-		if c.name == "metadata" {
-			// The metadata route answers 200 with null, which reveals nothing.
-			if resp.StatusCode == http.StatusOK {
-				if got := decodeJSON(t, resp)["logo"]; got != nil {
-					t.Fatalf("tenant B read tenant A's logo metadata: %v", got)
-				}
-				continue
-			}
-		}
+		// The metadata route used to answer 200 with a null logo here, and this
+		// test accommodated it on the grounds that null reveals nothing. It
+		// revealed one thing: that the route did not check what it was handed.
+		// It now refuses the id, so the accommodation is gone with the defect.
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("tenant B reading %s: status %d, want 404 — %s",
 				c.name, resp.StatusCode, readBody(t, resp))

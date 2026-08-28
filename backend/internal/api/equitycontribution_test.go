@@ -229,10 +229,36 @@ func TestEverySeededRuleResolvesAgainstAProvisionedChart(t *testing.T) {
 			// rule defines for itself, which is each caller's own test.
 			var unmapped []string
 			if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+				// The roles of the version that WOULD RESOLVE, at every date the
+				// rule changes shape — not the roles of every row ever stored.
+				//
+				// ResolveRule takes the highest version in force at the
+				// transaction date. A version that a later one supersedes can
+				// never be resolved, so it can never post, so a role it names is
+				// not a defect in anything. Reading every row instead reported
+				// exactly that as a failure, which is a test finding fault with
+				// a rule the product will not use.
+				//
+				// Checking at each of the rule's own effective_from dates covers
+				// today and every future switchover, which is more than reading
+				// the rows ever did: it asks the question the posting engine
+				// asks, on the days the answer changes.
 				rows, e := tx.Query(ctx, `
+					WITH switchover AS (
+						SELECT DISTINCT effective_from AS on
+						FROM posting_rule WHERE rule_key = $1
+					),
+					resolved AS (
+						SELECT DISTINCT ON (s.on) r.lines
+						FROM switchover s
+						JOIN posting_rule r ON r.rule_key = $1
+						  AND r.effective_from <= s.on
+						  AND (r.effective_to IS NULL OR r.effective_to > s.on)
+						ORDER BY s.on, (r.country IS NOT NULL) DESC, r.version DESC
+					)
 					SELECT DISTINCT line->>'role'
-					FROM posting_rule, jsonb_array_elements(lines) AS line
-					WHERE rule_key = $1 AND line->>'role' IS NOT NULL`, key)
+					FROM resolved, jsonb_array_elements(lines) AS line
+					WHERE line->>'role' IS NOT NULL`, key)
 				if e != nil {
 					return e
 				}

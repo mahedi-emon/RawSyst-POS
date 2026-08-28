@@ -11,6 +11,18 @@
   flex-direction: column;
 }
 
+/* The wrapper the mounted section lives in.
+ *
+ * It exists to carry a key — see BackOffice.tsx — and must therefore not change
+ * the layout it wraps: `.bo` is a flex column and the section used to be a
+ * direct child of it, so this takes the growth the section had. */
+.bo__screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
 .bo__bar {
   display: flex;
   align-items: center;

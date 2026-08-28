@@ -136,6 +136,17 @@ func (s *Service) Put(ctx context.Context, scope Scope, raw []byte) (Logo, error
 func (s *Service) Get(ctx context.Context, scope Scope) (*Logo, error) {
 	var out Logo
 	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		// The reads check the company exists as well as the writes.
+		//
+		// "No logo set" and "no such company" are different answers and were
+		// being given the same one, because a company_logo row for a company
+		// that is not this caller's is simply absent — so naming ANY id, from
+		// any tenant, came back as a cheerful `{"logo": null}`. That is a
+		// caller learning nothing about the logo and something about the API:
+		// it does not check what it was handed.
+		if e := requireCompany(ctx, tx, scope.CompanyID); e != nil {
+			return e
+		}
 		e := tx.QueryRow(ctx, `
 			SELECT content_type, byte_size, width, height, checksum,
 			       to_char(uploaded_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00')
@@ -161,6 +172,9 @@ func (s *Service) Get(ctx context.Context, scope Scope) (*Logo, error) {
 func (s *Service) Image(ctx context.Context, scope Scope) (Image, error) {
 	var out Image
 	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		if e := requireCompany(ctx, tx, scope.CompanyID); e != nil {
+			return e
+		}
 		return tx.QueryRow(ctx, `
 			SELECT content_type, bytes, checksum
 			FROM company_logo WHERE company_id = $1`, scope.CompanyID).

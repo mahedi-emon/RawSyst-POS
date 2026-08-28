@@ -196,6 +196,25 @@ func Translate(err error, notFoundMsg string) error {
 	if err == nil {
 		return nil
 	}
+
+	// An error that already knows what it is passes straight through.
+	//
+	// Services run their work inside a Tx callback and Translate whatever comes
+	// back, which is the right shape — but the callback can return a DOMAIN
+	// error as easily as a driver one. A guard inside the transaction saying
+	// "that business was not found" then fell through every case below and was
+	// re-wrapped as CodeInternal, so a deliberate 404 reached the caller as a
+	// 500 with "Something went wrong on our side."
+	//
+	// That is worse than an unhelpful message. A 500 says the fault is ours and
+	// invites a retry, it pages whoever watches the error rate, and it hides a
+	// refusal that was working exactly as intended. The pass-through is here
+	// rather than at the call sites because every service has this shape and
+	// the next one to add a guard inside a transaction would meet it again.
+	if domain := errs.As(err); domain != nil {
+		return err
+	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		if notFoundMsg == "" {
 			notFoundMsg = "That record does not exist."

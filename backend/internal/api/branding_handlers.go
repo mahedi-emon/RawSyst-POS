@@ -146,12 +146,32 @@ func (s *Server) handleDeleteLogo(w http.ResponseWriter, r *http.Request) {
 	httpx.NoContent(w)
 }
 
+// logoScope resolves which company a branding or template call is about.
+//
+// The company confinement is checked HERE, and it is the only place it can be:
+// row-level security's predicate is the tenant, and two companies in one tenant
+// are both inside it. Without this check a bookkeeper confined to one company
+// could read another's branding, replace its logo, and rewrite the footer of
+// its standard tax invoice — a legal document, with the text on the face of it.
+//
+// The comment at the top of this file used to say naming the company in the
+// path was safe because "another tenant's company reads as absent". That is
+// true and it is the wrong boundary: a SISTER company does not read as absent,
+// and neither did it.
+//
+// "Not found" rather than "forbidden", as everywhere else that resolves a
+// company: confirming that an id exists but belongs to a company the caller may
+// not see is itself a disclosure.
 func (s *Server) logoScope(r *http.Request) (branding.Scope, error) {
 	companyID, err := parseUUID(chi.URLParam(r, "companyID"), "company_id")
 	if err != nil {
 		return branding.Scope{}, err
 	}
 	a := actor.From(r.Context())
+	if !a.CanAccessCompany(companyID) {
+		return branding.Scope{}, errs.New(errs.CodeNotFound,
+			"That company was not found.")
+	}
 	return branding.Scope{
 		TenantID: a.TenantID, CompanyID: companyID, UserID: a.UserID,
 	}, nil

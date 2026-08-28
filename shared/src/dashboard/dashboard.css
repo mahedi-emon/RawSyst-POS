@@ -313,15 +313,24 @@
   inline-size: 100%;
 }
 
+/* The page header STACKS on a phone.
+ *
+ * It was two columns at every width — the title on one side, a primary button
+ * and a segmented control on the other — and at 390px there is not room for
+ * both. The grid did what it was told: it squeezed the title to two words a
+ * line and let the actions sit beside it, so "Customers" and its subtitle ran
+ * down the left while "Add customer" and four tabs stacked up the right, and
+ * the two collided. On Customers the button ended up ABOVE the page title,
+ * which is not a hierarchy anybody chose.
+ *
+ * Below 640px the title gets the full width and the actions go under it, in
+ * reading order. From 640px up there is room for the row and it comes back. */
 .detail__head {
   display: grid;
   gap: var(--space-3);
-  grid-template-areas: "back back" "titles actions";
-  /* Both columns may shrink. The actions column holds a segmented control or a
-   * primary button, and either will hold the row open at its own width unless
-   * told otherwise. */
-  grid-template-columns: minmax(0, auto) minmax(0, auto);
-  align-items: end;
+  grid-template-areas: "back" "titles" "actions";
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 
 .detail__head > * { min-inline-size: 0; }
@@ -415,6 +424,28 @@
 }
 
 .detail__rowbtn:hover .detail__strong { color: var(--brand); }
+
+/* Thumb-sized on a touch device.
+ *
+ * This is the control that OPENS a record, and it is styled to look like text
+ * on purpose — a table row should not be a wall of buttons. That left it at
+ * --tap-desk, so on a phone a purchase order was a 32px target and a customer
+ * 38px, on the screen where opening a record from a list is the commonest
+ * thing anybody does.
+ *
+ * The bump lives here rather than in design-system.css for the reason stated
+ * beside .segmented__btn: this file is imported after the system, so a rule
+ * there loses the cascade however it is written. Next to what it overrides is
+ * the honest place for it.
+ *
+ * Found only once the tables had rows in them. An empty list has nothing to
+ * measure, which is why every earlier browser walk came back clean. */
+@media (pointer: coarse) {
+  .detail__rowbtn {
+    min-block-size: var(--tap-mobile);
+    align-content: center;
+  }
+}
 
 /* --- Openable tiles ------------------------------------------------------ */
 
@@ -553,7 +584,14 @@
   .detail__summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .detail__head {
     grid-template-areas: "back back" "titles actions";
+    /* Both columns may shrink. The actions column holds a segmented control or
+     * a primary button, and either would hold the row open at its own width
+     * unless told otherwise. */
+    grid-template-columns: minmax(0, auto) minmax(0, auto);
+    align-items: end;
   }
+
+  .detail__head--flat { grid-template-areas: 'titles actions'; }
 }
 
 @media (min-width: 1080px) {
@@ -569,8 +607,9 @@
  */
 
 /* The purchasing index has no back button, so the header sits flat rather than
- * reserving the row one would occupy. */
-.detail__head--flat { grid-template-areas: 'titles actions'; }
+ * reserving the row one would occupy. Stacked on a phone like every other
+ * header; the two-column form is restored with the rest of them at 640px. */
+.detail__head--flat { grid-template-areas: 'titles' 'actions'; }
 
 .purchase__notice {
   padding: var(--space-3) var(--space-4);

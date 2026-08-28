@@ -60,6 +60,10 @@ export function BackOffice() {
 
   const [section, setSection] = useState<Section>('dashboard');
   const [drill, setDrill] = useState<DrillTarget | null>(null);
+  // Bumped on every press of a navigation item, and part of the mounted
+  // screen's key. Its whole job is to make pressing the CURRENT section mean
+  // something: see the click handler below.
+  const [sectionNonce, setSectionNonce] = useState(0);
   // The company list carries the tenant it was fetched for.
   //
   // Storing them apart was a bug: clearing the selection in an effect still
@@ -202,6 +206,18 @@ export function BackOffice() {
                   // Leaving a section clears the drill, so returning starts at
                   // the top rather than three levels into last week.
                   setDrill(null);
+                  // Pressing the section you are ALREADY in takes you back to
+                  // its top. Without this the click did nothing at all: the
+                  // section value was unchanged, so React kept the mounted
+                  // screen and its private state, and a buyer halfway through
+                  // a new purchase order who reached for "Buying" — which is
+                  // what everybody reaches for — stayed on the form. The only
+                  // way out was a back control they had to notice first.
+                  //
+                  // Each screen owns its own sub-view, so there is nothing
+                  // here to reset; bumping a key remounts the screen, which
+                  // returns every one of them to its index at once.
+                  setSectionNonce((n) => n + 1);
                 }}
               >
                 {s.label}
@@ -241,6 +257,10 @@ export function BackOffice() {
         </button>
       </header>
 
+      {/* The key is what makes a press of the current section take effect. It
+        * changes when the section changes, which React would have done anyway,
+        * AND when the same section is pressed again, which it would not. */}
+      <div className="bo__screen" key={`${section}:${sectionNonce}`}>
       {visible.length === 0 ? (
         <NoSections />
       ) : section === 'setup' && maySeeSetup ? (
@@ -280,6 +300,7 @@ export function BackOffice() {
       ) : (
         <NoSections />
       )}
+      </div>
     </div>
   );
 }

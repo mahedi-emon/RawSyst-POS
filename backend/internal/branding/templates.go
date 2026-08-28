@@ -82,6 +82,14 @@ func (s *Service) Templates(ctx context.Context, scope Scope) ([]Template, error
 	byType := map[string]Template{}
 
 	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		// Checked before the defaults are assembled, as the writes below check
+		// it. This read returns a full set of default templates for every
+		// document type, so an unrecognised company id came back as a
+		// well-formed, entirely plausible answer rather than as a refusal —
+		// the least likely kind of wrong answer to be noticed.
+		if e := requireCompany(ctx, tx, scope.CompanyID); e != nil {
+			return e
+		}
 		rows, e := tx.Query(ctx, `
 			SELECT doc_type, header_text, header_text_ar, footer_text,
 			       footer_text_ar, return_policy, return_policy_ar,

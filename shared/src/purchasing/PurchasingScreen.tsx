@@ -15,7 +15,7 @@ import { useCallback, useState } from 'react';
 import { useAuth } from '../auth/session';
 import { useRemote } from '../dashboard/useRemote';
 import { EmptyState, RemoteBody } from '../dashboard/DetailScreen';
-import { money } from '../ui/format';
+import { money, longDate } from '../ui/format';
 import {
   fetchAgeing,
   listBills,
@@ -256,7 +256,7 @@ function Orders({
                         </button>
                       </td>
                       <td>{o.supplier}</td>
-                      <td className="num">{o.ordered_on}</td>
+                      <td className="ds-date">{longDate(o.ordered_on)}</td>
                       <td>
                         <OrderStatus status={o.status} />
                       </td>
@@ -319,7 +319,7 @@ function Bills({
                         </button>
                       </td>
                       <td>{b.supplier}</td>
-                      <td className="num">{b.due_date}</td>
+                      <td className="ds-date">{longDate(b.due_date)}</td>
                       <td>
                         <BillStatus bill={b} />
                       </td>

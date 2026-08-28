@@ -457,6 +457,23 @@ func (s *Service) ListReceipts(
 ) ([]Receipt, error) {
 	out := []Receipt{}
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		// The order has to be one of this company's before its deliveries are
+		// counted. Without this an order belonging to a sister company — or to
+		// nobody at all — comes back as an empty list, which is the same answer
+		// as "ordered and nothing has arrived yet". A buyer chasing a late
+		// delivery cannot tell those apart, and one of them means they are
+		// looking at the wrong order.
+		var exists bool
+		if e := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM purchase_order WHERE id = $1 AND company_id = $2)`,
+			poID, scope.CompanyID).Scan(&exists); e != nil {
+			return e
+		}
+		if !exists {
+			return errs.New(errs.CodeNotFound, "That purchase order was not found.")
+		}
+
 		rows, e := tx.Query(ctx, `
 			SELECT g.id, g.grn_number, g.po_id, p.po_number, g.received_on::text
 			FROM goods_receipt g

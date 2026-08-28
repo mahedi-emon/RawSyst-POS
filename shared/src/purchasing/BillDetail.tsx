@@ -18,7 +18,7 @@ import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
 import { DetailScreen, RemoteBody } from '../dashboard/DetailScreen';
 import { useRemote } from '../dashboard/useRemote';
-import { money } from '../ui/format';
+import { money, longDate } from '../ui/format';
 import { trimQuantity } from '../dashboard/drilldown';
 import {
   approveBill,
@@ -106,7 +106,7 @@ export function BillDetail({
       {(bill) => (
         <DetailScreen
           title={bill.supplier_ref}
-          subtitle={`${bill.supplier} · due ${bill.due_date}`}
+          subtitle={`${bill.supplier} · due ${longDate(bill.due_date)}`}
           backLabel="Bills"
           onBack={onBack}
           onRefresh={reload}

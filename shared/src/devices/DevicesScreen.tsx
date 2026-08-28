@@ -271,7 +271,7 @@ function TerminalRow({
           <span className="ds-caption">{terminal.revoked_reason}</span>
         )}
       </td>
-      <td className="num">
+      <td className="ds-date">
         {terminal.last_active_at ? (
           shortDate(terminal.last_active_at)
         ) : (

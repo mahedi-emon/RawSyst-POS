@@ -24,7 +24,7 @@ import { useCallback } from 'react';
 
 import { fetchCompliance, type ComplianceRow } from '../api/drilldown';
 import { useAuth } from '../auth/session';
-import { money } from '../ui/format';
+import { money, longDate } from '../ui/format';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { InvoiceState } from './InvoiceState';
 import { useRemote } from './useRemote';
@@ -140,7 +140,7 @@ function Row({ row, currency }: { row: ComplianceRow; currency: string }) {
   const t = useT();
   return (
     <tr>
-      <td className="num">{row.issued_at}</td>
+      <td className="ds-date">{longDate(row.issued_at)}</td>
       <td>
         <span className="detail__strong">
           {row.human_number || row.invoice_id.slice(0, 8)}

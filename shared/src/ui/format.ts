@@ -115,6 +115,35 @@ export function shortDate(iso: string): string {
   return month ? `${Number(d)} ${month}` : iso;
 }
 
+/** A date on a document, with its year.
+ *
+ * `shortDate` drops the year because a chart axis has room for five characters
+ * and every point on it is inside one window. A purchase order, a bill and an
+ * invoice are not: a list of them spans years, and "28 Aug" on a document whose
+ * payment terms have run out for two years is a genuinely misleading thing to
+ * print.
+ *
+ * Written out rather than passed to `toLocaleDateString`, for the same reason
+ * shortDate is: "08/28/2026" and "28/08/2026" are both plausible readings of
+ * the same nine characters, and this product is sold into markets that read
+ * them differently. A named month cannot be misread.
+ *
+ * The ISO string is what the API sends and what the eight screens using this
+ * were printing RAW — `2026-08-28`, set in a monospace face, which reads as a
+ * database column rather than as the date somebody placed an order. */
+export function longDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const [y = '', m = '', rest = ''] = iso.split('-');
+  const d = rest.slice(0, 2);
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  const month = months[Number(m) - 1];
+  if (!month || !y || !d) return iso;
+  return `${Number(d)} ${month} ${y}`;
+}
+
 /** Payment methods, written the way a shop says them. */
 export function tenderName(method: string): string {
   const named: Record<string, string> = {

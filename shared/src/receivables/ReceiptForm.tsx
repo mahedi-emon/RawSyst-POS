@@ -298,7 +298,7 @@ function ReceiptBody({
                         </span>
                       )}
                     </td>
-                    <td className="num">{shortDate(invoice.due_date)}</td>
+                    <td className="ds-date">{shortDate(invoice.due_date)}</td>
                     <td className="num">{money(invoice.outstanding)}</td>
                     <td className="num">
                       <input

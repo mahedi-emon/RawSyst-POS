@@ -36,7 +36,7 @@ import {
   type DocumentTemplate,
 } from '../api/branding';
 import { InvoiceState, invoiceStateHint } from '../dashboard/InvoiceState';
-import { money } from '../ui/format';
+import { money, longDate } from '../ui/format';
 import { useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 import {
@@ -288,7 +288,7 @@ export function InvoiceDetailScreen({
             <p className="inv__number num">
               {invoice.human_number ?? invoice.uuid.slice(0, 8)}
             </p>
-            <p className="ds-caption">{invoice.issue_date}</p>
+            <p className="ds-caption">{longDate(invoice.issue_date)}</p>
             <InvoiceState state={invoice.state} />
           </div>
         </header>

@@ -295,6 +295,25 @@ func TestAFailedExchangeIssuesNoCreditNote(t *testing.T) {
 		t.Fatal("an exchange sold a variant that does not exist")
 	}
 
+	// Refused for the RIGHT reason, in words a cashier can act on.
+	//
+	// It used to come back 500, "Something went wrong on our side": the
+	// foreign key on stock_movement caught the unknown variant, and the raw
+	// driver error travelled all the way out. Nothing is wrong on our side —
+	// an item that is not in this catalogue is a barcode to rescan or a
+	// product to add, and a cashier told the server is broken calls the shop's
+	// IT instead of doing either.
+	said := readBody(t, resp)
+	if resp.StatusCode >= 500 {
+		t.Errorf("scanning an item that is not in the catalogue answered %d, "+
+			"which blames the server for the till's input: %s",
+			resp.StatusCode, said)
+	}
+	if !strings.Contains(said, "catalogue") {
+		t.Errorf("the refusal does not say what is wrong or what to do "+
+			"about it: %s", said)
+	}
+
 	if after := creditNoteCount(t, h, f); after != notesBefore {
 		t.Errorf("credit notes went from %d to %d after a FAILED exchange — "+
 			"the goods were credited and never replaced", notesBefore, after)

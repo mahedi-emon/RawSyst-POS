@@ -9,7 +9,7 @@ import { useCallback } from 'react';
 
 import { fetchSales, type SaleRow } from '../api/drilldown';
 import { useAuth } from '../auth/session';
-import { money, shortDate } from '../ui/format';
+import { money, shortDate, longDate } from '../ui/format';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { InvoiceState } from './InvoiceState';
 import { useRemote } from './useRemote';
@@ -119,7 +119,7 @@ function Row({
 }) {
   return (
     <tr className={row.is_credit_note ? 'detail__row--credit' : undefined}>
-      <td className="num">{row.issued_at}</td>
+      <td className="ds-date">{longDate(row.issued_at)}</td>
       <td>
         {/* The number is the handle people quote, so it is the thing that
             opens the document. A whole clickable row would swallow selecting

@@ -338,6 +338,29 @@ func (s *Service) Returnable(
 ) ([]ReturnableLine, error) {
 	out := []ReturnableLine{}
 	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		// The invoice has to exist here before its lines are counted.
+		//
+		// returnable_lines() answers an unknown invoice with no rows, which is
+		// the same answer it gives for an invoice that has been returned in
+		// full — so a till that scanned another shop's receipt, or mistyped a
+		// number, was told "nothing left to return" rather than "that is not
+		// one of ours". A cashier standing in front of a customer cannot tell
+		// those two apart, and one of them is a conversation about a refund
+		// that is never going to happen.
+		var exists bool
+		if e := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM sales_invoice WHERE id = $1)`,
+			invoiceID).Scan(&exists); e != nil {
+			return e
+		}
+		if !exists {
+			// Another tenant's invoice reads as absent under row-level
+			// security, which is the right answer to give: whether it exists
+			// somewhere else is not this caller's business.
+			return errs.New(errs.CodeNotFound,
+				"That invoice was not found. Check the number on the receipt.")
+		}
+
 		rows, e := tx.Query(ctx, `
 			SELECT line_id, line_no, coalesce(variant_id::text, ''), description,
 			       qty_sold::text, qty_returned::text, qty_returnable::text,

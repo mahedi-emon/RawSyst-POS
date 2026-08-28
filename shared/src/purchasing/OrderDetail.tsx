@@ -16,7 +16,7 @@ import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
 import { DetailScreen, EmptyState, RemoteBody } from '../dashboard/DetailScreen';
 import { useRemote } from '../dashboard/useRemote';
-import { money } from '../ui/format';
+import { money, longDate } from '../ui/format';
 import { trimQuantity } from '../dashboard/drilldown';
 import { receiptNotice, receivingDefaults } from './purchasing';
 import { issueOrder, readOrder, receiveGoods, type Order } from '../api/purchasing';
@@ -141,7 +141,7 @@ export function OrderDetail({
         ) : (
         <DetailScreen
           title={order.po_number}
-          subtitle={`${order.supplier} · ordered ${order.ordered_on}`}
+          subtitle={`${order.supplier} · ordered ${longDate(order.ordered_on)}`}
           backLabel="Orders"
           onBack={onBack}
           onRefresh={reload}

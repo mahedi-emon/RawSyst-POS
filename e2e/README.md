@@ -74,3 +74,47 @@ It also emulates touch rather than merely resizing the window. The tap rules
 ask `pointer: coarse`, and a resize does not change what the browser reports as
 its pointer, so a resize-only audit measures a mouse-sized layout and calls a
 phone comfortable.
+
+## The three scripts, and why there are three
+
+They answer different questions and none of them substitutes for another.
+
+| Script | Question |
+|---|---|
+| `audit.mjs` | Is anything *measurably* wrong? Sideways scroll, tap targets under 44px, inputs a screen reader cannot name, missing `dir=rtl`, English on Arabic chrome, console errors, failed requests. 54 section/language/device combinations. |
+| `layout-probe.mjs` | Does the layout hold together? Text overflowing its own box, an element escaping a parent that is not clipping on purpose, a column header read from the opposite edge to the cells beneath it. |
+| `workflows.mjs` | Does it **work**? Signs in, is refused with a wrong password, opens the order list, the new-order form, the bills, a bill's three-way match evidence, the supplier ageing, a customer statement, settlement, inventory, the dashboard and a drill-through, terminals, e-invoicing, branding and setup. |
+
+The first two never press a button that changes anything, so between them they
+prove the app RENDERS and prove nothing about whether it works. That is what
+the third is for.
+
+### What `workflows.mjs` deliberately does not cover
+
+Sale, return, exchange and the shift live in the Tauri POS, which holds its
+device credential in the OS keystore through the Rust shell. A plain browser has
+no keystore, so a browser-run POS cannot pair and therefore cannot sell — see
+`pos/src/offline/credential.ts`, which refuses rather than falling back. Driving
+those flows here would mean weakening the custody model to make a test pass.
+They are covered end to end by the Go integration suite against the real
+database; what this script checks is the part a browser honestly can, that the
+POS loads and reports its pairing state rather than presenting a till that
+cannot sell.
+
+### Running them
+
+```
+cd backend && go run ./cmd/devseed        # prints a password
+cd web && npm run dev                     # localhost:3000
+cd pos && npm run dev                     # localhost:5173, optional
+
+RS_PASSWORD=... node e2e/audit.mjs
+RS_PASSWORD=... node e2e/layout-probe.mjs
+RS_PASSWORD=... RS_POS=http://localhost:5173 node e2e/workflows.mjs
+```
+
+`shots.mjs` is the fourth and is not a check: it writes a screenshot of every
+screen at every width in both languages, for the judgements the others refuse to
+make. Whether a screen is crowded, whether the hierarchy reads, whether the
+Arabic mirror actually mirrors — those need eyes, and this is how you get them
+in front of a person quickly.

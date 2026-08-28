@@ -130,6 +130,14 @@ const probe = (tapMin) => {
     'button, a, h1, h2, h3, th, label > span, .ds-badge, .app__navlink',
   )) {
     if (invisible(el)) continue;
+    // `.detail__rowbtn` is the control that opens a record, and everything
+    // inside it is that record: a purchase order number, a supplier's legal
+    // name, a customer's code. All tenant data by construction, and none of it
+    // this product's to translate. It is a <button>, so the sweep above
+    // reached it and reported a shop's own customer list as untranslated
+    // interface — which would push somebody to "fix" it by translating a
+    // customer's name.
+    if (el.closest('.detail__rowbtn')) continue;
     const txt = (el.innerText || '').trim();
     if (!txt || txt.length > 80 || !LATIN.test(txt)) continue;
     const offending = txt
