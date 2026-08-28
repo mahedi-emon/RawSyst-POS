@@ -35,7 +35,8 @@
 // mismatch fails at session creation and says so.
 
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -64,6 +65,28 @@ function check(condition, what) {
 }
 
 const note = (what) => done.push(what);
+
+/** Writes a PNG of the window, when RS_SHOTS names a directory to put them in.
+ *
+ * The till's screens cannot be photographed any other way. A browser at :5173
+ * renders the shell and stops at the pairing screen, because pairing needs the
+ * OS keystore — so the counter, the shift and the returns screen have never
+ * been looked at outside somebody's own machine. This is the same run that
+ * asserts they work, taking a picture as it goes.
+ *
+ * Off unless asked for, so the ordinary run stays a check rather than a
+ * photo shoot. */
+const SHOTS = process.env.RS_SHOTS ?? '';
+let shotNo = 0;
+async function shoot(name) {
+  if (!SHOTS || !sessionId) return;
+  const png = await wd('GET', `/session/${sessionId}/screenshot`).catch(
+    () => null,
+  );
+  if (!png) return;
+  const file = `${SHOTS}/till-${String(++shotNo).padStart(2, '0')}-${name}.png`;
+  await writeFile(file, Buffer.from(png, 'base64'));
+}
 
 /** Screen text on one line, for a message that has to fit in a terminal. */
 const tidy = (text) => String(text).replace(/\s+/g, ' ').trim();
@@ -534,7 +557,17 @@ const forgetPushes = () =>
  * way into the screen, so the last session it heard about is often the one the
  * run had already closed — and a check that read that would report a shift as
  * closed a second after watching it open. */
-async function tillSession() {
+async function tillSession({ timeout = 0 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const found = await lookForTheSession();
+    if (found || Date.now() > deadline) return found;
+    await sleep(400);
+  }
+}
+
+/** One look. `tillSession` is the one that waits. */
+async function lookForTheSession() {
   const observed = (await seen('shifts')) ?? [];
   const ids = [];
   for (let i = observed.length - 1; i >= 0; i--) {
@@ -789,6 +822,8 @@ async function main() {
     process.exit(2);
   }
 
+  if (SHOTS) mkdirSync(SHOTS, { recursive: true });
+
   const args = ['--port', String(DRIVER_PORT)];
   if (NATIVE_DRIVER) args.push('--native-driver', NATIVE_DRIVER);
   const driver = spawn('tauri-driver', args, {
@@ -905,17 +940,25 @@ async function run() {
   await script(CONSOLE_HOOK);
   await script(TRAFFIC_HOOK);
 
+  await shoot('pairing');
   await pairTheTerminal();
+  await shoot('sign-in');
   await signIn();
   await openTheShift();
+  await shoot('shift-open');
   const sale = await ringUpASale();
+  await shoot('counter');
   await checkTheSaleReachedTheBooks(sale);
   await returnPartOfIt(sale);
+  await shoot('returns');
   await exchangeTheRest(sale);
+  await shoot('exchange');
   await aCardSaleAwaitsSettlement();
   await theQueueSurvivesAnOutage();
   await moveCashToTheSafe();
+  await shoot('cash-drawer');
   await closeTheShift();
+  await shoot('z-report');
 
   step = 'Across the whole run';
   const logged = await consoleLog();
@@ -1085,7 +1128,11 @@ async function openTheShift() {
     timeout: 20000,
   });
 
-  const session = await tillSession();
+  // Waited for, not read once. The window records what the server said from a
+  // promise that resolves after the response body is parsed, so a check that
+  // ran the instant the screen changed was racing the application — and lost
+  // whenever anything else on the machine was busy.
+  const session = await tillSession({ timeout: 15000 });
   if (
     !check(session !== null, 'the till never told the server to open a session')
   ) {
@@ -1353,6 +1400,7 @@ async function returnPartOfIt(sale) {
 
   // One unit back, which is the ordinary case and the one where the
   // proportional allocation has something to get wrong.
+  await waitForSelector('.cart__qty').catch(() => {});
   if (
     !check(
       await typeIntoEnabled('.cart__qty', '1'),
@@ -1475,6 +1523,10 @@ async function exchangeTheRest(sale) {
   if (!check(found !== '', 'the exchange could not find the original sale'))
     return;
 
+  // The lines arrive from a SECOND call — the lookup resolves the reference,
+  // and what is still returnable is asked for after it. Waiting for the sale's
+  // number to appear is not waiting for its lines.
+  await waitForSelector('.cart__qty').catch(() => {});
   if (
     !check(
       await typeIntoEnabled('.cart__qty', '1'),
@@ -1591,6 +1643,7 @@ async function aCardSaleAwaitsSettlement() {
     return;
   }
   await waitForSelector('.scan__input');
+  await forgetPushes();
 
   const before = await api('GET', scoped('/api/v1/settlement/pending'));
   const pendingBefore = (before.body.data ?? []).length;
@@ -1627,6 +1680,21 @@ async function aCardSaleAwaitsSettlement() {
     what: 'the receipt',
     timeout: 30000,
   });
+
+  // And the server has it. A till is offline-first: the receipt prints when
+  // the sale is written LOCALLY, and the push follows. Measuring the server
+  // the instant the receipt appeared read the books before the sale reached
+  // them — and the sale then landed in the middle of the outage the next step
+  // arranges, which reported two failures for one piece of impatience.
+  const pushed = await pushedSale();
+  if (
+    !check(
+      pushed !== null && (pushed.state === 'applied' || pushed.state === 'duplicate'),
+      `the card sale never reached the server: ${JSON.stringify(pushed)}`,
+    )
+  ) {
+    return;
+  }
 
   const after = await api('GET', scoped('/api/v1/settlement/pending'));
   check(

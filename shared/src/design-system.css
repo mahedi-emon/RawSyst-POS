@@ -800,6 +800,7 @@ body {
 @media (max-width: 639px) {
   .ds-table,
   .ds-table tbody,
+  .ds-table tfoot,
   .ds-table tr,
   .ds-table td {
     display: block;
@@ -888,6 +889,27 @@ body {
   }
 
   .ds-table tbody tr:hover td { background: none; }
+
+  /* The total is a total, not another card.
+   *
+   * `tfoot` was left as a table-footer-group while everything around it became
+   * blocks, so on a phone the total sat in a short bordered box, indented and
+   * narrower than the cards above it — it read as a fragment of the list
+   * rather than as the sum of it. It gets what a total gets on paper: a rule
+   * above, no box, and the weight to be found without reading. */
+  .ds-table tfoot tr {
+    border: none;
+    border-radius: 0;
+    padding: var(--space-3) 0 0;
+    margin-block-end: 0;
+    border-block-start: 2px solid var(--border-strong);
+    background: none;
+  }
+
+  .ds-table tfoot td {
+    font-weight: 600;
+    padding-block: var(--space-1);
+  }
 
   /* The scroll container has nothing left to scroll. Releasing it stops the
    * card list inheriting a horizontal scrollbar it does not need. */

@@ -221,12 +221,20 @@ export function ReturnsScreen() {
 
       {/* Exchanging is its own permission. A shop that lets a cashier refund
           does not necessarily let them swap goods, and the server enforces the
-          same split on the route. */}
+          same split on the route.
+
+          `returns__modes`, not `tenders`. Reusing the tender grid made these
+          two the size of payment buttons — half the screen each, 72px tall —
+          for a choice that is a tab. A control that loud reads as the thing
+          the screen is for, and the thing this screen is for is the receipt
+          underneath it. */}
       {can('sales.exchange') && (
-        <div className="tenders">
+        <div className="returns__modes" role="tablist">
           {(['refund', 'exchange'] as const).map((m) => (
             <button
               key={m}
+              role="tab"
+              aria-selected={mode === m}
               className={
                 mode === m ? 'button button--primary' : 'button button--quiet'
               }

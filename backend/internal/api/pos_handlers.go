@@ -529,7 +529,12 @@ func saleResponse(f sales.Finalized) map[string]any {
 
 func refundResponse(f sales.Refunded) map[string]any {
 	return map[string]any{
-		"credit_note_id":  f.CreditNoteID,
+		"credit_note_id": f.CreditNoteID,
+		// What the note is called, so a cashier can read it to the customer and
+		// find it again. Omitted when a store has no series, which cannot
+		// happen for a note the product issued but is not worth showing an
+		// empty field for.
+		"human_number":    f.CreditNoteNumber,
 		"subtotal_net":    f.Computed.SubtotalNet.String(),
 		"tax_total":       f.Computed.TaxTotal.String(),
 		"total_inclusive": f.Computed.TotalInclusive.String(),

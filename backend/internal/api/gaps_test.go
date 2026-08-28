@@ -147,7 +147,9 @@ func TestACreditNoteHasItsOwnNumberSeries(t *testing.T) {
 	if resp.StatusCode != 201 {
 		t.Fatalf("return: %s", readBody(t, resp))
 	}
-	creditNoteID := decodeJSON(t, resp)["credit_note_id"].(string)
+	// Decoded once: the helper closes the body, so a second call reads nothing.
+	refunded := decodeJSON(t, resp)
+	creditNoteID := refunded["credit_note_id"].(string)
 
 	var number *string
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
@@ -164,6 +166,20 @@ func TestACreditNoteHasItsOwnNumberSeries(t *testing.T) {
 	if !strings.HasPrefix(*number, "CRN-MAIN-2026-") {
 		t.Errorf("credit note numbered %q; it must be visibly a credit note "+
 			"rather than the first sale of the year", *number)
+	}
+
+	// And the till is TOLD the number.
+	//
+	// It was claimed, written to the row above, and then dropped on the way
+	// back — so the screen a cashier reads after giving money back said
+	// "Refunded. Credit note 7d1ddd35-7151-42c9-8160-33de7e99bf05", which is a
+	// primary key. Nobody reads that to a customer and it is not what is
+	// printed on the note. Found by photographing the till after a refund.
+	said, _ := refunded["human_number"].(string)
+	if said != *number {
+		t.Errorf("the response called the credit note %q and the document is "+
+			"called %q. A cashier can only tell the customer what the "+
+			"response said.", said, *number)
 	}
 }
 

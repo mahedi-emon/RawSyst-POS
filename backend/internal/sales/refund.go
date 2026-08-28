@@ -72,8 +72,16 @@ type Return struct {
 // Refunded is what the till gets back.
 type Refunded struct {
 	CreditNoteID uuid.UUID
-	Link         zatca.Link
-	Computed     ComputedReturn
+	// CreditNoteNumber is what the note is CALLED — "CN-MAIN-2026-000004".
+	//
+	// It was claimed and written and then thrown away, so the till told the
+	// cashier "Refunded. Credit note 7d1ddd35-7151-42c9-8160-33de7e99bf05",
+	// which is the primary key. Nobody reads that to a customer, nobody finds
+	// it on a statement, and it is not the number printed on the note itself.
+	// Found by photographing the screen after a refund.
+	CreditNoteNumber string
+	Link             zatca.Link
+	Computed         ComputedReturn
 
 	Reversal accounting.Result
 	COGS     accounting.Result
@@ -223,7 +231,8 @@ func (s *Service) ProcessReturn(
 	}
 
 	return Refunded{
-		CreditNoteID: creditNoteID, Link: link, Computed: computed,
+		CreditNoteID: creditNoteID, CreditNoteNumber: creditNoteNumber,
+		Link: link, Computed: computed,
 		Reversal: reversal, COGS: cogs,
 		Effects: effects, Outstanding: effects.Missing(),
 	}, nil

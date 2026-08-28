@@ -103,7 +103,20 @@ body {
 .counter {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 340px;
+  /* minmax(0, 1fr), not 1fr.
+   *
+   * A bare `1fr` floors at the track's MIN-CONTENT, and the left column holds
+   * the cart — a table whose product names and figures do not want to be
+   * narrower than they are. So the two tracks together asked for more than the
+   * window had, and the window gave it to them: the counter grew a horizontal
+   * scrollbar and the totals column ran off the right edge. On a 1280px till,
+   * "Total", the Mada button and the last digit of every figure were outside
+   * the screen — on the panel a cashier reads out loud to the customer.
+   *
+   * Found by photographing the running application. Nothing else could: a
+   * browser cannot pair, so this screen has never been in a browser test, and
+   * the machine it was developed on was wider than the machine it sells on. */
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 16px;
   padding: 16px;
 }
@@ -116,6 +129,9 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px;
+  /* The floor above stops the TRACK stretching; this stops the panel inside it
+   * doing the same thing one level down. */
+  min-inline-size: 0;
 }
 .counter__totals { display: grid; gap: 10px; align-content: start; }
 .counter__empty { color: var(--ink-quiet); }
@@ -262,6 +278,24 @@ body {
 .returns { padding: 16px; display: grid; gap: 12px; max-inline-size: 720px; }
 
 .returns__title { font-size: 1.1rem; margin: 0; }
+
+/* Refund or exchange: a tab, sized like one.
+ *
+ * These were laid out on `.tenders`, the two-column grid the Cash and Mada
+ * buttons use, so on a 720px column each was 350px wide and 72px tall. A
+ * cashier looking at the returns screen saw two enormous buttons before they
+ * saw the field they are meant to scan into. Sized to their own words now,
+ * against the start edge, with the tap height a till still needs. */
+.returns__modes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.returns__modes .button {
+  min-inline-size: 8rem;
+  padding-inline: 20px;
+}
 
 .returns__reason { display: grid; gap: 4px; font-size: 0.85rem; }
 
@@ -660,6 +694,13 @@ body {
 .shift {
   padding: var(--space-5);
   display: grid;
+  /* The column is declared, not left implicit.
+   *
+   * An implicit track sizes to its widest child's min-content, so `justify-
+   * content: center` centred a track wider than the panel and the panel sat at
+   * the start of it — a hundred pixels left of where it looks like it is meant
+   * to be. The same defect the setup wizard had, for the same reason. */
+  grid-template-columns: min(640px, 100%);
   justify-content: center;
   align-content: start;
 }
@@ -680,6 +721,15 @@ body {
 .shift__figure { display: grid; gap: 2px; }
 .shift__figure dt { margin: 0; }
 .shift__figure dd { margin: 0; font-size: 1.05rem; font-weight: 600; }
+
+/* The figure sits under its own label.
+ *
+ * `.num` right-aligns, which is right in a COLUMN of figures and wrong in a
+ * row of three label-and-value pairs: each number was pushed to the far side
+ * of its cell, so "Sales 4" read as "Sales" on the left and "4" beside the
+ * next label. A cashier glancing at the shift panel had to work out which
+ * number belonged to which word. */
+.shift__figure dd.num { text-align: start; }
 
 .shift__figures--z {
   margin-block-end: var(--space-4);
