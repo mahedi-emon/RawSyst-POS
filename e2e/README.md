@@ -132,7 +132,21 @@ assertion below fails for a reason that has nothing to do with the product.
 | `RS_POS_EXE` | `pos/src-tauri/target/release/rawsyst-pos.exe` |
 | `RS_EDGEDRIVER` | whatever `tauri-driver` finds on `PATH` |
 | `RS_API` | `http://127.0.0.1:8080` |
+| `RS_SHOTS` | off; a directory writes a PNG of each screen as the run reaches it |
 | `RS_PASSWORD` | *required* |
+
+`RS_SHOTS` is how the till's screens get in front of a person. `shots.mjs`
+photographs the back office and cannot photograph this: a browser has no
+keystore, so it stops at the pairing screen and the counter, the shift and the
+returns screen are unreachable. Setting it turns the run that already asserts
+they work into the run that shows you them.
+
+It found the counter running off the right of a 1280px till, with the Total and
+the Mada button outside the screen; a refund reporting a primary key where the
+credit note's number belonged; the mode switch on the returns screen laid out
+as two payment-sized buttons; the shift panel a hundred pixels left of centre
+with every figure right-aligned away from its own label; and the whole till in
+English on an Arabic terminal.
 
 ### What it has found
 
