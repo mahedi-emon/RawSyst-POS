@@ -191,12 +191,20 @@ func TestEverySeededRuleResolvesAgainstAProvisionedChart(t *testing.T) {
 	ctx := t.Context()
 	companyID := provisionedCompany(t, h, f, "Rule Resolution Co")
 
-	// `expense.cash` is expected to fail and is asserted to, rather than
-	// skipped. Design 02 rule 5 debits the expense HEAD the transaction is
-	// for; a fixed role cannot name it, so the rule needs a for_each and not a
-	// mapping. Pinning the failure means the day somebody fixes the rule, this
-	// test tells them to update the expectation rather than silently passing.
-	cannotResolve := map[string]bool{"expense.cash": true}
+	// Nothing is expected to fail any more.
+	//
+	// `expense.cash` was pinned here as a KNOWN failure, with the reason: design
+	// 02 rule 5 debits the expense HEAD the transaction is for, a fixed role
+	// cannot name it, and the rule therefore needed a for_each over a model that
+	// did not exist. The comment said "the day somebody fixes the rule, this
+	// test tells them to update the expectation rather than silently passing",
+	// and that is what happened — 0071 built the expense-head model and gave the
+	// rule its second version, whose debit side is a for_each naming each head's
+	// own account.
+	//
+	// The map is kept rather than deleted. It is how the next rule that cannot
+	// resolve gets recorded as a decision instead of a skip.
+	cannotResolve := map[string]bool{}
 
 	var keys []string
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {

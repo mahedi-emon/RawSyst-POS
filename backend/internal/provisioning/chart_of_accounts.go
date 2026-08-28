@@ -97,7 +97,23 @@ var defaultChart = []seedAccount{
 	// through the product. The tests that covered rule 11 mapped the role by
 	// hand and so never saw it.
 	{"5150", "Inventory Cost Variance", "expense", "cost_variance", ""},
-	{"5200", "Stock Write-off", "expense", "stock_writeoff", ""},
+	// 5400, not 5200, because design 12 §1 puts Inventory Write-off there and
+	// 5200 is Rent. This was seeded at 5200 until 0071, which relabelled it —
+	// the account keeps its id, so nothing moved and no journal line changed.
+	{"5400", "Stock Write-off", "expense", "stock_writeoff", ""},
+
+	// The four heads design 12 §1 names, so a shop can record rent on the day
+	// it installs the product rather than building a chart first. 0071 seeds an
+	// expense head against each of them.
+	//
+	// The roles are here so the head seed can find the account by name rather
+	// than by a code a shop may have changed. Nothing RESOLVES them today — an
+	// expense head names its account, which is the whole point of the model —
+	// but rule 6 will want expense_salaries when payroll is built.
+	{"5200", "Rent", "expense", "expense_rent", ""},
+	{"5210", "Utilities", "expense", "expense_utilities", ""},
+	{"5220", "Salaries", "expense", "expense_salaries", ""},
+	{"5230", "Marketing", "expense", "expense_marketing", ""},
 	// What it costs to be paid by card. Design 12 §1 gives it 5300. Separate
 	// from the clearing account on purpose: the clearing account is money owed
 	// to the shop, this is money the shop never receives, and merging them
@@ -145,6 +161,57 @@ func SeedChartOfAccounts(
 			ON CONFLICT (company_id, role) DO NOTHING`,
 			tenantID, companyID, a.role, accountID); err != nil {
 			return db.Translate(err, "That chart of accounts could not be created.")
+		}
+	}
+
+	return seedExpenseHeads(ctx, tx, tenantID, companyID)
+}
+
+// defaultExpenseHeads are the categories design 12 §1's chart implies.
+//
+// Every one is `input_vat_recoverable`, and that is not a default anybody chose
+// — it is what the documents say. Blueprint E2.3 and design 02 rule 5 restrict
+// entertainment, some vehicles and fuel; none of these is on that list.
+//
+// Heads for the restricted categories are deliberately absent. Design 12's
+// chart has no accounts for them, and inventing an "Entertainment" account so
+// the recoverability flag had something to demonstrate itself on would be the
+// same kind of invention P32 refused when it declined to pick one account for
+// every cash expense.
+var defaultExpenseHeads = []struct {
+	code, name, nameAr, role string
+}{
+	{"RENT", "Rent", "الإيجار", "expense_rent"},
+	{"UTILITIES", "Utilities", "المرافق", "expense_utilities"},
+	{"SALARIES", "Salaries", "الرواتب", "expense_salaries"},
+	{"MARKETING", "Marketing", "التسويق", "expense_marketing"},
+	{"BANKFEES", "Bank charges", "رسوم بنكية", "bank_card_charges"},
+}
+
+// seedExpenseHeads gives a new company something to book an expense to.
+//
+// Seeded with the chart rather than beside it, because a head is meaningless
+// without the account it posts to and the two drifting apart is exactly how a
+// company ends up able to record an expense against nothing.
+//
+// Idempotent, like the chart: a retried onboarding step must not produce a
+// second Rent, and a company that has renamed or repointed a head keeps its
+// version.
+func seedExpenseHeads(
+	ctx context.Context, tx pgx.Tx, tenantID, companyID uuid.UUID,
+) error {
+	for _, h := range defaultExpenseHeads {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO expense_head
+			  (tenant_id, company_id, code, name, name_ar, account_id,
+			   input_vat_recoverable)
+			SELECT $1, $2, $3, $4, $5, m.account_id, true
+			FROM account_role_map m
+			WHERE m.company_id = $2 AND m.role = $6
+			ON CONFLICT DO NOTHING`,
+			tenantID, companyID, h.code, h.name, h.nameAr, h.role); err != nil {
+			return db.Translate(err,
+				"That company's expense categories could not be created.")
 		}
 	}
 	return nil

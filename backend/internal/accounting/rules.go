@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
@@ -42,10 +43,15 @@ type Amounts map[string]decimal.Decimal
 type Group []GroupMember
 
 // GroupMember is one line of a repeating group.
+//
+// Role and AccountID mean what they mean on accounting.Line, and exactly one of
+// them is set: a tender names the role its money lands in, an expense line
+// names the account of the head it was booked to. See the note on Line.
 type GroupMember struct {
-	Role   string
-	Amount decimal.Decimal
-	Memo   string
+	Role      string
+	AccountID *uuid.UUID
+	Amount    decimal.Decimal
+	Memo      string
 }
 
 // Transaction is everything a rule may draw on.
@@ -140,13 +146,14 @@ func (r Rule) Build(txn Transaction) ([]Line, error) {
 						"transaction supplied none.", r.Key, tmpl.ForEach)
 			}
 			for _, m := range members {
-				if m.Role == "" {
+				if m.Role == "" && m.AccountID == nil {
 					return nil, errs.Newf(errs.CodeInternal,
-						"A %q line in rule %q has no account role.",
-						tmpl.ForEach, r.Key)
+						"A %q line in rule %q names neither an account role nor "+
+							"an account.", tmpl.ForEach, r.Key)
 				}
 				out = append(out, Line{
-					Role: m.Role, Side: side, Amount: m.Amount, Memo: m.Memo,
+					Role: m.Role, AccountID: m.AccountID,
+					Side: side, Amount: m.Amount, Memo: m.Memo,
 				})
 			}
 			continue

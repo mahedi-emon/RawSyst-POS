@@ -37,6 +37,7 @@ import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
+import { ExpensesScreen } from '@rawsyst/shared/expenses/ExpensesScreen';
 import { SettlementScreen } from '@rawsyst/shared/settlement/SettlementScreen';
 import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
 import { useT } from '@rawsyst/shared/i18n/locale';
@@ -47,6 +48,7 @@ type Section =
   | 'dashboard'
   | 'buying'
   | 'customers'
+  | 'expenses'
   | 'settlement'
   | 'devices'
   | 'einvoicing'
@@ -98,6 +100,10 @@ export function BackOffice() {
   // does not decide it has arrived — matching a bank statement to a day's
   // takings is bookkeeping, and the routes refuse them either way.
   const maySeeAccounting = may('accounting.view');
+  // Its own verb rather than accounting.view: blueprint A4 gives the Accountant
+  // expenses, and a store manager sees what their branch spends without being
+  // able to read the ledger it lands in.
+  const maySeeExpenses = may('expense.view');
   // Separate from devices.view: an EGS unit carries the VAT registration the
   // invoice chain hangs from, so an accountant reads it and a store manager
   // sees it without being able to create one.
@@ -177,6 +183,9 @@ export function BackOffice() {
     { key: 'buying', label: t('nav.buying'), shown: mayBuy },
     { key: 'customers', label: t('nav.customers'), shown: maySeeCustomers },
     { key: 'inventory', label: t('nav.inventory'), shown: maySeeInventory },
+    // Beside Buying and Customers, because it is the third thing money does:
+    // what the shop bought, what it is owed, and what it spent.
+    { key: 'expenses', label: t('nav.expenses'), shown: maySeeExpenses },
     // Between the money screens and the hardware ones, because reconciling a
     // bank statement is bookkeeping rather than administration.
     { key: 'settlement', label: t('nav.settlement'), shown: maySeeAccounting },
@@ -280,6 +289,8 @@ export function BackOffice() {
         <PurchasingScreen companyId={activeCompany} />
       ) : section === 'customers' && maySeeCustomers ? (
         <CustomersScreen companyId={activeCompany} />
+      ) : section === 'expenses' && maySeeExpenses ? (
+        <ExpensesScreen companyId={activeCompany} />
       ) : section === 'settlement' && maySeeAccounting ? (
         <SettlementScreen companyId={activeCompany} />
       ) : section === 'devices' && maySeeDevices ? (

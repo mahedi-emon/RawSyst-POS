@@ -18,6 +18,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
@@ -121,7 +122,7 @@ func run() error {
 	// revoked till stops working immediately rather than when its token expires.
 	mw = mw.WithDevices(deviceSvc)
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool),
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules),
 		func() error { return pool.Health(ctx) }, version).
 		// Onboarding is only wired when this installation can hold the
 		// credential ZATCA issues; without a key the routes say so rather than

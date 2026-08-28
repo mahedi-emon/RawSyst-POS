@@ -1110,3 +1110,149 @@
     min-block-size: var(--tap-mobile);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Expenses (C3)
+ * ---------------------------------------------------------------------------
+ *
+ * The screen leads with the breakdown by category rather than with a list of
+ * receipts, because that is the question C3 opens with: "where every riyal is
+ * going". Everything below composes what the design system already defines.
+ */
+
+.exp__period { margin-block-end: var(--space-4); }
+
+.exp__periodrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 14rem));
+  gap: var(--space-4);
+  justify-content: start;
+}
+
+.exp__total { font-size: 1.15rem; font-weight: 600; }
+
+/* One row per category: name, bar, amount, share.
+ *
+ * The bar is the fastest way to see that rent is most of the month, and it is
+ * decoration over figures that are already there — the amount and the share are
+ * both text beside it, and the bar itself is aria-hidden. A chart that is the
+ * only way to read a number excludes anybody using a screen reader and anybody
+ * printing in black and white.
+ */
+.exp__bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.exp__bar {
+  display: grid;
+  grid-template-columns: minmax(6rem, 12rem) minmax(0, 1fr) auto 3.5rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.exp__barname { font-weight: 500; }
+
+.exp__bartrack {
+  block-size: 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.exp__barfill {
+  display: block;
+  block-size: 100%;
+  background: var(--brand);
+  border-radius: var(--radius-full);
+}
+
+.exp__baramount { font-weight: 500; }
+.exp__barshare { text-align: end; }
+
+/* VAT the shop paid and will not get back. A real cost that looks like tax, so
+ * it is called out rather than folded into a total. */
+.exp__absorbed {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--warning);
+  background: var(--warning-subtle);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.exp__warn {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--warning);
+  background: var(--warning-subtle);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.exp__form {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.exp__formrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+/* The one tax decision on the screen, asked as a decision.
+ *
+ * A bordered group rather than two loose radios: it is the field that decides
+ * what every future VAT return claims, and it should not read as one more
+ * option among the labels around it.
+ */
+.exp__vat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.exp__vat legend { padding-inline: var(--space-2); }
+.exp__vat .field__hint { margin-block-end: var(--space-1); }
+
+.exp__choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  cursor: pointer;
+  min-block-size: var(--tap-desk);
+}
+
+.exp__choice input { margin-block-start: 3px; inline-size: 18px; block-size: 18px; }
+.exp__choice > span { display: grid; gap: 2px; }
+
+@media (max-width: 639px) {
+  /* The share column is the first thing to go: the amount beside it says the
+   * same thing more precisely, and at 390px the bar has no room to mean
+   * anything anyway. */
+  .exp__bar { grid-template-columns: minmax(0, 1fr) auto; }
+  .exp__bartrack,
+  .exp__barshare { display: none; }
+}
+
+@media (pointer: coarse) {
+  .exp__choice { min-block-size: var(--tap-mobile); align-items: center; }
+}
+
+/* The reclaimable half, stated so the two panels reconcile: categories plus
+ * this is what left the bank. Quieter than the absorbed note — one is a fact
+ * about cash flow, the other is a cost. */
+.exp__reclaim {
+  margin: var(--space-4) 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}

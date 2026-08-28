@@ -450,6 +450,34 @@ func (s *Service) readInputTax(
 		return err
 	}
 
+	// Cash expenses reclaim input tax too, so the document side has to count
+	// them or the reconciliation reports a difference on every return where a
+	// shop paid its electricity bill.
+	//
+	// tax_RECOVERABLE, not tax_total. The two are the same figure for an
+	// ordinary expense and deliberately different for a restricted one: E2.3
+	// puts entertainment, some vehicles and fuel outside recovery, and 0071
+	// absorbs that VAT into the expense rather than debiting Input VAT with it.
+	// Summing tax_total here would claim it back on the return by the side
+	// door, which is precisely what the head's flag exists to prevent.
+	//
+	// This is the case the comment above predicted — "the day someone adds a
+	// genuinely non-recoverable path, which will announce itself here rather
+	// than quietly over-reclaiming". It announced itself. The reconciliation
+	// still compares two independent paths to one number; the document side
+	// simply has two kinds of document in it now.
+	var expensed decimal.Decimal
+	if err := tx.QueryRow(ctx, `
+		SELECT coalesce(sum(x.tax_recoverable), 0)
+		FROM expense x
+		WHERE x.company_id = $1
+		  AND x.expense_date BETWEEN $2::date AND $3::date
+		  AND x.journal_entry_id IS NOT NULL`,
+		companyID, from, to).Scan(&expensed); err != nil {
+		return err
+	}
+	billed = billed.Add(expensed)
+
 	inputTax := ledger.StringFixed(moneyScale)
 	billedTax := billed.StringFixed(moneyScale)
 	inputDiff := billed.Sub(ledger)
@@ -462,8 +490,8 @@ func (s *Service) readInputTax(
 	if !inputDiff.IsZero() {
 		out.Reconciled = false
 		out.Outstanding = append(out.Outstanding,
-			"the tax on supplier bills does not match the Input VAT account: "+
-				"this return cannot be filed until they agree")
+			"the tax on supplier bills and expenses does not match the Input "+
+				"VAT account: this return cannot be filed until they agree")
 	}
 
 	// What was collected, less what may be reclaimed. Negative is ordinary and

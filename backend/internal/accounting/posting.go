@@ -47,7 +47,26 @@ const (
 // its own copy of every rule. The role is the stable name and account_role_map
 // resolves it (migration 0015).
 type Line struct {
-	Role   string
+	Role string
+
+	// AccountID names the account DIRECTLY, for the one case where a role
+	// cannot: an account the person recording the transaction chose.
+	//
+	// Design 02 rule 5 debits "Expense Account", meaning whichever head the
+	// expense is for — and design 12 §1 offers Rent, Utilities, Salaries and
+	// Marketing as separate accounts with no generic one among them. A fixed
+	// role cannot name the one somebody picked, and minting a role per expense
+	// head would put a shop's own categories into the vocabulary the posting
+	// rules share. So the head names its account and the line carries it.
+	//
+	// It is checked against the company before it is written — see
+	// resolveAccounts — because a caller-supplied account id is the one input
+	// row-level security cannot vouch for on its own: another company's account
+	// is in the same tenant, so RLS sees nothing wrong with it.
+	//
+	// Exactly one of Role and AccountID is set.
+	AccountID *uuid.UUID
+
 	Side   Side
 	Amount decimal.Decimal
 
@@ -170,7 +189,7 @@ func Post(ctx context.Context, tx pgx.Tx, e Entry) (Result, error) {
 		return Result{EntryID: entryID, EntryNo: entryNo, AlreadyPosted: true}, nil
 	}
 
-	accounts, err := resolveRoles(ctx, tx, e.CompanyID, lines)
+	accounts, err := resolveAccounts(ctx, tx, e.CompanyID, lines)
 	if err != nil {
 		return Result{}, err
 	}
@@ -207,7 +226,7 @@ func Post(ctx context.Context, tx pgx.Tx, e Entry) (Result, error) {
 			   debit, credit, base_debit, base_credit,
 			   subledger_type, subledger_id, memo)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-			e.TenantID, entryID, i+1, accounts[l.Role], l.StoreID,
+			e.TenantID, entryID, i+1, accounts[accountKey(l)], l.StoreID,
 			e.Currency, rate, debit, credit, baseDebit, baseCredit,
 			nullText(l.SubledgerType), l.SubledgerID, nullText(l.Memo)); err != nil {
 			return Result{}, db.Translate(err,
@@ -243,9 +262,17 @@ func usableLines(in []Line) ([]Line, error) {
 			return nil, errs.Newf(errs.CodeInternal,
 				"%q is not a side of an accounting entry.", l.Side)
 		}
-		if l.Role == "" {
+		if l.Role == "" && l.AccountID == nil {
 			return nil, errs.New(errs.CodeInternal,
 				"An entry line must name the account role it posts to.")
+		}
+		if l.Role != "" && l.AccountID != nil {
+			// Both would be ambiguous about which one decided where the money
+			// went, and the answer matters: one is configuration the whole
+			// tenant shares, the other is a choice somebody made once.
+			return nil, errs.Newf(errs.CodeInternal,
+				"An entry line names both the role %q and an account. It must "+
+					"name one or the other.", l.Role)
 		}
 		out = append(out, l)
 	}
@@ -508,55 +535,122 @@ func insertEntry(
 	return id, no, true, nil
 }
 
-// resolveRoles maps every role the entry uses to this company's account.
+// accountKey is how a line is looked up in the resolved account map.
 //
-// Resolved in one query, and a missing role names itself. A chart of accounts
-// that has not been mapped is a setup mistake, and the message has to be
-// specific enough for whoever configures it to fix it.
-func resolveRoles(
+// A role is its own key. An account names itself, prefixed so a role and an
+// account id can never collide in one map.
+func accountKey(l Line) string {
+	if l.AccountID != nil {
+		return "id:" + l.AccountID.String()
+	}
+	return l.Role
+}
+
+// resolveAccounts maps every line to the account it posts to.
+//
+// Two kinds of line, checked in one place because they have to end up equally
+// trustworthy:
+//
+//   - A ROLE is configuration. It resolves through account_role_map, and a
+//     missing one names itself: an unmapped chart is a setup mistake, and the
+//     message has to be specific enough for whoever configures it to fix it.
+//
+//   - An ACCOUNT ID came from the caller. It is verified to belong to THIS
+//     company and to be postable, and refused if it is not. Row-level security
+//     cannot do this job: another company inside the same tenant is visible to
+//     it, so an id from a sister company's chart would pass every policy and
+//     put an expense in the wrong set of books.
+//
+// Both checks are the same shape — resolve, then refuse anything that did not
+// resolve — so a line can never reach the insert with a nil account and be
+// written against whatever the zero UUID happens to be.
+func resolveAccounts(
 	ctx context.Context, tx pgx.Tx, companyID uuid.UUID, lines []Line,
 ) (map[string]uuid.UUID, error) {
-	wanted := make([]string, 0, len(lines))
+	roles := make([]string, 0, len(lines))
+	ids := make([]uuid.UUID, 0, len(lines))
 	seen := make(map[string]bool, len(lines))
+
 	for _, l := range lines {
-		if !seen[l.Role] {
-			seen[l.Role] = true
-			wanted = append(wanted, l.Role)
+		key := accountKey(l)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if l.AccountID != nil {
+			ids = append(ids, *l.AccountID)
+		} else {
+			roles = append(roles, l.Role)
 		}
 	}
 
-	rows, err := tx.Query(ctx, `
-		SELECT m.role, m.account_id
-		FROM account_role_map m
-		JOIN account a ON a.id = m.account_id
-		WHERE m.company_id = $1 AND m.role = ANY($2) AND a.is_postable`,
-		companyID, wanted)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	out := make(map[string]uuid.UUID, len(seen))
 
-	out := make(map[string]uuid.UUID, len(wanted))
-	for rows.Next() {
-		var role string
-		var id uuid.UUID
-		if err := rows.Scan(&role, &id); err != nil {
+	if len(roles) > 0 {
+		rows, err := tx.Query(ctx, `
+			SELECT m.role, m.account_id
+			FROM account_role_map m
+			JOIN account a ON a.id = m.account_id
+			WHERE m.company_id = $1 AND m.role = ANY($2) AND a.is_postable`,
+			companyID, roles)
+		if err != nil {
 			return nil, err
 		}
-		out[role] = id
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+		defer rows.Close()
 
-	for _, role := range wanted {
-		if _, ok := out[role]; !ok {
-			return nil, errs.Newf(errs.CodeConflict,
-				"This company has no account mapped to %q, or the one mapped to "+
-					"it is a heading rather than an account that can be posted to. "+
-					"Set it in the chart of accounts before trading.", role)
+		for rows.Next() {
+			var role string
+			var id uuid.UUID
+			if err := rows.Scan(&role, &id); err != nil {
+				return nil, err
+			}
+			out[role] = id
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		for _, role := range roles {
+			if _, ok := out[role]; !ok {
+				return nil, errs.Newf(errs.CodeConflict,
+					"This company has no account mapped to %q, or the one mapped to "+
+						"it is a heading rather than an account that can be posted to. "+
+						"Set it in the chart of accounts before trading.", role)
+			}
 		}
 	}
+
+	if len(ids) > 0 {
+		rows, err := tx.Query(ctx, `
+			SELECT id FROM account
+			WHERE id = ANY($1) AND company_id = $2 AND is_postable`,
+			ids, companyID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+			}
+			out["id:"+id.String()] = id
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		for _, id := range ids {
+			if _, ok := out["id:"+id.String()]; !ok {
+				return nil, errs.New(errs.CodeInvalidInput,
+					"One of those lines names an account that is not this "+
+						"company's, or is a heading rather than an account that "+
+						"can be posted to.")
+			}
+		}
+	}
+
 	return out, nil
 }
 

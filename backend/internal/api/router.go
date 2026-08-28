@@ -23,6 +23,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
@@ -88,6 +89,7 @@ type Server struct {
 	branding     *branding.Service
 	shift        *shift.Service
 	settlement   *settlement.Service
+	expenses     *expenses.Service
 	health       func() error
 	version      string
 
@@ -134,6 +136,7 @@ func NewServer(
 	brandingSvc *branding.Service,
 	shiftSvc *shift.Service,
 	settlementSvc *settlement.Service,
+	expenseSvc *expenses.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -154,6 +157,7 @@ func NewServer(
 		branding:     brandingSvc,
 		shift:        shiftSvc,
 		settlement:   settlementSvc,
+		expenses:     expenseSvc,
 		health:       health,
 		version:      version,
 	}
@@ -558,6 +562,33 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/dashboard/compliance", AccessPermission, "accounting.view",
 			s.handleComplianceQueue,
 			"invoices that have not finished reporting; states the P1 gate honestly"},
+
+		// --- cash expenses (C3, design 02 rule 5) ---
+		//
+		// Three verbs, split by the SIZE of the decision, which is the argument
+		// 0065 makes. Recording what the electricity cost is clerical; deciding
+		// that fuel VAT cannot be reclaimed is a tax position that overstates
+		// every future return if it is wrong.
+		{http.MethodGet, "/api/v1/expenses", AccessPermission, "expense.view",
+			s.handleListExpenses, ""},
+		{http.MethodPost, "/api/v1/expenses", AccessPermission, "expense.record",
+			s.handleRecordExpense, ""},
+		{http.MethodGet, "/api/v1/expenses/{expenseID}", AccessPermission, "expense.view",
+			s.handleReadExpense, ""},
+		{http.MethodGet, "/api/v1/expenses/heads", AccessPermission, "expense.view",
+			s.handleListExpenseHeads,
+			"recording an expense needs the list to choose from, so view rather " +
+				"than manage_heads gates reading it"},
+		{http.MethodPost, "/api/v1/expenses/heads", AccessPermission, "expense.manage_heads",
+			s.handleCreateExpenseHead, ""},
+		{http.MethodPut, "/api/v1/expenses/heads/{headID}", AccessPermission, "expense.manage_heads",
+			s.handleUpdateExpenseHead, ""},
+		{http.MethodPost, "/api/v1/expenses/heads/{headID}/active", AccessPermission, "expense.manage_heads",
+			s.handleSetExpenseHeadActive, ""},
+		{http.MethodGet, "/api/v1/expenses/accounts", AccessPermission, "expense.manage_heads",
+			s.handleListExpenseAccounts,
+			"the chart accounts a category may post to; only useful to whoever " +
+				"may point one at an account"},
 		{http.MethodGet, "/api/v1/dashboard/stock", AccessPermission, "inventory.view",
 			s.handleStockDetail,
 			"variants low or out of stock, summed across the company's warehouses"},

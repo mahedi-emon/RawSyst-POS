@@ -3,6 +3,7 @@
 package api
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -98,10 +99,19 @@ func TestEveryRoleThePostingRulesNameIsInTheChart(t *testing.T) {
 	// this is a rule that needs a `for_each` rather than a mapping that needs
 	// an account — and choosing one account for every cash expense would be
 	// inventing an accounting rule rather than recording one.
-	deferred := map[string]string{
-		"expense": "design 02 rule 5 debits the expense HEAD, which a fixed " +
-			"role cannot name; the rule needs a for_each, not a mapping",
-	}
+	// Empty, and kept rather than deleted.
+	//
+	// It held one entry: the `expense` role, which design 02 rule 5 named and
+	// no chart could map, because the rule debits the expense HEAD a
+	// transaction is for rather than a fixed account. 0071 built the head model
+	// and rule 5 version 2 replaced that line with a for_each naming each
+	// head's own account, so the role is gone from every version that can
+	// resolve and there is nothing left to defer.
+	//
+	// The map stays as the place a future exception is written down WITH its
+	// reason, which is what stopped this one being mistaken for an oversight
+	// for as long as it stood.
+	deferred := map[string]string{}
 
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		// posting_rule is global rather than per tenant, so it carries the rules
@@ -237,5 +247,133 @@ func TestASaleWorksOnTheSeededChart(t *testing.T) {
 		oneItemSale(f, newUUID(), "1", "115.00", "115.00"))
 	if created.StatusCode != 201 {
 		t.Fatalf("a sale failed on a freshly seeded chart: %s", readBody(t, created))
+	}
+}
+
+// No two roles may resolve to the same account.
+//
+// THE DEFECT THIS TEST WOULD HAVE CAUGHT.
+//
+// 0071 relabelled Stock Write-off from 5200 to 5400 so Rent could have the code
+// design 12 §1 gives it — with a bare UPDATE, outside any tenant context, on a
+// table with FORCE ROW LEVEL SECURITY. The predicate was false for every row,
+// so it changed nothing and reported no error, because an UPDATE that matches
+// nothing is not a failure. The insert that followed then found 5200 occupied,
+// returned the EXISTING row, and mapped `expense_rent` to Stock Write-off.
+//
+// The result was two roles sharing one account. Every rent a shop recorded
+// debited an account an accountant reads as damaged stock, and nothing anywhere
+// said so: the entry balanced, the trial balance tied, and the expense screen
+// showed a sensible-looking figure under a category called Rent.
+//
+// A shared account is what that failure looks like from the outside, whatever
+// caused it — a seed that drifted, a migration that missed its scope, a mapping
+// someone repointed by hand. The seeded chart maps one role to one account by
+// construction, so there is nothing here to allow deliberately, and a future
+// chart that genuinely wants to merge two roles should have to say so here.
+func TestNoTwoAccountRolesShareAnAccount(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	ctx := t.Context()
+	companyID := provisionedCompany(t, h, f, "Role Collision Co")
+
+	type clash struct {
+		code, name string
+		roles      []string
+	}
+	var clashes []clash
+
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT a.code, a.name, array_agg(m.role ORDER BY m.role)
+			FROM account_role_map m
+			JOIN account a ON a.id = m.account_id
+			WHERE m.company_id = $1
+			GROUP BY a.id, a.code, a.name
+			HAVING count(*) > 1
+			ORDER BY a.code`, companyID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c clash
+			if e := rows.Scan(&c.code, &c.name, &c.roles); e != nil {
+				return e
+			}
+			clashes = append(clashes, c)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatalf("look for shared accounts: %v", err)
+	}
+
+	for _, c := range clashes {
+		t.Errorf("account %s %q is mapped to %v. Two roles resolving to one "+
+			"account means at least one of them posts somewhere nobody chose, "+
+			"and every entry it writes will balance while landing in the wrong "+
+			"place.", c.code, c.name, c.roles)
+	}
+}
+
+// Every expense head a new company gets must post to an expense account of its
+// own, and to the account its NAME implies.
+//
+// The second half is what makes this more than a repeat of the trigger's own
+// check: a head pointing at any expense account passes the trigger, and a Rent
+// head pointing at Stock Write-off is still wrong.
+func TestSeededExpenseHeadsPostWhereTheirNamesSay(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	ctx := t.Context()
+	companyID := provisionedCompany(t, h, f, "Expense Head Co")
+
+	// The head code and the account NAME its seed intends. Written out rather
+	// than derived from the seed, so a change to the seed has to be a change
+	// here too — which is the point: the pairing is a decision, not a lookup.
+	want := map[string]string{
+		"RENT":      "Rent",
+		"UTILITIES": "Utilities",
+		"SALARIES":  "Salaries",
+		"MARKETING": "Marketing",
+		"BANKFEES":  "Bank & Card Charges",
+	}
+
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		for code, accountName := range want {
+			var got, kind string
+			var postable bool
+			e := tx.QueryRow(ctx, `
+				SELECT a.name, a.type, a.is_postable
+				FROM expense_head h
+				JOIN account a ON a.id = h.account_id
+				WHERE h.company_id = $1 AND h.code = $2`,
+				companyID, code).Scan(&got, &kind, &postable)
+			if errors.Is(e, pgx.ErrNoRows) {
+				t.Errorf("a provisioned company has no %q expense head, so a "+
+					"shop cannot record that cost on the day it installs the "+
+					"product", code)
+				continue
+			}
+			if e != nil {
+				return e
+			}
+			if got != accountName {
+				t.Errorf("the %q head posts to %q, and it should post to %q. An "+
+					"entry to the wrong expense account balances perfectly and "+
+					"is read by an accountant as something else entirely.",
+					code, got, accountName)
+			}
+			if kind != "expense" {
+				t.Errorf("the %q head posts to a %s account", code, kind)
+			}
+			if !postable {
+				t.Errorf("the %q head posts to a heading rather than an account "+
+					"entries can be written to", code)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("check the seeded heads: %v", err)
 	}
 }
