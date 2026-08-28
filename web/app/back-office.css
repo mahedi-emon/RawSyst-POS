@@ -91,17 +91,29 @@
 }
 
 .setupw__count { margin: 0; }
-.setupw__purpose { margin-block: var(--space-1) var(--space-5); }
+/* The gap on .setupw__step now separates the intro from the fields. */
+.setupw__purpose { margin: 0; }
 
 /* The step rail. Scrolls sideways on a narrow screen rather than wrapping into
  * a block that pushes the form off the fold. */
+/* The seven steps WRAP rather than scroll.
+ *
+ * They scrolled sideways, and seven pills do not fit the 680px column the
+ * wizard is set in — so step 6 was cut off mid-word and step 7 was not on the
+ * screen at all. A stepper exists to answer one question, "how much is left",
+ * and a scrolling one hides exactly that: the owner setting up their shop could
+ * see they were on step 1 of something, with no way to tell of what without
+ * discovering they could drag it.
+ *
+ * Two rows of pills answers the question at a glance and cannot overflow, which
+ * also retires the horizontal scroll the phone layout was relying on. */
 .rail {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
-  overflow-x: auto;
 }
 
 .rail__item { flex: 0 0 auto; }
@@ -143,6 +155,36 @@
   border-radius: var(--radius-full);
   background: var(--surface-sunken);
   font-variant-numeric: tabular-nums;
+}
+
+/* The step's own contents are a stack with a gap, like every other form in the
+ * product.
+ *
+ * They were in normal flow with nothing between them, so a field sat 0px below
+ * the one above and 4px above its own input: a label the same distance from two
+ * different controls, which is ambiguous about which one it names, and a column
+ * that reads as one undifferentiated block rather than as a form with parts.
+ *
+ * Measured rather than eyeballed. Walking the forms in a browser gave 16px
+ * between fields on Customers and Buying — whose containers are already grids
+ * with a gap — and 0px here, which is the whole finding: the wizard was the one
+ * form laying its fields out in normal flow.
+ *
+ * A gap on the container rather than a margin on the field, so it matches what
+ * the other forms do and cannot double up with the `.setupw__pair` grid nested
+ * inside it. */
+.setupw__step {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+/* The step's heading block is its own unit: the caption, the title and the
+ * sentence under them belong together and to the fields below only at the
+ * distance the gap gives them. */
+.setupw__step > .setupw__intro {
+  display: grid;
+  gap: var(--space-1);
 }
 
 .setupw__pair {
@@ -713,11 +755,23 @@
 
 .matrix__head > * { min-inline-size: 0; }
 
+/* The two controls that choose what the grid is showing.
+ *
+ * `1fr` each let them divide the whole page between them, so on a 1440px
+ * monitor a box you type a SKU into came out about 900 pixels wide. Nothing is
+ * gained by it: a field far wider than anything anybody types into it reads as
+ * a mistake, and the pair floated apart with the search stranded at one edge
+ * of the screen and the product list at the other.
+ *
+ * A ceiling instead. They still divide the row and still collapse to one
+ * column on a narrow screen — `auto-fit` with a 180px floor does that — and
+ * they stop growing at the width a name or a SKU actually needs. */
 .matrix__picker {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 22rem));
   gap: var(--space-3);
   align-items: end;
+  justify-content: start;
 }
 
 .matrix__search,

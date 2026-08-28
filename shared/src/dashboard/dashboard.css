@@ -584,10 +584,18 @@
   .detail__summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .detail__head {
     grid-template-areas: "back back" "titles actions";
-    /* Both columns may shrink. The actions column holds a segmented control or
-     * a primary button, and either would hold the row open at its own width
-     * unless told otherwise. */
-    grid-template-columns: minmax(0, auto) minmax(0, auto);
+    /* The titles take the free space so the actions sit against the far edge.
+     *
+     * Both columns were `auto`, which sizes each to its contents and packs them
+     * from the start — so `justify-self: end` on the actions had nothing to
+     * push against and the button landed wherever the title happened to end.
+     * On Buying, whose actions are a button plus four tabs, that was close
+     * enough to the edge to look deliberate; on Terminals, whose actions are
+     * one button, "Add terminal" floated in the middle of a 1440px page.
+     *
+     * `minmax(0, 1fr)` rather than `1fr`, so the titles can still shrink below
+     * their content instead of forcing the row open. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
     align-items: end;
   }
 

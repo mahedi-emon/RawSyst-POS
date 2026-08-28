@@ -263,14 +263,16 @@ function StepBody({
   const meta = stepMeta(step);
 
   return (
-    <section aria-label={t(meta.title)}>
-      <p className="ds-caption setupw__count">
-        {t('setup.stepOf')
-          .replace('{n}', String(stepNumber(step)))
-          .replace('{total}', String(STEPS.length))}
-      </p>
-      <h2 className="ds-h2">{t(meta.title)}</h2>
-      <p className="ds-body-sm ds-muted setupw__purpose">{t(meta.purpose)}</p>
+    <section className="setupw__step" aria-label={t(meta.title)}>
+      <div className="setupw__intro">
+        <p className="ds-caption setupw__count">
+          {t('setup.stepOf')
+            .replace('{n}', String(stepNumber(step)))
+            .replace('{total}', String(STEPS.length))}
+        </p>
+        <h2 className="ds-h2">{t(meta.title)}</h2>
+        <p className="ds-body-sm ds-muted setupw__purpose">{t(meta.purpose)}</p>
+      </div>
 
       {step === 'business_info' && (
         <BusinessStep progress={progress} readOnly={readOnly} onAdvanced={onAdvanced} />

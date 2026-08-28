@@ -258,7 +258,15 @@ function TerminalRow({
         </span>
       </td>
       <td>
-        {terminal.store}
+        {/* The branch on its own line, the e-invoicing unit under it.
+          *
+          * The branch used to be a bare text node with the caption inline after
+          * it, and .ds-caption is a size and a colour rather than a block — so
+          * the two ran together and the cell read "Main Branchtill-1", which
+          * looks like one mangled name rather than two facts. The column beside
+          * it has stacked correctly all along because its first line carries
+          * .detail__strong, which is display:block. */}
+        <span className="detail__strong">{terminal.store}</span>
         {terminal.egs_unit && <span className="ds-caption">{terminal.egs_unit}</span>}
       </td>
       <td>

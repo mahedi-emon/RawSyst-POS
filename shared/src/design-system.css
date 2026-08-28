@@ -513,6 +513,19 @@ body {
   vertical-align: baseline;
 }
 
+/* A caption inside a cell is a SECOND LINE, not a suffix.
+ *
+ * `.ds-caption` is a size and a colour; it says nothing about layout, because
+ * it is used inline beside headings as often as under them. In a table cell it
+ * is always the quieter fact under the louder one — a branch and the unit in
+ * it, a terminal and its build — and left inline it simply ran on: the
+ * Terminals list read "Main Branchtill-1", which looks like one mangled name
+ * rather than two facts.
+ *
+ * Scoped to cells rather than fixed at each site: 59 places emit one of these
+ * spans, and the next table to add one should not have to know. */
+.ds-table td > .ds-caption { display: block; }
+
 .ds-table tbody tr:last-child td { border-block-end: none; }
 .ds-table tbody tr:hover td { background: var(--surface-sunken); }
 
@@ -1003,6 +1016,8 @@ body {
    * holding a long option refuses to shrink and stretches its container. */
   min-inline-size: 0;
 }
+
+
 
 .field__label {
   font-size: 0.8125rem;
