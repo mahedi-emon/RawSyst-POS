@@ -22,6 +22,7 @@ import { useState } from 'react';
 
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
+import type { Translate } from '@rawsyst/shared/i18n/strings';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import {
   fetchReturnable,
@@ -103,11 +104,11 @@ export function ReturnsScreen() {
     // ordinary sale line and is priced the same way.
     const item = await terminal.catalogue?.lookup(barcode);
     if (!item) {
-      setNotice(`Nothing on this terminal carries the barcode ${barcode}.`);
+      setNotice(t('returns.noBarcodeHere', { barcode }));
       return;
     }
     if (!item.isActive) {
-      setNotice('That item has been withdrawn from sale.');
+      setNotice(t('till.withdrawn'));
       return;
     }
     setNotice(null);
@@ -138,19 +139,25 @@ export function ReturnsScreen() {
             : [{ method, amount: preview.owed }],
       });
 
+      const note =
+        result.credit_note.human_number ?? result.credit_note.credit_note_id;
       setDone(
         result.customer_paid
-          ? `Exchanged. ${result.difference} taken. Credit note ` +
-              `${result.credit_note.human_number ?? result.credit_note.credit_note_id}.`
-          : `Exchanged. ${result.difference.replace('-', '')} refunded. ` +
-              `Credit note ${result.credit_note.human_number ?? result.credit_note.credit_note_id}.`,
+          ? t('returns.exchanged', {
+              amount: result.difference,
+              number: note,
+            })
+          : t('returns.exchangedRefund', {
+              amount: result.difference.replace('-', ''),
+              number: note,
+            }),
       );
       setLines(null);
       setFound(null);
       setQty({});
       setReplacement([]);
     } catch (err) {
-      setNotice(explain(err, 'That exchange could not be completed.'));
+      setNotice(explain(err, t('returns.exchangeFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -175,13 +182,13 @@ export function ReturnsScreen() {
       const returnable = await fetchReturnable(client, sale.id);
       if (returnable.length === 0) {
         setFound(sale);
-        setNotice('That sale has no lines left to return.');
+        setNotice(t('returns.nothingLeft'));
         return;
       }
       setFound(sale);
       setLines(returnable);
     } catch (err) {
-      setNotice(explain(err, 'That sale could not be looked up.'));
+      setNotice(explain(err, t('returns.lookupFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -207,7 +214,7 @@ export function ReturnsScreen() {
       setFound(null);
       setQty({});
     } catch (err) {
-      setNotice(explain(err, 'That refund could not be completed.'));
+      setNotice(explain(err, t('returns.refundFailed'), t));
     } finally {
       setBusy(false);
     }
@@ -216,7 +223,9 @@ export function ReturnsScreen() {
   return (
     <main className="returns">
       <h1 className="returns__title">
-        {mode === 'refund' ? 'Return goods' : 'Exchange goods'}
+        {mode === 'refund'
+          ? t('returns.returnGoods')
+          : t('returns.exchangeGoods')}
       </h1>
 
       {/* Exchanging is its own permission. A shop that lets a cashier refund
@@ -244,7 +253,7 @@ export function ReturnsScreen() {
                 setNotice(null);
               }}
             >
-              {m === 'refund' ? 'Refund' : 'Exchange'}
+              {m === 'refund' ? t('returns.refundTab') : t('returns.exchangeTab')}
             </button>
           ))}
         </div>
@@ -275,7 +284,7 @@ export function ReturnsScreen() {
 
       {done && (
         <p className="queue queue--ok" role="status" aria-live="polite">
-          Refunded. Credit note {done}.
+          {t('returns.refunded', { number: done })}
         </p>
       )}
 
@@ -315,7 +324,9 @@ export function ReturnsScreen() {
                           refund it. */}
                       {Number(line.qty_returned) > 0 && (
                         <span className="cart__sku">
-                          {line.qty_returned} already returned
+                          {t('returns.alreadyReturned', {
+                            qty: line.qty_returned,
+                          })}
                         </span>
                       )}
                     </td>
@@ -346,7 +357,7 @@ export function ReturnsScreen() {
 
           {invalid.length > 0 && (
             <p className="queue queue--warn" role="status" aria-live="polite">
-              More has been entered than that sale can give back.
+              {t('returns.overReturned')}
             </p>
           )}
 
@@ -391,7 +402,9 @@ export function ReturnsScreen() {
                 disabled={!canRefund}
                 onClick={() => void refund()}
               >
-                {busy ? 'Refunding…' : `Refund ${total}`}
+                {busy
+                  ? t('returns.refunding')
+                  : t('returns.refundAmount', { amount: total })}
               </button>
             </>
           ) : (
@@ -416,7 +429,7 @@ export function ReturnsScreen() {
 
               {replacement.length === 0 ? (
                 <p className="counter__empty">
-                  Scan what the customer is taking instead.
+                  {t('returns.scanReplacementPrompt')}
                 </p>
               ) : (
                 <table className="cart">
@@ -457,10 +470,10 @@ export function ReturnsScreen() {
                       are about to say it out loud to the customer. */}
                   <dt>
                     {preview.owed === '0.00'
-                      ? 'Nothing to pay'
+                      ? t('returns.nothingToPay')
                       : preview.customerPays
-                        ? 'Customer pays'
-                        : 'Refund to customer'}
+                        ? t('returns.customerPays')
+                        : t('returns.refundToCustomer')}
                   </dt>
                   <dd className="num">{preview.owed}</dd>
                 </div>
@@ -469,7 +482,7 @@ export function ReturnsScreen() {
               {/* Labelled as an estimate, because it is one: the server prices
                   the replacement from the registry and may disagree. */}
               <p className="cart__sku">
-                An estimate. The final figure comes from the server.
+                {t('returns.anEstimate')}
               </p>
 
               <button
@@ -477,7 +490,9 @@ export function ReturnsScreen() {
                 disabled={!canExchange}
                 onClick={() => void exchange()}
               >
-                {busy ? 'Exchanging…' : 'Complete exchange'}
+                {busy
+                  ? t('returns.exchanging')
+                  : t('returns.completeExchange')}
               </button>
             </>
           )}
@@ -488,21 +503,15 @@ export function ReturnsScreen() {
 }
 
 /** Turns a failure into something a cashier can act on. */
-function explain(err: unknown, fallback: string): string {
+function explain(err: unknown, fallback: string, t: Translate): string {
   if (err instanceof Offline) {
     // The honest refusal. Named as a limitation with a reason, not as a
     // generic error, because the cashier needs to know it will work later.
-    return (
-      'This till cannot reach the server, so a return cannot be processed. ' +
-      'Whether some of this sale has already been refunded is not known here, ' +
-      'and refunding it twice cannot be undone.'
-    );
+    return t('returns.cannotReach');
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 404) return 'No sale was found with that reference.';
-    if (err.status === 403) {
-      return 'This login is not allowed to refund sales.';
-    }
+    if (err.status === 404) return t('returns.notFound');
+    if (err.status === 403) return t('returns.notAllowed');
     return err.message;
   }
   return err instanceof Error ? err.message : fallback;

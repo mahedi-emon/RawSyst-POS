@@ -17,6 +17,8 @@
 // halala would eventually refuse a sale that exactly reaches the limit — the
 // commonest case in a shop that sets round limits.
 
+import type { Translate } from '@rawsyst/shared/i18n/strings';
+
 import { minor, major } from '@rawsyst/shared/receivables/receivables';
 import type { CachedCustomer } from '../offline/customers';
 
@@ -73,25 +75,33 @@ export type CreditVerdict =
 export function creditVerdict(
   customer: CounterCustomer | null,
   amount: string,
+  // The reader's language. A parameter, not a hook, so this stays a pure
+  // function the tests call directly; English when it is absent.
+  translate?: Translate,
 ): CreditVerdict {
   if (!customer) {
     return {
       kind: 'no_customer',
-      message: 'Choose a customer before putting a sale on account.',
+      message:
+        translate?.('till.chooseCustomer') ??
+        'Choose a customer before putting a sale on account.',
     };
   }
   if (!customer.isActive) {
     return {
       kind: 'retired',
-      message: `${customer.name} is no longer an active account.`,
+      message:
+        translate?.('till.retiredAccount', { customer: customer.name }) ??
+        `${customer.name} is no longer an active account.`,
     };
   }
   if (!customer.creditLimit) {
     return {
       kind: 'no_account',
       message:
+        translate?.('till.noCreditAccount', { customer: customer.name }) ??
         `${customer.name} has no credit account, so this sale has to be paid ` +
-        'now. An owner can set a credit limit.',
+          'now. An owner can set a credit limit.',
     };
   }
 
@@ -105,18 +115,33 @@ export function creditVerdict(
       most: major(available > 0n ? available : 0n),
       message:
         available > 0n
-          ? `${customer.name} has ${major(available)} left of a ` +
-            `${customer.creditLimit} limit, which is less than ${major(wanted)}. ` +
-            `Put ${major(available)} on account and take the rest now.`
-          : `${customer.name} is at their ${customer.creditLimit} limit. ` +
-            'Nothing further can go on this account until they pay.',
+          ? (translate?.('till.partialCredit', {
+              customer: customer.name,
+              available: major(available),
+              limit: customer.creditLimit,
+              wanted: major(wanted),
+            }) ??
+            `${customer.name} has ${major(available)} left of a ` +
+              `${customer.creditLimit} limit, which is less than ${major(wanted)}. ` +
+              `Put ${major(available)} on account and take the rest now.`)
+          : (translate?.('till.atLimitFull', {
+              customer: customer.name,
+              limit: customer.creditLimit,
+            }) ??
+            `${customer.name} is at their ${customer.creditLimit} limit. ` +
+              'Nothing further can go on this account until they pay.'),
     };
   }
 
   return {
     kind: 'ok',
     available: major(available),
-    message: `${major(available - wanted)} will be left of a ${customer.creditLimit} limit.`,
+    message:
+      translate?.('till.willBeLeft', {
+        left: major(available - wanted),
+        limit: customer.creditLimit,
+      }) ??
+      `${major(available - wanted)} will be left of a ${customer.creditLimit} limit.`,
   };
 }
 

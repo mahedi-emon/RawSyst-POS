@@ -52,8 +52,7 @@ function NetworkLine({ terminal }: { terminal: TerminalState }) {
     // dead network, with a different fix, so it gets its own sentence.
     return (
       <p className="queue queue--bad" role="status" aria-live="polite">
-        This terminal has been signed out by the server. Sign in again to send
-        today's sales.
+        {t('till.signedOut')}
       </p>
     );
   }
@@ -71,8 +70,9 @@ function NetworkLine({ terminal }: { terminal: TerminalState }) {
   // carry on selling.
   return (
     <p className="queue queue--warn" role="status" aria-live="polite">
-      No connection — selling from {cached} cached item
-      {cached === 1 ? '' : 's'}. Sales are saved on this terminal.
+      {cached === 1
+        ? t('queue.offlineOneCached')
+        : t('queue.offlineCached', { count: cached })}
     </p>
   );
 }
@@ -86,9 +86,11 @@ function QueueLine({ terminal }: { terminal: TerminalState }) {
     return (
       <p className="queue queue--bad" role="status" aria-live="polite">
         <strong>
-          {failed} sale{failed === 1 ? '' : 's'} the server refused.
+          {failed === 1
+            ? t('queue.oneRefused')
+            : t('queue.nRefused', { count: failed })}
         </strong>{' '}
-        They are still on this terminal. Ask an owner to look.
+        {t('till.refusedWhere')}
       </p>
     );
   }
@@ -103,8 +105,10 @@ function QueueLine({ terminal }: { terminal: TerminalState }) {
 
   return (
     <p className="queue queue--warn" role="status" aria-live="polite">
-      {pending} sale{pending === 1 ? '' : 's'} waiting to send
-      {terminal.sending ? ' — sending now…' : ''}.
+      {pending === 1
+        ? t('queue.oneWaiting')
+        : t('queue.nWaiting', { count: pending })}
+      {terminal.sending ? t('queue.sendingNow') : ''}.
     </p>
   );
 }

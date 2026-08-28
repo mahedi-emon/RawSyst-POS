@@ -168,7 +168,7 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (pairing.state === 'checking' || status === 'restoring') {
     return (
       <main className="splash" aria-busy="true">
-        <p>Checking this terminal…</p>
+        <p>{t('till.checking')}</p>
       </main>
     );
   }
@@ -188,15 +188,15 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
       <TerminalBlocked
         title={
           fault.kind === 'revoked'
-            ? 'This terminal has been revoked'
+            ? t('till.revoked')
             : fault.kind === 'paused'
-              ? 'This terminal is switched off'
-              : 'This terminal is not recognised'
+              ? t('till.switchedOff')
+              : t('till.unrecognised')
         }
         message={
           'message' in fault
             ? fault.message
-            : 'Ask an owner to check it under Terminals in the back office.'
+            : t('till.askOwner')
         }
         onRetry={() => void checkPairing()}
         busy={false}
@@ -363,6 +363,7 @@ function DashboardArea({
 }
 
 function NoCompany({ loading }: { loading: boolean }) {
+  const t = useT();
   if (loading) {
     return (
       <main className="dash" aria-busy="true">
@@ -374,11 +375,8 @@ function NoCompany({ loading }: { loading: boolean }) {
     <main className="dash">
       <div className="ds-panel">
         <div className="ds-state">
-          <p className="ds-state__title">No business set up yet</p>
-          <p className="ds-state__body">
-            The dashboard reports on a registered business. Finish setup to add
-            one, and today's figures will appear here.
-          </p>
+          <p className="ds-state__title">{t('till.noBusiness')}</p>
+          <p className="ds-state__body">{t('till.noBusinessBody')}</p>
         </div>
       </div>
     </main>
@@ -386,15 +384,16 @@ function NoCompany({ loading }: { loading: boolean }) {
 }
 
 function NoAccess({ mayRefund }: { mayRefund: boolean }) {
+  const t = useT();
   return (
     <main className="dash">
       <div className="ds-panel">
         <div className="ds-state">
-          <p className="ds-state__title">This account cannot ring up sales</p>
+          <p className="ds-state__title">{t('till.cannotSell')}</p>
           <p className="ds-state__body">
-            Your role does not include permission to sell
-            {mayRefund ? ', though you can take goods back' : ''}. An owner can
-            change that under Settings &gt; People.
+            {t('till.noSellPermission')}
+            {mayRefund ? t('till.noSellCanRefund') : ''}
+            {t('till.ownerCanChange')}
           </p>
         </div>
       </div>

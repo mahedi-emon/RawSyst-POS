@@ -26,6 +26,8 @@
 // The figures shown are the terminal's own, computed by `totalCart`, which is
 // why they are marked as provisional where the server may yet disagree.
 
+import type { Key, Translate } from '@rawsyst/shared/i18n/strings';
+
 import type { CartLine, CartTender } from './cart';
 import type { CartTotals } from './cart';
 
@@ -150,7 +152,18 @@ function major(cents: number): string {
  * manufacturer, and a text receipt prints correctly on all of them and can be
  * read on screen when no printer is attached.
  */
-export function renderReceipt(receipt: Receipt, width = 42): string {
+export function renderReceipt(
+  receipt: Receipt,
+  width = 42,
+  // The language the customer reads. A parameter rather than a hook: this
+  // builds a string for a thermal printer and is called from a test, from the
+  // counter, and from a reprint. English when it is absent, which is what a
+  // caller with no locale should get rather than a blank line on the paper.
+  translate?: Translate,
+): string {
+  const say = (key: Key, fallback: string) =>
+    translate ? translate(key) : fallback;
+
   const out: string[] = [];
   const rule = '-'.repeat(width);
 
@@ -160,7 +173,7 @@ export function renderReceipt(receipt: Receipt, width = 42): string {
     out.push(centre(`VAT ${receipt.header.vatNumber}`, width));
   }
   out.push('');
-  out.push(centre('SALES RECEIPT', width));
+  out.push(centre(say('receipt.salesReceipt', 'SALES RECEIPT'), width));
   out.push('');
   out.push(`Ref    ${receipt.reference}`);
   out.push(`Date   ${receipt.issuedAt}`);
@@ -189,13 +202,17 @@ export function renderReceipt(receipt: Receipt, width = 42): string {
 
   // The honest statement, always. Not a placeholder QR, not a claim of
   // compliance — what this document is, and what is still coming.
-  out.push(centre('This is not a tax invoice.', width));
-  out.push(centre('Your tax invoice will be issued', width));
-  out.push(centre('and sent separately.', width));
+  out.push(centre(say('receipt.notATaxInvoice', 'This is not a tax invoice.'), width));
+  out.push(
+    centre(say('receipt.willBeIssued', 'Your tax invoice will be issued'), width),
+  );
+  out.push(centre(say('receipt.andSentSeparately', 'and sent separately.'), width));
 
   if (receipt.provisional) {
     out.push('');
-    out.push(centre('Recorded on this terminal.', width));
+    out.push(
+      centre(say('receipt.recordedHere', 'Recorded on this terminal.'), width),
+    );
   }
 
   // What the shop wrote, if anything (I2). After the honest statement above
@@ -209,7 +226,12 @@ export function renderReceipt(receipt: Receipt, width = 42): string {
   }
 
   out.push('');
-  out.push(centre(receipt.header.closing || 'Thank you', width));
+  out.push(
+    centre(
+      receipt.header.closing || say('receipt.thankYou', 'Thank you'),
+      width,
+    ),
+  );
   return out.join('\n');
 }
 

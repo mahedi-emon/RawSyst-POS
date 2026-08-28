@@ -87,11 +87,14 @@ export function PairingScreen({
       const fault = faultFrom(err);
       switch (fault.kind) {
         case 'no_keystore':
-          setFailure(fault.message);
+          // The screen's own words rather than the module's. `credential.ts`
+          // has no locale and its message is a developer's fallback; this is
+          // the sentence the person standing at the till reads.
+          setFailure(t('pair.noKeystore'));
           break;
         case 'offline':
           setFailure(fault.message);
-          setAdvice('The code is still valid — try again once you are back online.');
+          setAdvice(t('pair.stillValidOffline'));
           break;
         case 'refused':
           // What the SERVER said. It knows things this screen cannot guess —
@@ -99,24 +102,15 @@ export function PairingScreen({
           // been used — and it writes them for the person standing at the
           // till. The advice below still applies to all of them.
           setFailure(fault.message);
-          setAdvice(
-            'Check every character, then ask for a new code in the back office ' +
-              'under Terminals.',
-          );
+          setAdvice(t('pair.checkEveryCharacter'));
           break;
         default:
           // The server answers a wrong, expired and already-used code
           // identically on purpose: telling them apart would say which codes
           // exist. So the screen offers the three things worth trying, in the
           // order they are worth trying them.
-          setFailure(
-            'That code was not accepted. Codes work once, on one terminal, ' +
-              'and expire after 15 minutes.',
-          );
-          setAdvice(
-            'Check every character, then ask for a new code in the back office ' +
-              'under Terminals.',
-          );
+          setFailure(t('pair.codeNotAccepted'));
+          setAdvice(t('pair.checkEveryCharacter'));
       }
       setBusy(false);
     }
@@ -127,8 +121,7 @@ export function PairingScreen({
       <form className="setup__card" onSubmit={(e) => void submit(e)} noValidate>
         <h1 className="setup__title">RawSyst</h1>
         <p className="setup__lede">
-          Set this machine up as a till. In the back office, open{' '}
-          <strong>{t('dev.terminals')}</strong>, add this till and it will show you a code.
+          {t('pair.setUpLede', { section: t('dev.terminals') })}
         </p>
 
         <label className="setup__label" htmlFor="pair-code">
@@ -164,9 +157,7 @@ export function PairingScreen({
 
         {canStore === false && (
           <p className="setup__failure" role="alert">
-            This is the development preview, which cannot store a terminal
-            credential securely. Use the installed RawSyst application on the
-            till.
+            {t('pair.noKeystore')}
           </p>
         )}
 
@@ -175,13 +166,10 @@ export function PairingScreen({
           type="submit"
           disabled={!complete || busy || canStore === false}
         >
-          {busy ? 'Setting up…' : 'Set up this till'}
+          {busy ? t('pair.settingUp') : t('pair.setUpThisTill')}
         </button>
 
-        <p className="setup__foot">
-          Nothing can be sold on this machine until it is set up. Ask the owner
-          if you do not have a code.
-        </p>
+        <p className="setup__foot">{t('pair.nothingUntilSetUp')}</p>
       </form>
     </main>
   );
@@ -214,7 +202,7 @@ export function TerminalBlocked({
           onClick={onRetry}
           disabled={busy}
         >
-          {busy ? 'Checking…' : 'Check again'}
+          {busy ? t('pair.checking') : t('pair.checkAgain')}
         </button>
         <p className="setup__foot">
           {t('pair.ownerCanChange')} <strong>{t('dev.terminals')}</strong> in the back

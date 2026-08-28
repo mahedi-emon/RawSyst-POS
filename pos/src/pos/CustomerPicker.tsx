@@ -56,8 +56,10 @@ export function CustomerPicker({
   // Debounced, because a cashier types a name faster than a server answers and
   // a request per keystroke would leave the last one racing the one before it.
   useEffect(() => {
-    const t = term.trim();
-    if (t.length < 2) {
+    // `typed`, not `t`: the search term used to shadow the translate function,
+    // which is why the one message in this block had to be written in English.
+    const typed = term.trim();
+    if (typed.length < 2) {
       setResults([]);
       setSearched(false);
       return;
@@ -69,7 +71,7 @@ export function CustomerPicker({
         setSearching(true);
         setFailure(null);
         try {
-          const fresh = await listCustomers(client, '', t);
+          const fresh = await listCustomers(client, '', typed);
           if (cancelled) return;
           setResults(
             fresh
@@ -93,13 +95,13 @@ export function CustomerPicker({
           if (err instanceof Offline) {
             // Fall back to what this terminal already knows. Labelled, so
             // nobody mistakes a figure from this morning for one from now.
-            const local = (await customers?.search(t)) ?? [];
+            const local = (await customers?.search(typed)) ?? [];
             if (cancelled) return;
             setResults(local.map(fromCache));
             setOffline(true);
           } else {
             setFailure(
-              err instanceof Error ? err.message : 'That search did not work.',
+              err instanceof Error ? err.message : t('till.searchFailed'),
             );
             setResults([]);
           }

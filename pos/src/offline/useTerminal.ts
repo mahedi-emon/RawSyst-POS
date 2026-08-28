@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@rawsyst/shared/auth/session';
+import { useT } from '@rawsyst/shared/i18n/locale';
 import { pushBatch } from '../api/pos';
 import { SaleQueue, type OfflineSalePayload, type QueueCounts } from './queue';
 import { Catalogue } from './catalogue';
@@ -85,6 +86,7 @@ export function useTerminal(
   config: ConnectivityConfig = DEFAULT_CONNECTIVITY,
 ): TerminalState {
   const { client, status } = useAuth();
+  const t = useT();
 
   const [queue, setQueue] = useState<SaleQueue | null>(null);
   // Why the local store could not be opened, when it could not. Null while it
@@ -302,13 +304,13 @@ export function useTerminal(
   const record = useCallback(
     async (payload: OfflineSalePayload) => {
       if (!queue) {
+        // The reason, where there is one. A cashier cannot act on it and
+        // the person they telephone can, and that person is not standing in
+        // front of the screen.
         throw new Error(
-          'This terminal has no local storage, so a sale cannot be recorded ' +
-            'safely.' +
-            // The reason, where there is one. A cashier cannot act on it and
-            // the person they telephone can, and that person is not standing
-            // in front of the screen.
-            (storeFailure ? ` (${storeFailure})` : ''),
+          storeFailure
+            ? t('till.noStoreWhy', { reason: storeFailure })
+            : t('till.noStore'),
         );
       }
       await queue.record(payload);

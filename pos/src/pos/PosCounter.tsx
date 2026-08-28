@@ -138,7 +138,7 @@ export function PosCounter() {
   const accountOffer = accountTender(customer, owed, major(onAccount));
   // Judged against the whole on-account portion, so a second tender cannot
   // slip past a check that only looked at the first.
-  const verdict = creditVerdict(customer, major(onAccount));
+  const verdict = creditVerdict(customer, major(onAccount), t);
 
   // The scan path. Local cache FIRST, network only as a fallback.
   //
@@ -190,7 +190,7 @@ export function PosCounter() {
       } else if (err instanceof RequestFailed && err.status === 404) {
         setNotice(`Nothing in this catalogue carries the barcode ${barcode}.`);
       } else {
-        setNotice(err instanceof Error ? err.message : 'That scan did not work.');
+        setNotice(err instanceof Error ? err.message : t('till.scanFailed'));
       }
     }
   }
@@ -200,7 +200,7 @@ export function PosCounter() {
       // Distinct from "not found". A withdrawn item is one the cashier is
       // holding and cannot sell; an unknown barcode is one they have probably
       // scanned by mistake.
-      setNotice('That item has been withdrawn from sale.');
+      setNotice(t('till.withdrawn'));
       return;
     }
     setLines((prev) => [
@@ -225,14 +225,14 @@ export function PosCounter() {
   async function holdCart() {
     if (!held || lines.length === 0) return;
     try {
-      await held.hold(lines, tenders, '', totals.totalInclusive);
+      await held.hold(lines, tenders, '', totals.totalInclusive, t);
       setParked(await held.list());
       setLines([]);
       setTenders([]);
-      setNotice('Sale held.');
+      setNotice(t('till.held'));
     } catch (err) {
       setNotice(
-        err instanceof Error ? err.message : 'That sale could not be held.',
+        err instanceof Error ? err.message : t('till.holdFailed'),
       );
     }
   }
@@ -242,14 +242,14 @@ export function PosCounter() {
     if (lines.length > 0) {
       // Refused rather than merged. Two customers' items in one cart is a
       // mistake nobody notices until the total is already wrong.
-      setNotice('Finish or hold the current sale before resuming another.');
+      setNotice(t('till.finishFirst'));
       return;
     }
 
     const cart = await held.resume(id);
     setParked(await held.list());
     if (!cart) {
-      setNotice('That held sale is no longer there.');
+      setNotice(t('till.heldGone'));
       return;
     }
     setLines(cart.lines);
@@ -306,14 +306,17 @@ export function PosCounter() {
       setCustomer(null);
       setNotice(
         onAccount > 0n && customer
-          ? `Sale complete. ${major(onAccount)} added to the account of ${customer.name}.`
-          : 'Sale complete.',
+          ? t('till.saleCompleteOnAccount', {
+              amount: major(onAccount),
+              customer: customer.name,
+            })
+          : t('till.saleComplete'),
       );
     } catch (err) {
       setNotice(
         err instanceof Error
           ? err.message
-          : 'That sale could not be recorded on this terminal.',
+          : t('till.saleNotRecorded'),
       );
     } finally {
       setBusy(false);
@@ -388,7 +391,7 @@ export function PosCounter() {
               className="button button--quiet who__choose"
               onClick={() => setPicking(true)}
             >
-              Add a customer
+              {t('till.addCustomer')}
             </button>
           )}
         </div>
@@ -554,7 +557,7 @@ export function PosCounter() {
               }
               title={
                 accountOffer === '0.00'
-                  ? 'Nothing further can go on this account.'
+                  ? t('till.atLimit')
                   : undefined
               }
             >
@@ -613,13 +616,13 @@ export function PosCounter() {
           onClick={() => void finishSale()}
           title={
             !tillIsOpen
-              ? 'This till has no open session.'
+              ? t('till.noSession')
               : canFinish
                 ? undefined
-                : 'The payments must settle the sale exactly.'
+                : t('till.mustSettleExactly')
           }
         >
-          {busy ? 'Recording…' : 'Finish sale'}
+          {busy ? t('till.recording') : t('till.finishSale')}
         </button>
 
         {/* Holding is not finishing. No invoice, no ICV, no stock, no journal
@@ -629,7 +632,7 @@ export function PosCounter() {
           disabled={lines.length === 0 || !terminal.held}
           onClick={() => void holdCart()}
         >
-          Hold sale
+          {t('till.holdSale')}
         </button>
 
         <button
@@ -641,7 +644,7 @@ export function PosCounter() {
             setNotice(null);
           }}
         >
-          Clear
+          {t('till.clear')}
         </button>
 
         {picking && (
@@ -661,7 +664,7 @@ export function PosCounter() {
             {/* Monospaced and pre-formatted: this is exactly the text the
                 thermal printer receives, so what the cashier reads on screen
                 and what the customer is handed cannot drift apart. */}
-            <pre className="receipt__paper">{renderReceipt(receipt)}</pre>
+            <pre className="receipt__paper">{renderReceipt(receipt, undefined, t)}</pre>
             <button
               className="button button--quiet"
               onClick={() => window.print()}

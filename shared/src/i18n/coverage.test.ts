@@ -26,6 +26,24 @@ const here = dirname(fileURLToPath(import.meta.url));
 const sharedSrc = join(here, '..');
 const repoRoot = join(sharedSrc, '..', '..');
 
+/**
+ * Every place a screen is written, not just this package.
+ *
+ * `shared` holds the back office and the till's building blocks; `pos/src` and
+ * `web/components` hold the screens themselves. Walking shared alone left the
+ * COUNTER out — the screen a cashier looks at all day — and an Arabic walk of
+ * the real terminal found "Add a customer", "Finish sale", "Hold sale" and
+ * "Clear" in English on it, along with half of the e-invoicing banner above.
+ *
+ * The catalogue is shared by all three, so there was never a reason for the
+ * check to stop at a package boundary.
+ */
+const SCREEN_DIRS = [
+  sharedSrc,
+  join(repoRoot, 'pos', 'src'),
+  join(repoRoot, 'web', 'components'),
+];
+
 /** Files with no translatable prose in them. */
 const NO_PROSE = new Set([
   'session.tsx', // an auth context, no rendered text
@@ -51,6 +69,27 @@ const NO_PROSE = new Set([
   // reader switches language — the one thing the locale provider exists to
   // avoid.
   'client.ts',
+
+  // A record, not a screen.
+  //
+  // `queue.ts` writes "The server refused this sale." into the local database
+  // when the server refused an item and sent no reason of its own. It is the
+  // stored explanation an owner reads later out of the queue, alongside the
+  // server's own sentences in whatever language the server wrote them — and it
+  // is the one thing here with no reader in front of it at the moment it is
+  // written.
+  'queue.ts',
+
+  // The words on a receipt come from `receipt.ts`, which takes a translator.
+  // These two are the defaults it falls back to when a shop has written no
+  // stationery of its own, and `receipt.ts` translates them at the point of
+  // printing.
+  'stationery.ts',
+
+  // `credential.ts` classifies what the Rust shell threw. Its one English
+  // sentence is the no-keystore case, and the pairing screen replaces it with
+  // its own words — see the `no_keystore` branch there.
+  'credential.ts',
 ]);
 
 /**
@@ -71,7 +110,23 @@ const BRANDS = new Set(['Mastercard', 'Apple Pay', 'STC Pay']);
  * does not use. Sample data that IS words — a street, a company name — is
  * translated and is not listed here.
  */
-const FORMATS = new Set(['INV-10023', 'MADA-20260817-001']);
+const FORMATS = new Set([
+  'INV-10023',
+  'MADA-20260817-001',
+  // The shape of an enrolment code, shown as a placeholder in the field it is
+  // typed into. Latin in both directions of script — the code itself is, and
+  // the input carries dir="ltr" to say so.
+  'ABCD-1234',
+]);
+
+/**
+ * Words the platform chose, which a user never reads.
+ *
+ * A KeyboardEvent's `key` is an identifier the browser defines: "ArrowUp" is
+ * spelled that way in Arabic Windows too. Translating one would stop the
+ * keyboard working.
+ */
+const PLATFORM = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown']);
 
 /** Prose, as opposed to an identifier, a class name or a code. */
 const PROSE = /^[A-Z][A-Za-z0-9 ,.'’“”…\-–—()/&%:!?]{6,}$/;
@@ -121,6 +176,7 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
     if (!literal || literal.includes('\\')) continue;
     if (!PROSE.test(literal)) continue;
     if (known.has(literal) || BRANDS.has(literal) || FORMATS.has(literal)) continue;
+    if (PLATFORM.has(literal)) continue;
     // A path or an import specifier, not a sentence.
     if (literal.includes('/') && !literal.includes(' ')) continue;
 
@@ -128,6 +184,16 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
     // Already inside t(...), or naming a module, or a CSS class.
     if (before.trimEnd().endsWith('t(')) continue;
     if (before.includes('import') || before.includes('className')) continue;
+
+    // The English half of a translated string.
+    //
+    // A module that cannot use a hook takes a translator and writes
+    // `translate?.('key') ?? 'the English'`, so the English sentence is still
+    // in the source — as the answer for a caller with no locale, which is the
+    // whole point of the pattern. Looking further back finds the call it is
+    // the fallback for.
+    const wider = text.slice(Math.max(0, match.index - 260), match.index);
+    if (/(?:translate\?\.|say)\([^)]*\)\s*\?\?[\s\S]*$/.test(wider)) continue;
 
     found.push(literal);
   }
@@ -148,7 +214,16 @@ function untranslatedJsxTextIn(file: string, known: Set<string>): string[] {
 
   for (const match of text.matchAll(/>([^<>{}]{12,400})</g)) {
     const collapsed = match[1]!.split(/\s+/).filter(Boolean).join(' ');
-    if (!collapsed || known.has(collapsed) || BRANDS.has(collapsed)) continue;
+    if (!collapsed || BRANDS.has(collapsed)) continue;
+    // Deliberately NOT skipped when the catalogue happens to hold the same
+    // words. A sentence rendered as JSX text is rendered in English whatever
+    // the catalogue says — the check is whether this component calls t(), not
+    // whether somebody once wrote the key. "Count denominations" and "Enter a
+    // total" survived a whole pass because their keys had been added first and
+    // the components still printed the literal.
+    if (known.has(collapsed) && !/^[a-z]/.test(collapsed)) {
+      // fall through: a catalogue value in JSX text is the defect itself
+    }
     // The curly double quotes are in the class deliberately. Without them the
     // paragraph under the payment mix — which quotes the word “card” — did not
     // look like prose to this check, and stayed English on every Arabic screen.
@@ -193,6 +268,7 @@ function untranslatedAttributeTextIn(file: string, known: Set<string>): string[]
     if (!literal) continue;
     if (!PROSE.test(literal)) continue;
     if (known.has(literal) || BRANDS.has(literal) || FORMATS.has(literal)) continue;
+    if (PLATFORM.has(literal)) continue;
     found.push(literal);
   }
   return [...new Set(found)];
@@ -223,7 +299,7 @@ function untranslatedBesideAnExpressionIn(
   // ends with a `<` too, and the run before it can look like a short sentence.
   // Excluded by the words only code uses, which no interface string contains.
   const isCode =
-    /\b(function|const|let|export|import|return|async|await|interface|type|extends|Promise|Record|React|typeof)\b|=>/;
+    /\b(function|const|let|export|import|return|async|await|interface|type|extends|Promise|Record|React|typeof|instanceof|catch|else|if|switch|case|new)\b|=>|\/\//;
 
   // Both sides of the expression. `{money(x)} not yet settled` puts the words
   // after it and `The items on this {title}` puts them before, and a check
@@ -231,6 +307,11 @@ function untranslatedBesideAnExpressionIn(
   const runs = [
     ...text.matchAll(/\}([^<>{}]{6,200})</g),
     ...text.matchAll(/>([^<>{}]{6,200})\{/g),
+    // And BETWEEN two expressions, which is neither of the above. The
+    // e-invoicing banner on the till put its whole explanation there — between
+    // a translated heading and a conditional sentence — so it was the last
+    // English left on the counter after everything else had been keyed.
+    ...text.matchAll(/\}([^<>{}]{6,200})\{/g),
   ];
 
   for (const match of runs) {
@@ -250,8 +331,10 @@ function untranslatedBesideAnExpressionIn(
 }
 
 describe('translation coverage', () => {
-  const files = walk(sharedSrc).filter((f) => !NO_PROSE.has(f.split(/[\\/]/).pop()!));
-  const plain = walkPlain(sharedSrc).filter(
+  const files = SCREEN_DIRS.flatMap((d) => walk(d)).filter(
+    (f) => !NO_PROSE.has(f.split(/[\\/]/).pop()!),
+  );
+  const plain = SCREEN_DIRS.flatMap((d) => walkPlain(d)).filter(
     (f) => !NO_PROSE.has(f.split(/[\\/]/).pop()!),
   );
   const known = new Set<string>(Object.values(en));

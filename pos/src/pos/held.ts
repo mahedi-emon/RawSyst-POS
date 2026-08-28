@@ -24,6 +24,8 @@
 // about at close; it is a customer who left. They expire, so the list a cashier
 // sees on Monday is not last week's ghosts.
 
+import type { Translate } from '@rawsyst/shared/i18n/strings';
+
 import type { CartLine, CartTender } from './cart';
 
 export interface HeldCart {
@@ -78,14 +80,19 @@ export class HeldCarts {
     tenders: CartTender[],
     label: string,
     total: string,
+    // The reader's language, when the caller has one.
+    translate?: Translate,
   ): Promise<HeldCart> {
     if (lines.length === 0) {
-      throw new Error('There is nothing to hold.');
+      throw new Error(
+        translate?.('till.nothingToHold') ?? 'There is nothing to hold.',
+      );
     }
     if ((await this.store.count()) >= MAX_HELD) {
       throw new Error(
-        `This terminal is already holding ${MAX_HELD} sales. ` +
-          'Finish or discard one before holding another.',
+        translate?.('till.holdingLimit', { count: MAX_HELD }) ??
+          `This terminal is already holding ${MAX_HELD} sales. ` +
+            'Finish or discard one before holding another.',
       );
     }
 

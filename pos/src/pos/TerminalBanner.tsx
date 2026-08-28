@@ -20,9 +20,8 @@ export function TerminalBanner({ caps }: { caps: Capabilities | null }) {
   return (
     <div className="banner banner--warning" role="status">
       <strong>{t('term.einvoicingNotActive')}</strong>{' '}
-      Sales are recorded, stock and takings are correct, and every invoice is
-      queued. None has been reported to ZATCA yet.
-      {caps.key.status === 'not_started' && ' This terminal has not been onboarded.'}
+      {t('term.einvoicingBody')}
+      {caps.key.status === 'not_started' && ` ${t('term.notOnboarded')}`}
     </div>
   );
 }

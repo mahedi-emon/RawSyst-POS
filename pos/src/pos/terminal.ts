@@ -5,6 +5,8 @@
 // is in this file, and the list of things the interface may ask for is short
 // and readable.
 
+import type { Translate } from '@rawsyst/shared/i18n/strings';
+
 import { invoke } from '@tauri-apps/api/core';
 
 export interface KeyPresence {
@@ -63,6 +65,8 @@ export interface SigningUnavailable {
  */
 export async function signInvoice(
   payload: string,
+  // The reader's language, when the caller has one.
+  translate?: Translate,
 ): Promise<{ ok: true; doc: SignedDocument } | { ok: false; why: SigningUnavailable }> {
   try {
     const doc = await invoke<SignedDocument>('sign_invoice', { payload });
@@ -76,7 +80,9 @@ export async function signInvoice(
           ? why
           : {
               reason: 'signing_unavailable',
-              detail: 'This terminal cannot sign invoices at the moment.',
+              detail:
+                translate?.('till.cannotSign') ??
+                'This terminal cannot sign invoices at the moment.',
             },
     };
   }

@@ -12,6 +12,8 @@
 // is 95, exactly, every time. The total leaves as a decimal string because that
 // is what crosses the API boundary; it is never a number in between.
 
+import type { Key, Translate } from '@rawsyst/shared/i18n/strings';
+
 import { major, minor } from '@rawsyst/shared/receivables/receivables';
 import type { ShiftReport } from '@rawsyst/shared/api/shift';
 
@@ -179,10 +181,25 @@ export function expectedIsWithheld(report: ShiftReport): boolean {
  *  drawer can be negative, and the server refuses both. */
 const MONEY = /^\d+(\.\d{1,2})?$/;
 
-export function validateAmount(raw: string, field: string): string | null {
+export function validateAmount(
+  raw: string,
+  field: string,
+  // The reader's language. A parameter rather than a hook, so this stays a
+  // pure function the tests call directly; English when it is absent.
+  translate?: Translate,
+): string | null {
   const value = raw.trim();
-  if (value === '') return `${field} is required.`;
-  if (!MONEY.test(value)) return `${field} must be an amount, like 200.00.`;
+  if (value === '') {
+    return (
+      translate?.('shift.fieldRequired', { field }) ?? `${field} is required.`
+    );
+  }
+  if (!MONEY.test(value)) {
+    return (
+      translate?.('shift.fieldAmount', { field }) ??
+      `${field} must be an amount, like 200.00.`
+    );
+  }
   return null;
 }
 
@@ -193,35 +210,46 @@ const SIGNED_MONEY = /^-?\d+(\.\d{1,2})?$/;
 export function validateMovement(
   amountRaw: string,
   noteRaw: string,
+  translate?: Translate,
 ): { amount?: string; note?: string } {
   const errors: { amount?: string; note?: string } = {};
 
   const amount = amountRaw.trim();
   if (amount === '') {
-    errors.amount = 'Say how much moved.';
+    errors.amount = translate?.('shift.sayHowMuch') ?? 'Say how much moved.';
   } else if (!SIGNED_MONEY.test(amount)) {
-    errors.amount = 'Enter an amount, like 100.00.';
+    errors.amount =
+      translate?.('shift.enterAmount') ?? 'Enter an amount, like 100.00.';
   } else if (minor(amount) === 0n) {
-    errors.amount = 'A movement of nothing is not a movement.';
+    errors.amount =
+      translate?.('shift.movementOfNothing') ??
+      'A movement of nothing is not a movement.';
   }
 
   // Mirrors the server's own rule rather than replacing it: an unexplained hand
   // in the till is exactly what the cash movement record exists to make visible.
   if (noteRaw.trim().length < 3) {
-    errors.note = 'Say why the money moved. This is what the record is for.';
+    errors.note =
+      translate?.('shift.sayWhy') ??
+      'Say why the money moved. This is what the record is for.';
   }
 
   return errors;
 }
 
-/** How each reason reads on screen. The values are migration 0024's enum and
- *  are not this module's to extend. */
-export const MOVEMENT_REASONS: Array<{ value: string; label: string; hint: string }> = [
-  { value: 'safe_drop', label: 'Drop to the safe', hint: 'Taking cash out of the drawer' },
-  { value: 'float_in', label: 'Float in', hint: 'Adding change to the drawer' },
-  { value: 'petty_cash', label: 'Petty cash', hint: 'A small expense paid from the till' },
-  { value: 'supplier_paid', label: 'Paid a supplier', hint: 'A delivery settled in cash' },
-  { value: 'correction', label: 'Correction', hint: 'Fixing an earlier entry' },
+/** Why cash moved. The values are migration 0024's enum and are not this
+ *  module's to extend; the words are catalogue keys, because a cashier picks
+ *  from this list every time they drop takings into the safe. */
+export const MOVEMENT_REASONS: Array<{
+  value: string;
+  label: Key;
+  hint: Key;
+}> = [
+  { value: 'safe_drop', label: 'shift.safeDrop', hint: 'shift.safeDropHint' },
+  { value: 'float_in', label: 'shift.floatIn', hint: 'shift.floatInHint' },
+  { value: 'petty_cash', label: 'shift.pettyCash', hint: 'shift.pettyCashHint' },
+  { value: 'supplier_paid', label: 'shift.supplierPaid', hint: 'shift.supplierPaidHint' },
+  { value: 'correction', label: 'shift.correction', hint: 'shift.correctionHint' },
 ];
 
 /**

@@ -22,6 +22,7 @@
 // and, importantly, that the sales it has already queued are safe.
 
 import { useCallback, useEffect, useState } from 'react';
+import type { Translate } from '@rawsyst/shared/i18n/strings';
 import { useT } from '@rawsyst/shared/i18n/locale';
 
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
@@ -78,7 +79,7 @@ export function ShiftScreen({ onClosed }: { onClosed?: () => void } = {}) {
     } catch (err) {
       setShift({
         state: 'failed',
-        message: explain(err),
+        message: explain(err, t),
         offline: err instanceof Offline,
       });
     }
@@ -189,7 +190,7 @@ function OpenShift({
   const total = counting && pad ? tallyTotal(tally, pad) : typed;
 
   async function submit() {
-    const invalid = validateAmount(total, 'Opening float');
+    const invalid = validateAmount(total, t('shift.openingFloat'), t);
     if (invalid) {
       setFieldError(invalid);
       return;
@@ -201,7 +202,7 @@ function OpenShift({
       await openShift(client, { opening_float: total, blind_close: blind });
       onOpened();
     } catch (err) {
-      setError(explain(err));
+      setError(explain(err, t));
     } finally {
       setBusy(false);
     }
@@ -215,9 +216,7 @@ function OpenShift({
         </div>
         <div className="ds-panel__body">
           <p className="ds-body-sm ds-muted shift__lede">
-            Count the float into the drawer and enter what is there. This is the
-            baseline every figure at close is measured against, so it is
-            declared rather than assumed.
+            {t('shift.openTillLede')}
           </p>
 
           {pad && (
@@ -234,11 +233,11 @@ function OpenShift({
             />
           ) : (
             <Field
-              label="Opening float"
+              label={t('shift.openingFloat')}
               htmlFor="opening-float"
               required
               error={fieldError ?? undefined}
-              hint={currency ? `In ${currency}` : undefined}
+              hint={currency ? t('shift.inCurrency', { currency }) : undefined}
             >
               <TextInput
                 id="opening-float"
@@ -270,10 +269,7 @@ function OpenShift({
             />
             <span>
               <strong>{t('shift.blindClose')}</strong>
-              <span className="ds-caption">
-                The expected total is hidden until the drawer has been counted,
-                so the count is a real one.
-              </span>
+              <span className="ds-caption">{t('shift.blindCloseHint')}</span>
             </span>
           </label>
 
@@ -284,7 +280,7 @@ function OpenShift({
             onClick={() => void submit()}
             disabled={busy}
           >
-            {busy ? 'Opening…' : 'Open the till'}
+            {busy ? t('shift.opening') : t('shift.openTill')}
           </button>
         </div>
       </div>
@@ -308,6 +304,7 @@ function CurrentShift({
   onClosed: (report: ShiftReport) => void;
 }) {
   const { client } = useAuth();
+  const t = useT();
   const [report, setReport] = useState<ShiftReport | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [panel, setPanel] = useState<'none' | 'move' | 'close'>('none');
@@ -318,7 +315,7 @@ function CurrentShift({
       setReport(await peekShift(client, session.id));
       setProblem(null);
     } catch (err) {
-      setProblem(explain(err));
+      setProblem(explain(err, t));
     }
   }, [client, session.id]);
 
@@ -332,7 +329,7 @@ function CurrentShift({
         <div className="ds-panel__head">
           <h1 className="ds-h1">Shift {session.session_no}</h1>
           <span className="ds-badge ds-badge--success">
-            Open since {openedAtTime(session.opened_at)}
+            {t('shift.openSince', { time: openedAtTime(session.opened_at) })}
           </span>
         </div>
 
@@ -347,9 +344,7 @@ function CurrentShift({
 
           {report && expectedIsWithheld(report) && (
             <p className="shift__blind ds-body-sm" role="note">
-              This till closes blind. The expected total is not shown until the
-              drawer has been counted — which is what makes the count worth
-              taking.
+              {t('shift.closesBlind')}
             </p>
           )}
 
@@ -358,7 +353,7 @@ function CurrentShift({
               className="ds-btn ds-btn--secondary"
               onClick={() => setPanel(panel === 'move' ? 'none' : 'move')}
             >
-              Move cash
+              {t('shift.moveCash')}
             </button>
 
             {/* Shown only to a login holding report.view. Cosmetic: the server
@@ -370,7 +365,7 @@ function CurrentShift({
                 onClick={() => {
                   shiftXReport(client, session.id)
                     .then(setXray)
-                    .catch((err) => setProblem(explain(err)));
+                    .catch((err) => setProblem(explain(err, t)));
                 }}
               >
                 X-report
@@ -381,7 +376,7 @@ function CurrentShift({
               className="ds-btn ds-btn--primary"
               onClick={() => setPanel(panel === 'close' ? 'none' : 'close')}
             >
-              Close the till
+              {t('shift.closeTheTill')}
             </button>
           </div>
 
@@ -428,17 +423,23 @@ function CurrentShift({
 function Takings({ report, currency }: { report: ShiftReport; currency: string | null }) {
   const t = useT();
   const rows: Array<[string, string]> = [
-    ['Opening float', report.opening_float],
+    [t('shift.openingFloat'), report.opening_float],
     ...(report.cash_takings === undefined
       ? []
-      : ([['Cash takings', report.cash_takings]] as Array<[string, string]>)),
+      : ([[t('shift.cashTakings'), report.cash_takings]] as Array<
+          [string, string]
+        >)),
     ...(report.non_cash_takings === undefined
       ? []
-      : ([['Card and other', report.non_cash_takings]] as Array<[string, string]>)),
+      : ([[t('shift.cardAndOther'), report.non_cash_takings]] as Array<
+          [string, string]
+        >)),
     ...(report.cash_movements === undefined
       ? []
-      : ([['Cash moved', report.cash_movements]] as Array<[string, string]>)),
-    ['Refunds', report.refund_total],
+      : ([[t('shift.cashMoved'), report.cash_movements]] as Array<
+          [string, string]
+        >)),
+    [t('shift.refunds'), report.refund_total],
   ];
 
   return (
@@ -477,9 +478,7 @@ function XReport({
           Hide
         </button>
       </div>
-      <p className="ds-caption">
-        A reading, not a close. Nothing changes and it may be taken again.
-      </p>
+      <p className="ds-caption">{t('shift.readingNotAClose')}</p>
       <Takings report={report} currency={currency} />
       <p className="shift__expected">
         <span className="ds-caption">{t('shift.expectedInDrawer')}</span>
@@ -518,7 +517,7 @@ function MoveCash({
   const outward = signed.startsWith('-');
 
   async function submit() {
-    const found = validateMovement(amount, note);
+    const found = validateMovement(amount, note, t);
     setErrors(found);
     if (found.amount || found.note) return;
 
@@ -535,17 +534,17 @@ function MoveCash({
       });
       onDone();
     } catch (err) {
-      setFailure(explain(err));
+      setFailure(explain(err, t));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section className="shift__form" aria-label="Move cash">
+    <section className="shift__form" aria-label={t('shift.moveCashLabel')}>
       <h2 className="ds-h3">{t('shift.moveCash')}</h2>
 
-      <Field label="Why" htmlFor="move-reason" required>
+      <Field label={t('shift.why')} htmlFor="move-reason" required>
         <select
           id="move-reason"
           className="field__input"
@@ -554,19 +553,19 @@ function MoveCash({
         >
           {MOVEMENT_REASONS.map((r) => (
             <option key={r.value} value={r.value}>
-              {r.label}
+              {t(r.label)}
             </option>
           ))}
         </select>
       </Field>
-      {chosen && <p className="ds-caption shift__hint">{chosen.hint}</p>}
+      {chosen && <p className="ds-caption shift__hint">{t(chosen.hint)}</p>}
 
       <Field
-        label="How much"
+        label={t('shift.howMuch')}
         htmlFor="move-amount"
         required
         error={errors.amount}
-        hint={currency ? `In ${currency}` : undefined}
+        hint={currency ? t('shift.inCurrency', { currency }) : undefined}
       >
         <TextInput
           id="move-amount"
@@ -584,19 +583,24 @@ function MoveCash({
           than at close. */}
       {signed && (
         <p className="shift__direction ds-body-sm" role="status">
-          {outward ? 'Leaves the drawer: ' : 'Goes into the drawer: '}
+          {outward ? t('shift.leavesDrawer') : t('shift.goesIntoDrawer')}{' '}
           <strong className="num">
             {money(signed.replace('-', ''), { currency: currency ?? undefined })}
           </strong>
         </p>
       )}
 
-      <Field label="What for" htmlFor="move-note" required error={errors.note}>
+      <Field
+        label={t('shift.whatFor')}
+        htmlFor="move-note"
+        required
+        error={errors.note}
+      >
         <TextInput
           id="move-note"
           value={note}
           onChange={setNote}
-          placeholder="Midday drop to the safe"
+          placeholder={t('shift.notePlaceholderMove')}
           error={errors.note}
         />
       </Field>
@@ -612,7 +616,7 @@ function MoveCash({
           onClick={() => void submit()}
           disabled={busy}
         >
-          {busy ? 'Recording…' : 'Record it'}
+          {busy ? t('till.recording') : t('shift.recordIt')}
         </button>
       </div>
     </section>
@@ -656,7 +660,7 @@ function CloseShift({
   const running = verdict(report.expected_cash, counted);
 
   async function submit() {
-    const invalid = validateAmount(counted, 'Counted cash');
+    const invalid = validateAmount(counted, t('shift.countedCash'), t);
     if (invalid) {
       setFieldError(invalid);
       setConfirming(false);
@@ -668,7 +672,7 @@ function CloseShift({
     try {
       onClosed(await closeShift(client, sessionId, { counted_cash: counted, note: note.trim() }));
     } catch (err) {
-      setFailure(explain(err));
+      setFailure(explain(err, t));
       setConfirming(false);
     } finally {
       setBusy(false);
@@ -680,8 +684,8 @@ function CloseShift({
       <h2 className="ds-h3">{t('shift.countDrawer')}</h2>
       <p className="ds-body-sm ds-muted">
         {blind
-          ? 'Count what is physically in the drawer. The expected total is shown once you commit the count.'
-          : 'Count what is physically in the drawer.'}
+          ? t('shift.countPhysicallyBlind')
+          : t('shift.countPhysically')}
       </p>
 
       {pad && <CountToggle counting={counting} onChange={setCounting} />}
@@ -696,11 +700,11 @@ function CloseShift({
         />
       ) : (
         <Field
-          label="Counted cash"
+          label={t('shift.countedCash')}
           htmlFor="counted-cash"
           required
           error={fieldError ?? undefined}
-          hint={currency ? `In ${currency}` : undefined}
+          hint={currency ? t('shift.inCurrency', { currency }) : undefined}
         >
           <TextInput
             id="counted-cash"
@@ -722,19 +726,19 @@ function CloseShift({
 
       {running.kind !== 'unknown' && (
         <p className="shift__running ds-body-sm" role="status" aria-live="polite">
-          Against expected: <strong>{running.word}</strong>{' '}
+          {t('shift.againstExpected')} <strong>{running.word}</strong>{' '}
           <span className="num">
             {money(running.amount, { currency: currency ?? undefined })}
           </span>
         </p>
       )}
 
-      <Field label="Note" htmlFor="close-note" error={undefined}>
+      <Field label={t('shift.note')} htmlFor="close-note" error={undefined}>
         <TextInput
           id="close-note"
           value={note}
           onChange={setNote}
-          placeholder="Anything worth recording about this shift"
+          placeholder={t('shift.notePlaceholder')}
         />
       </Field>
 
@@ -746,11 +750,9 @@ function CloseShift({
       {confirming ? (
         <div className="shift__confirm" role="alertdialog" aria-label="Confirm the close">
           <p className="ds-body-sm">
-            Close shift with <strong className="num">
-              {money(counted, { currency: currency ?? undefined })}
-            </strong>{' '}
-            counted? This can only be done once — the Z report is the till's
-            declaration for the shift and cannot be taken again.
+            {t('shift.confirmClose', {
+              counted: money(counted, { currency: currency ?? undefined }),
+            })}
           </p>
           <div className="shift__formactions">
             <button
@@ -758,14 +760,14 @@ function CloseShift({
               onClick={() => setConfirming(false)}
               disabled={busy}
             >
-              Keep counting
+              {t('shift.keepCounting')}
             </button>
             <button
               className="ds-btn ds-btn--primary"
               onClick={() => void submit()}
               disabled={busy}
             >
-              {busy ? 'Closing…' : 'Close the shift'}
+              {busy ? t('shift.closing') : t('shift.closeTheShift')}
             </button>
           </div>
         </div>
@@ -779,7 +781,7 @@ function CloseShift({
             onClick={() => setConfirming(true)}
             disabled={busy}
           >
-            Count is complete
+            {t('shift.countIsComplete')}
           </button>
         </div>
       )}
@@ -833,8 +835,7 @@ function ZReport({
               absorbed and it is not hidden. */}
           {result.kind !== 'exact' && result.kind !== 'unknown' && (
             <p className="shift__variance ds-body-sm">
-              This difference is recorded against the shift and appears on the
-              closing report. It is not written off here.
+              {t('shift.differenceRecorded')}
             </p>
           )}
 
@@ -849,10 +850,11 @@ function ZReport({
 
 /** Short, Over or Exact, in the largest type on the screen. */
 function Outcome({ verdict: v, currency }: { verdict: Verdict; currency: string | null }) {
+  const t = useT();
   if (v.kind === 'unknown') {
     return (
       <p className="shift__outcome shift__outcome--unknown" role="status">
-        <span className="ds-caption">The drawer could not be reckoned</span>
+        <span className="ds-caption">{t('shift.drawerNotReckoned')}</span>
       </p>
     );
   }
@@ -892,14 +894,14 @@ function CountToggle({
         aria-pressed={counting}
         onClick={() => onChange(true)}
       >
-        Count denominations
+        {t('shift.countDenominations')}
       </button>
       <button
         className={`ds-btn ds-btn--quiet${!counting ? ' shift__toggle--on' : ''}`}
         aria-pressed={!counting}
         onClick={() => onChange(false)}
       >
-        Enter a total
+        {t('shift.enterATotal')}
       </button>
     </div>
   );
@@ -966,25 +968,15 @@ function DenominationPad({
 // --- failures -------------------------------------------------------------
 
 /** Turns a failure into something a cashier can act on. */
-function explain(err: unknown): string {
+function explain(err: unknown, t: Translate): string {
   if (err instanceof Offline) {
     // Named as a limitation with a reason, and with the reassurance that
     // matters most at this moment: the sales already taken are not lost.
-    return (
-      'A shift is opened and closed on the server, so this cannot be done ' +
-      'until the connection is back. Sales already rung up are saved on this ' +
-      'till and will be sent when it reconnects.'
-    );
+    return t('shift.offlineFull');
   }
   if (err instanceof RequestFailed) {
-    if (err.status === 403) {
-      return (
-        'This login is not allowed to do that. Opening and closing a till ' +
-        'needs permission to take payments; the X-report needs permission to ' +
-        'read reports.'
-      );
-    }
-    if (err.status === 404) return 'That shift was not found on this till.';
+    if (err.status === 403) return t('shift.notAllowedFull');
+    if (err.status === 404) return t('shift.notFoundOnTill');
     // 409 and 400 carry the server's own sentence, which is written for the
     // person reading it — "this till already has an open session (number 12)"
     // tells a cashier what to do in a way nothing here could improve on.

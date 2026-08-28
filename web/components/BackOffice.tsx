@@ -161,7 +161,7 @@ export function BackOffice() {
   if (status === 'restoring') {
     return (
       <main className="bo__splash" aria-busy="true">
-        <p className="ds-muted">Signing you in…</p>
+        <p className="ds-muted">{t('bo.signingIn')}</p>
       </main>
     );
   }
@@ -372,16 +372,13 @@ function DashboardArea({
  * application. Said plainly, with where to go instead, rather than showing an
  * empty dashboard that looks broken. */
 function NoSections() {
+  const t = useT();
   return (
     <main className="dash">
       <div className="ds-panel">
         <div className="ds-state">
-          <p className="ds-state__title">Nothing here for this account</p>
-          <p className="ds-state__body">
-            Your role covers the till rather than the back office. Sign in on the
-            RawSyst terminal to sell, or ask an owner to widen your permissions
-            under Settings &gt; People.
-          </p>
+          <p className="ds-state__title">{t('bo.nothingForAccount')}</p>
+          <p className="ds-state__body">{t('bo.tillRoleBody')}</p>
         </div>
       </div>
     </main>
@@ -389,6 +386,7 @@ function NoSections() {
 }
 
 function NoCompany({ loading }: { loading: boolean }) {
+  const t = useT();
   if (loading) {
     return (
       <main className="dash" aria-busy="true">
@@ -400,11 +398,8 @@ function NoCompany({ loading }: { loading: boolean }) {
     <main className="dash">
       <div className="ds-panel">
         <div className="ds-state">
-          <p className="ds-state__title">No business set up yet</p>
-          <p className="ds-state__body">
-            The back office reports on a registered business. Finish setup to add
-            one and your figures will appear here.
-          </p>
+          <p className="ds-state__title">{t('till.noBusiness')}</p>
+          <p className="ds-state__body">{t('bo.noBusinessBody')}</p>
         </div>
       </div>
     </main>
