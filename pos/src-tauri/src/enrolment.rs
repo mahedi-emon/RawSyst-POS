@@ -47,6 +47,26 @@ const ACCOUNT: &str = "terminal-device-secret";
 /// URLs.
 const SECRET_HEADER: &str = "X-Device-Secret";
 
+/// Asks the server to return the refresh token in the response body.
+///
+/// The API's default is the SAFE one, and it is built for a browser: the
+/// refresh token goes into an httpOnly cookie that script cannot read, because
+/// in a page anything running alongside the app could steal it from anywhere
+/// else. See backend/internal/api/refresh_cookie.go, which says the native app
+/// "still receives the token in the body, and asks for it explicitly with a
+/// header".
+///
+/// This is that header, and it was never sent. Without it the server set a
+/// cookie — for a reqwest client with no cookie jar, which discards it — and
+/// returned a body with no `refresh_token` in it, so TerminalSession failed to
+/// deserialise and every cashier on every real till was told "The server sent
+/// something this terminal did not understand."
+///
+/// Forging it gains nothing: it only decides whether a caller's OWN response
+/// carries their OWN token, and a cross-origin page cannot read that response.
+const CLIENT_KIND_HEADER: &str = "X-Client-Kind";
+const CLIENT_KIND_NATIVE: &str = "native";
+
 /// What a paired terminal knows about itself. Never includes the secret.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalIdentity {
@@ -198,6 +218,7 @@ pub async fn terminal_sign_in(
             api_base_url.trim_end_matches('/')
         ))
         .header(SECRET_HEADER, secret()?)
+        .header(CLIENT_KIND_HEADER, CLIENT_KIND_NATIVE)
         .json(&serde_json::json!({ "email": email, "password": password }))
         .send()
         .await
@@ -445,5 +466,70 @@ mod tests {
             }
         }
         terminal_forget().expect("clean up");
+    }
+
+    /// The session the server sends a TILL is not the one it sends a browser,
+    /// and this is the shape that difference takes.
+    ///
+    /// # What went wrong
+    ///
+    /// P69 moved the refresh token into an httpOnly cookie, which is right for
+    /// a browser: script cannot read a cookie, so an extension or a successful
+    /// XSS cannot steal the durable half of a session. The API kept a way out
+    /// for the native app — send the client-kind header and the token comes
+    /// back in the body instead — and refresh_cookie.go says so in as many
+    /// words.
+    ///
+    /// This client never sent it. The server set a cookie, reqwest has no
+    /// cookie jar and discarded it, and the body that came back carried no
+    /// refresh token at all. TerminalSession would not deserialise, and every
+    /// cashier on every real till was told "The server sent something this
+    /// terminal did not understand."
+    ///
+    /// Nothing could see it. The Go suite tests the API, and the API was right.
+    /// The vitest suite tests the web layer, which does not make this call. A
+    /// browser cannot run this code path at all. It took driving the packaged
+    /// application under tauri-driver — see e2e/tauri.mjs.
+    ///
+    /// # What this test can and cannot do
+    ///
+    /// It pins the SHAPE: a session needs a refresh token, so a response
+    /// without one is a failure rather than a session carrying an empty string.
+    /// That is the half that turns a silent degradation into a loud one. The
+    /// header itself is asserted end to end by e2e/tauri.mjs against the real
+    /// server, which is the only place the two sides actually meet.
+    #[test]
+    fn a_session_without_a_refresh_token_is_not_a_session() {
+        let browser_shaped = serde_json::json!({
+            "access_token": "a.b.c",
+            "expires_at": "2026-08-28T15:53:25Z",
+            "must_change_password": false
+        });
+        assert!(
+            serde_json::from_value::<TerminalSession>(browser_shaped).is_err(),
+            "a response with no refresh token deserialised into a session; a \
+             till that accepts one cannot stay signed in, and will not find out \
+             until the access token expires mid-shift"
+        );
+
+        let native_shaped = serde_json::json!({
+            "access_token": "a.b.c",
+            "refresh_token": "r.s.t"
+        });
+        let session: TerminalSession =
+            serde_json::from_value(native_shaped).expect("the native shape");
+        assert_eq!(session.refresh_token, "r.s.t");
+    }
+
+    /// The header the server waits for is the one that gets sent.
+    ///
+    /// Spelling rather than behaviour. These two strings are compared against
+    /// clientKindHeader and clientKindNative in refresh_cookie.go, and a typo
+    /// on either side degrades silently to the browser path — which is exactly
+    /// the failure this pair exists to stop happening twice.
+    #[test]
+    fn the_native_client_kind_is_spelled_the_way_the_server_reads_it() {
+        assert_eq!(CLIENT_KIND_HEADER, "X-Client-Kind");
+        assert_eq!(CLIENT_KIND_NATIVE, "native");
     }
 }

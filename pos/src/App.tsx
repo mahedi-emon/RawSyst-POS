@@ -89,8 +89,14 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
       // Offline is not blocked. A till that has been paired must keep trading
       // through a dead connection — that is the whole offline-first design —
       // so an unreachable server leaves it working on what it already knows.
+      //
+      // `refused` is treated the same way here, and deliberately. The three
+      // kinds that mean this terminal may not trade — revoked, paused,
+      // unrecognised — are named above, and anything else the server happened
+      // to say is a bad reason to stop a till mid-shift: a rate limit or a
+      // transient fault would otherwise close a counter with a queue at it.
       setPairing(
-        fault.kind === 'offline'
+        fault.kind === 'offline' || fault.kind === 'refused'
           ? { state: 'ready', identity: { device_id: '', terminal_label: '', store_id: '', company_id: '' } }
           : { state: 'blocked', fault },
       );

@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the till's window is allowed to ask the shell for. Without this file Tauri v2 denies every plugin command, and the till cannot open its own database — see the long note in tauri.conf.json.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+
+    "sql:allow-load",
+    "sql:allow-close",
+    "sql:allow-select",
+    "sql:allow-execute"
+  ]
+}

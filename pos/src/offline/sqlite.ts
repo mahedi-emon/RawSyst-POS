@@ -30,19 +30,39 @@ import type {
   CustomerStore,
 } from './customers';
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS queued_sale (
+// The terminal's schema, as a LIST of statements rather than one script.
+//
+// It used to be a single template string that openLocalStore split on `;`, and
+// that is not a thing a semicolon can be trusted to do. The comment above
+// local_chain reads "Unused until signing is verified; the server allocates the
+// ICV today" — an ordinary semicolon in an ordinary English sentence — so the
+// split cut the script in the middle of a comment and handed SQLite a fragment
+// beginning with the word "the".
+//
+//   error returned from database: (code: 1) near "the": syntax error
+//
+// openLocalStore caught it, useTerminal caught that, and the till reported "no
+// local storage" and refused to sell. Every installed terminal, on every start,
+// from the moment that comment was written.
+//
+// A list cannot be mis-split. The prose stays where it belongs — beside the
+// table it explains — and a future comment can contain whatever punctuation the
+// sentence needs.
+export const SCHEMA: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS queued_sale (
   seq          INTEGER PRIMARY KEY,
   invoice_uuid TEXT NOT NULL UNIQUE,
   payload      TEXT NOT NULL,
   state        TEXT NOT NULL DEFAULT 'pending',
   error        TEXT,
   recorded_at  TEXT NOT NULL
-);
+);`,
 
+  `
 CREATE INDEX IF NOT EXISTS queued_sale_outstanding
-  ON queued_sale (seq) WHERE state = 'pending';
+  ON queued_sale (seq) WHERE state = 'pending';`,
 
+  `
 -- The terminal's own chain, per E1.3. Unused until signing is verified; the
 -- server allocates the ICV today. Created now so the chain has a home rather
 -- than being retrofitted beside a working queue later.
@@ -50,9 +70,11 @@ CREATE TABLE IF NOT EXISTS local_chain (
   id            INTEGER PRIMARY KEY CHECK (id = 1),
   last_icv      INTEGER NOT NULL DEFAULT 0,
   last_hash     TEXT
-);
-INSERT OR IGNORE INTO local_chain (id, last_icv) VALUES (1, 0);
+);`,
 
+  `INSERT OR IGNORE INTO local_chain (id, last_icv) VALUES (1, 0);`,
+
+  `
 -- The catalogue this terminal can sell from with no network.
 --
 -- A cache, not a source of truth: the server reprices every line on replay, so
@@ -71,23 +93,28 @@ CREATE TABLE IF NOT EXISTS cached_variant (
   tax_treatment TEXT NOT NULL DEFAULT 'standard',
   is_active     INTEGER NOT NULL DEFAULT 1,
   updated_at    TEXT NOT NULL
-);
+);`,
 
+  `
 -- The scan path, and the only index that has to be fast: a cashier holds a
 -- scanner over an item and expects the line to appear before they look up.
 CREATE INDEX IF NOT EXISTS cached_variant_barcode
-  ON cached_variant (barcode) WHERE barcode <> '';
+  ON cached_variant (barcode) WHERE barcode <> '';`,
 
-CREATE INDEX IF NOT EXISTS cached_variant_sku ON cached_variant (sku);
+  `
+CREATE INDEX IF NOT EXISTS cached_variant_sku ON cached_variant (sku);`,
 
+  `
 -- Where the delta pull got to. One row, like local_chain.
 CREATE TABLE IF NOT EXISTS catalogue_cursor (
   id       INTEGER PRIMARY KEY CHECK (id = 1),
   since    TEXT,
   since_id TEXT
-);
-INSERT OR IGNORE INTO catalogue_cursor (id) VALUES (1);
+);`,
 
+  `INSERT OR IGNORE INTO catalogue_cursor (id) VALUES (1);`,
+
+  `
 -- The customers this terminal can attach a sale to with no network.
 --
 -- A cache, like the catalogue, and the balance in it is stale by design: it
@@ -112,20 +139,25 @@ CREATE TABLE IF NOT EXISTS cached_customer (
   available          TEXT NOT NULL DEFAULT '',
   is_active          INTEGER NOT NULL DEFAULT 1,
   updated_at         TEXT NOT NULL
-);
+);`,
 
+  `
 -- A counter looks a customer up by phone more than by anything else.
 CREATE INDEX IF NOT EXISTS cached_customer_phone
-  ON cached_customer (phone) WHERE phone <> '';
-CREATE INDEX IF NOT EXISTS cached_customer_name ON cached_customer (name);
+  ON cached_customer (phone) WHERE phone <> '';`,
 
+  `CREATE INDEX IF NOT EXISTS cached_customer_name ON cached_customer (name);`,
+
+  `
 CREATE TABLE IF NOT EXISTS customer_cursor (
   id       INTEGER PRIMARY KEY CHECK (id = 1),
   since    TEXT,
   since_id TEXT
-);
-INSERT OR IGNORE INTO customer_cursor (id) VALUES (1);
+);`,
 
+  `INSERT OR IGNORE INTO customer_cursor (id) VALUES (1);`,
+
+  `
 -- Carts parked mid-sale. NOT sales: no invoice UUID, no ICV, no stock, no
 -- journal entry. A held cart is a note about what somebody was buying, which
 -- is why it never leaves the terminal.
@@ -156,9 +188,11 @@ CREATE TABLE IF NOT EXISTS cached_stationery (
   -- right thing; one that never pulled at all is a different situation, and
   -- the difference is worth being able to see.
   fetched_at      TEXT
-);
-INSERT OR IGNORE INTO cached_stationery (id) VALUES (1);
+);`,
 
+  `INSERT OR IGNORE INTO cached_stationery (id) VALUES (1);`,
+
+  `
 CREATE TABLE IF NOT EXISTS held_cart (
   id          TEXT PRIMARY KEY,
   label       TEXT NOT NULL DEFAULT '',
@@ -166,10 +200,11 @@ CREATE TABLE IF NOT EXISTS held_cart (
   total       TEXT NOT NULL,
   item_count  INTEGER NOT NULL,
   held_at     TEXT NOT NULL
-);
+);`,
 
-CREATE INDEX IF NOT EXISTS held_cart_recent ON held_cart (held_at DESC);
-`;
+  `
+CREATE INDEX IF NOT EXISTS held_cart_recent ON held_cart (held_at DESC);`
+];
 
 interface Row {
   seq: number;
@@ -183,7 +218,7 @@ interface Row {
 /** Opens the terminal's local database, creating it on first run. */
 export async function openLocalStore(): Promise<LocalStores> {
   const db = await Database.load('sqlite:rawsyst-pos.db');
-  for (const statement of SCHEMA.split(';')) {
+  for (const statement of SCHEMA) {
     const sql = statement.trim();
     if (sql) await db.execute(sql);
   }

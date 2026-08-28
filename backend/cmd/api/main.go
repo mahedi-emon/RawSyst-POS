@@ -248,18 +248,47 @@ func reportRegistryHealth(
 	return nil
 }
 
+// tauriOrigins are the origins the POS presents from inside its own window.
+//
+// They are constants of the framework rather than choices a deployment makes:
+// Tauri serves the app's embedded assets from a custom protocol whose origin is
+// fixed, and it differs by platform — `http://tauri.localhost` on Windows,
+// `tauri://localhost` on macOS and Linux.
+//
+// Always allowed, and NOT left to configuration, because leaving it to
+// configuration is how a shop ends up with a till that cannot sign in. Found by
+// driving the packaged application under tauri-driver: the preflight for
+// `http://tauri.localhost` came back 204 with no allow-origin header, so every
+// call the till made was blocked by the browser before it reached this API, and
+// the screen said only "Sign-in did not complete." Neither the deployed
+// configuration nor `.env.example` listed the origin, so a deployment following
+// the documentation would have shipped exactly that.
+//
+// Safe to hard-code in a way a wildcard would not be. These are not addresses a
+// website can be served from: no DNS name resolves to them and no browser will
+// hand them to a page it loaded over the network. They name this product's own
+// desktop shell and nothing else.
+var tauriOrigins = []string{
+	"http://tauri.localhost",
+	"https://tauri.localhost",
+	"tauri://localhost",
+}
+
 // corsOrigins reads the browser origins allowed to call this API.
 //
 // An explicit allowlist with no wildcard fallback. The API is credentialed, so
 // a wildcard would let any site act as a signed-in Owner.
+//
+// The configured list is for BROWSERS — the back office, wherever it is hosted.
+// The desktop till's origin is added unconditionally: see tauriOrigins.
 func corsOrigins() []string {
+	out := append([]string(nil), tauriOrigins...)
+
 	raw := os.Getenv("RAWSYST_CORS_ORIGINS")
 	if raw == "" {
-		return nil
+		return out
 	}
-	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
+	for _, p := range strings.Split(raw, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}

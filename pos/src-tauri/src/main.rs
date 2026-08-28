@@ -44,6 +44,26 @@ fn sign_invoice(payload: String) -> Result<signing::SignedDocument, signing::Sig
 }
 
 fn main() {
+    // The SQL plugin is registered here AND granted in capabilities/default.json,
+    // and it does nothing at all without both.
+    //
+    // Tauri v2 denies every plugin command unless a capability file grants it,
+    // and this crate had none — the generated gen/schemas/capabilities.json was
+    // an empty object. So `Database.load('sqlite:rawsyst-pos.db')` was refused
+    // in the packaged application, the offline store never opened, and the till
+    // said "This terminal has no local storage, so a sale cannot be recorded
+    // safely" and refused to sell. An installed till could not ring up a single
+    // item.
+    //
+    // Nothing could have caught it short of running the built binary. `cargo
+    // build` succeeds, `cargo test` passes, the vitest suite mocks the plugin,
+    // and a browser has no plugin to deny — the ACL only exists inside a real
+    // Tauri window. It took driving the packaged app under tauri-driver; see
+    // e2e/tauri.mjs.
+    //
+    // The app's OWN commands below are unaffected, which is what made this so
+    // quiet: pairing, the keystore and signing all worked, so the shell looked
+    // healthy while the one thing a till does was impossible.
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![

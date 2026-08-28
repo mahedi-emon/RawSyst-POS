@@ -245,6 +245,19 @@ func (s *Server) Routes() []Route {
 			s.handleCreateReturn, ""},
 		{http.MethodGet, "/api/v1/pos/sales/{invoiceID}", AccessPermission, "sales.view",
 			s.handleGetSale, ""},
+		// Turns what is printed on a receipt into the invoice it names.
+		//
+		// Design 11 §7: "the original invoice is always scanned or linked,
+		// never re-typed". The till had no way to obey that. It generates the
+		// document UUID, prints a prefix of it, and never learns the
+		// sales_invoice.id that every other route here takes — so a returns
+		// screen sending what the cashier scanned got a malformed-UUID error or
+		// a 404, on every sale. Gated on sales.refund: finding a customer's
+		// sale from their receipt is the first act of giving money back.
+		{http.MethodGet, "/api/v1/pos/sales/lookup", AccessPermission, "sales.refund",
+			s.handleLookupSale,
+			"a receipt carries the document UUID, not the invoice id; without " +
+				"this no sale made at a till could be found to return"},
 		{http.MethodPost, "/api/v1/pos/exchanges", AccessPermission, "sales.exchange",
 			s.handleCreateExchange,
 			"a credit note and a replacement invoice in one transaction; the server states the difference"},

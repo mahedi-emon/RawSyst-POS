@@ -93,6 +93,17 @@ export function PairingScreen({
           setFailure(fault.message);
           setAdvice('The code is still valid — try again once you are back online.');
           break;
+        case 'refused':
+          // What the SERVER said. It knows things this screen cannot guess —
+          // that the terminal has been asking too often, that the code has
+          // been used — and it writes them for the person standing at the
+          // till. The advice below still applies to all of them.
+          setFailure(fault.message);
+          setAdvice(
+            'Check every character, then ask for a new code in the back office ' +
+              'under Terminals.',
+          );
+          break;
         default:
           // The server answers a wrong, expired and already-used code
           // identically on purpose: telling them apart would say which codes

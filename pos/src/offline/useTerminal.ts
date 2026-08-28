@@ -87,6 +87,9 @@ export function useTerminal(
   const { client, status } = useAuth();
 
   const [queue, setQueue] = useState<SaleQueue | null>(null);
+  // Why the local store could not be opened, when it could not. Null while it
+  // is working, which is every till in a shop.
+  const [storeFailure, setStoreFailure] = useState<string | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [stationery, setStationery] = useState<Stationery | null>(null);
   const [receiptWords, setReceiptWords] = useState<ReceiptStationery>(
@@ -148,11 +151,27 @@ export function useTerminal(
         setCounts(await q.counts());
         setCached(await c.size());
       })
-      .catch(() => {
-        // Running outside Tauri, in a browser during development. The counter
-        // still works against the live API; nothing is durable and nothing is
-        // cached. Better to say so than to pretend.
-        if (!cancelled) setQueue(null);
+      .catch((err: unknown) => {
+        // Two very different situations reach here and this used to treat them
+        // as one.
+        //
+        // A browser during development has no SQL plugin at all, and the
+        // counter still works against the live API — nothing durable, nothing
+        // cached, and saying so is better than pretending.
+        //
+        // An INSTALLED TILL reaching here cannot sell. The store is the queue a
+        // sale is written to before a receipt prints, so its absence stops
+        // trading, and the reason matters: a denied capability, a locked file
+        // and a failed migration are three different problems with three
+        // different answers. Swallowing the error left a shopkeeper with "this
+        // terminal has no local storage" and nobody with any way to find out
+        // why.
+        if (cancelled) return;
+        setQueue(null);
+        setStoreFailure(err instanceof Error ? err.message : String(err));
+        // Logged as well as kept, because the shop's own screen is not where a
+        // developer reads a stack and the WebView2 console is.
+        console.error('the terminal store could not be opened:', err);
       });
     return () => {
       cancelled = true;
@@ -284,7 +303,12 @@ export function useTerminal(
     async (payload: OfflineSalePayload) => {
       if (!queue) {
         throw new Error(
-          'This terminal has no local storage, so a sale cannot be recorded safely.',
+          'This terminal has no local storage, so a sale cannot be recorded ' +
+            'safely.' +
+            // The reason, where there is one. A cashier cannot act on it and
+            // the person they telephone can, and that person is not standing
+            // in front of the screen.
+            (storeFailure ? ` (${storeFailure})` : ''),
         );
       }
       await queue.record(payload);
@@ -293,7 +317,7 @@ export function useTerminal(
       // await is deliberately NOT on the caller's path to printing a receipt.
       void flushNow();
     },
-    [queue, flushNow],
+    [queue, flushNow, storeFailure],
   );
 
   return {

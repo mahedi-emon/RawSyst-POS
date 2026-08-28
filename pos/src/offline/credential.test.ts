@@ -65,3 +65,74 @@ describe('reading a refusal from the shell', () => {
     }
   });
 });
+
+// A refusal the server wrote is not a dead network.
+//
+// # What went wrong
+//
+// Everything `faultFrom` did not recognise fell through to `offline`, and the
+// pairing screen's offline branch says two things, both of them wrong for a
+// refusal: "This terminal cannot reach the server. Check the connection and
+// try again", and "The code is still valid — try again once you are back
+// online."
+//
+// So a mistyped code, an expired one, one already used on another machine, and
+// a terminal the server was rate-limiting all sent whoever was standing at the
+// counter to look at a network cable — on the first screen a new till ever
+// shows, while the sentence that told them what to do was discarded.
+//
+// Found by pairing the packaged Windows application under tauri-driver
+// (e2e/tauri.mjs). A browser cannot pair at all, so nothing before it could
+// have seen this.
+describe('a refusal the server wrote', () => {
+  const tauri = (message: string) => ({ message });
+
+  it('keeps the words the server chose', () => {
+    const fault = faultFrom(
+      tauri(
+        'That enrolment code is not valid. Codes expire after 15 minutes and ' +
+          'can only be used once — ask for a new one in the back office.',
+      ),
+    );
+    expect(fault.kind).toBe('refused');
+    if (fault.kind === 'refused') {
+      expect(fault.message).toContain('expire after 15 minutes');
+    }
+  });
+
+  it('does not call a rate limit a connection problem', () => {
+    const fault = faultFrom(
+      tauri(
+        'Too many enrolment attempts from this device. Wait a few minutes, ' +
+          'then ask for a fresh code in the back office.',
+      ),
+    );
+    expect(fault.kind).not.toBe('offline');
+    if (fault.kind === 'refused') {
+      expect(fault.message).toContain('Wait a few minutes');
+    }
+  });
+
+  it('still calls a real transport failure offline', () => {
+    // The one sentence the Rust shell raises when reqwest cannot complete the
+    // call. This is the case where "check the connection" is the right advice.
+    expect(faultFrom(tauri('This terminal cannot reach the server.')).kind).toBe(
+      'offline',
+    );
+  });
+
+  it('leaves the definitive refusals where they were', () => {
+    // `refused` must not swallow the three kinds that mean a till may not
+    // trade: each shows different words and offers a different next step.
+    expect(
+      faultFrom(tauri('Counter 1 has been revoked and can no longer be used.'))
+        .kind,
+    ).toBe('revoked');
+    expect(faultFrom(tauri('Till 2 is inactive, so it cannot be used.')).kind).toBe(
+      'paused',
+    );
+    expect(
+      faultFrom(tauri('This terminal is not recognised.')).kind,
+    ).toBe('unrecognised');
+  });
+});

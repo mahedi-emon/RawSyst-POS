@@ -265,6 +265,23 @@ body {
 
 .returns__reason { display: grid; gap: 4px; font-size: 0.85rem; }
 
+/* The sale the reference resolved to. Quiet, one line, and always in the same
+ * place: it is there to be glanced at against the paper receipt, not read. */
+.returns__found {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: baseline;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.returns__found span { color: var(--ink-quiet); }
+
 .returns__reason input {
   min-block-size: var(--tap);
   padding-inline: 12px;

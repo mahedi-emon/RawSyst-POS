@@ -75,7 +75,7 @@ ask `pointer: coarse`, and a resize does not change what the browser reports as
 its pointer, so a resize-only audit measures a mouse-sized layout and calls a
 phone comfortable.
 
-## The three scripts, and why there are three
+## The scripts, and why there are several
 
 They answer different questions and none of them substitutes for another.
 
@@ -96,10 +96,66 @@ device credential in the OS keystore through the Rust shell. A plain browser has
 no keystore, so a browser-run POS cannot pair and therefore cannot sell — see
 `pos/src/offline/credential.ts`, which refuses rather than falling back. Driving
 those flows here would mean weakening the custody model to make a test pass.
-They are covered end to end by the Go integration suite against the real
-database; what this script checks is the part a browser honestly can, that the
-POS loads and reports its pairing state rather than presenting a till that
-cannot sell.
+What this script checks is the part a browser honestly can: that the POS loads
+and reports its pairing state rather than presenting a till that cannot sell.
+
+`tauri.mjs` is where that stops being a gap.
+
+## `tauri.mjs` — the till, driven as the installed application
+
+The fourth script and the only one that is not a browser. `tauri-driver` proxies
+WebDriver to the real WebView2 control inside the real packaged binary, so the
+Rust shell underneath is the real shell: `terminal_keystore_available()` answers
+true here and false in a browser, which is the exact difference that makes a
+browser unable to test a till.
+
+It walks the whole counter — pair, sign in, open the shift, sell, look a receipt
+up, refund, exchange, take a card payment, sell through an outage, drop cash to
+the safe, and close blind with a deliberate five-riyal shortfall — and reads
+every result back **through the API**, never off the screen that asked for it.
+
+```sh
+cargo install tauri-driver --locked
+# msedgedriver matching the installed WebView2 runtime
+cd pos && npm run build && npx tauri build --no-bundle
+cd backend && go run ./cmd/devseed && go run ./cmd/api
+
+RS_PASSWORD=... RS_EDGEDRIVER=C:/path/to/msedgedriver.exe node e2e/tauri.mjs
+```
+
+`npx tauri build --no-bundle` and not `cargo build --release`: the latter leaves
+the binary pointing at the dev server, so the window comes up blank and every
+assertion below fails for a reason that has nothing to do with the product.
+
+| variable | default |
+|---|---|
+| `RS_POS_EXE` | `pos/src-tauri/target/release/rawsyst-pos.exe` |
+| `RS_EDGEDRIVER` | whatever `tauri-driver` finds on `PATH` |
+| `RS_API` | `http://127.0.0.1:8080` |
+| `RS_PASSWORD` | *required* |
+
+### What it has found
+
+Every one of these is a defect that shipped, that no unit test could see, and
+that a browser could not have reached — the two halves are in different
+languages in different directories and each is correct on its own.
+
+| Defect | Where it was fixed |
+|---|---|
+| The API's CORS allow-list held the two dev-server origins and not the till's, so every installed terminal failed sign-in with "Sign-in did not complete." | `backend/cmd/api/main.go`, pinned by `cors_test.go` |
+| The POS defaulted to `http://localhost:8080`, which its own CSP `connect-src` does not name | `pos/src/main.tsx` |
+| `terminal_sign_in` did not send `X-Client-Kind: native`, so the server answered in a shape the till rejected | `pos/src-tauri/src/enrolment.rs` |
+| No Tauri v2 capability file, so the ACL denied every `plugin:sql` command and the till had no local storage | `pos/src-tauri/capabilities/default.json` |
+| The SQLite schema was one string split on `;`, and a comment containing a semicolon broke it mid-statement | `pos/src/offline/sqlite.ts` |
+| A receipt carries the document UUID; every sales route takes the invoice id, which the till never learns — so **no sale made at a till could be found to return** | `GET /api/v1/pos/sales/lookup`, `pos/src/pos/ReturnsScreen.tsx` |
+| Every server refusal was classified as a dead network, so a wrong pairing code told the cashier to check the connection and promised the code was still valid | `pos/src/offline/credential.ts` |
+
+### A note on the enrolment rate limit
+
+The run deliberately submits a wrong code first, and the server allows five
+misses per quarter hour from one address. Runs closer together than that will
+wait for the limit, and the failure says so. The limiter is in memory, so
+restarting the API clears it.
 
 ### Running them
 

@@ -25,9 +25,11 @@ import { useAuth } from '@rawsyst/shared/auth/session';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import {
   fetchReturnable,
+  lookUpSale,
   overReturned,
   refundTotal,
   submitReturn,
+  type InvoiceMatch,
   type ReturnableLine,
   type ReturnSelection,
 } from './returns';
@@ -50,6 +52,10 @@ export function ReturnsScreen() {
   const terminal = useTerminal();
 
   const [invoiceId, setInvoiceId] = useState('');
+  // The sale the reference resolved to. Every call after the lookup uses
+  // `found.id`, never what the cashier typed: the receipt carries the document
+  // UUID and the routes take the invoice id, and they are different UUIDs.
+  const [found, setFound] = useState<InvoiceMatch | null>(null);
   const [lines, setLines] = useState<ReturnableLine[] | null>(null);
   const [qty, setQty] = useState<Record<string, string>>({});
   const [method, setMethod] = useState('cash');
@@ -95,21 +101,21 @@ export function ReturnsScreen() {
 
     // The local cache, exactly as the counter does it. A replacement is an
     // ordinary sale line and is priced the same way.
-    const found = await terminal.catalogue?.lookup(barcode);
-    if (!found) {
+    const item = await terminal.catalogue?.lookup(barcode);
+    if (!item) {
       setNotice(`Nothing on this terminal carries the barcode ${barcode}.`);
       return;
     }
-    if (!found.isActive) {
+    if (!item.isActive) {
       setNotice('That item has been withdrawn from sale.');
       return;
     }
     setNotice(null);
-    setReplacement((prev) => [...prev, replacementFrom(found)]);
+    setReplacement((prev) => [...prev, replacementFrom(item)]);
   }
 
   async function exchange() {
-    if (!canExchange || !lines) return;
+    if (!canExchange || !lines || !found) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -120,7 +126,7 @@ export function ReturnsScreen() {
         // same goods.
         creditNoteUuid: crypto.randomUUID(),
         invoiceUuid: crypto.randomUUID(),
-        originalInvoiceId: invoiceId.trim(),
+        originalInvoiceId: found.id,
         reason: reason.trim(),
         returning: selection,
         replacement,
@@ -140,6 +146,7 @@ export function ReturnsScreen() {
               `Credit note ${result.credit_note.human_number ?? result.credit_note.credit_note_id}.`,
       );
       setLines(null);
+      setFound(null);
       setQty({});
       setReplacement([]);
     } catch (err) {
@@ -150,20 +157,29 @@ export function ReturnsScreen() {
   }
 
   async function lookUp() {
-    const id = invoiceId.trim();
-    if (!id) return;
+    const reference = invoiceId.trim();
+    if (!reference) return;
     setNotice(null);
     setDone(null);
     setLines(null);
+    setFound(null);
     setQty({});
     setBusy(true);
     try {
-      const found = await fetchReturnable(client, id);
-      if (found.length === 0) {
+      // Two calls, in this order, and the order is the point. The receipt
+      // carries the document UUID the till generated; every route that reads a
+      // sale takes the invoice id the server minted. Sending the first where
+      // the second belongs is how this screen could not find a single sale any
+      // terminal had made.
+      const sale = await lookUpSale(client, reference);
+      const returnable = await fetchReturnable(client, sale.id);
+      if (returnable.length === 0) {
+        setFound(sale);
         setNotice('That sale has no lines left to return.');
         return;
       }
-      setLines(found);
+      setFound(sale);
+      setLines(returnable);
     } catch (err) {
       setNotice(explain(err, 'That sale could not be looked up.'));
     } finally {
@@ -172,7 +188,7 @@ export function ReturnsScreen() {
   }
 
   async function refund() {
-    if (!canRefund || !lines) return;
+    if (!canRefund || !lines || !found) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -181,13 +197,14 @@ export function ReturnsScreen() {
         // network failure after the server committed would otherwise have the
         // cashier press refund again and give the money back twice.
         creditNoteUuid: crypto.randomUUID(),
-        originalInvoiceId: invoiceId.trim(),
+        originalInvoiceId: found.id,
         reason: reason.trim(),
         lines: selection,
         refunds: [{ method, amount: total }],
       });
       setDone(result.human_number || result.credit_note_id);
       setLines(null);
+      setFound(null);
       setQty({});
     } catch (err) {
       setNotice(explain(err, 'That refund could not be completed.'));
@@ -251,6 +268,20 @@ export function ReturnsScreen() {
       {done && (
         <p className="queue queue--ok" role="status" aria-live="polite">
           Refunded. Credit note {done}.
+        </p>
+      )}
+
+      {/* Which sale was found. A cashier who scanned the wrong receipt, or
+          whose scan resolved a reference they could not read, has one chance to
+          notice before money moves — and the number and total are what they can
+          check against the paper in their hand. */}
+      {found && (
+        <p className="returns__found">
+          <strong>{found.human_number ?? found.uuid.slice(0, 8)}</strong>
+          <span>{found.issue_date}</span>
+          <span>
+            {found.total_inclusive} {found.currency}
+          </span>
         </p>
       )}
 

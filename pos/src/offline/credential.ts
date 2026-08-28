@@ -50,6 +50,10 @@ export type PairingFault =
   | { kind: 'revoked'; message: string }
   | { kind: 'paused'; message: string }
   | { kind: 'unrecognised'; message: string }
+  // The server answered and said no, in words worth repeating. Separate from
+  // `offline` because the two ask for opposite things from whoever is standing
+  // at the till: one is "check the cable", the other is "the code is wrong".
+  | { kind: 'refused'; message: string }
   | { kind: 'offline'; message: string }
   | { kind: 'no_keystore'; message: string };
 
@@ -160,7 +164,10 @@ function messageOf(err: unknown): string {
     const message = (err as { message?: unknown }).message;
     if (typeof message === 'string') return message;
   }
-  return String(err ?? '');
+  // Nothing readable — a number, a bare object, `undefined`. Empty rather than
+  // String(err), because "[object Object]" is not something the server said
+  // and must not be shown to a cashier or reasoned about as a refusal.
+  return '';
 }
 
 /** Turns whatever the shell threw into something the screen can act on. */
@@ -189,9 +196,32 @@ export function faultFrom(err: unknown): PairingFault {
         'be paired. Use the installed RawSyst application on the till.',
     };
   }
-  return {
-    kind: 'offline',
-    message:
-      'This terminal cannot reach the server. Check the connection and try again.',
-  };
+  // Everything else the SERVER said, in its own words.
+  //
+  // This used to fall through to `offline`, and the pairing screen's offline
+  // branch says "This terminal cannot reach the server. Check the connection"
+  // and "The code is still valid — try again once you are back online." Both
+  // sentences were wrong for every refusal that reached them. A mistyped code
+  // ("That enrolment code is not valid. Codes expire after 15 minutes and can
+  // only be used once") and a rate-limited terminal ("Too many enrolment
+  // attempts from this device. Wait a few minutes, then ask for a fresh code")
+  // both sent somebody to look at a network cable, on the first screen a new
+  // till ever shows, while the message that told them what to do was thrown
+  // away. Found by pairing the packaged application (e2e/tauri.mjs).
+  //
+  // `offline` is now what it says: the transport failed, or nothing readable
+  // came back at all. The first is the one sentence the Rust shell raises when
+  // reqwest cannot complete the call. The second is a shape this code did not
+  // expect, and a till that cannot read the reason must keep trading on what
+  // it already knows rather than lock a counter with a queue at it.
+  const transport =
+    text.trim() === '' || /cannot reach the server/i.test(text);
+  if (transport) {
+    return {
+      kind: 'offline',
+      message:
+        'This terminal cannot reach the server. Check the connection and try again.',
+    };
+  }
+  return { kind: 'refused', message: text };
 }

@@ -402,6 +402,56 @@ func (s *Server) handleGetSale(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, out)
 }
 
+// --- GET /api/v1/pos/sales/lookup?reference= ----------------------------
+
+// handleLookupSale turns what is printed on a receipt into the invoice it names.
+//
+// The till knows one identifier for a sale it made: the document UUID it
+// generated before queueing it. sales_invoice.id is minted server-side and
+// reaches the terminal on no response and no receipt — so without this the
+// returns screen had nothing it could send that any route would accept.
+//
+// A DEVICE is confined to its own company and may not name another. Row-level
+// security stops at the tenant, and a tenant with two shops would otherwise let
+// one till pull up the other's invoice and refund against it. A person may name
+// a company and is otherwise bounded by the tenant, as every other read here is.
+func (s *Server) handleLookupSale(w http.ResponseWriter, r *http.Request) {
+	a := actor.From(r.Context())
+
+	var companyID uuid.UUID
+	switch {
+	case a.DeviceID != uuid.Nil:
+		id, err := s.catalog.CompanyForDevice(r.Context(), a.TenantID, a.DeviceID)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		companyID = id
+	default:
+		if raw := r.URL.Query().Get("company_id"); raw != "" {
+			id, err := parseUUID(raw, "company_id")
+			if err != nil {
+				httpx.Error(w, r, err)
+				return
+			}
+			if !a.CanAccessCompany(id) {
+				httpx.Error(w, r, errs.New(errs.CodeNotFound,
+					"That company was not found."))
+				return
+			}
+			companyID = id
+		}
+	}
+
+	out, err := s.sales.Lookup(r.Context(), a.TenantID, companyID,
+		r.URL.Query().Get("reference"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
 // handleReturnableLines reports what is still owed back on an invoice.
 //
 // Gated on sales.refund, not sales.view: the numbers here exist to authorise a

@@ -18,7 +18,20 @@ import { signIn as signInOnTerminal } from './offline/credential';
 import './styles.css';
 import '@rawsyst/shared/dashboard/dashboard.css';
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+// 127.0.0.1, not localhost, and the difference is not cosmetic.
+//
+// tauri.conf.json's `connect-src` allows `http://127.0.0.1:8080` and `https:`.
+// A CSP matches by host, and `localhost` is a different host from `127.0.0.1`
+// — so the default this line used to carry was refused by the application's own
+// Content Security Policy before the request left the window. Driving the
+// packaged app under tauri-driver reported it exactly:
+//
+//   CSP blocked connect-src -> http://localhost:8080/healthz
+//
+// A real deployment sets VITE_API_BASE_URL to an https host, which the CSP
+// allows, so this only ever bit a local API — which is every developer and any
+// shop running the server on the same machine.
+const baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8080';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('the application root is missing from the page');

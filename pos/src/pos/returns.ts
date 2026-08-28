@@ -54,6 +54,42 @@ export interface RefundTender {
   reverses_tender_id?: string;
 }
 
+/** One sale, as much of it as is needed to be sure it is the right one. */
+export interface InvoiceMatch {
+  id: string;
+  uuid: string;
+  doc_type: string;
+  human_number?: string | null;
+  state: string;
+  issue_date: string;
+  currency: string;
+  total_inclusive: string;
+}
+
+/**
+ * Turns what is on the receipt into the invoice it names.
+ *
+ * A till never learns the id the server keeps a sale under. It generates the
+ * document UUID, queues the sale under it, prints a prefix of it on the
+ * receipt, and the push response tells it applied or failed and nothing more.
+ * Every other sales route takes sales_invoice.id — a different UUID minted
+ * server-side — so sending the cashier's scan straight to one of them found
+ * nothing, ever, for any sale made at any terminal.
+ *
+ * The server resolves the document UUID, a prefix of it, the human number, or
+ * the invoice id, because a cashier holding a receipt cannot be expected to
+ * know which of those they are looking at.
+ */
+export function lookUpSale(
+  client: Client,
+  reference: string,
+): Promise<InvoiceMatch> {
+  return client.send<InvoiceMatch>(
+    'GET',
+    `/api/v1/pos/sales/lookup?reference=${encodeURIComponent(reference)}`,
+  );
+}
+
 /** Asks the server what is still owed back. */
 export async function fetchReturnable(
   client: Client,
