@@ -43,9 +43,12 @@ export function TenderMix({
         ) : (
           <>
             <ul className="mix">
-              {tenders.map((t) => (
-                <li className="mix__row" key={t.method}>
-                  <span className="mix__name">{tenderName(t.method)}</span>
+              {/* `row`, not `t`: binding `t` here shadowed the translate
+                  function, so the only thing that could be written in this
+                  block was English. */}
+              {tenders.map((row) => (
+                <li className="mix__row" key={row.method}>
+                  <span className="mix__name">{tenderName(row.method, t)}</span>
 
                   {/* The bar is a background on the track, not an image: it
                       scales with the container and needs no redraw on resize. */}
@@ -53,25 +56,25 @@ export function TenderMix({
                     <span
                       className="mix__bar"
                       style={{
-                        inlineSize: peak > 0 ? `${(width(t.total) / peak) * 100}%` : '0%',
+                        inlineSize:
+                          peak > 0 ? `${(width(row.total) / peak) * 100}%` : '0%',
                       }}
                     />
                   </span>
 
                   <span className="mix__amount num">
-                    {money(t.total, { currency })}
+                    {money(row.total, { currency })}
                   </span>
                   <span className="mix__count ds-caption">
-                    {t.count} sale{t.count === 1 ? '' : 's'}
+                    {row.count === 1
+                      ? t('common.oneSale')
+                      : t('common.nSales', { count: row.count })}
                   </span>
                 </li>
               ))}
             </ul>
 
-            <p className="ds-caption mix__why">
-              Card schemes are listed separately because their fees differ. Merging
-              them into one “card” row would misstate your margin.
-            </p>
+            <p className="ds-caption mix__why">{t('tender.whySeparate')}</p>
           </>
         )}
       </div>

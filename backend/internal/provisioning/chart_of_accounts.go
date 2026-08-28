@@ -39,8 +39,15 @@ import (
 type seedAccount struct {
 	code string
 	name string
-	kind string
-	role string
+	// nameAr is what an Arabic screen shows instead.
+	//
+	// Stored in `account.translations`, which has existed since 0015 and was
+	// never filled: an Arabic-speaking owner read "Stock Write-off",
+	// "Cash Over/Short" and "Bank & Card Charges" in English on their own
+	// dashboard. Found by looking at the Arabic dashboard.
+	nameAr string
+	kind   string
+	role   string
 	// control marks an account whose balance must reconcile to a subsidiary
 	// ledger — inventory to the stock valuation, receivables to the customer
 	// balances. The posting engine enforces the tie-out.
@@ -50,29 +57,29 @@ type seedAccount struct {
 // The order is the order they appear in the chart: assets, liabilities,
 // equity, revenue, expenses — the sequence every accountant expects.
 var defaultChart = []seedAccount{
-	{"1100", "Cash", "asset", "cash", ""},
-	{"1110", "Bank", "asset", "bank", ""},
+	{"1100", "Cash", "النقد", "asset", "cash", ""},
+	{"1110", "Bank", "البنك", "asset", "bank", ""},
 	// Card money that has been taken but not yet settled by the acquirer (C12).
 	// Its own account because an owner asking "where is my money" needs to see
 	// that it exists and is not yet theirs to spend.
-	{"1150", "Card Settlement Clearing", "asset", "card_clearing", ""},
-	{"1200", "Accounts Receivable", "asset", "accounts_receivable", "receivable"},
-	{"1400", "Inventory", "asset", "inventory", "inventory"},
+	{"1150", "Card Settlement Clearing", "مقاصة تسوية البطاقات", "asset", "card_clearing", ""},
+	{"1200", "Accounts Receivable", "الذمم المدينة", "asset", "accounts_receivable", "receivable"},
+	{"1400", "Inventory", "المخزون", "asset", "inventory", "inventory"},
 
-	{"2100", "Accounts Payable", "liability", "accounts_payable", "payable"},
+	{"2100", "Accounts Payable", "الذمم الدائنة", "liability", "accounts_payable", "payable"},
 	// Goods on the shelf that the supplier has not invoiced yet. Without it the
 	// inventory valuation runs ahead of the Inventory control account for the
 	// whole window between a delivery and its bill, which design 02 §6.6 says
 	// must never happen.
-	{"2150", "Goods Received Not Invoiced", "liability", "grni", ""},
-	{"2200", "Output VAT Payable", "liability", "output_vat", ""},
-	{"2210", "Input VAT Recoverable", "asset", "input_vat", ""},
-	{"2300", "Store Credit Issued", "liability", "store_credit_liability", ""},
+	{"2150", "Goods Received Not Invoiced", "بضاعة مستلمة ولم تُفوتر", "liability", "grni", ""},
+	{"2200", "Output VAT Payable", "ضريبة القيمة المضافة المستحقة", "liability", "output_vat", ""},
+	{"2210", "Input VAT Recoverable", "ضريبة القيمة المضافة القابلة للاسترداد", "asset", "input_vat", ""},
+	{"2300", "Store Credit Issued", "رصيد المتجر الصادر", "liability", "store_credit_liability", ""},
 	// The offsetting half of an exchange. Zero between exchanges; a balance on
 	// it means one settled half and not the other, which the atomic
 	// transaction is supposed to make impossible.
-	{"2350", "Exchange Clearing", "liability", "exchange_clearing", ""},
-	{"2400", "Loyalty Points Liability", "liability", "loyalty_liability", ""},
+	{"2350", "Exchange Clearing", "مقاصة الاستبدال", "liability", "exchange_clearing", ""},
+	{"2400", "Loyalty Points Liability", "التزام نقاط الولاء", "liability", "loyalty_liability", ""},
 
 	// The role is owner_capital because that is the name rule 12 resolves, and
 	// the label is the one design 12 §1 gives account 3100. This was seeded as
@@ -80,13 +87,13 @@ var defaultChart = []seedAccount{
 	// capital contribution the engine tried to post would have failed on an
 	// unmapped role — the same shape of defect as the cost_variance mapping
 	// 0048 had to correct, caught this time while the module is still dormant.
-	{"3100", "Owner Capital", "equity", "owner_capital", ""},
-	{"3200", "Retained Earnings", "equity", "retained_earnings", ""},
+	{"3100", "Owner Capital", "رأس مال المالك", "equity", "owner_capital", ""},
+	{"3200", "Retained Earnings", "الأرباح المبقاة", "equity", "retained_earnings", ""},
 
-	{"4100", "Sales Revenue", "revenue", "sales_revenue", ""},
-	{"4200", "Sales Discounts", "revenue", "sales_discounts", ""},
+	{"4100", "Sales Revenue", "إيرادات المبيعات", "revenue", "sales_revenue", ""},
+	{"4200", "Sales Discounts", "خصومات المبيعات", "revenue", "sales_discounts", ""},
 
-	{"5100", "Cost of Goods Sold", "expense", "cogs", ""},
+	{"5100", "Cost of Goods Sold", "تكلفة البضاعة المباعة", "expense", "cogs", ""},
 	// Where a standard-costing difference lands, and where an allow_warn
 	// shortfall's provisional cost is corrected (C13).
 	//
@@ -96,11 +103,11 @@ var defaultChart = []seedAccount{
 	// engine tried to post failed on an unmapped role in any company created
 	// through the product. The tests that covered rule 11 mapped the role by
 	// hand and so never saw it.
-	{"5150", "Inventory Cost Variance", "expense", "cost_variance", ""},
+	{"5150", "Inventory Cost Variance", "انحراف تكلفة المخزون", "expense", "cost_variance", ""},
 	// 5400, not 5200, because design 12 §1 puts Inventory Write-off there and
 	// 5200 is Rent. This was seeded at 5200 until 0071, which relabelled it —
 	// the account keeps its id, so nothing moved and no journal line changed.
-	{"5400", "Stock Write-off", "expense", "stock_writeoff", ""},
+	{"5400", "Stock Write-off", "إعدام المخزون", "expense", "stock_writeoff", ""},
 
 	// The four heads design 12 §1 names, so a shop can record rent on the day
 	// it installs the product rather than building a chart first. 0071 seeds an
@@ -110,21 +117,21 @@ var defaultChart = []seedAccount{
 	// than by a code a shop may have changed. Nothing RESOLVES them today — an
 	// expense head names its account, which is the whole point of the model —
 	// but rule 6 will want expense_salaries when payroll is built.
-	{"5200", "Rent", "expense", "expense_rent", ""},
-	{"5210", "Utilities", "expense", "expense_utilities", ""},
-	{"5220", "Salaries", "expense", "expense_salaries", ""},
-	{"5230", "Marketing", "expense", "expense_marketing", ""},
+	{"5200", "Rent", "الإيجار", "expense", "expense_rent", ""},
+	{"5210", "Utilities", "المرافق", "expense", "expense_utilities", ""},
+	{"5220", "Salaries", "الرواتب", "expense", "expense_salaries", ""},
+	{"5230", "Marketing", "التسويق", "expense", "expense_marketing", ""},
 	// What it costs to be paid by card. Design 12 §1 gives it 5300. Separate
 	// from the clearing account on purpose: the clearing account is money owed
 	// to the shop, this is money the shop never receives, and merging them
 	// would leave a residue in an account whose whole job is to reach zero.
-	{"5300", "Bank & Card Charges", "expense", "bank_card_charges", ""},
+	{"5300", "Bank & Card Charges", "رسوم البنوك والبطاقات", "expense", "bank_card_charges", ""},
 	// Where a drawer that did not reconcile lands (C8, design 11 §9). Both
 	// directions post here: an unexplained surplus is as much a control failure
 	// as a shortfall, and sending an overage to Other Income would flatter the
 	// month it happened in.
-	{"5500", "Cash Over/Short", "expense", "cash_over_short", ""},
-	{"5900", "Rounding Differences", "expense", "rounding", ""},
+	{"5500", "Cash Over/Short", "زيادة/عجز النقد", "expense", "cash_over_short", ""},
+	{"5900", "Rounding Differences", "فروق التقريب", "expense", "rounding", ""},
 }
 
 // SeedChartOfAccounts gives a new company the accounts its modules post to.
@@ -145,11 +152,17 @@ func SeedChartOfAccounts(
 		var accountID uuid.UUID
 		err := tx.QueryRow(ctx, `
 			INSERT INTO account
-			  (tenant_id, company_id, code, name, type, is_control, control_of)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)
-			ON CONFLICT (company_id, code) DO UPDATE SET code = EXCLUDED.code
+			  (tenant_id, company_id, code, name, translations, type,
+			   is_control, control_of)
+			VALUES ($1,$2,$3,$4,jsonb_build_object('ar',$5::text),$6,$7,$8)
+			-- The Arabic name is refreshed on a company that already has the
+			-- account, because the English one is not being changed and a
+			-- chart seeded before this existed has an empty translations map.
+			ON CONFLICT (company_id, code) DO UPDATE
+			  SET translations = account.translations
+			                     || jsonb_build_object('ar', excluded.translations->>'ar')
 			RETURNING id`,
-			tenantID, companyID, a.code, a.name, a.kind,
+			tenantID, companyID, a.code, a.name, a.nameAr, a.kind,
 			a.control != "", nullIfBlank(a.control)).Scan(&accountID)
 		if err != nil {
 			return db.Translate(err, "That chart of accounts could not be created.")

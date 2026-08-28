@@ -12,6 +12,8 @@
 // fraction of a halala is a fee that eventually disagrees with the statement it
 // was read from.
 
+import type { Translate } from '../i18n/strings';
+
 import { major, minor } from '../receivables/receivables';
 import type { PendingTender } from '../api/settlement';
 
@@ -50,11 +52,14 @@ export function checkDeposit(
   pending: PendingTender[],
   selected: ReadonlySet<string>,
   netAmount: string,
+  translate?: Translate,
 ): DepositCheck {
   if (selected.size === 0) {
     return {
       kind: 'nothing_selected',
-      message: 'Tick the payments this deposit covered.',
+      message:
+        translate?.('deposit.tickPayments') ??
+        'Tick the payments this deposit covered.',
     };
   }
 
@@ -63,7 +68,9 @@ export function checkDeposit(
   if (net <= 0n) {
     return {
       kind: 'no_amount',
-      message: 'Enter the amount that landed in the bank.',
+      message:
+        translate?.('deposit.enterAmount') ??
+        'Enter the amount that landed in the bank.',
     };
   }
 
@@ -72,20 +79,26 @@ export function checkDeposit(
     return {
       kind: 'exceeds',
       message:
+        translate?.('deposit.exceedsFull', { gross }) ??
         `This deposit is more than the ${gross} of payments it covers. ` +
-        'An acquirer paying more than was taken is a separate event, not a fee.',
+          'An acquirer paying more than was taken is a separate event, not a fee.',
     };
   }
 
-  const count = selected.size === 1 ? '1 payment' : `${selected.size} payments`;
+  const count =
+    selected.size === 1
+      ? (translate?.('deposit.onePayment') ?? '1 payment')
+      : (translate?.('deposit.nPayments', { count: selected.size }) ??
+        `${selected.size} payments`);
   if (fee === 0n) {
     return {
       kind: 'no_fee',
       gross,
       fee: '0.00',
       message:
+        translate?.('deposit.noFeeFull', { count, gross }) ??
         `${count} totalling ${gross}, deposited in full. ` +
-        'Check the statement — a deposit with no fee on it is unusual.',
+          'Check the statement — a deposit with no fee on it is unusual.',
     };
   }
 
@@ -93,7 +106,12 @@ export function checkDeposit(
     kind: 'ready',
     gross,
     fee: major(fee),
-    message: `${count} totalling ${gross}, less a fee of ${major(fee)}.`,
+    message:
+      translate?.('deposit.readyFull', {
+        count,
+        gross,
+        fee: major(fee),
+      }) ?? `${count} totalling ${gross}, less a fee of ${major(fee)}.`,
   };
 }
 

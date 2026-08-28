@@ -310,7 +310,7 @@ func (s *Service) expensesToday(
 	// Cost of sales is excluded: it is already the profit tile's cost, and
 	// showing it again under "expenses" would double it in the owner's head.
 	rows, e := tx.Query(ctx, `
-		SELECT a.id, a.code, a.name,
+		SELECT a.id, a.code, a.name, coalesce(a.translations->>'ar', ''),
 		       sum(l.base_debit - l.base_credit)::text
 		FROM journal_line l
 		JOIN journal_entry e ON e.id = l.entry_id
@@ -322,7 +322,7 @@ func (s *Service) expensesToday(
 		    WHERE company_id = $1 AND role = 'cogs')
 		  AND e.entry_date >= $2 AND e.entry_date < $3
 		  AND ($4::uuid IS NULL OR l.store_id = $4::uuid)
-		GROUP BY a.id, a.code, a.name
+		GROUP BY a.id, a.code, a.name, a.translations
 		HAVING sum(l.base_debit - l.base_credit) <> 0
 		ORDER BY sum(l.base_debit - l.base_credit) DESC`,
 		scope.CompanyID, from, to, scope.StoreID)
@@ -335,7 +335,8 @@ func (s *Service) expensesToday(
 	for rows.Next() {
 		var line StatementLine
 		var amount string
-		if e := rows.Scan(&line.AccountID, &line.Code, &line.Name, &amount); e != nil {
+		if e := rows.Scan(&line.AccountID, &line.Code, &line.Name, &line.NameAr,
+			&amount); e != nil {
 			return e
 		}
 		line.Amount = amount

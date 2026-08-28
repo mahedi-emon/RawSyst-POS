@@ -159,7 +159,7 @@ export function TerminalForm({
             htmlFor="term-label"
             required
             error={fields.terminal_label}
-            hint="What your staff call it. It appears on this list and in the sync reports."
+            hint={t('terminal.labelHint')}
           >
             <TextInput
               id="term-label"

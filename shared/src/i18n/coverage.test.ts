@@ -32,6 +32,25 @@ const NO_PROSE = new Set([
   'Sparkline.tsx', // an SVG chart
   'CardTableLabels.tsx', // copies labels out of a table's own header
   'LanguageSwitch.tsx', // each language is named in its own language
+
+  // The transport, which has no locale and cannot be given one.
+  //
+  // Most of what it holds is not prose at all: `Content-Type`, `X-CSRF-Token`,
+  // `X-Client-Kind` are header names, and `RequestFailed` is a class name.
+  //
+  // Three are English sentences, and each is a last resort rather than a
+  // message a shop reads in the ordinary course. `Offline`'s text is replaced
+  // at every display site, which switches on the exception's CLASS and calls
+  // t() — see `explain` in the screens. The other two stand in for an error
+  // body the server sent without a message, which the API does not do; they
+  // carry `code: 'internal'`, which is what a display site would key off if a
+  // server ever did.
+  //
+  // Translating them here would mean handing the client a t() at construction
+  // and holding it for the life of the app, which goes stale the moment the
+  // reader switches language — the one thing the locale provider exists to
+  // avoid.
+  'client.ts',
 ]);
 
 /**
@@ -43,8 +62,19 @@ const NO_PROSE = new Set([
  */
 const BRANDS = new Set(['Mastercard', 'Apple Pay', 'STC Pay']);
 
+/**
+ * Shapes rather than words.
+ *
+ * A placeholder showing what a reference looks like — `INV-10023`,
+ * `MADA-20260817-001` — is the same in Arabic, because the document it is
+ * copied from is. Translating one would show a shop a format its own paperwork
+ * does not use. Sample data that IS words — a street, a company name — is
+ * translated and is not listed here.
+ */
+const FORMATS = new Set(['INV-10023', 'MADA-20260817-001']);
+
 /** Prose, as opposed to an identifier, a class name or a code. */
-const PROSE = /^[A-Z][A-Za-z0-9 ,.'’…\-–—()/&%:!?]{6,}$/;
+const PROSE = /^[A-Z][A-Za-z0-9 ,.'’“”…\-–—()/&%:!?]{6,}$/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -52,6 +82,31 @@ function walk(dir: string, out: string[] = []): string[] {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
     else if (/\.tsx$/.test(entry) && !/\.test\.tsx$/.test(entry)) out.push(full);
+  }
+  return out;
+}
+
+/**
+ * The plain TypeScript half.
+ *
+ * `walk` collects components, and words do not only live in components.
+ * `inventory/matrix.ts` held the whole vocabulary of the variant grid — "Out",
+ * "Low", "Dead", and the sentences a screen reader is given in place of the
+ * bare number — and none of it was ever looked at, because the file has no x on
+ * the end. The grid's own header says colour is never the only signal; the
+ * signal was in English on every Arabic screen.
+ *
+ * Only the string-literal check runs over these. A .ts file has no JSX, so the
+ * other three have nothing to find in one.
+ */
+function walkPlain(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules') continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) walkPlain(full, out);
+    else if (/\.ts$/.test(entry) && !/\.test\.ts$/.test(entry) && !/\.d\.ts$/.test(entry)) {
+      out.push(full);
+    }
   }
   return out;
 }
@@ -65,7 +120,7 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
     const literal = match[1];
     if (!literal || literal.includes('\\')) continue;
     if (!PROSE.test(literal)) continue;
-    if (known.has(literal) || BRANDS.has(literal)) continue;
+    if (known.has(literal) || BRANDS.has(literal) || FORMATS.has(literal)) continue;
     // A path or an import specifier, not a sentence.
     if (literal.includes('/') && !literal.includes(' ')) continue;
 
@@ -94,11 +149,101 @@ function untranslatedJsxTextIn(file: string, known: Set<string>): string[] {
   for (const match of text.matchAll(/>([^<>{}]{12,400})</g)) {
     const collapsed = match[1]!.split(/\s+/).filter(Boolean).join(' ');
     if (!collapsed || known.has(collapsed) || BRANDS.has(collapsed)) continue;
-    if (!/^[A-Z][A-Za-z0-9 ,.'’…\-–—()/&%:!?]+$/.test(collapsed)) continue;
-    // Three real words or more: shorter than that is a label already keyed, an
-    // abbreviation, or punctuation the regex happened to span.
+    // The curly double quotes are in the class deliberately. Without them the
+    // paragraph under the payment mix — which quotes the word “card” — did not
+    // look like prose to this check, and stayed English on every Arabic screen.
+    if (!/^[A-Z][A-Za-z0-9 ,.'’“”…\-–—()/&%:!?]+$/.test(collapsed)) continue;
+    // Two real words or more. Three was the first threshold and it let
+    // "Record a deposit" through — the heading of the panel where a shop
+    // reconciles its card takings, on an Arabic screen, found by a browser
+    // audit long after this test was recorded as complete. Short headings are
+    // exactly where the eye stops, so they are the last place to relax a rule.
     const words = collapsed.split(' ').filter((w) => /^[A-Za-z]{3,}$/.test(w));
-    if (words.length < 3) continue;
+    if (words.length < 2) continue;
+    found.push(collapsed);
+  }
+  return [...new Set(found)];
+}
+
+/**
+ * Prose passed as a double-quoted JSX attribute.
+ *
+ * `submitLabel="Record deposit"`, `aria-label="Include this payment"`. The
+ * literal check above reads single quotes only, because that is how a
+ * TypeScript file writes a string — but JSX attributes are conventionally
+ * double-quoted, and prettier rewrites them that way. So the text on a button
+ * and every label a screen reader announces sat in a blind spot.
+ *
+ * aria-labels count. A blind cashier using an Arabic screen reader is a user,
+ * and an English label is as wrong for them as an English heading is for
+ * anybody else.
+ */
+function untranslatedAttributeTextIn(file: string, known: Set<string>): string[] {
+  const text = readFileSync(file, 'utf8');
+  const found: string[] = [];
+
+  // Attributes that carry words a person reads or hears. Deliberately a list
+  // rather than "every attribute": `className`, `id`, `type` and `href` all
+  // hold strings that look like prose and are not.
+  const carries =
+    /\b(?:aria-label|aria-description|title|placeholder|label|submitLabel|hint|caption|heading|summary|alt)\s*=\s*"([^"\n]{7,300})"/g;
+
+  for (const match of text.matchAll(carries)) {
+    const literal = match[1];
+    if (!literal) continue;
+    if (!PROSE.test(literal)) continue;
+    if (known.has(literal) || BRANDS.has(literal) || FORMATS.has(literal)) continue;
+    found.push(literal);
+  }
+  return [...new Set(found)];
+}
+
+/**
+ * Prose sharing a JSX text node with an expression.
+ *
+ * `{money(total)} not yet settled` — the words are JSX text, but the node also
+ * holds `{...}`, and the paragraph check above excludes braces outright so it
+ * cannot see either half. That is how "not yet settled" sat in English under
+ * the cash figure on the Arabic dashboard, found by measuring the tile rather
+ * than by reading anything.
+ *
+ * Matched from a closing brace to the next tag, which is where this shape
+ * always puts the words. Two real words or more, so `{n} sales` and `{pct} of`
+ * do not each need an entry — those are caught by the literal check when they
+ * are written as strings, and by eye when they are not.
+ */
+function untranslatedBesideAnExpressionIn(
+  file: string,
+  known: Set<string>,
+): string[] {
+  const text = readFileSync(file, 'utf8');
+  const found: string[] = [];
+
+  // A generic in a type position — `): Promise<`, `function SelectInput<` —
+  // ends with a `<` too, and the run before it can look like a short sentence.
+  // Excluded by the words only code uses, which no interface string contains.
+  const isCode =
+    /\b(function|const|let|export|import|return|async|await|interface|type|extends|Promise|Record|React|typeof)\b|=>/;
+
+  // Both sides of the expression. `{money(x)} not yet settled` puts the words
+  // after it and `The items on this {title}` puts them before, and a check
+  // that read only one side would find half of them.
+  const runs = [
+    ...text.matchAll(/\}([^<>{}]{6,200})</g),
+    ...text.matchAll(/>([^<>{}]{6,200})\{/g),
+  ];
+
+  for (const match of runs) {
+    const collapsed = match[1]!.split(/\s+/).filter(Boolean).join(' ');
+    if (!collapsed || isCode.test(collapsed)) continue;
+    // Sentence fragments here, not whole sentences, so no leading-capital rule.
+    if (!/^[A-Za-z0-9 ,.'’“”…\-–—()/&%:!?]+$/.test(collapsed)) continue;
+    const words = collapsed.split(' ').filter((w) => /^[A-Za-z]{3,}$/.test(w));
+    if (words.length < 2) continue;
+    if (known.has(collapsed)) continue;
+    // A catalogue string with the expression's place taken by a placeholder is
+    // the fix for this shape, so a fragment that appears inside one is done.
+    if ([...known].some((v) => v.includes(collapsed))) continue;
     found.push(collapsed);
   }
   return [...new Set(found)];
@@ -106,6 +251,9 @@ function untranslatedJsxTextIn(file: string, known: Set<string>): string[] {
 
 describe('translation coverage', () => {
   const files = walk(sharedSrc).filter((f) => !NO_PROSE.has(f.split(/[\\/]/).pop()!));
+  const plain = walkPlain(sharedSrc).filter(
+    (f) => !NO_PROSE.has(f.split(/[\\/]/).pop()!),
+  );
   const known = new Set<string>(Object.values(en));
 
   it('finds the components and the catalogue', () => {
@@ -128,6 +276,59 @@ describe('translation coverage', () => {
         'Arabic shop reads them in English. Add a key to `en` and `ar` in\n' +
         'shared/src/i18n/strings.ts and call t() instead — or, if it is a brand\n' +
         'name that is written the same way in both languages, add it to BRANDS:\n',
+    ).toBe('');
+  });
+
+  it('leaves no untranslated words in a JSX attribute', () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const found = untranslatedAttributeTextIn(file, known);
+      if (found.length === 0) continue;
+      const where = relative(repoRoot, file).replace(/\\/g, '/');
+      for (const text of found) offenders.push(`  ${where}\n    "${text}"`);
+    }
+
+    expect(
+      offenders.join('\n'),
+      'These words reach a user through a JSX attribute \u2014 a button label, a\n' +
+        'placeholder, or the label a screen reader announces \u2014 and are not in\n' +
+        'the catalogue. The literal check above reads single quotes only, so it\n' +
+        'cannot see them. Replace each with a t() call:\n',
+    ).toBe('');
+  });
+
+  it('leaves no user-visible English in a plain .ts module', () => {
+    const offenders: string[] = [];
+    for (const file of plain) {
+      const found = untranslatedIn(file, known);
+      if (found.length === 0) continue;
+      const where = relative(repoRoot, file).replace(/\\/g, '/');
+      for (const literal of found) offenders.push(`  ${where}\n    "${literal}"`);
+    }
+
+    expect(
+      offenders.join('\n'),
+      'These strings live in a module rather than a component, and reach a\n' +
+        'user all the same. Take a translate function as an optional argument\n' +
+        'the way readCell and tenderName do, so the module stays pure and the\n' +
+        'words come from the catalogue:\n',
+    ).toBe('');
+  });
+
+  it('leaves no untranslated words beside an expression', () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const found = untranslatedBesideAnExpressionIn(file, known);
+      if (found.length === 0) continue;
+      const where = relative(repoRoot, file).replace(/\\/g, '/');
+      for (const text of found) offenders.push(`  ${where}\n    "${text}"`);
+    }
+
+    expect(
+      offenders.join('\n'),
+      'These words sit next to an expression in a JSX text node, so neither\n' +
+        'check above can see them. Move the whole sentence into the catalogue\n' +
+        'with a {placeholder} where the expression was:\n',
     ).toBe('');
   });
 

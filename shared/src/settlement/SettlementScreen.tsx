@@ -27,7 +27,12 @@ import {
   recordSettlement,
   type PendingTender,
 } from '../api/settlement';
-import { byMethod, canRecord, checkDeposit, outstandingTotal } from './settlement';
+import {
+  byMethod,
+  canRecord,
+  checkDeposit,
+  outstandingTotal,
+} from './settlement';
 import { useT } from '../i18n/locale';
 
 export function SettlementScreen({ companyId }: { companyId: string }) {
@@ -46,9 +51,7 @@ export function SettlementScreen({ companyId }: { companyId: string }) {
       <header className="detail__head detail__head--flat">
         <div className="detail__titles">
           <h1 className="ds-h1">{t('settlement.title')}</h1>
-          <p className="ds-caption">
-            {t('settle.intro')}
-          </p>
+          <p className="ds-caption">{t('settle.intro')}</p>
         </div>
       </header>
 
@@ -99,7 +102,7 @@ function Outstanding({
   const [failed, setFailed] = useState<string | null>(null);
 
   const groups = useMemo(() => byMethod(pending), [pending]);
-  const check = checkDeposit(pending, selected, netAmount);
+  const check = checkDeposit(pending, selected, netAmount, t);
 
   const toggle = (id: string) => {
     setSelected((held) => {
@@ -146,11 +149,7 @@ function Outstanding({
       setNetAmount('');
       onRecorded();
     } catch (err) {
-      setFailed(
-        err instanceof Error
-          ? err.message
-          : t('settle.depositFailed'),
-      );
+      setFailed(err instanceof Error ? err.message : t('settle.depositFailed'));
     } finally {
       setBusy(false);
     }
@@ -160,8 +159,10 @@ function Outstanding({
     <>
       <div className="ds-panel">
         <div className="ds-panel__body">
-          <p className="ds-caption">
-            <span className="detail__strong">{money(outstandingTotal(pending))}</span>{' '}
+          <p className="ds-body-sm">
+            <span className="settle__outstanding num">
+              {money(outstandingTotal(pending))}
+            </span>{' '}
             {t('settle.notYetDeposited')}
           </p>
         </div>
@@ -187,14 +188,20 @@ function Outstanding({
                     className="detail__strong"
                   >
                     {mayRecord && (
-                      <input
-                        type="checkbox"
-                        aria-label={`Select every ${tenderName(group.method)} payment`}
-                        checked={group.tenders.every((t) => selected.has(t.tender_id))}
-                        onChange={() => toggleGroup(group.tenders)}
-                      />
+                      <label className="ds-check">
+                        <input
+                          type="checkbox"
+                          aria-label={t('settle.selectEvery', {
+                            method: tenderName(group.method, t),
+                          })}
+                          checked={group.tenders.every((one) =>
+                            selected.has(one.tender_id),
+                          )}
+                          onChange={() => toggleGroup(group.tenders)}
+                        />
+                      </label>
                     )}{' '}
-                    {tenderName(group.method)}
+                    {tenderName(group.method, t)}
                     <span className="ds-caption">
                       {group.count === 1
                         ? t('settle.onePayment')
@@ -204,21 +211,33 @@ function Outstanding({
                   <td className="num detail__strong">{money(group.total)}</td>
                 </tr>
 
-                {group.tenders.map((t) => (
-                  <tr key={t.tender_id}>
+                {/* `tender`, not `t`. The row used to bind `t`, which shadowed
+                    the translate function — so the only way to write a label
+                    here was an English template literal, and that is what was
+                    announced to an Arabic screen reader. */}
+                {group.tenders.map((tender) => (
+                  <tr key={tender.tender_id}>
                     {mayRecord && (
                       <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`Include ${t.invoice_number || t.invoice_id}`}
-                          checked={selected.has(t.tender_id)}
-                          onChange={() => toggle(t.tender_id)}
-                        />
+                        <label className="ds-check">
+                          <input
+                            type="checkbox"
+                            aria-label={t('settle.includeOne', {
+                              invoice:
+                                tender.invoice_number ||
+                                tender.invoice_id.slice(0, 8),
+                            })}
+                            checked={selected.has(tender.tender_id)}
+                            onChange={() => toggle(tender.tender_id)}
+                          />
+                        </label>
                       </td>
                     )}
-                    <td>{t.invoice_number || t.invoice_id.slice(0, 8)}</td>
-                    <td>{shortDate(t.issued_at)}</td>
-                    <td className="num">{money(t.amount)}</td>
+                    <td>
+                      {tender.invoice_number || tender.invoice_id.slice(0, 8)}
+                    </td>
+                    <td>{shortDate(tender.issued_at)}</td>
+                    <td className="num">{money(tender.amount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -230,18 +249,14 @@ function Outstanding({
       {mayRecord && (
         <form className="ds-panel" onSubmit={submit}>
           <div className="ds-panel__body">
-            <h2 className="ds-h2">Record a deposit</h2>
-            <p className="ds-caption">
-              Enter what actually landed in the bank. The fee is the difference
-              between that and what was taken — it is not typed, so it cannot
-              disagree with the statement it was read from.
-            </p>
+            <h2 className="ds-h2">{t('settle.recordTitle')}</h2>
+            <p className="ds-caption">{t('settle.recordBlurb')}</p>
 
             <Field
-              label="Bank statement reference"
+              label={t('settle.reference')}
               htmlFor="settlement-reference"
               required
-              hint="What the statement calls this deposit, so the two can be matched later."
+              hint={t('settle.referenceHint')}
             >
               <TextInput
                 id="settlement-reference"
@@ -252,10 +267,10 @@ function Outstanding({
             </Field>
 
             <Field
-              label="Date it landed"
+              label={t('settle.landedOn')}
               htmlFor="settlement-date"
               required
-              hint="It posts on this date, not on today."
+              hint={t('settle.landedOnHint')}
             >
               <TextInput
                 id="settlement-date"
@@ -265,7 +280,11 @@ function Outstanding({
               />
             </Field>
 
-            <Field label="Amount deposited" htmlFor="settlement-net" required>
+            <Field
+              label={t('settle.amountDeposited')}
+              htmlFor="settlement-net"
+              required
+            >
               <TextInput
                 id="settlement-net"
                 value={netAmount}
@@ -294,7 +313,7 @@ function Outstanding({
 
             <FormError message={failed} />
             <FormActions
-              submitLabel="Record deposit"
+              submitLabel={t('settle.record')}
               busy={busy}
               disabled={!canRecord(check)}
               onCancel={() => {

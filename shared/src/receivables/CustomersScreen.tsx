@@ -273,7 +273,7 @@ function CustomerRow({
 }) {
   const t = useT();
   const owes = Number(customer.balance) > 0;
-  const standing = creditStanding(customer);
+  const standing = creditStanding(customer, t);
 
   return (
     <tr className={customer.is_active ? undefined : 'detail__row--aside'}>

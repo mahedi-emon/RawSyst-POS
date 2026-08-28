@@ -244,7 +244,7 @@ export function BillForm({
 
         <div className="form__grid">
           <Field label={t('purch.againstWhichOrder')} htmlFor="bill-po"
-            hint="Choosing one fills the lines in and lets the bill be checked against what arrived. Leave blank for rent, utilities and the like.">
+            hint={t('bill.orderHint')}>
             <SelectInput
               id="bill-po"
               value={poId}
@@ -273,14 +273,14 @@ export function BillForm({
 
           <Field label={t('purch.theirInvoiceNumber')} htmlFor="bill-ref" required
             error={fields.supplier_ref}
-            hint="Exactly as it appears on their document. The same number cannot be entered twice for one supplier.">
+            hint={t('bill.numberHint')}>
             <TextInput id="bill-ref" value={supplierRef} onChange={setSupplierRef}
               placeholder="INV-10023" error={fields.supplier_ref} />
           </Field>
 
           <Field label={t('purch.invoiceDate')} htmlFor="bill-date" required
             error={fields.bill_date}
-            hint="Their date, not today's. The due date follows from it and the supplier's terms.">
+            hint={t('bill.dateHint')}>
             <TextInput id="bill-date" value={billDate} onChange={setBillDate}
               type="date" error={fields.bill_date} />
           </Field>
@@ -394,7 +394,7 @@ export function BillForm({
           <p className="ds-caption form__aside">{t('bill.enterActual')}</p>
         </section>
 
-        <FormActions submitLabel="Record bill" busy={busy} onCancel={onCancel} />
+        <FormActions submitLabel={t('bill.record')} busy={busy} onCancel={onCancel} />
       </div>
     </form>
   );

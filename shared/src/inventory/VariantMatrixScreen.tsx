@@ -352,22 +352,36 @@ function Body({
       {/* Spec §4: the copy under the grid states the point plainly. */}
       <section className="ds-panel matrix__summary" aria-label={t('matrix.whatTotalHides')}>
         <div className="ds-panel__body">
+          {/* The figure keeps its own tag so it stays the loud half of
+              the sentence; only the words around it are translated. Both
+              languages put the number first, so a suffix reads correctly in
+              each. */}
           <p className="matrix__total">
-            <strong className="num">{totals.total}</strong> in stock across{' '}
-            {totals.variants} variant{totals.variants === 1 ? '' : 's'}.
+            <strong className="num">{totals.total}</strong>{' '}
+            {totals.variants === 1
+              ? t('matrix.inStockAcrossOne')
+              : t('matrix.inStockAcross', { count: totals.variants })}
           </p>
           {totals.out + totals.low + totals.dead > 0 ? (
             <p className="ds-body-sm">
-              That one number hides{' '}
-              {[
-                totals.out > 0 ? `${totals.out} out of stock` : null,
-                totals.low > 0 ? `${totals.low} at or below reorder` : null,
-                totals.dead > 0 ? `${totals.dead} unsold in ${DEAD_AFTER_DAYS} days` : null,
-              ]
-                .filter(Boolean)
-                .join(', ')}
-              . A till that showed only the total would let you reorder the wrong
-              things.
+              {t('matrix.hides', {
+                list: [
+                  totals.out > 0
+                    ? t('matrix.nOutOfStock', { count: totals.out })
+                    : null,
+                  totals.low > 0
+                    ? t('matrix.nAtReorder', { count: totals.low })
+                    : null,
+                  totals.dead > 0
+                    ? t('matrix.nUnsold', {
+                        count: totals.dead,
+                        days: DEAD_AFTER_DAYS,
+                      })
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join('، '),
+              })}
             </p>
           ) : (
             <p className="ds-body-sm ds-muted">{t('matrix.nothingUnusual')}</p>
@@ -392,7 +406,8 @@ function Cell({
   row: string;
   column: string;
 }) {
-  const reading = readCell(cell);
+  const t = useT();
+  const reading = readCell(cell, undefined, t);
 
   return (
     <td className={`matrix__cell matrix__cell--${reading.state}`}>
@@ -410,7 +425,7 @@ function Cell({
             &middot;
           </span>
           <span className="ds-visually-hidden">
-            {row} {column}: not stocked
+            {t('matrix.notStocked', { row, column })}
           </span>
         </>
       )}

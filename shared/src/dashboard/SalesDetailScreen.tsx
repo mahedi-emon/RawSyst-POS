@@ -51,7 +51,11 @@ export function SalesDetailScreen({
                 apart: netting them into one figure hides a day where a lot was
                 sold and a lot came back, which is the day worth seeing. */}
             <section className="detail__summary" aria-label={t('dash.dayTotals')}>
-              <Figure label={t('dash.sold')} value={money(d.sales_total, { currency: d.base_currency })} note={`${d.invoice_count} sale${d.invoice_count === 1 ? '' : 's'}`} />
+              <Figure label={t('dash.sold')} value={money(d.sales_total, { currency: d.base_currency })} note={
+                  d.invoice_count === 1
+                    ? t('common.oneSale')
+                    : t('common.nSales', { count: d.invoice_count })
+                } />
               <Figure
                 label={t('dash.refunded')}
                 value={money(d.refund_total, { currency: d.base_currency })}
@@ -97,8 +101,7 @@ export function SalesDetailScreen({
 
             {d.has_more && (
               <p className="ds-caption detail__more">
-                Showing the most recent {d.rows.length}. The totals above cover
-                the whole day.
+                {t('dash.showingRecent', { count: d.rows.length })}
               </p>
             )}
           </>

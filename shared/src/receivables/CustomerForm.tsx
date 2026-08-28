@@ -191,15 +191,15 @@ export function CustomerForm({
           </Field>
 
           <Field label={t('common.name')} htmlFor="cust-name" required error={fields.name}
-            hint="As it should appear on their invoices.">
+            hint={t('cust.nameHint')}>
             <TextInput id="cust-name" value={name} onChange={setName}
-              placeholder="Al Noor Trading LLC" error={fields.name} />
+              placeholder={t('cust.nameExample')} error={fields.name} />
           </Field>
 
           {/* Wholesale is kept apart in reporting (B12) so retail figures are
               not distorted by it. Which is why this is not cosmetic. */}
           <Field label={t('common.type')} htmlFor="cust-type" required error={fields.customer_type}
-            hint="Wholesale is reported separately, so retail figures stay comparable.">
+            hint={t('cust.kindHint')}>
             <SelectInput
               id="cust-type"
               value={type}
@@ -212,7 +212,7 @@ export function CustomerForm({
 
           <Field label={t('common.paymentTerms')} htmlFor="cust-terms" required
             error={fields.payment_terms_days}
-            hint="Days from the invoice date. This sets when their invoices fall due and who shows as overdue.">
+            hint={t('cust.termsHint')}>
             <TextInput id="cust-terms" value={terms} onChange={setTerms}
               inputMode="numeric" placeholder="30"
               error={fields.payment_terms_days} />
@@ -220,7 +220,7 @@ export function CustomerForm({
 
           {showLimit && (
             <Field label={t('common.creditLimit')} htmlFor="cust-limit" error={fields.credit_limit}
-              hint="The most they may owe at once. Leave empty for no credit account, which means every sale must be paid at the till.">
+              hint={t('cust.creditLimitHint')}>
               <TextInput id="cust-limit" value={creditLimit} onChange={setCreditLimit}
                 inputMode="decimal" placeholder={t('cust.leaveEmptyNoCredit')}
                 error={fields.credit_limit} />
@@ -228,7 +228,7 @@ export function CustomerForm({
           )}
 
           <Field label={t('common.phone')} htmlFor="cust-phone" error={fields.phone}
-            hint="How a till finds them fastest.">
+            hint={t('cust.phoneHint')}>
             <TextInput id="cust-phone" value={phone} onChange={setPhone}
               inputMode="tel" error={fields.phone} />
           </Field>
@@ -239,7 +239,7 @@ export function CustomerForm({
           </Field>
 
           <Field label={t('common.vatNumber')} htmlFor="cust-vat" error={fields.vat_number}
-            hint="Needed only if they require a full tax invoice rather than a simplified one.">
+            hint={t('cust.vatHint')}>
             <TextInput id="cust-vat" value={vatNumber} onChange={setVatNumber}
               inputMode="numeric" error={fields.vat_number} />
           </Field>

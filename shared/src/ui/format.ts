@@ -15,6 +15,8 @@
 // reason. Intl.NumberFormat would do it beautifully and would require a float
 // to do it to.
 
+import type { Key, Locale, Translate } from '../i18n/strings';
+
 /** Where the currency code sits, and how the number is grouped. */
 export interface MoneyStyle {
   /** ISO code — SAR, BDT, USD. Shown as a code, never a symbol.
@@ -35,7 +37,10 @@ export interface MoneyStyle {
  * cannot be scanned, and "12.5" beside "12.50" invites the reader to wonder
  * which is rounded.
  */
-export function money(amount: string | null | undefined, style: MoneyStyle = {}): string {
+export function money(
+  amount: string | null | undefined,
+  style: MoneyStyle = {},
+): string {
   if (amount === null || amount === undefined || amount === '') return '—';
 
   const trimmed = amount.trim();
@@ -73,7 +78,10 @@ function group(whole: string): string {
 /** A percentage, as the server stated it. Null renders as an em dash rather
  *  than as 0%, because "we did not compute this" and "no change" are different
  *  facts and only one of them is reassuring. */
-export function percent(value: string | null | undefined, signed = false): string {
+export function percent(
+  value: string | null | undefined,
+  signed = false,
+): string {
   if (value === null || value === undefined || value === '') return '—';
   const n = value.trim();
   const positive = !n.startsWith('-');
@@ -82,7 +90,9 @@ export function percent(value: string | null | undefined, signed = false): strin
 
 /** Which way a change should read. Used for an arrow and a colour together,
  *  never for colour alone. */
-export function direction(value: string | null | undefined): 'up' | 'down' | 'flat' {
+export function direction(
+  value: string | null | undefined,
+): 'up' | 'down' | 'flat' {
   if (value === null || value === undefined || value === '') return 'flat';
   const n = value.trim();
   if (n.startsWith('-')) return 'down';
@@ -106,13 +116,38 @@ export function isZero(amount: string | null | undefined): boolean {
  * "16 Aug" is readable to every market this product serves, where "8/16" and
  * "16/8" mean different things in different ones. */
 export function shortDate(iso: string): string {
-  const [, m = '', d = ''] = iso.split('-');
+  // The DATE part, before anything else is looked at.
+  //
+  // This was written for `YYYY-MM-DD` and splitting on the hyphen worked
+  // perfectly for one. Half its callers hand it a timestamp instead — the API
+  // sends RFC3339 for anything with a time on it — and then the third piece is
+  // "28T22:45:00+06:00", whose Number() is NaN. Card settlement listed eleven
+  // payments as taken on "NaN Aug", and the Terminals list said the same about
+  // when each till was last seen.
+  //
+  // Trimmed here rather than at each call site: a formatter that is wrong for
+  // half the strings the product actually holds is the formatter's problem,
+  // and the next screen to pass a timestamp should not have to know.
+  const [date = ''] = iso.split('T');
+  const [, m = '', d = ''] = date.split('-');
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   const month = months[Number(m) - 1];
-  return month ? `${Number(d)} ${month}` : iso;
+  const day = Number(d);
+  if (!month || !Number.isFinite(day) || day < 1 || day > 31) return iso;
+  return `${day} ${month}`;
 }
 
 /** A date on a document, with its year.
@@ -136,17 +171,63 @@ export function longDate(iso: string | null | undefined): string {
   const [y = '', m = '', rest = ''] = iso.split('-');
   const d = rest.slice(0, 2);
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   const month = months[Number(m) - 1];
   if (!month || !y || !d) return iso;
   return `${Number(d)} ${month} ${y}`;
 }
 
-/** Payment methods, written the way a shop says them. */
-export function tenderName(method: string): string {
-  const named: Record<string, string> = {
+/**
+ * A record's own name, in the language of whoever is reading it.
+ *
+ * Some names are not in the catalogue and never can be: an account, a product,
+ * an expense head is a shop's own word for its own thing. Those carry their
+ * translation as data, and the server sends both names so the screen can pick
+ * — which is why this takes two strings rather than a key.
+ *
+ * English is the fallback in both directions. A company that has not written
+ * Arabic for an account it created reads the name it did write, which is a
+ * name; the alternative is a blank cell where the account should be.
+ */
+export function localName(
+  locale: Locale,
+  name: string,
+  nameAr?: string | null,
+): string {
+  if (locale === 'ar' && nameAr && nameAr.trim() !== '') return nameAr;
+  return name;
+}
+
+/**
+ * Payment methods, written the way a shop says them.
+ *
+ * `translate` is the catalogue's t(). Passing it rather than reaching for a
+ * hook keeps this a pure function that the tests can call and that a receipt
+ * printer can use, and every caller already has one.
+ *
+ * Called without it, this answers in English — which is what the till's
+ * receipt builder and any non-React caller want, and is also the honest
+ * fallback for a method nobody has taught it.
+ *
+ * Brands keep their own spelling in both languages. Mada is مدى in Arabic
+ * because that is its own name, printed on the cards; Mastercard has no Arabic
+ * name, and inventing one would put a word on a receipt that no cardholder
+ * recognises.
+ */
+export function tenderName(method: string, translate?: Translate): string {
+  const english: Record<string, string> = {
     cash: 'Cash',
     mada: 'Mada',
     visa: 'Visa',
@@ -165,6 +246,16 @@ export function tenderName(method: string): string {
     bkash: 'bKash',
     nagad: 'Nagad',
     sadad: 'SADAD',
+    exchange_clearing: 'Exchange clearing',
   };
-  return named[method] ?? method.replace(/_/g, ' ');
+
+  const known = method in english;
+  if (translate && known) {
+    // The cast is the seam between an open string from the API and the closed
+    // union of catalogue keys. `known` is what makes it safe: only a method
+    // this function already names reaches here, every one of those has a
+    // `tender.` key, and the two lists are kept in step by a test.
+    return translate(`tender.${method}` as Key);
+  }
+  return english[method] ?? method.replace(/_/g, ' ');
 }

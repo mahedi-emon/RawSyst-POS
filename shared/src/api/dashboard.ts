@@ -36,6 +36,10 @@ export interface StatementLine {
   account_id: string;
   code: string;
   name: string;
+  /** The same account in Arabic, where the shop has one. An account name is a
+   *  shop's own word for its own thing, so it cannot live in the catalogue;
+   *  both names are sent and the screen picks. */
+  name_ar?: string;
   amount: string;
 }
 

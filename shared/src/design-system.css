@@ -505,12 +505,77 @@ body {
   z-index: 1;
 }
 
-.ds-table th.num { text-align: end; }
+/* A figures column is headed by a WORD, and a word is not a figure.
+ *
+ * `.num` carries the mono face so digits line up down a column; on the header
+ * it only made "Owed", "Limit", "Amount", "Value", "Terminals" and "Invoices"
+ * read in a different typeface from the headers beside them, which looks like
+ * a mistake because it is one. The alignment is what the header needs from
+ * `.num`, and it keeps that. */
+.ds-table th.num {
+  text-align: end;
+  font-family: inherit;
+}
 
 .ds-table td {
   padding: var(--space-3);
   border-block-end: 1px solid var(--border);
   vertical-align: baseline;
+}
+
+/* A checkbox with nothing to grow around it.
+ *
+ * A native checkbox renders at 13-20px whatever the stylesheet says, and the
+ * design system already handles the ordinary case by growing the LABEL that
+ * wraps it. In a table cell there is no label to grow: the settlement screen
+ * put a bare input in a `<td>`, and the audit measured twenty-four 13px targets
+ * on a tablet — on the screen where a shop ticks which card payments went into
+ * a deposit, which is the whole interaction.
+ *
+ * So the label is the target and is made one. The control itself stays native:
+ * a div with an icon in it loses the platform focus ring, the keyboard
+ * behaviour and the high-contrast rendering, and gains nothing a shop can see.
+ *
+ * No negative margin. Pulling the box back into the cell's padding kept rows
+ * compact and made the label overflow its own `<th>`, whose vertical padding is
+ * smaller than a `<td>`'s — the layout probe caught it escaping by 12px. The
+ * row grows instead, and only where a finger is doing the tapping: see the
+ * pointer:coarse block below.
+ */
+.ds-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  cursor: pointer;
+}
+
+.ds-check > input {
+  inline-size: 18px;
+  block-size: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* A column holding nothing but a tick takes only the room a tick needs.
+ *
+ * `table-layout: auto` shares the surplus between columns in proportion, so a
+ * 48px control was given 164px and the invoice numbers beside it started a
+ * finger's width from where the eye expects them. 1% is the usual way to say
+ * "as narrow as the content allows" to an auto table.
+ *
+ * Only where there ARE columns. Below 640px every row becomes a card and each
+ * cell is a block, so "as narrow as possible" means three pixels — and the
+ * 44px tick, which is the whole interaction, hung 41px outside its own cell.
+ * The layout probe caught it on the phone within a minute of the desktop fix
+ * landing. */
+@media (min-width: 640px) {
+  .ds-table td:has(> .ds-check),
+  .ds-table th:has(> .ds-check) {
+    inline-size: 1%;
+    white-space: nowrap;
+  }
 }
 
 /* A caption inside a cell is a SECOND LINE, not a suffix.
@@ -523,8 +588,14 @@ body {
  * rather than two facts.
  *
  * Scoped to cells rather than fixed at each site: 59 places emit one of these
- * spans, and the next table to add one should not have to know. */
-.ds-table td > .ds-caption {
+ * spans, and the next table to add one should not have to know.
+ *
+ * `th` as well as `td`, because a header cell inside the BODY is a real cell: a
+ * `<th scope="colgroup">` opens each group on the settlement screen, and with
+ * the rule scoped to `td` alone that one read "Mada11 payments" — the exact
+ * defect this comment describes, one selector away from the fix for it. */
+.ds-table td > .ds-caption,
+.ds-table tbody th > .ds-caption {
   display: block;
   /* And it has a measure, so one long one cannot starve the whole table.
    *
@@ -1379,6 +1450,14 @@ body {
    * 13-20px however it is styled. */
   label:has(> input[type='checkbox']),
   label:has(> input[type='radio']) {
+    min-block-size: var(--tap-mobile);
+  }
+
+  /* And the one in a table cell, which has no label of its own to grow. The
+   * row gets taller, which is what a table being tapped rather than clicked
+   * wants anyway. */
+  .ds-check {
+    min-inline-size: var(--tap-mobile);
     min-block-size: var(--tap-mobile);
   }
 }

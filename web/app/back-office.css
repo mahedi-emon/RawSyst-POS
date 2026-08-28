@@ -73,12 +73,20 @@
   padding: var(--space-5);
   display: grid;
   gap: var(--space-4);
+  /* The column is DECLARED rather than left implicit.
+   *
+   * An implicit track sizes to its widest child's min-content, and one child
+   * here wanted 802px. `justify-content: center` then centred an 802px track
+   * and every 680px child sat at the start of it — so the whole wizard, on the
+   * first screen a new shop ever sees, was 60px left of centre on a 1440px
+   * page while appearing to be deliberately centred. Found by measuring it. */
+  grid-template-columns: min(680px, 100%);
   justify-content: center;
   align-content: start;
   inline-size: 100%;
 }
 
-.setupw > * { inline-size: min(680px, 100%); }
+.setupw > * { inline-size: 100%; }
 
 .setupw__head {
   display: flex;

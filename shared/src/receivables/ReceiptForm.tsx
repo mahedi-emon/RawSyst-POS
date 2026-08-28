@@ -242,7 +242,9 @@ function ReceiptBody({
   return (
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
-        <h2 className="ds-h3">Payment from {customer.name}</h2>
+        <h2 className="ds-h3">
+          {t('rcpt.paymentFrom', { customer: customer.name })}
+        </h2>
       </div>
 
       <div className="ds-panel__body form__body">
@@ -250,7 +252,7 @@ function ReceiptBody({
 
         <div className="form__grid">
           <Field label={t('rcpt.amountReceived')} htmlFor="rec-amount" required
-            hint="Type what the customer handed over and the invoices below fill in oldest first. Change any of them.">
+            hint={t('rcpt.amountHint')}>
             <TextInput id="rec-amount" value={received} onChange={suggest}
               inputMode="decimal" placeholder="0.00" autoFocus />
           </Field>
@@ -261,7 +263,7 @@ function ReceiptBody({
           </Field>
 
           <Field label={t('common.reference')} htmlFor="rec-ref"
-            hint="A cheque number or a transfer reference, if there is one.">
+            hint={t('rcpt.referenceHint')}>
             <TextInput id="rec-ref" value={reference} onChange={setReference} />
           </Field>
         </div>
@@ -334,7 +336,7 @@ function ReceiptBody({
           </table>
         </div>
 
-        <FormActions submitLabel="Record payment" busy={busy} onCancel={onCancel} />
+        <FormActions submitLabel={t('rcpt.record')} busy={busy} onCancel={onCancel} />
       </div>
     </form>
   );

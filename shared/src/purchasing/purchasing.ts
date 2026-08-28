@@ -6,6 +6,8 @@
 // costs money rather than looking wrong, so each lives here where it can be
 // tested.
 
+import type { Translate } from '../i18n/strings';
+
 import type { Bill, MatchLine, OrderLine, Receipt } from '../api/purchasing';
 import { trimQuantity } from '../dashboard/drilldown';
 import { money } from '../ui/format';
@@ -87,7 +89,12 @@ export function payable(bill: Bill): boolean {
 }
 
 /** A one-line summary of what the match found. */
-export function matchSummary(lines: MatchLine[]): {
+export function matchSummary(
+  lines: MatchLine[],
+  // The reader's language, when the caller has one. A parameter rather than a
+  // hook so this stays a pure function; English when it is absent.
+  translate?: Translate,
+): {
   outcome: 'pass' | 'within_tolerance' | 'breach';
   breaches: number;
   message: string;
@@ -99,8 +106,10 @@ export function matchSummary(lines: MatchLine[]): {
       breaches: breaches.length,
       message:
         breaches.length === 1
-          ? 'One check does not agree with the order or the delivery.'
-          : `${breaches.length} checks do not agree with the order or the delivery.`,
+          ? (translate?.('match.oneDisagrees') ??
+            'One check does not agree with the order or the delivery.')
+          : (translate?.('match.nDisagree', { count: breaches.length }) ??
+            `${breaches.length} checks do not agree with the order or the delivery.`),
     };
   }
 
@@ -111,14 +120,18 @@ export function matchSummary(lines: MatchLine[]): {
     return {
       outcome: 'within_tolerance',
       breaches: 0,
-      message: 'Small differences, inside the tolerance you have set.',
+      message:
+        translate?.('match.withinTolerance') ??
+        'Small differences, inside the tolerance you have set.',
     };
   }
 
   return {
     outcome: 'pass',
     breaches: 0,
-    message: 'Everything agrees with the order and the delivery.',
+    message:
+      translate?.('match.allAgree') ??
+      'Everything agrees with the order and the delivery.',
   };
 }
 

@@ -257,7 +257,7 @@ function AccountStanding({
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const standing = creditStanding(customer);
+  const standing = creditStanding(customer, t);
   const maySetLimit = can('customers.set_credit_limit');
 
   async function save() {

@@ -191,8 +191,7 @@ export function OrderDetail({
 
           {order.status === 'draft' && (
             <p className="ds-panel purchase__hint">
-              This order is a draft. Nothing has been sent to {order.supplier} and
-              no stock can arrive against it until it is.
+              {t('order.draftHint', { supplier: order.supplier })}
             </p>
           )}
 

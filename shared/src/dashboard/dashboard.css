@@ -110,6 +110,14 @@
   min-inline-size: 0;
 }
 
+/* A grid item's minimum width is `auto`, which is its longest unbreakable run.
+ * The floor on `.kpi` above stops the TILE stretching its track; this stops the
+ * label, the value and the foot inside it from doing the same thing one level
+ * down, which is how a long figure pushed itself past the tile's own padding. */
+.kpi > * {
+  min-inline-size: 0;
+}
+
 .kpi__label {
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -119,11 +127,37 @@
 .kpi__value {
   /* The largest thing on the screen, and the only thing at this size. A
    * dashboard where four numbers compete has chosen nothing for the reader. */
-  font-size: clamp(1.6rem, 1.1rem + 1.6vw, 2.1rem);
+  /* 1.9rem at the top, not 2.1: at 1440px each of the four tiles is 336px
+   * wide, and "SAR (18,238.75)" — a five-figure negative with its currency
+   * code, which is what a shop with money at the acquirer actually sees — is
+   * 315px at 2.1rem against 288px of content box. It wrapped. The wrap below
+   * is the safety net for a figure larger still; this is what stops the
+   * ordinary case needing it. */
+  font-size: clamp(1.6rem, 1.1rem + 1.6vw, 1.9rem);
   font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.02em;
   text-align: start;
+
+  /* `.num` sets `white-space: nowrap`, which is right for a column of figures
+   * in a table and wrong for the biggest number on the dashboard: at 1440px
+   * each of the four tiles is 336px wide, and "SAR (18,238.75)" set at 2.1rem
+   * in the mono face is 315px before padding. It escaped the tile by 5px —
+   * found by the layout probe on the Arabic dashboard, where the negative cash
+   * figure is the longest of the four.
+   *
+   * Wrapping is allowed and breaking is not. `money()` puts exactly one space
+   * in the string, between the currency code and the figure, so the only break
+   * available is after "SAR" — the digits, the grouping commas and the
+   * accounting parentheses cannot come apart. A tile that needs two lines gets
+   * two lines; no figure is ever clipped, shrunk, or silently truncated.
+   *
+   * Shrinking the text to fit was the alternative and is worse: the size of
+   * this number is the one thing on the screen that says which figure matters,
+   * and a shop with larger takings would get a smaller headline. */
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: normal;
   color: var(--text);
 }
 
@@ -139,7 +173,21 @@
 
 /* --- Panels ------------------------------------------------------------- */
 
-.dash__grid { display: grid; gap: var(--space-4); }
+/* Each panel is as tall as its own contents.
+ *
+ * A grid row stretches its items to the tallest by default, so "How today was
+ * paid" — two rows and a sentence — was drawn as a card the height of "Where
+ * the money is", with 250px of empty white inside its border. Stock was worse:
+ * 300px. A bordered card with a third of it blank reads as something that
+ * failed to load, which is the opposite of what an empty area should say.
+ *
+ * The bottom edges no longer line up, and that is the trade: ragged edges
+ * between cards, or a band of nothing inside one. */
+.dash__grid {
+  display: grid;
+  gap: var(--space-4);
+  align-items: start;
+}
 
 .dash__figure {
   font-size: 1.5rem;
@@ -283,7 +331,11 @@
     gap: 0;
   }
 
-  .kpi { padding-inline: var(--space-5); border-inline-start: 1px solid var(--border); }
+  /* space-4 rather than space-5: four tiles across 1440px have 288px of
+   * content each at 24px, and 304px at 16px. The hairline between them is
+   * what separates the figures; the extra 8px of air was doing nothing that
+   * the gap was not already doing. */
+  .kpi { padding-inline: var(--space-4); border-inline-start: 1px solid var(--border); }
   .kpi:first-child { padding-inline-start: 0; border-inline-start: none; }
 }
 
@@ -359,6 +411,18 @@
  * "back" is to the right, so a hard-coded ← would point out of the page. */
 [dir='rtl'] .detail__backarrow { transform: scaleX(-1); }
 
+/* A header with no back button above it: the titles sit on the top row rather
+ * than reserving the row one would occupy.
+ *
+ * Declared HERE, with the other base rules, and not after the 640px query.
+ * It was written below it, and a media query adds no specificity — so the
+ * stacked phone layout won at every width, and the actions on Terminals,
+ * Customers, Settlement, Expenses, E-invoicing and Buying sat on a row of
+ * their own under the title with a band of empty page between. The query at
+ * 640px that was meant to put them beside the title had been overridden since
+ * the day it was written. Found by looking at the screens. */
+.detail__head--flat { grid-template-areas: 'titles' 'actions'; }
+
 .detail__titles { grid-area: titles; }
 .detail__actions {
   grid-area: actions;
@@ -404,7 +468,36 @@
 
 .detail__row--on td { background: var(--brand-subtle); }
 
-.detail__strong { display: block; font-weight: 500; }
+/* The louder of two facts in a cell.
+ *
+ * `display: block` is what makes the pair stack — a branch above the unit in
+ * it, a terminal above its build — and every one of those is a `<span>`.
+ *
+ * On a table CELL it is a wrecking ball. A `<th>` or `<td>` set to block
+ * leaves the table's column model entirely, and the settlement screen used it
+ * on the two cells of each group row: the method and the group total stopped
+ * being cells, stacked on top of each other, and dragged the first column out
+ * to 286px so the ticks, the invoice numbers and the amounts no longer lined
+ * up with the headers above them. Found by looking at the screen.
+ *
+ * So the weight applies to anything and the block applies to a span, which is
+ * the only place it was ever wanted. */
+.detail__strong { font-weight: 500; }
+span.detail__strong { display: block; }
+
+/* What is still owed to the shop, at the top of the settlement screen.
+ *
+ * The figure was a `.detail__strong` span inside a caption, which the rule
+ * above made a block — so it sat on its own line, at caption size, above the
+ * sentence explaining it, in the same weight as the sentence. The markup said
+ * otherwise: its author wrote an explicit space between the two, expecting one
+ * line. It is the largest fact on the screen and now reads like it.
+ */
+.settle__outstanding {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+}
 
 /* A whole table row that acts as a button. Full width so the target is the
  * row, not a word inside it — a small link in a wide row is a miss waiting to
@@ -613,11 +706,6 @@
  * defines; a value this module needed and the system lacked would be a change
  * to the system, not a local override.
  */
-
-/* The purchasing index has no back button, so the header sits flat rather than
- * reserving the row one would occupy. Stacked on a phone like every other
- * header; the two-column form is restored with the rest of them at 640px. */
-.detail__head--flat { grid-template-areas: 'titles' 'actions'; }
 
 .purchase__notice {
   padding: var(--space-3) var(--space-4);

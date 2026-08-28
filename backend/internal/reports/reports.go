@@ -146,7 +146,15 @@ type StatementLine struct {
 	AccountID uuid.UUID `json:"account_id"`
 	Code      string    `json:"code"`
 	Name      string    `json:"name"`
-	Amount    string    `json:"amount"`
+	// NameAr is what an Arabic screen shows instead, and is empty for an
+	// account nobody has written one for.
+	//
+	// Both names are sent and the screen picks, which is how the catalogue
+	// already carries a product's Arabic name. The alternative — the server
+	// choosing from a request header — puts the reader's language into a cache
+	// key and into every report that is generated rather than viewed.
+	NameAr string `json:"name_ar,omitempty"`
+	Amount string `json:"amount"`
 }
 
 // ProfitAndLoss covers a period.

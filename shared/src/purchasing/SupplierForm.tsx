@@ -147,21 +147,21 @@ export function SupplierForm({
 
           <Field label={t('cust.registeredName')} htmlFor="sup-name" required
             error={fields.legal_name}
-            hint="The name on their invoices, not the trading name.">
+            hint={t('supplier.legalNameHint')}>
             <TextInput id="sup-name" value={legalName} onChange={setLegalName}
-              placeholder="Acme Textiles LLC" error={fields.legal_name} />
+              placeholder={t('supplier.nameExample')} error={fields.legal_name} />
           </Field>
 
           <Field label={t('common.paymentTerms')} htmlFor="sup-terms" required
             error={fields.payment_terms_days}
-            hint="Days from the invoice date. This sets when their bills fall due and who appears as overdue.">
+            hint={t('supplier.termsHint')}>
             <TextInput id="sup-terms" value={terms} onChange={setTerms}
               inputMode="numeric" placeholder="30"
               error={fields.payment_terms_days} />
           </Field>
 
           <Field label={t('common.vatNumber')} htmlFor="sup-vat" error={fields.vat_number}
-            hint="On their invoices. Needed to reclaim input tax on what you buy.">
+            hint={t('supplier.vatHint')}>
             <TextInput id="sup-vat" value={vatNumber} onChange={setVatNumber}
               inputMode="numeric" error={fields.vat_number} />
           </Field>

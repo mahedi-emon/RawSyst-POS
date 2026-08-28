@@ -233,7 +233,7 @@ export function OrderForm({
 
           <Field label={t('purch.deliverTo')} htmlFor="po-warehouse" required
             error={fields.warehouse_id}
-            hint="Stock arrives here when the delivery is recorded.">
+            hint={t('order.warehouseHint')}>
             <SelectInput
               id="po-warehouse"
               value={warehouseId}
@@ -246,7 +246,7 @@ export function OrderForm({
           </Field>
 
           <Field label={t('common.expected')} htmlFor="po-expected" error={fields.expected_on}
-            hint="When the supplier says it will arrive.">
+            hint={t('order.expectedHint')}>
             <TextInput id="po-expected" value={expectedOn} onChange={setExpectedOn}
               type="date" error={fields.expected_on} />
           </Field>

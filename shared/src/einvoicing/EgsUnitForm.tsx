@@ -144,7 +144,7 @@ export function EgsUnitForm({
             htmlFor="egs-label"
             required
             error={fields.label}
-            hint="What you call this unit. It appears wherever a terminal names the unit it signs under."
+            hint={t('egs.labelHint')}
           >
             <TextInput
               id="egs-label"
@@ -161,7 +161,7 @@ export function EgsUnitForm({
               label={t('egs.howItSigns')}
               htmlFor="egs-arch-fixed"
               required
-              hint="Chosen when the unit was created. It decides where the signing key is held, so it cannot be changed afterwards."
+              hint={t('egs.architectureHint')}
             >
               <p className="ds-panel__body" id="egs-arch-fixed">
                 {architectureName(existing.architecture)}
@@ -195,7 +195,7 @@ export function EgsUnitForm({
               htmlFor="egs-store"
               required
               error={fields.store_id}
-              hint="This unit signs for the tills in this branch."
+              hint={t('egs.storeHint')}
             >
               <SelectInput
                 id="egs-store"
@@ -220,7 +220,7 @@ export function EgsUnitForm({
             label={t('egs.unitNameForCert')}
             htmlFor="csr-cn"
             error={fields['csr.common_name']}
-            hint="The name this unit is identified by on its certificate."
+            hint={t('egs.commonNameHint')}
           >
             <TextInput
               id="csr-cn"
@@ -234,7 +234,7 @@ export function EgsUnitForm({
             label={t('egs.serialNumber')}
             htmlFor="csr-serial"
             error={fields['csr.egs_serial_number']}
-            hint="Who made this unit, which version it is, and its serial — written as 1-Manufacturer|2-Model|3-Serial."
+            hint={t('egs.serialHint')}
           >
             <TextInput
               id="csr-serial"
@@ -249,7 +249,7 @@ export function EgsUnitForm({
             label={t('common.vatNumber')}
             htmlFor="csr-vat"
             error={fields['csr.organization_identifier']}
-            hint="Your 15-digit Saudi VAT registration number."
+            hint={t('egs.vatNumberHint')}
           >
             <TextInput
               id="csr-vat"
@@ -265,7 +265,7 @@ export function EgsUnitForm({
             label={t('egs.branchOrGroup')}
             htmlFor="csr-ou"
             error={fields['csr.organization_unit']}
-            hint="Normally the branch name. If your VAT number belongs to a VAT group, use the 10-digit tax number of the member being registered instead."
+            hint={t('egs.orgUnitHint')}
           >
             <TextInput
               id="csr-ou"
@@ -279,7 +279,7 @@ export function EgsUnitForm({
             label={t('egs.registeredName')}
             htmlFor="csr-org"
             error={fields['csr.organization_name']}
-            hint="As it appears on your VAT certificate."
+            hint={t('egs.orgNameHint')}
           >
             <TextInput
               id="csr-org"
@@ -303,7 +303,7 @@ export function EgsUnitForm({
             label={t('egs.invoicesIssued')}
             htmlFor="csr-type"
             error={fields['csr.invoice_type']}
-            hint="Standard invoices go to business customers and are cleared before you hand them over. Simplified invoices are the receipts a walk-in customer takes."
+            hint={t('egs.invoiceTypeHint')}
           >
             <SelectInput
               id="csr-type"
@@ -320,7 +320,7 @@ export function EgsUnitForm({
             label={t('common.address')}
             htmlFor="csr-location"
             error={fields['csr.location']}
-            hint="Where this unit is."
+            hint={t('egs.locationHint')}
           >
             <TextInput
               id="csr-location"
@@ -334,7 +334,7 @@ export function EgsUnitForm({
             label={t('egs.industry')}
             htmlFor="csr-industry"
             error={fields['csr.industry']}
-            hint="What the business does, such as Retail or Restaurant."
+            hint={t('egs.industryHint')}
           >
             <TextInput
               id="csr-industry"

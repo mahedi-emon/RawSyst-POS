@@ -81,9 +81,36 @@ const probe = () => {
     const head = table.querySelector('thead');
     if (!head || getComputedStyle(head).position === 'absolute') continue;
     const heads = [...table.querySelectorAll('thead th')];
-    const first = table.querySelector('tbody tr');
-    if (!first) continue;
-    const cells = [...first.children];
+
+    // The first body row that actually has a cell in every column.
+    //
+    // A `colSpan` breaks the index-for-index comparison this does, and the
+    // settlement table opens each group with one: `<th colSpan={3}>` for the
+    // method, then the group total. Pairing header[1] with that row's second
+    // CHILD compared "Invoice" against an amount and reported a misalignment
+    // on four screens that were correctly aligned.
+    //
+    // So the row is expanded by span into real column positions, and a row
+    // that does not reach the last column is skipped rather than guessed at.
+    const rows = [...table.querySelectorAll('tbody tr')];
+    let cells = null;
+    for (const row of rows) {
+      const spread = [];
+      for (const cell of row.children) {
+        const span = Math.max(1, cell.colSpan || 1);
+        for (let n = 0; n < span; n++) spread.push(cell);
+      }
+      if (spread.length >= heads.length) {
+        // A cell that spans several columns says nothing about any one of
+        // them, so those positions are left out of the comparison.
+        cells = spread.map((cell) =>
+          (cell.colSpan || 1) > 1 ? null : cell,
+        );
+        break;
+      }
+    }
+    if (!cells) continue;
+
     heads.forEach((th, i) => {
       const td = cells[i];
       if (!td) return;

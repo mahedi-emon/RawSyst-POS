@@ -14,8 +14,8 @@ import { EmptyState, RemoteBody } from '../dashboard/DetailScreen';
 import { useRemote } from '../dashboard/useRemote';
 import { Field, FormActions, FormError, TextInput } from '../ui/Form';
 import type { FieldErrors } from '../ui/Form';
-import { money } from '../ui/format';
-import { useT } from '../i18n/locale';
+import { localName, money } from '../ui/format';
+import { useLocale, useT } from '../i18n/locale';
 import {
   createExpenseHead,
   listExpenseAccounts,
@@ -64,7 +64,9 @@ export function ExpenseHeadsPanel({
         <HeadForm
           companyId={companyId}
           head={editing}
-          accounts={accounts.remote.state === 'ready' ? accounts.remote.data : []}
+          accounts={
+            accounts.remote.state === 'ready' ? accounts.remote.data : []
+          }
           onCancel={() => {
             setCreating(false);
             setEditing(null);
@@ -77,7 +79,10 @@ export function ExpenseHeadsPanel({
         <div className="ds-panel__head">
           <h2 className="ds-h3">{t('exp.categories')}</h2>
           {!creating && !editing && (
-            <button className="ds-btn ds-btn--quiet" onClick={() => setCreating(true)}>
+            <button
+              className="ds-btn ds-btn--quiet"
+              onClick={() => setCreating(true)}
+            >
               {t('exp.addCategory')}
             </button>
           )}
@@ -87,7 +92,10 @@ export function ExpenseHeadsPanel({
           {(heads: ExpenseHead[]) =>
             heads.length === 0 ? (
               <div className="ds-panel__body">
-                <EmptyState title={t('exp.noHeadsTitle')} body={t('exp.noHeadsBody')} />
+                <EmptyState
+                  title={t('exp.noHeadsTitle')}
+                  body={t('exp.noHeadsBody')}
+                />
               </div>
             ) : (
               <div className="ds-panel__body ds-scroll-x">
@@ -97,9 +105,13 @@ export function ExpenseHeadsPanel({
                       <th scope="col">{t('exp.category')}</th>
                       <th scope="col">{t('exp.postsTo')}</th>
                       <th scope="col">{t('exp.inputVat')}</th>
-                      <th scope="col" className="num">{t('exp.spent')}</th>
+                      <th scope="col" className="num">
+                        {t('exp.spent')}
+                      </th>
                       <th scope="col">
-                        <span className="ds-visually-hidden">{t('common.actions')}</span>
+                        <span className="ds-visually-hidden">
+                          {t('common.actions')}
+                        </span>
                       </th>
                     </tr>
                   </thead>
@@ -137,6 +149,7 @@ function HeadRow({
 }) {
   const { client } = useAuth();
   const t = useT();
+  const { locale } = useLocale();
   const [busy, setBusy] = useState(false);
 
   async function toggle() {
@@ -153,11 +166,15 @@ function HeadRow({
   return (
     <tr className={head.is_active ? undefined : 'detail__row--aside'}>
       <td>
-        <span className="detail__strong">{head.name}</span>
+        <span className="detail__strong">
+          {localName(locale, head.name, head.name_ar)}
+        </span>
         <span className="ds-caption">{head.code}</span>
       </td>
       <td>
-        <span className="detail__strong">{head.account_name}</span>
+        <span className="detail__strong">
+          {localName(locale, head.account_name, head.account_name_ar)}
+        </span>
         <span className="ds-caption">{head.account_code}</span>
       </td>
       <td>
@@ -167,7 +184,11 @@ function HeadRow({
         <span
           className={`ds-badge ds-badge--${head.input_vat_recoverable ? 'success' : 'warning'}`}
         >
-          {t(head.input_vat_recoverable ? 'exp.reclaimable' : 'exp.notReclaimable')}
+          {t(
+            head.input_vat_recoverable
+              ? 'exp.reclaimable'
+              : 'exp.notReclaimable',
+          )}
         </span>
       </td>
       <td className="num">{money(head.spent)}</td>
@@ -204,11 +225,14 @@ function HeadForm({
 }) {
   const { client } = useAuth();
   const t = useT();
+  const { locale } = useLocale();
 
   const [code, setCode] = useState(head?.code ?? '');
   const [name, setName] = useState(head?.name ?? '');
   const [nameAr, setNameAr] = useState(head?.name_ar ?? '');
-  const [accountId, setAccountId] = useState(head?.account_id ?? accounts[0]?.id ?? '');
+  const [accountId, setAccountId] = useState(
+    head?.account_id ?? accounts[0]?.id ?? '',
+  );
   // Null until chosen on a NEW category, so the form cannot be submitted with
   // a tax position nobody decided. Editing starts from what the head says.
   const [recoverable, setRecoverable] = useState<boolean | null>(
@@ -245,9 +269,14 @@ function HeadForm({
   }
 
   return (
-    <section className="ds-panel" aria-label={t(head ? 'exp.editCategory' : 'exp.addCategory')}>
+    <section
+      className="ds-panel"
+      aria-label={t(head ? 'exp.editCategory' : 'exp.addCategory')}
+    >
       <div className="ds-panel__head">
-        <h2 className="ds-h3">{t(head ? 'exp.editCategory' : 'exp.addCategory')}</h2>
+        <h2 className="ds-h3">
+          {t(head ? 'exp.editCategory' : 'exp.addCategory')}
+        </h2>
       </div>
       <form className="ds-panel__body exp__form" onSubmit={submit}>
         <FormError message={failed} />
@@ -269,8 +298,18 @@ function HeadForm({
               error={fields.code}
             />
           </Field>
-          <Field label={t('common.name')} htmlFor="head-name" required error={fields.name}>
-            <TextInput id="head-name" value={name} onChange={setName} error={fields.name} />
+          <Field
+            label={t('common.name')}
+            htmlFor="head-name"
+            required
+            error={fields.name}
+          >
+            <TextInput
+              id="head-name"
+              value={name}
+              onChange={setName}
+              error={fields.name}
+            />
           </Field>
         </div>
 
@@ -292,7 +331,7 @@ function HeadForm({
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.code} · {a.name}
+                {a.code} · {localName(locale, a.name, a.name_ar)}
               </option>
             ))}
           </select>
@@ -336,7 +375,9 @@ function HeadForm({
         <FormActions
           submitLabel={t(head ? 'action.save' : 'exp.addCategory')}
           busy={busy}
-          disabled={!code.trim() || !name.trim() || !accountId || recoverable === null}
+          disabled={
+            !code.trim() || !name.trim() || !accountId || recoverable === null
+          }
           onCancel={onCancel}
         />
       </form>

@@ -1,4 +1,4 @@
-import type { Key } from '../i18n/strings';
+import type { Key, Translate } from '../i18n/strings';
 // What the wizard works out for itself.
 //
 // The server validates every step and is the authority — `validateStep` in
@@ -192,27 +192,43 @@ const SAUDI_VAT = /^3[0-9]{13}3$/;
  * shape. Catching it here means a shop is not told at e-invoicing setup that
  * the number they entered at step 1 was never usable.
  */
-export function validateBusiness(v: BusinessInfo): FieldErrors {
+export function validateBusiness(
+  v: BusinessInfo,
+  // The reader's language. These messages sit under the fields of the setup
+  // wizard and are the most-read text in the product for a shop that has just
+  // bought it; they were English on every Arabic screen because this file has
+  // no x on the end and the coverage test walked components only.
+  translate?: Translate,
+): FieldErrors {
   const errors: FieldErrors = {};
 
   if (!v.legal_name.trim()) {
-    errors.legal_name = 'Enter the registered legal name of the business.';
+    errors.legal_name =
+      translate?.('setupErr.legalName') ??
+      'Enter the registered legal name of the business.';
   }
   if (v.country.trim().length !== 2) {
-    errors.country = 'Choose the country the business operates in.';
+    errors.country =
+      translate?.('setupErr.country') ??
+      'Choose the country the business operates in.';
   }
   if (v.base_currency.trim().length !== 3) {
-    errors.base_currency = 'Choose the currency you keep your books in.';
+    errors.base_currency =
+      translate?.('setupErr.currency') ??
+      'Choose the currency you keep your books in.';
   }
   if (v.vat_registered && !v.vat_number.trim()) {
     errors.vat_number =
+      translate?.('setupErr.vatNumber') ??
       'Enter your VAT registration number. It appears on every tax invoice you issue.';
   } else if (
     v.vat_registered &&
     v.country.trim().toLowerCase() === 'sa' &&
     !SAUDI_VAT.test(v.vat_number.trim())
   ) {
-    errors.vat_number = 'A Saudi VAT number is 15 digits and starts and ends with 3.';
+    errors.vat_number =
+      translate?.('setupErr.vatShape') ??
+      'A Saudi VAT number is 15 digits and starts and ends with 3.';
   }
 
   return errors;
@@ -220,7 +236,10 @@ export function validateBusiness(v: BusinessInfo): FieldErrors {
 
 /** The same rules the server applies to the stores step. Returned per row so
  *  the message sits under the field that is wrong rather than above the list. */
-export function validateStores(stores: StoreInfo[]): {
+export function validateStores(
+  stores: StoreInfo[],
+  translate?: Translate,
+): {
   form?: string;
   rows: Record<number, FieldErrors>;
 } {
@@ -228,7 +247,9 @@ export function validateStores(stores: StoreInfo[]): {
 
   if (stores.length === 0) {
     return {
-      form: 'Add at least one store. Every sale is recorded against a store.',
+      form:
+        translate?.('setupErr.oneStore') ??
+        'Add at least one store. Every sale is recorded against a store.',
       rows,
     };
   }
@@ -238,14 +259,22 @@ export function validateStores(stores: StoreInfo[]): {
   const fiveDigits = /^[0-9]{5}$/;
   stores.forEach((s, i) => {
     const row: FieldErrors = {};
-    if (!s.name.trim()) row.name = 'Give this store a name.';
+    if (!s.name.trim()) {
+      row.name = translate?.('setupErr.storeName') ?? 'Give this store a name.';
+    }
 
     const code = s.code.trim().toUpperCase();
     if (!code) {
       row.code =
+        translate?.('setupErr.storeCode') ??
         'Give this store a short code. It appears in invoice numbers, for example INV-RYD-000001.';
     } else if (seen.has(code)) {
-      row.code = `Store ${seen.get(code)! + 1} already uses ${code}. Codes identify the store in every document number.`;
+      row.code =
+        translate?.('setupErr.codeTaken', {
+          number: seen.get(code)! + 1,
+          code,
+        }) ??
+        `Store ${seen.get(code)! + 1} already uses ${code}. Codes identify the store in every document number.`;
     } else {
       seen.set(code, i);
     }
@@ -253,23 +282,35 @@ export function validateStores(stores: StoreInfo[]): {
     // The National Address, in ZATCA's own terms. Each message says why — a
     // shop reading "invalid postal code" learns nothing they did not know.
     if (!s.street.trim()) {
-      row.street = 'Street name, as it appears on your National Address.';
+      row.street =
+        translate?.('setupErr.street') ??
+        'Street name, as it appears on your National Address.';
     }
     if (!s.district.trim()) {
-      row.district = 'District, as it appears on your National Address.';
+      row.district =
+        translate?.('setupErr.district') ??
+        'District, as it appears on your National Address.';
     }
     if (!s.city.trim()) {
-      row.city = 'City, as it appears on your National Address.';
+      row.city =
+        translate?.('setupErr.city') ??
+        'City, as it appears on your National Address.';
     }
     if (!fourDigits.test(s.building_number.trim())) {
-      row.building_number = 'The building number is exactly 4 digits, for example 2322.';
+      row.building_number =
+        translate?.('setupErr.building') ??
+        'The building number is exactly 4 digits, for example 2322.';
     }
     if (!fiveDigits.test(s.postal_code.trim())) {
-      row.postal_code = 'The postal code is exactly 5 digits, for example 23333.';
+      row.postal_code =
+        translate?.('setupErr.postal') ??
+        'The postal code is exactly 5 digits, for example 23333.';
     }
     // Optional, but a wrong value is worse than an empty one.
     if (s.additional_number.trim() && !fourDigits.test(s.additional_number.trim())) {
-      row.additional_number = 'The additional number is 4 digits, or leave it empty.';
+      row.additional_number =
+        translate?.('setupErr.additional') ??
+        'The additional number is 4 digits, or leave it empty.';
     }
 
     if (Object.keys(row).length > 0) rows[i] = row;
@@ -281,11 +322,16 @@ export function validateStores(stores: StoreInfo[]): {
 /** A date the taxpayer read off a ZATCA notification. Optional, and refused
  *  only when it is not a date at all — the product has no business telling a
  *  shop their deadline looks wrong. */
-export function validateTax(v: TaxInfo): FieldErrors {
+export function validateTax(
+  v: TaxInfo,
+  translate?: Translate,
+): FieldErrors {
   const errors: FieldErrors = {};
   const deadline = v.zatca_deadline.trim();
   if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
-    errors.zatca_deadline = 'Enter the date as it appears on your notification, like 2026-01-01.';
+    errors.zatca_deadline =
+      translate?.('setupErr.vatDate') ??
+      'Enter the date as it appears on your notification, like 2026-01-01.';
   }
   return errors;
 }

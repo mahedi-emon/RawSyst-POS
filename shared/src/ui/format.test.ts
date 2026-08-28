@@ -5,7 +5,21 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { direction, isZero, money, percent, shortDate, tenderName } from './format';
+import {
+  direction,
+  isZero,
+  localName,
+  money,
+  percent,
+  shortDate,
+  tenderName,
+} from './format';
+import { ar, type Key } from '../i18n/strings';
+
+/** The Arabic catalogue as a translate function, which is what tenderName
+ *  takes. No provider and no React: the point of the parameter is that a
+ *  formatter stays a pure function. */
+const translate = (key: Key) => ar[key];
 
 describe('money', () => {
   it('always shows two decimal places', () => {
@@ -121,6 +135,23 @@ describe('shortDate', () => {
   it('falls back to the raw value rather than showing NaN', () => {
     expect(shortDate('not-a-date')).toBe('not-a-date');
   });
+
+  // Half the product's dates carry a time on them, because the API sends
+  // RFC3339 for anything that has one. Splitting the whole string on the hyphen
+  // made the day "28T22:45:00+06:00", and card settlement listed eleven
+  // payments as taken on "NaN Aug" while the Terminals list said the same about
+  // when each till was last seen. Found by looking at the screens.
+  it('reads a timestamp as the day it falls on', () => {
+    expect(shortDate('2026-08-28T22:45:00+06:00')).toBe('28 Aug');
+    expect(shortDate('2026-08-28T22:45:00Z')).toBe('28 Aug');
+    expect(shortDate('2026-01-02T00:00:00-05:00')).toBe('2 Jan');
+  });
+
+  it('never renders NaN, whatever it is given', () => {
+    for (const odd of ['', 'today', '2026', '2026-13-40', '2026-08-']) {
+      expect(shortDate(odd)).not.toContain('NaN');
+    }
+  });
 });
 
 describe('tenderName', () => {
@@ -135,5 +166,76 @@ describe('tenderName', () => {
     // A new tender method must never render as a raw enum on an owner's
     // screen.
     expect(tenderName('some_new_wallet')).toBe('some new wallet');
+  });
+
+  // The Arabic half.
+  //
+  // A browser audit found "Mada" and "Cash" sitting in Arabic tables on the
+  // settlement screen and in the payment mix, because this function held one
+  // English table and had no way to be told otherwise.
+  it('answers in the language of whoever is reading it', () => {
+    expect(tenderName('cash', translate)).toBe(ar['tender.cash']);
+    expect(tenderName('mada', translate)).toBe(ar['tender.mada']);
+    expect(tenderName('customer_due', translate)).toBe(ar['tender.customer_due']);
+  });
+
+  it('leaves a brand alone in both languages', () => {
+    // Mastercard has no Arabic name. Inventing one would print a word on a
+    // receipt that no cardholder recognises.
+    expect(tenderName('mastercard', translate)).toBe('Mastercard');
+    expect(tenderName('visa', translate)).toBe('Visa');
+  });
+
+  it('still degrades readably when it is given a translator', () => {
+    // The cast inside tenderName is safe only because an unknown method never
+    // reaches it. If that ever stops being true, this fails with a raw key.
+    expect(tenderName('some_new_wallet', translate)).toBe('some new wallet');
+  });
+
+  // Every method the function names must have a catalogue key, or the cast
+  // inside it would hand a missing key to the translator and render
+  // "undefined" on a shop's screen.
+  it('has an Arabic string for every method it names', () => {
+    const missing = METHODS.filter((m) => !(`tender.${m}` in ar));
+    expect(missing.join(', ')).toBe('');
+  });
+});
+
+/** Every method tenderName writes an English name for. */
+const METHODS = [
+  'cash', 'mada', 'visa', 'mastercard', 'amex', 'apple_pay', 'stc_pay',
+  'samsung_pay', 'bank_transfer', 'cheque', 'store_credit', 'customer_due',
+  'loyalty_points', 'tabby', 'tamara', 'bkash', 'nagad', 'sadad',
+  'exchange_clearing',
+];
+
+// An account, a product and an expense head are a shop's own words for its own
+// things, so they cannot live in the catalogue. They carry a translation as
+// DATA, the server sends both, and this picks.
+//
+// The chart of accounts had none at all until a look at the Arabic dashboard
+// found "Stock Write-off", "Cash Over/Short" and "Bank & Card Charges" sitting
+// in English on the panel that says where today's money went.
+describe('localName', () => {
+  it('gives an Arabic reader the Arabic name', () => {
+    expect(localName('ar', 'Stock Write-off', 'إعدام المخزون')).toBe(
+      'إعدام المخزون',
+    );
+  });
+
+  it('gives an English reader the English name, whatever else is there', () => {
+    expect(localName('en', 'Stock Write-off', 'إعدام المخزون')).toBe(
+      'Stock Write-off',
+    );
+  });
+
+  it('falls back to the name that exists rather than to nothing', () => {
+    // A company that has written no Arabic for an account it created itself
+    // must still see the account. A blank cell where a name belongs is worse
+    // than a name in the wrong language.
+    expect(localName('ar', 'Van hire')).toBe('Van hire');
+    expect(localName('ar', 'Van hire', '')).toBe('Van hire');
+    expect(localName('ar', 'Van hire', '   ')).toBe('Van hire');
+    expect(localName('ar', 'Van hire', null)).toBe('Van hire');
   });
 });

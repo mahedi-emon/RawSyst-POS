@@ -213,10 +213,9 @@ function HeldNotice({ bill }: { bill: Bill }) {
       <div className="ds-panel__body">
         <h2 className="ds-h3">{t('purch.billHeld')}</h2>
         <p className="gate__body">
-          It does not agree with {bill.po_number || 'the order'} and what
-          actually arrived. The bill is recorded, but it has deliberately not
-          been posted to your accounts and no money can leave against it until
-          somebody accepts the difference.
+          {t('purch.heldBecause', {
+            order: bill.po_number || t('purch.theOrder'),
+          })}
         </p>
         {breaches.length > 0 && (
           <ul className="purchase__breaches">

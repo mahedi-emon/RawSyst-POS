@@ -449,7 +449,7 @@ function BusinessStep({
         readOnly={readOnly}
         onSave={() => void save(v)}
         onContinue={() => {
-          const found = validateBusiness(v);
+          const found = validateBusiness(v, t);
           setErrors(found);
           if (Object.keys(found).length === 0) void submit(v);
         }}
@@ -487,10 +487,10 @@ function StoresStep({
           <Field label={t('setup.storeName')} htmlFor={`store-name-${i}`} required error={rows[i]?.name}>
             <TextInput id={`store-name-${i}`} value={s.name}
               onChange={(x) => edit(i, 'name', x)} error={rows[i]?.name}
-              placeholder="Olaya branch" />
+              placeholder={t('setup.branchExample')} />
           </Field>
           <Field label={t('common.shortCode')} htmlFor={`store-code-${i}`} required error={rows[i]?.code}
-            hint="Appears in invoice numbers, like INV-RYD-000001.">
+            hint={t('setup.storeCodeHint')}>
             <TextInput id={`store-code-${i}`} value={s.code}
               onChange={(x) => edit(i, 'code', x.toUpperCase())} error={rows[i]?.code}
               placeholder="RYD" />
@@ -501,7 +501,7 @@ function StoresStep({
               hint={t('setup.streetHint')}>
               <TextInput id={`store-street-${i}`} value={s.street}
                 onChange={(x) => edit(i, 'street', x)} error={rows[i]?.street}
-                placeholder="Prince Sultan Road" />
+                placeholder={t('setup.streetExample')} />
             </Field>
             <Field label={t('setup.buildingNumber')} htmlFor={`store-bn-${i}`} required error={rows[i]?.building_number}
               hint={t('setup.buildingNumberHint')}>
@@ -515,7 +515,7 @@ function StoresStep({
               hint={t('setup.districtHint')}>
               <TextInput id={`store-district-${i}`} value={s.district}
                 onChange={(x) => edit(i, 'district', x)} error={rows[i]?.district}
-                placeholder="Al-Murabba" />
+                placeholder={t('setup.districtExample')} />
             </Field>
             <Field label={t('setup.city')} htmlFor={`store-city-${i}`} required error={rows[i]?.city}
               hint={t('setup.cityHint')}>
@@ -559,7 +559,7 @@ function StoresStep({
         readOnly={readOnly}
         onSave={() => void save(answers)}
         onContinue={() => {
-          const found = validateStores(stores);
+          const found = validateStores(stores, t);
           setRows(found.rows);
           setFormError(found.form);
           if (!found.form && Object.keys(found.rows).length === 0) void submit(answers);
@@ -630,13 +630,13 @@ function TaxStep({
           </p>
 
           <Field label={t('setup.zatcaWave')} htmlFor="wave"
-            hint="As written on your notification, for example “Wave 12”.">
+            hint={t('setup.waveHint')}>
             <TextInput id="wave" value={v.zatca_wave}
               onChange={(x) => setV((c) => ({ ...c, zatca_wave: x }))} />
           </Field>
 
           <Field label={t('setup.integrationDeadline')} htmlFor="deadline" error={field('zatca_deadline')}
-            hint="The date on your notification, as YYYY-MM-DD.">
+            hint={t('setup.vatDateHint')}>
             <TextInput id="deadline" value={v.zatca_deadline} type="date"
               onChange={(x) => setV((c) => ({ ...c, zatca_deadline: x }))}
               error={field('zatca_deadline')} />
@@ -652,7 +652,7 @@ function TaxStep({
         readOnly={readOnly}
         onSave={() => void save(v)}
         onContinue={() => {
-          const found = validateTax(v);
+          const found = validateTax(v, t);
           setErrors(found);
           if (Object.keys(found).length === 0) void submit(v);
         }}
@@ -744,8 +744,9 @@ function FinishStep({
         <div className="ds-state">
           <p className="ds-state__title">{t('setup.stepsOpen')}</p>
           <p className="ds-state__body">
-            Finish {outstanding.map((s) => t(s.title)).join(' • ')} before
-            creating the business.
+            {t('setup.finishFirst', {
+              steps: outstanding.map((s) => t(s.title)).join(' • '),
+            })}
           </p>
         </div>
       ) : (

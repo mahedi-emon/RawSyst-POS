@@ -178,8 +178,11 @@ type ExpenseEntry struct {
 	Memo      string    `json:"memo"`
 	AccountID uuid.UUID `json:"account_id"`
 	Account   string    `json:"account"`
-	Code      string    `json:"code"`
-	Amount    string    `json:"amount"`
+	// The same account in Arabic, empty when nobody has written one. Both are
+	// sent and the screen picks; see StatementLine for why.
+	AccountAr string `json:"account_ar,omitempty"`
+	Code      string `json:"code"`
+	Amount    string `json:"amount"`
 	// SourceType names what caused the posting — a sale, a return, an
 	// adjustment. An owner asking "what is this expense" is usually asking
 	// what created it, not which account it landed in.
@@ -237,9 +240,10 @@ func (s *Service) ExpensesFor(
 			  AND ($5::uuid IS NULL OR a.id = $5::uuid)`
 
 		summary, e := tx.Query(ctx, `
-			SELECT a.id, a.code, a.name, sum(l.base_debit - l.base_credit)::text`+
+			SELECT a.id, a.code, a.name, coalesce(a.translations->>'ar', ''),
+			       sum(l.base_debit - l.base_credit)::text`+
 			scopeSQL+`
-			GROUP BY a.id, a.code, a.name
+			GROUP BY a.id, a.code, a.name, a.translations
 			HAVING sum(l.base_debit - l.base_credit) <> 0
 			ORDER BY sum(l.base_debit - l.base_credit) DESC`,
 			scope.CompanyID, from, to, scope.StoreID, accountID)
@@ -252,7 +256,7 @@ func (s *Service) ExpensesFor(
 		for summary.Next() {
 			var line StatementLine
 			if e := summary.Scan(&line.AccountID, &line.Code, &line.Name,
-				&line.Amount); e != nil {
+				&line.NameAr, &line.Amount); e != nil {
 				return e
 			}
 			total = total.Add(dec(line.Amount))
@@ -265,7 +269,8 @@ func (s *Service) ExpensesFor(
 
 		entries, e := tx.Query(ctx, `
 			SELECT e.id, coalesce(e.entry_no::text, ''), e.entry_date::date::text,
-			       coalesce(e.memo, ''), a.id, a.name, a.code,
+			       coalesce(e.memo, ''), a.id, a.name,
+			       coalesce(a.translations->>'ar', ''), a.code,
 			       (l.base_debit - l.base_credit)::text,
 			       coalesce(e.source_type, '')`+
 			scopeSQL+`
@@ -281,8 +286,8 @@ func (s *Service) ExpensesFor(
 		for entries.Next() {
 			var row ExpenseEntry
 			if e := entries.Scan(&row.EntryID, &row.EntryNo, &row.Date, &row.Memo,
-				&row.AccountID, &row.Account, &row.Code, &row.Amount,
-				&row.SourceType); e != nil {
+				&row.AccountID, &row.Account, &row.AccountAr, &row.Code,
+				&row.Amount, &row.SourceType); e != nil {
 				return e
 			}
 			out.Entries = append(out.Entries, row)

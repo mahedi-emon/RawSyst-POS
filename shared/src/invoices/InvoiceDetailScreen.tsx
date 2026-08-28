@@ -36,7 +36,7 @@ import {
   type DocumentTemplate,
 } from '../api/branding';
 import { InvoiceState, invoiceStateHint } from '../dashboard/InvoiceState';
-import { money, longDate } from '../ui/format';
+import { money, longDate, tenderName } from '../ui/format';
 import { useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 import {
@@ -262,7 +262,7 @@ export function InvoiceDetailScreen({
       )}
 
       {/* --- the document ------------------------------------------------ */}
-      <article className="ds-panel inv__doc" aria-label={documentTitle(invoice.doc_type)}>
+      <article className="ds-panel inv__doc" aria-label={documentTitle(invoice.doc_type, t)}>
         <header className="inv__head">
           <div className="inv__seller">
             {/* The client's own mark, unless this document type is set to go
@@ -284,7 +284,7 @@ export function InvoiceDetailScreen({
           </div>
 
           <div className="inv__ident">
-            <h1 className="ds-h2 inv__title">{documentTitle(invoice.doc_type)}</h1>
+            <h1 className="ds-h2 inv__title">{documentTitle(invoice.doc_type, t)}</h1>
             <p className="inv__number num">
               {invoice.human_number ?? invoice.uuid.slice(0, 8)}
             </p>
@@ -334,7 +334,9 @@ export function InvoiceDetailScreen({
         <div className="ds-scroll-x">
           <table className="ds-table inv__lines">
             <caption className="ds-visually-hidden">
-              The items on this {documentTitle(invoice.doc_type).toLowerCase()}
+              {t('inv.itemsOnThis', {
+                document: documentTitle(invoice.doc_type, t).toLowerCase(),
+              })}
             </caption>
             <thead>
               <tr>
@@ -374,7 +376,9 @@ export function InvoiceDetailScreen({
                     </td>
                   )}
                   <td>
-                    <span className="inv__tax">{taxTreatmentName(line.tax_treatment)}</span>
+                    <span className="inv__tax">
+                      {taxTreatmentName(line.tax_treatment, t)}
+                    </span>
                     {line.tax_treatment === 'standard' && (
                       <span className="ds-caption num">{line.tax_rate}%</span>
                     )}
@@ -408,18 +412,29 @@ export function InvoiceDetailScreen({
         </div>
 
         <section className="inv__tenders" aria-label={t('inv.payment')}>
-          <h2 className="ds-h3">{credit ? 'Refunded by' : 'Paid by'}</h2>
+          <h2 className="ds-h3">
+            {credit ? t('inv.refundedBy') : t('dash.paidBy')}
+          </h2>
           {invoice.tenders.length === 0 ? (
             <p className="ds-subtle ds-body-sm">{t('inv.nothingRecorded')}</p>
           ) : (
             <ul className="inv__tenderlist">
-              {invoice.tenders.map((t) => {
-                const note = settlementNote(t.settlement_status);
+              {/* `tender`, not `t`: the map used to bind `t` and shadow the
+                  translate function, so nothing inside this block could be
+                  written in the reader's language. */}
+              {invoice.tenders.map((tender) => {
+                const note = settlementNote(tender.settlement_status, t);
                 return (
-                  <li key={t.tender_no}>
-                    <span className="inv__tendername">{tenderLabel(t.method)}</span>
-                    <span className="num">{money(t.amount, { currency: invoice.currency })}</span>
-                    {t.reference && <span className="ds-caption">{t.reference}</span>}
+                  <li key={tender.tender_no}>
+                    <span className="inv__tendername">
+                      {tenderName(tender.method, t)}
+                    </span>
+                    <span className="num">
+                      {money(tender.amount, { currency: invoice.currency })}
+                    </span>
+                    {tender.reference && (
+                      <span className="ds-caption">{tender.reference}</span>
+                    )}
                     {note && <span className="ds-caption inv__pending">{note}</span>}
                   </li>
                 );
@@ -615,9 +630,9 @@ function AuditPanel({ invoice }: { invoice: Invoice }) {
             {entries.map((e, i) => (
               <li key={`${e.occurred_at}-${i}`}>
                 <span className="inv__trailwhen num">{stamp(e.occurred_at)}</span>
-                <span className="inv__trailwhat">{auditActionName(e.action)}</span>
+                <span className="inv__trailwhat">{auditActionName(e.action, t)}</span>
                 <span className="ds-caption">
-                  {e.actor_label ?? 'System'}
+                  {e.actor_label ?? t('common.system')}
                   {e.device_label ? ` · ${e.device_label}` : ''}
                 </span>
               </li>
@@ -672,25 +687,6 @@ function Total({
   );
 }
 
-/** Payment methods, as a shop says them. Kept here rather than imported from
- *  the till's own list because that one lives in the POS package. */
-function tenderLabel(method: string): string {
-  const named: Record<string, string> = {
-    cash: 'Cash',
-    mada: 'Mada',
-    visa: 'Visa',
-    mastercard: 'Mastercard',
-    amex: 'Amex',
-    apple_pay: 'Apple Pay',
-    stc_pay: 'STC Pay',
-    bank_transfer: 'Bank transfer',
-    store_credit: 'Store credit',
-    customer_due: 'On account',
-    tabby: 'Tabby',
-    tamara: 'Tamara',
-  };
-  return named[method] ?? method.replace(/_/g, ' ');
-}
 
 /** Whether a template has anything to print at the foot of a document. An
  *  empty footer element would draw a rule under nothing. */

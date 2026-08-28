@@ -9,10 +9,10 @@ import { useCallback, useState } from 'react';
 
 import { fetchExpenses } from '../api/drilldown';
 import { useAuth } from '../auth/session';
-import { money, shortDate } from '../ui/format';
+import { localName, money, shortDate } from '../ui/format';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { useRemote } from './useRemote';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 export function ExpensesDetailScreen({
   companyId,
@@ -24,6 +24,7 @@ export function ExpensesDetailScreen({
   onBack: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client } = useAuth();
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
 
@@ -42,7 +43,10 @@ export function ExpensesDetailScreen({
       refreshing={refreshing}
       actions={
         accountId && (
-          <button className="ds-btn ds-btn--secondary" onClick={() => setAccountId(undefined)}>
+          <button
+            className="ds-btn ds-btn--secondary"
+            onClick={() => setAccountId(undefined)}
+          >
             {t('dash.showAllAccounts')}
           </button>
         )
@@ -73,7 +77,10 @@ export function ExpensesDetailScreen({
                       {d.by_account.map((line) => {
                         const active = line.account_id === accountId;
                         return (
-                          <tr key={line.account_id} className={active ? 'detail__row--on' : undefined}>
+                          <tr
+                            key={line.account_id}
+                            className={active ? 'detail__row--on' : undefined}
+                          >
                             <td>
                               {/* The drill-through within the drill-through.
                                   A row, not a button, because the whole row is
@@ -82,14 +89,22 @@ export function ExpensesDetailScreen({
                               <button
                                 className="detail__rowbtn"
                                 aria-pressed={active}
-                                onClick={() => setAccountId(active ? undefined : line.account_id)}
+                                onClick={() =>
+                                  setAccountId(
+                                    active ? undefined : line.account_id,
+                                  )
+                                }
                               >
-                                <span className="detail__strong">{line.name}</span>
+                                <span className="detail__strong">
+                                  {localName(locale, line.name, line.name_ar)}
+                                </span>
                                 <span className="ds-caption">{line.code}</span>
                               </button>
                             </td>
                             <td className="num">
-                              {money(line.amount, { currency: d.base_currency })}
+                              {money(line.amount, {
+                                currency: d.base_currency,
+                              })}
                             </td>
                           </tr>
                         );
@@ -97,8 +112,12 @@ export function ExpensesDetailScreen({
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td>{accountId ? t('expenses.thisAccount') : 'Total'}</td>
-                        <td className="num">{money(d.total, { currency: d.base_currency })}</td>
+                        <td>
+                          {accountId ? t('expenses.thisAccount') : 'Total'}
+                        </td>
+                        <td className="num">
+                          {money(d.total, { currency: d.base_currency })}
+                        </td>
                       </tr>
                     </tfoot>
                   </table>
@@ -109,7 +128,8 @@ export function ExpensesDetailScreen({
                 <div className="ds-panel__head">
                   <h2 className="ds-h3">{t('common.entries')}</h2>
                   <span className="ds-caption">
-                    {d.entries.length} posting{d.entries.length === 1 ? '' : 's'}
+                    {d.entries.length} posting
+                    {d.entries.length === 1 ? '' : 's'}
                   </span>
                 </div>
                 <div className="ds-panel__body ds-scroll-x">
@@ -125,7 +145,9 @@ export function ExpensesDetailScreen({
                           <th scope="col">{t('common.entry')}</th>
                           <th scope="col">{t('common.account')}</th>
                           <th scope="col">{t('common.description')}</th>
-                          <th scope="col" className="num">{t('common.amount')}</th>
+                          <th scope="col" className="num">
+                            {t('common.amount')}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -137,7 +159,11 @@ export function ExpensesDetailScreen({
                               <span className="ds-caption">{entry.code}</span>
                             </td>
                             <td>
-                              {entry.memo || <span className="ds-subtle">{t('dash.noDescription')}</span>}
+                              {entry.memo || (
+                                <span className="ds-subtle">
+                                  {t('dash.noDescription')}
+                                </span>
+                              )}
                               {entry.source_type && (
                                 <span className="ds-caption">
                                   from {entry.source_type.replace(/_/g, ' ')}
@@ -145,7 +171,9 @@ export function ExpensesDetailScreen({
                               )}
                             </td>
                             <td className="num">
-                              {money(entry.amount, { currency: d.base_currency })}
+                              {money(entry.amount, {
+                                currency: d.base_currency,
+                              })}
                             </td>
                           </tr>
                         ))}

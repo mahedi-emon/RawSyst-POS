@@ -10,6 +10,8 @@
 // and a receipt form that quietly drifts by a fraction of a halala is a receipt
 // form that will one day refuse a payment that exactly settles an invoice.
 
+import type { Translate } from '../i18n/strings';
+
 import type { AgeingRow, Customer, LedgerRow, OpenInvoice } from '../api/receivables';
 
 /** Two decimal places, as minor units. Anything else came from a bug. */
@@ -55,11 +57,16 @@ export type CreditStanding =
  * because a shop with a 500 limit and a shop with a 500,000 one do not consider
  * the same number tight.
  */
-export function creditStanding(customer: Customer): CreditStanding {
+export function creditStanding(
+  customer: Customer,
+  translate?: Translate,
+): CreditStanding {
   if (!customer.credit_limit) {
     return {
       kind: 'none',
-      message: 'No credit account. Sales to this customer must be paid at the till.',
+      message:
+        translate?.('credit.none') ??
+        'No credit account. Sales to this customer must be paid at the till.',
     };
   }
 
@@ -69,7 +76,9 @@ export function creditStanding(customer: Customer): CreditStanding {
   if (available <= 0n) {
     return {
       kind: 'at_limit',
-      message: 'At their credit limit. Nothing further can go on this account.',
+      message:
+        translate?.('credit.atLimit') ??
+        'At their credit limit. Nothing further can go on this account.',
     };
   }
   // A tenth of the limit, and never treat a zero limit as a division.
@@ -77,13 +86,21 @@ export function creditStanding(customer: Customer): CreditStanding {
     return {
       kind: 'near_limit',
       available: major(available),
-      message: `Only ${major(available)} left of a ${major(limit)} limit.`,
+      message:
+        translate?.('credit.onlyLeft', {
+          available: major(available),
+          limit: major(limit),
+        }) ?? `Only ${major(available)} left of a ${major(limit)} limit.`,
     };
   }
   return {
     kind: 'clear',
     available: major(available),
-    message: `${major(available)} available of a ${major(limit)} limit.`,
+    message:
+      translate?.('credit.availableOf', {
+        available: major(available),
+        limit: major(limit),
+      }) ?? `${major(available)} available of a ${major(limit)} limit.`,
   };
 }
 

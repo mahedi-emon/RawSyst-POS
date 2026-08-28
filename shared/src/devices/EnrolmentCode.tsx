@@ -52,10 +52,7 @@ export function EnrolmentCode({
       <div className="ds-panel__body pairing">
         <ol className="pairing__steps">
           <li>{t('dev.openOnNewTerminal')}</li>
-          <li>
-            Type this code into it{' '}
-            <strong>exactly as shown</strong>.
-          </li>
+          <li>{t('dev.typeCodeExactly')}</li>
           <li>{t('dev.readyOnAccept')}</li>
         </ol>
 

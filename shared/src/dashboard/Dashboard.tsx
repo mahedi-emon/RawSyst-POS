@@ -30,11 +30,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { Offline, RequestFailed } from '../api/client';
 import { fetchOverview, type Overview } from '../api/dashboard';
 import { useAuth } from '../auth/session';
-import { money, percent, direction, isZero, tenderName, shortDate } from '../ui/format';
+import {
+  money,
+  percent,
+  direction,
+  isZero,
+  localName,
+  tenderName,
+  shortDate,
+} from '../ui/format';
 import { Sparkline } from './Sparkline';
 import { TenderMix } from './TenderMix';
 import { AttentionList } from './AttentionList';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 type Load =
   | { state: 'loading' }
@@ -69,7 +77,10 @@ export function Dashboard({
   const reload = useCallback(async () => {
     setLoad({ state: 'loading' });
     try {
-      setLoad({ state: 'ready', data: await fetchOverview(client, companyId, date) });
+      setLoad({
+        state: 'ready',
+        data: await fetchOverview(client, companyId, date),
+      });
     } catch (err) {
       if (err instanceof Offline) {
         setLoad({ state: 'offline' });
@@ -90,7 +101,8 @@ export function Dashboard({
 
   if (load.state === 'loading') return <DashboardSkeleton />;
   if (load.state === 'denied') return <Denied />;
-  if (load.state === 'offline') return <OfflineState onRetry={() => void reload()} />;
+  if (load.state === 'offline')
+    return <OfflineState onRetry={() => void reload()} />;
   if (load.state === 'error') {
     return <ErrorState message={load.message} onRetry={() => void reload()} />;
   }
@@ -98,7 +110,9 @@ export function Dashboard({
   const d = load.data;
   const currency = d.base_currency;
   const nothingYet =
-    isZero(d.sales.total) && isZero(d.profit.revenue) && d.sales.invoice_count === 0;
+    isZero(d.sales.total) &&
+    isZero(d.profit.revenue) &&
+    d.sales.invoice_count === 0;
 
   return (
     <main className="dash">
@@ -145,14 +159,19 @@ export function Dashboard({
               label={t('common.sales')}
               value={money(d.sales.total, { currency })}
               onOpen={() => onOpen({ screen: 'sales', date: d.date })}
-              opens="the invoices behind today's sales"
+              opens={t('dash.opensSales')}
               foot={
                 d.sales.change_pct === null ? (
                   <span className="ds-subtle">
-                    {d.sales.invoice_count} sale{d.sales.invoice_count === 1 ? '' : 's'}
+                    {d.sales.invoice_count === 1
+                      ? t('common.oneSale')
+                      : t('common.nSales', { count: d.sales.invoice_count })}
                   </span>
                 ) : (
-                  <Change pct={d.sales.change_pct} suffix="vs yesterday" />
+                  <Change
+                    pct={d.sales.change_pct}
+                    suffix={t('dash.vsYesterday')}
+                  />
                 )
               }
               chart={<Sparkline points={d.sales.trend} />}
@@ -162,12 +181,16 @@ export function Dashboard({
               label={t('dash.grossProfit')}
               value={money(d.profit.gross, { currency })}
               onOpen={() => onOpen({ screen: 'sales', date: d.date })}
-              opens="the sales this profit came from"
+              opens={t('dash.opensProfit')}
               foot={
                 d.profit.margin_pct === null ? (
-                  <span className="ds-subtle">{t('dash.noSalesToMeasure')}</span>
+                  <span className="ds-subtle">
+                    {t('dash.noSalesToMeasure')}
+                  </span>
                 ) : (
-                  <span className="ds-muted">{percent(d.profit.margin_pct)} margin</span>
+                  <span className="ds-muted">
+                    {t('dash.marginPct', { pct: percent(d.profit.margin_pct) })}
+                  </span>
                 )
               }
             />
@@ -176,10 +199,12 @@ export function Dashboard({
               label={t('common.expenses')}
               value={money(d.expenses.total, { currency })}
               onOpen={() => onOpen({ screen: 'expenses', date: d.date })}
-              opens="the postings behind today's expenses"
+              opens={t('dash.opensExpenses')}
               foot={
                 d.expenses.by_account.length === 0 ? (
-                  <span className="ds-subtle">{t('dash.nothingPostedToday')}</span>
+                  <span className="ds-subtle">
+                    {t('dash.nothingPostedToday')}
+                  </span>
                 ) : (
                   <span className="ds-muted">
                     {t('dash.acrossAccounts').replace(
@@ -201,7 +226,9 @@ export function Dashboard({
                   // C12. An owner counting the drawer and the bank would
                   // otherwise conclude a day of card takings had vanished.
                   <span className="ds-muted">
-                    {money(d.money.unsettled, { currency })} not yet settled
+                    {t('dash.notYetSettled', {
+                      amount: money(d.money.unsettled, { currency }),
+                    })}
                   </span>
                 )
               }
@@ -211,106 +238,116 @@ export function Dashboard({
       )}
 
       <>
-          <div className="dash__grid">
-            <TenderMix tenders={d.tenders} currency={currency} />
+        <div className="dash__grid">
+          <TenderMix tenders={d.tenders} currency={currency} />
 
-            <section className="ds-panel" aria-label={t('dash.whereTheMoneyIs')}>
-              <div className="ds-panel__head">
-                <h2 className="ds-h3">{t('dash.whereTheMoneyIs')}</h2>
-              </div>
-              <div className="ds-panel__body ds-scroll-x">
-                <table className="ds-table">
-                  <tbody>
-                    <MoneyRow label={t('common.cash')} amount={d.money.cash} currency={currency} />
-                    <MoneyRow label={t('common.bank')} amount={d.money.bank} currency={currency} />
-                    <MoneyRow
-                      label={t('dash.withCardProcessor')}
-                      note={t('dash.takenNotPaidOut')}
-                      amount={d.money.unsettled}
-                      currency={currency}
-                    />
-                    <MoneyRow
-                      label={t('dash.owedByCustomers')}
-                      note={t('dash.notInTotal')}
-                      amount={d.money.receivable}
-                      currency={currency}
-                      excluded
-                    />
-                    <MoneyRow
-                      label={t('dash.storeCreditHeld')}
-                      note={t('dash.notInTotal')}
-                      amount={d.money.store_credit}
-                      currency={currency}
-                      excluded
-                    />
-                    {/* Not counted either: it is not money the shop holds, it
+          <section className="ds-panel" aria-label={t('dash.whereTheMoneyIs')}>
+            <div className="ds-panel__head">
+              <h2 className="ds-h3">{t('dash.whereTheMoneyIs')}</h2>
+            </div>
+            <div className="ds-panel__body ds-scroll-x">
+              <table className="ds-table">
+                <tbody>
+                  <MoneyRow
+                    label={t('common.cash')}
+                    amount={d.money.cash}
+                    currency={currency}
+                  />
+                  <MoneyRow
+                    label={t('common.bank')}
+                    amount={d.money.bank}
+                    currency={currency}
+                  />
+                  <MoneyRow
+                    label={t('dash.withCardProcessor')}
+                    note={t('dash.takenNotPaidOut')}
+                    amount={d.money.unsettled}
+                    currency={currency}
+                  />
+                  <MoneyRow
+                    label={t('dash.owedByCustomers')}
+                    note={t('dash.notInTotal')}
+                    amount={d.money.receivable}
+                    currency={currency}
+                    excluded
+                  />
+                  <MoneyRow
+                    label={t('dash.storeCreditHeld')}
+                    note={t('dash.notInTotal')}
+                    amount={d.money.store_credit}
+                    currency={currency}
+                    excluded
+                  />
+                  {/* Not counted either: it is not money the shop holds, it
                         is money the shop will owe once the invoice arrives.
                         Shown because an owner reading their payables without it
                         would think they owed less than they do. */}
-                    <MoneyRow
-                      label={t('dash.grniShort')}
-                      note={t('dash.youWillOweThis')}
-                      amount={d.money.accrued_purchases}
-                      currency={currency}
-                      excluded
-                    />
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td>{t('common.available')}</td>
-                      <td className="num">{money(d.money.total, { currency })}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </section>
+                  <MoneyRow
+                    label={t('dash.grniShort')}
+                    note={t('dash.youWillOweThis')}
+                    amount={d.money.accrued_purchases}
+                    currency={currency}
+                    excluded
+                  />
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>{t('common.available')}</td>
+                    <td className="num">
+                      {money(d.money.total, { currency })}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
 
-            <section className="ds-panel" aria-label={t('common.stock')}>
-              <div className="ds-panel__head">
-                <h2 className="ds-h3">{t('common.stock')}</h2>
-                <span className="ds-caption">{t('common.atCost')}</span>
-              </div>
-              <div className="ds-panel__body">
-                <p className="dash__figure num">
-                  {money(d.inventory.value, { currency })}
-                </p>
-                <p className="ds-body-sm ds-muted">
-                  {t('dash.acrossItems').replace(
-                    '{n}',
-                    String(d.inventory.variant_count),
+          <section className="ds-panel" aria-label={t('common.stock')}>
+            <div className="ds-panel__head">
+              <h2 className="ds-h3">{t('common.stock')}</h2>
+              <span className="ds-caption">{t('common.atCost')}</span>
+            </div>
+            <div className="ds-panel__body">
+              <p className="dash__figure num">
+                {money(d.inventory.value, { currency })}
+              </p>
+              <p className="ds-body-sm ds-muted">
+                {t('dash.acrossItems').replace(
+                  '{n}',
+                  String(d.inventory.variant_count),
+                )}
+              </p>
+              {(d.inventory.out_of_stock > 0 || d.inventory.low_stock > 0) && (
+                <p className="dash__stockline ds-body-sm">
+                  {d.inventory.out_of_stock > 0 && (
+                    <button
+                      className="ds-badge ds-badge--danger badge--opens"
+                      onClick={() => onOpen({ screen: 'stock', filter: 'out' })}
+                    >
+                      {t('dash.nOutOfStock', { n: d.inventory.out_of_stock })}
+                    </button>
+                  )}
+                  {d.inventory.low_stock > 0 && (
+                    <button
+                      className="ds-badge ds-badge--warning badge--opens"
+                      onClick={() => onOpen({ screen: 'stock', filter: 'low' })}
+                    >
+                      {t('dash.nLowStock', { n: d.inventory.low_stock })}
+                    </button>
                   )}
                 </p>
-                {(d.inventory.out_of_stock > 0 || d.inventory.low_stock > 0) && (
-                  <p className="dash__stockline ds-body-sm">
-                    {d.inventory.out_of_stock > 0 && (
-                      <button
-                        className="ds-badge ds-badge--danger badge--opens"
-                        onClick={() => onOpen({ screen: 'stock', filter: 'out' })}
-                      >
-                        {t('dash.nOutOfStock').replace('{n}', String(d.inventory.out_of_stock))}
-                      </button>
-                    )}
-                    {d.inventory.low_stock > 0 && (
-                      <button
-                        className="ds-badge ds-badge--warning badge--opens"
-                        onClick={() => onOpen({ screen: 'stock', filter: 'low' })}
-                      >
-                        {d.inventory.low_stock} low
-                      </button>
-                    )}
-                  </p>
-                )}
-              </div>
-            </section>
+              )}
+            </div>
+          </section>
 
-            <ExpenseBreakdown
-              lines={d.expenses.by_account}
-              total={d.expenses.total}
-              currency={currency}
-            />
-          </div>
+          <ExpenseBreakdown
+            lines={d.expenses.by_account}
+            total={d.expenses.total}
+            currency={currency}
+          />
+        </div>
 
-          <AttentionList items={d.attention} onOpen={onOpen} />
+        <AttentionList items={d.attention} onOpen={onOpen} />
       </>
 
       <NotBuiltYet modules={d.unbuilt} />
@@ -344,6 +381,7 @@ function Kpi({
   onOpen?: () => void;
   opens?: string;
 }) {
+  const t = useT();
   const body = (
     <>
       <span className="kpi__label ds-caption">{label}</span>
@@ -361,7 +399,11 @@ function Kpi({
       onClick={onOpen}
       // The label says what opens, because "Sales SAR 48,290.00" read aloud
       // gives no clue that it is actionable.
-      aria-label={opens ? `${label}. Open ${opens}` : `Open ${label}`}
+      aria-label={
+        opens
+          ? t('dash.openLabelled', { label, what: opens })
+          : t('dash.openPlain', { label })
+      }
     >
       {body}
       <span className="kpi__chev" aria-hidden="true">
@@ -417,6 +459,7 @@ function ExpenseBreakdown({
   total: string;
   currency: string;
 }) {
+  const { locale } = useLocale();
   const t = useT();
   return (
     <section className="ds-panel" aria-label={t('dash.expensesToday')}>
@@ -427,23 +470,23 @@ function ExpenseBreakdown({
         {lines.length === 0 ? (
           <div className="ds-state">
             <p className="ds-state__title">{t('dash.nothingPostedToday')}</p>
-            <p className="ds-state__body">
-              {t('dash.expensesAppearHere')}
-            </p>
+            <p className="ds-state__body">{t('dash.expensesAppearHere')}</p>
           </div>
         ) : (
           <table className="ds-table">
             <thead>
               <tr>
                 <th scope="col">{t('common.account')}</th>
-                <th scope="col" className="num">{t('common.amount')}</th>
+                <th scope="col" className="num">
+                  {t('common.amount')}
+                </th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line) => (
                 <tr key={line.account_id}>
                   <td>
-                    {line.name}
+                    {localName(locale, line.name, line.name_ar)}
                     <span className="dash__note ds-caption">{line.code}</span>
                   </td>
                   <td className="num">{money(line.amount, { currency })}</td>
@@ -513,12 +556,18 @@ function DashboardSkeleton() {
   return (
     <main className="dash" aria-busy="true" aria-label={t('common.loading')}>
       <header className="dash__head">
-        <div className="ds-skeleton" style={{ inlineSize: 120, blockSize: 28 }} />
+        <div
+          className="ds-skeleton"
+          style={{ inlineSize: 120, blockSize: 28 }}
+        />
       </header>
       <section className="dash__kpis">
         {[0, 1, 2, 3].map((i) => (
           <div className="kpi" key={i}>
-            <div className="ds-skeleton" style={{ inlineSize: 72, blockSize: 12 }} />
+            <div
+              className="ds-skeleton"
+              style={{ inlineSize: 72, blockSize: 12 }}
+            />
             <div
               className="ds-skeleton"
               style={{ inlineSize: '70%', blockSize: 30, marginBlockStart: 10 }}
@@ -551,9 +600,9 @@ function Denied() {
         <div className="ds-state">
           <p className="ds-state__title">{t('dash.noFiguresAccess')}</p>
           <p className="ds-state__body">
-            The dashboard shows revenue, margin and cash position. Your role does
-            not include permission to view the accounts. An owner can change that
-            under Settings &gt; People.
+            The dashboard shows revenue, margin and cash position. Your role
+            does not include permission to view the accounts. An owner can
+            change that under Settings &gt; People.
           </p>
         </div>
       </div>
@@ -583,7 +632,13 @@ function OfflineState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
   const t = useT();
   return (
     <main className="dash">

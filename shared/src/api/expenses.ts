@@ -28,6 +28,8 @@ export interface ExpenseHead {
   account_id: string;
   account_code: string;
   account_name: string;
+  /** The same account in Arabic, where the shop has one. */
+  account_name_ar?: string;
   /** Whether VAT on this category can be reclaimed. The one field here that is
    *  a tax position rather than a label, which is why changing it needs its own
    *  permission. */
@@ -43,6 +45,8 @@ export interface ExpenseAccount {
   id: string;
   code: string;
   name: string;
+  /** The same account in Arabic, where the shop has one. */
+  name_ar?: string;
 }
 
 /** One category's share of an expense. */

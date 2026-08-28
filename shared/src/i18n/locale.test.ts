@@ -11,6 +11,29 @@ import { ar, catalogues, directionOf, en, type Key } from './strings';
 // held to the spec's own example rather than to one invented here.
 export const MIXED_SCRIPT = 'قميص رجالي Slim Fit — L';
 
+/**
+ * Brands, which are spelled the same way in both languages.
+ *
+ * A card scheme's name is what is printed on the card in the customer's hand
+ * and what appears on their statement. Mada IS translated — مدى is its own
+ * Arabic name, used by the scheme itself — and so is anything that is a word
+ * rather than a brand: cash, a cheque, a bank transfer, points. Only names with
+ * no Arabic form are listed here, because inventing one would put a word on a
+ * receipt that no cardholder recognises.
+ */
+const SAME_IN_BOTH = new Set<string>([
+  'tender.visa',
+  'tender.mastercard',
+  'tender.amex',
+  'tender.apple_pay',
+  'tender.stc_pay',
+  'tender.samsung_pay',
+  'tender.tabby',
+  'tender.tamara',
+  'tender.bkash',
+  'tender.nagad',
+]);
+
 describe('the string catalogue', () => {
   it('says everything in both languages', () => {
     // The type system already guarantees this — `ar` is Record<Key, string>, so
@@ -28,10 +51,10 @@ describe('the string catalogue', () => {
         missing.push(key);
         continue;
       }
-      // Two keys are the same in both by design: the language names are each
+      // Some keys are the same in both by design: the language names are each
       // written in their own script, so "English" is correct in the Arabic
-      // catalogue.
-      if (arabic === en[key] && !key.startsWith('language.')) {
+      // catalogue, and a card scheme or a wallet is a brand.
+      if (arabic === en[key] && !key.startsWith('language.') && !SAME_IN_BOTH.has(key)) {
         untranslated.push(key);
       }
     }
@@ -62,7 +85,12 @@ describe('the string catalogue', () => {
     const strip = (text: string) =>
       text.replace(/\{\w+\}/g, '').replace(/RawSyst/g, '');
     const suspicious = (Object.keys(ar) as Key[]).filter(
-      (k) => !allowed.has(k) && /[A-Za-z]{4,}/.test(strip(ar[k])),
+      (k) =>
+        !allowed.has(k) &&
+        // The card schemes and wallets above, for the same reason as the
+        // brands already allowed: their names have no Arabic form.
+        !SAME_IN_BOTH.has(k) &&
+        /[A-Za-z]{4,}/.test(strip(ar[k])),
     );
     expect(suspicious, 'Arabic strings containing English words').toEqual([]);
   });

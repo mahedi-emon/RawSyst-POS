@@ -12,15 +12,46 @@
 import { major, minor } from '../receivables/receivables';
 import type { Invoice, InvoiceAuditEntry, InvoiceLine } from '../api/invoice';
 
+import type { Key, Translate } from '../i18n/strings';
+
+/**
+ * A lookup that answers in the reader's language when it is given one.
+ *
+ * These four functions turn a database enum into a word on a screen. They were
+ * four English tables, and the translation coverage test walked components
+ * only, so "Tax Invoice" and "Awaiting settlement" sat in English on Arabic
+ * invoice screens with nothing reporting a problem.
+ *
+ * The translator is a parameter rather than a hook so these stay pure — a
+ * printed document, a test, or a receipt builder can call them — and English
+ * stays the answer when no locale is at hand. A value the table does not know
+ * is never guessed at: it is shown as itself, because an enum added
+ * server-side must not render as something reassuring that it is not.
+ */
+function named(
+  table: Record<string, string>,
+  prefix: string,
+  value: string,
+  translate?: Translate,
+): string {
+  if (!(value in table)) return value.replace(/_/g, ' ');
+  if (translate) return translate(`${prefix}.${value}` as Key);
+  return table[value]!;
+}
+
 /** How a document type is titled at the top of the page. */
-export function documentTitle(docType: string): string {
-  const named: Record<string, string> = {
-    standard: 'Tax Invoice',
-    simplified: 'Simplified Tax Invoice',
-    credit_note: 'Credit Note',
-    debit_note: 'Debit Note',
-  };
-  return named[docType] ?? docType.replace(/_/g, ' ');
+export function documentTitle(docType: string, translate?: Translate): string {
+  return named(
+    {
+      standard: 'Tax Invoice',
+      simplified: 'Simplified Tax Invoice',
+      credit_note: 'Credit Note',
+      debit_note: 'Debit Note',
+    },
+    'doc',
+    docType,
+    translate,
+  );
 }
 
 /** True for a document that takes money back rather than in. Its figures read
@@ -73,42 +104,62 @@ export function hasAnyDiscount(invoice: Invoice): boolean {
 
 /** How a tax treatment reads. The database values are precise and are not
  *  English. */
-export function taxTreatmentName(treatment: string): string {
-  const named: Record<string, string> = {
-    standard: 'Standard',
-    zero_rated: 'Zero-rated',
-    exempt: 'Exempt',
-    out_of_scope: 'Out of scope',
-  };
-  return named[treatment] ?? treatment.replace(/_/g, ' ');
+export function taxTreatmentName(
+  treatment: string,
+  translate?: Translate,
+): string {
+  return named(
+    {
+      standard: 'Standard',
+      zero_rated: 'Zero-rated',
+      exempt: 'Exempt',
+      out_of_scope: 'Out of scope',
+    },
+    'tax',
+    treatment,
+    translate,
+  );
 }
 
 /** How a settlement status reads. Only shown when it is not the ordinary one:
  *  a column saying "settled" on every row tells nobody anything. */
-export function settlementNote(status: string): string | null {
-  const named: Record<string, string> = {
+export function settlementNote(
+  status: string,
+  translate?: Translate,
+): string | null {
+  const table: Record<string, string> = {
     pending: 'Awaiting settlement',
     settled: '',
     failed: 'Settlement failed',
     charged_back: 'Charged back',
   };
-  const found = named[status];
+  const found = table[status];
   if (found === undefined) return status.replace(/_/g, ' ');
-  return found === '' ? null : found;
+  // Settled is the ordinary case and says nothing. A column reading "settled"
+  // on every row has told nobody anything.
+  if (found === '') return null;
+  return named(table, 'settleNote', status, translate);
 }
 
 /** How an audited action reads in the trail. Anything unrecognised is shown as
  *  itself rather than guessed at — an action added server-side must not be
  *  rendered as something reassuring. */
-export function auditActionName(action: string): string {
-  const named: Record<string, string> = {
-    invoice_issued: 'Issued',
-    invoice_reprinted: 'Reprinted',
-    invoice_submitted: 'Submitted to ZATCA',
-    invoice_credit_noted: 'Credit note raised',
-    signed_document_attached: 'Signed by the terminal',
-  };
-  return named[action] ?? action.replace(/_/g, ' ');
+export function auditActionName(
+  action: string,
+  translate?: Translate,
+): string {
+  return named(
+    {
+      invoice_issued: 'Issued',
+      invoice_reprinted: 'Reprinted',
+      invoice_submitted: 'Submitted to ZATCA',
+      invoice_credit_noted: 'Credit note raised',
+      signed_document_attached: 'Signed by the terminal',
+    },
+    'audit',
+    action,
+    translate,
+  );
 }
 
 /** The trail, newest first, as the server already orders it — restated here so

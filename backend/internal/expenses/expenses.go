@@ -79,6 +79,9 @@ type Head struct {
 	AccountID   uuid.UUID `json:"account_id"`
 	AccountCode string    `json:"account_code"`
 	AccountName string    `json:"account_name"`
+	// The same account in Arabic, empty when nobody has written one. Both are
+	// sent and the screen picks, as everywhere else an account is named.
+	AccountNameAr string `json:"account_name_ar,omitempty"`
 	// InputVATRecoverable is the one field here that is a tax position rather
 	// than a label, which is why changing it needs its own permission.
 	InputVATRecoverable bool `json:"input_vat_recoverable"`
@@ -106,6 +109,7 @@ func (s *Service) Heads(
 		rows, e := tx.Query(ctx, `
 			SELECT h.id, h.code, h.name, coalesce(h.name_ar, ''),
 			       h.account_id, a.code, a.name,
+			       coalesce(a.translations->>'ar', ''),
 			       h.input_vat_recoverable, h.is_active,
 			       coalesce((
 			         SELECT sum(l.charge_amount)
@@ -127,7 +131,7 @@ func (s *Service) Heads(
 			var h Head
 			var spent decimal.Decimal
 			if e := rows.Scan(&h.ID, &h.Code, &h.Name, &h.NameAr,
-				&h.AccountID, &h.AccountCode, &h.AccountName,
+				&h.AccountID, &h.AccountCode, &h.AccountName, &h.AccountNameAr,
 				&h.InputVATRecoverable, &h.IsActive, &spent); e != nil {
 				return e
 			}
@@ -264,6 +268,9 @@ type ExpenseAccount struct {
 	ID   uuid.UUID `json:"id"`
 	Code string    `json:"code"`
 	Name string    `json:"name"`
+	// The same account in Arabic, empty when nobody has written one. Both are
+	// sent and the screen picks, as everywhere else an account is named.
+	NameAr string `json:"name_ar,omitempty"`
 }
 
 // Accounts lists the expense accounts a head may be pointed at.
@@ -275,7 +282,7 @@ func (s *Service) Accounts(ctx context.Context, scope Scope) ([]ExpenseAccount, 
 	out := []ExpenseAccount{}
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
-			SELECT id, code, name FROM account
+			SELECT id, code, name, coalesce(translations->>'ar', '') FROM account
 			WHERE company_id = $1 AND type = 'expense' AND is_postable
 			ORDER BY code`, scope.CompanyID)
 		if e != nil {
@@ -284,7 +291,7 @@ func (s *Service) Accounts(ctx context.Context, scope Scope) ([]ExpenseAccount, 
 		defer rows.Close()
 		for rows.Next() {
 			var a ExpenseAccount
-			if e := rows.Scan(&a.ID, &a.Code, &a.Name); e != nil {
+			if e := rows.Scan(&a.ID, &a.Code, &a.Name, &a.NameAr); e != nil {
 				return e
 			}
 			out = append(out, a)
