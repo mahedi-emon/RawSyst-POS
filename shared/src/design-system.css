@@ -524,7 +524,20 @@ body {
  *
  * Scoped to cells rather than fixed at each site: 59 places emit one of these
  * spans, and the next table to add one should not have to know. */
-.ds-table td > .ds-caption { display: block; }
+.ds-table td > .ds-caption {
+  display: block;
+  /* And it has a measure, so one long one cannot starve the whole table.
+   *
+   * A cell with no ceiling asks for as much width as its longest line wants,
+   * and the browser obliges by taking it from the other columns. On E-invoicing
+   * the "still needed" sentence names nine fields, so it claimed most of the
+   * row and squeezed "Main Branch" into a column narrow enough to wrap a
+   * two-word branch name onto two lines.
+   *
+   * 46ch is about a readable line for secondary text, and it is a CEILING: a
+   * short caption still takes only the room it needs. */
+  max-inline-size: 46ch;
+}
 
 .ds-table tbody tr:last-child td { border-block-end: none; }
 .ds-table tbody tr:hover td { background: var(--surface-sunken); }
