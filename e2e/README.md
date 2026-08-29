@@ -184,7 +184,7 @@ RS_PASSWORD=... RS_POS=http://localhost:5173 node e2e/workflows.mjs
 ```
 
 
-## Two source lints
+## Four source lints
 
 Neither needs a browser, a database or a running server. Both exist because
 they found something the type checker, the unit tests and a browser walk all
@@ -193,6 +193,9 @@ looked straight past.
 ```
 node e2e/classes.mjs
 node e2e/strings.mjs
+node e2e/tokens.mjs
+node e2e/currency.mjs
+node e2e/pos-spec.mjs
 ```
 
 `classes.mjs` compares the class names the components use against the names the
@@ -209,8 +212,30 @@ found forty-one, including every empty state on the purchasing screens and the
 billed on line 3" in English to a screen reader whatever language the shop had
 chosen, to the one reader with nothing else to go on.
 
-Both report rather than fail: some class names are built at runtime, and some
-strings genuinely are the same in every language. They are there to be read.
+`tokens.mjs` finds a colour, a spacing step or a radius written into a
+stylesheet where a design token already names it. A design system is only a
+system while every screen reaches for the same names; the moment one file writes
+`#1f6feb` and another writes `var(--brand)`, the two drift on the next change
+and nobody finds out until somebody opens both screens side by side. It found 55
+— all in the till, which had never been moved onto the shared scale.
+
+`currency.mjs` asks a per-screen question: does this screen show money and never
+say which currency? Repeating the code on every cell of a column is noise and no
+commercial system does it, so a bare `money(x)` is not itself a defect — a
+screen where EVERY figure is bare is. It found five, two of which had no
+currency in the API at all.
+
+`pos-spec.mjs` is different from the others: it reads the numbers out of
+`pos/src/styles.css` and compares them with the "Non-negotiables" table in
+`docs/ui-ux/01-screen-specs.md`. Three were wrong by 4px, 4px and 3px. Nobody
+would have caught any of them by looking, which is the whole argument for
+checking them: a requirement specified precisely, implemented approximately, and
+then left to drift.
+
+The first three report rather than fail — some class names are built at runtime,
+some strings genuinely are the same in every language, and a one-off value is
+sometimes right. `pos-spec.mjs` exits non-zero, because a number the spec fixes
+either matches or does not.
 
 ## The screenshots
 
