@@ -17,6 +17,9 @@ mkdirSync(OUT, { recursive: true });
 
 const WIDTHS = [
   { name: 'phone', w: 390, h: 844, touch: true },
+  // The device most likely to be propped on a counter, and the one that falls
+  // between the two width rules: above the phone breakpoint, below the mouse.
+  { name: 'tablet', w: 768, h: 1024, touch: true },
   { name: 'desktop', w: 1440, h: 900, touch: false },
 ];
 

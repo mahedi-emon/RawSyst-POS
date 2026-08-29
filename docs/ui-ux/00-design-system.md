@@ -276,6 +276,36 @@ The POS is deliberately **not** phone-supported. A 5-inch checkout screen invite
 
 ---
 
+### Wide tables between the phone and the desktop
+
+Below 640px a table becomes a stack of cards: eight columns cannot be read
+across a phone. At 1100px and up there is room for all of them. In between — a
+tablet, the device most likely to be propped on a counter — it must do neither
+of those things, and until this pass it did the worst available thing: it stayed
+a table and shrank to fit, so every column shrank together and a long name wrote
+itself down the screen four words at a time.
+
+The rule is: **columns keep the width they need, and the table scrolls inside
+its panel.** A sideways-scrolling *page* is a defect; a sideways-scrolling
+*table* is a table. Two minimums do the work, both asked by content rather than
+by position, because the long column is not always the first one:
+
+```css
+td:has(.detail__strong) { min-inline-size: 11rem; }  /* the row's identity */
+td:has(> .ds-caption)   { min-inline-size: 9rem;  }  /* prose, not a value */
+```
+
+A table whose columns fit is untouched.
+
+**A container that scrolls says so.** `.ds-scroll-x` carries shadows at each
+edge that appear only when there is content beyond it and slide away as that
+edge is reached — four background layers, two `local` covers and two `scroll`
+shadows, and no JavaScript. Without them the buying list on a tablet ended with
+a status badge cut off mid-word and the value column absent, which reads as a
+broken table rather than a longer one.
+
+---
+
 ## 8. Component inventory
 
 **Primitives** — Button (primary/secondary/ghost/danger, 3 sizes) · IconButton · Input · NumberInput (POS variant with big keypad) · Select · Combobox (async, keyboard-first) · Checkbox · Radio · Switch · Textarea · DatePicker · DateRangePicker (with the six presets from A8: Today, Yesterday, This Week, This Month, This Year, Custom).

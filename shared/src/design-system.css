@@ -971,9 +971,138 @@ select.input {
 
 /* A wide table scrolls inside its own container. The page never scrolls
  * sideways — that breaks the reading position of everything else on it. */
+/* ---------------------------------------------------------------------------
+ * A container that scrolls sideways, and says so
+ *
+ * A table wider than its panel scrolls. Nothing on the screen said so: on a
+ * tablet the buying list ended with a status badge cut off mid-word and the
+ * VALUE column — the figure an owner opened the screen for — entirely absent,
+ * with no more indication that it existed than a blank margin. A reader
+ * concludes the table is broken, not that it continues.
+ *
+ * The shadows below appear only at an edge there is content beyond, and slide
+ * away as that edge is reached. No JavaScript, no resize listener, no scroll
+ * handler: it is four background layers and the way `background-attachment`
+ * works.
+ *
+ * The two `local` layers are covers painted in the surface colour. They scroll
+ * WITH the content, so at the start of the scroll the left cover sits over the
+ * left shadow and hides it. The two `scroll` layers are the shadows themselves,
+ * fixed to the container. Scroll right and the left cover moves away, revealing
+ * the shadow that says "there is more back there".
+ *
+ * It mirrors for free: both edges carry the same pair, so RTL needs nothing.
+ * ------------------------------------------------------------------------- */
+
 .ds-scroll-x {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  /* Allowed to be narrower than its contents. Without this a scroll container
+   * inside a flex or grid parent is sized by what it holds and never scrolls;
+   * it just makes its parent wider. */
+  min-inline-size: 0;
+
+  background:
+    linear-gradient(to right, var(--surface) 40%, rgb(255 255 255 / 0%))
+      left center / 2.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 40%, rgb(255 255 255 / 0%))
+      right center / 2.5rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), rgb(255 255 255 / 0%))
+      left center / 0.9rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), rgb(255 255 255 / 0%))
+      right center / 0.9rem 100% no-repeat scroll;
+}
+
+/* A panel body that scrolls sits directly on the surface, so the covers must
+ * be that colour and not the page's. Both are `--surface` today; naming it
+ * here means a panel that ever stops being white takes its covers with it. */
+:root { --scroll-shadow: rgb(16 20 35 / 20%); }
+:root[data-theme='dark'] { --scroll-shadow: rgb(0 0 0 / 45%); }
+
+/* ---------------------------------------------------------------------------
+ * A wide table between the two devices it was designed for
+ *
+ * Below 640px a table becomes a stack of cards, which is right: eight columns
+ * cannot be read across a phone. At 1100px and up there is room for all of
+ * them. In between — a tablet, the device most likely to be propped on a
+ * counter — it did neither. It stayed a table and shrank to fit, and `inline-
+ * size: 100%` meant every column shrank together: on the customers screen at
+ * 768px, "Al Nakheel Contracting and General Trading Establishment" wrapped
+ * onto four lines while the column beside it broke "30 days" across two, and a
+ * five-row list was 700px tall.
+ *
+ * A minimum width, inside the scroll container that is already around every one
+ * of these tables, is what a commercial system does here: the columns keep the
+ * width they need and the table scrolls sideways within the panel. The page
+ * does not move, which is the part that matters — a sideways-scrolling PAGE is
+ * a defect; a sideways-scrolling table is a table.
+ *
+ * 46rem rather than a pixel value so it tracks the reader's own type size, and
+ * scoped to `.ds-scroll-x` so a narrow table that already fits is untouched.
+ * ------------------------------------------------------------------------- */
+
+@media (min-width: 640px) and (max-width: 1099px) {
+  /* No blanket minimum.
+   *
+   * The first version set one -- 46rem on every table -- and it made the
+   * tables that DID fit scroll for no reason: the buying list is five columns
+   * and sat comfortably in 652px until it was told to be 736px wide, at which
+   * point the figure an owner opened the screen for went off the right edge.
+   *
+   * The rules below say what each column needs instead, and a table overflows
+   * only when its own columns cannot fit. A browser honours a cell's minimum
+   * over the table's `inline-size: 100%`, so this is the whole mechanism:
+   * tables that fit stay put, tables that do not scroll inside their panel.
+   */
+
+  /* The cell that carries the row's identity gets room to say it.
+   *
+   * `.detail__strong` is how this codebase already marks that cell, and it is
+   * not always the first column: on Customers it is the name, on Buying it is
+   * the order number in column one and the supplier's name in column two.
+   * Asking about the marker rather than the position is what makes one rule
+   * work for both.
+   *
+   * 11rem, not 14: enough that "Al Nakheel Contracting and General Trading
+   * Establishment" wraps to two lines instead of four, and not so much that a
+   * column holding "PO-2026-000003" is padded out to nothing. */
+  .ds-scroll-x > .ds-table:not(.ds-table--pairs) td:has(.detail__strong) {
+    min-inline-size: 11rem;
+  }
+
+  /* A cell holding a sentence needs a measure to be a sentence.
+   *
+   * The terminals list carries "Get a code, then type it into the terminal."
+   * under the status badge. Given a hundred pixels it came out four lines tall
+   * and two or three words wide, which is a shape nobody reads. Prose in a
+   * cell is marked `.ds-caption`; this gives it somewhere to sit. */
+  .ds-scroll-x > .ds-table:not(.ds-table--pairs) td:has(> .ds-caption) {
+    min-inline-size: 9rem;
+  }
+
+  /* Deliberately NOT `white-space: nowrap` on the other columns.
+   *
+   * That was tried and it was wrong twice over. It assumed the long free-text
+   * column is always the first one, which is true on Customers and false on
+   * Buying, where the supplier's name is the second — held to one line, "Jeddah
+   * Fabric Mills Company Limited" pushed a table that fitted in 650px out to
+   * 867px and sent the value column off the edge. And it caught the
+   * e-invoicing screen's list of the registration fields ZATCA is still
+   * waiting for, which is a sentence in a cell: 807px of text in a 334px box.
+   *
+   * A short value wrapping onto two lines is untidy. A figure disappearing off
+   * the side of the screen is a defect. The minimum above stops the crushing
+   * that actually mattered; the rest is left to wrap, which is what text
+   * does. */
+}
+
+/* A row's actions are two or three short verbs and belong on one line. They
+ * were stacking vertically inside a narrow last column and making every row
+ * twice as tall as its content. */
+.ds-table td .supplier__actions,
+.ds-table td .detail__actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------------------------------------
