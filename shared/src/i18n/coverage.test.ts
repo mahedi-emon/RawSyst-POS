@@ -99,7 +99,15 @@ const NO_PROSE = new Set([
  * Arabic name; Mastercard has none, and inventing one would put a word on a
  * receipt that no cardholder recognises.
  */
-const BRANDS = new Set(['Mastercard', 'Apple Pay', 'STC Pay']);
+const BRANDS = new Set([
+  'Mastercard',
+  'Apple Pay',
+  'STC Pay',
+  // The product's own name, on the navigation rail's wordmark. A brand is
+  // written as it is written; the Arabic catalogue check strips it for the
+  // same reason.
+  'RawSyst',
+]);
 
 /**
  * Shapes rather than words.
@@ -110,6 +118,9 @@ const BRANDS = new Set(['Mastercard', 'Apple Pay', 'STC Pay']);
  * does not use. Sample data that IS words — a street, a company name — is
  * translated and is not listed here.
  */
+/** SVG path data — `d="M4 4h7v7H4z"`. Geometry, never words. */
+const SVG_PATH = /^[MmZzLlHhVvCcSsQqTtAa][\dMmZzLlHhVvCcSsQqTtAa.,\-\s]*$/;
+
 const FORMATS = new Set([
   'INV-10023',
   'MADA-20260817-001',
@@ -179,6 +190,12 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
     if (PLATFORM.has(literal)) continue;
     // A path or an import specifier, not a sentence.
     if (literal.includes('/') && !literal.includes(' ')) continue;
+    // SVG path data, which is geometry. `M4 4h7v7H4z` is letters and numbers
+    // and long enough to look like prose to a scanner, and the icon set is two
+    // dozen of them. The shape is unambiguous: a path command letter followed
+    // by nothing but commands, digits, separators and signs. No sentence in
+    // any language is made only of `MmLlHhVvCcSsQqTtAaZz`.
+    if (SVG_PATH.test(literal)) continue;
 
     const before = text.slice(Math.max(0, match.index - 40), match.index);
     // Already inside t(...), or naming a module, or a CSS class.

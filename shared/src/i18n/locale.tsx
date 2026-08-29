@@ -25,7 +25,14 @@ import {
   type ReactNode,
 } from 'react';
 
-import { catalogues, directionOf, en, type Key, type Locale } from './strings';
+import {
+  catalogues,
+  directionOf,
+  en,
+  interpolate,
+  type Key,
+  type Locale,
+} from './strings';
 
 const STORAGE_KEY = 'rawsyst.locale';
 
@@ -141,21 +148,4 @@ export function useLocale(): LocaleValue {
 /** Just the translate function, which is what most components want. */
 export function useT() {
   return useLocale().t;
-}
-
-/** `{name}` substitution. Deliberately the whole of it: anything needing more
- *  than a named placeholder is a sentence that should be its own key. */
-function interpolate(
-  text: string | undefined,
-  params?: Record<string, string | number>,
-): string {
-  // Undefined cannot happen for `en` — the key type is derived from it — and
-  // reaches here only if a locale table and the fallback are both missing a
-  // key, which the compiler already prevents. Empty rather than "undefined"
-  // on a screen, for the day somebody defeats it with a cast.
-  if (text === undefined) return '';
-  if (!params) return text;
-  return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in params ? String(params[name]) : whole,
-  );
 }

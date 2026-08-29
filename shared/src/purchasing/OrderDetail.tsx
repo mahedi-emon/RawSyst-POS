@@ -93,7 +93,7 @@ export function OrderDetail({
         lines,
       });
       setReceiving(false);
-      setNotice(receiptNotice(receipt));
+      setNotice(receiptNotice(receipt, t));
       reload();
     } catch (err) {
       setNotice(explain(err, t('order.deliveryFailed'), t));

@@ -6,11 +6,11 @@
 // costs money rather than looking wrong, so each lives here where it can be
 // tested.
 
-import type { Translate } from '../i18n/strings';
+import { plainEnglish, type Translate } from '../i18n/strings';
 
 import type { Bill, MatchLine, OrderLine, Receipt } from '../api/purchasing';
 import { trimQuantity } from '../dashboard/drilldown';
-import { money } from '../ui/format';
+import { isZero, money } from '../ui/format';
 
 /**
  * What to pre-fill the receiving form with.
@@ -50,28 +50,62 @@ export function receivingDefaults(lines: OrderLine[]): Record<string, string> {
  * A currency is deliberately not shown. The receiving screen is inside one
  * company and its own base currency, and a code here would be the only one on
  * the screen.
+ *
+ * `translate` is the catalogue's t(), passed rather than reached for by a hook,
+ * which keeps this a pure function the tests can call -- the same shape
+ * `tenderName` and `sellingBlocked` use. Without it the three sentences below
+ * were written in English into a `.ts` file, where the source scan that swept
+ * the components for hardcoded prose does not look: an Arabic or Bangla shop
+ * received a delivery and was told about it in English.
  */
-export function receiptNotice(receipt: Receipt): string {
+export function receiptNotice(receipt: Receipt, translate?: Translate): string {
+  const t: Translate = translate ?? plainEnglish;
+
   if (receipt.already_received) {
-    return `That delivery was already recorded as ${receipt.grn_number}.`;
+    return t('purch.alreadyRecorded', { grn: receipt.grn_number });
   }
 
-  const recorded = `Recorded as ${receipt.grn_number}. Stock has been updated.`;
+  const recorded = t('purch.deliveryRecorded', { grn: receipt.grn_number });
 
-  const correction = Number(receipt.cost_correction);
-  if (!Number.isFinite(correction) || correction === 0) return recorded;
+  // Sign and zero from the STRING, never from a float.
+  //
+  // `Number(receipt.cost_correction)` was the only money on this path that
+  // became a double, and `.toFixed(2)` on a double is not a rounding rule --
+  // `Number('1.005').toFixed(2)` is "1.00". The server sends a decimal string
+  // and it is displayed as one; all this needs to know is whether it is zero
+  // and which way it points, and both are visible in the text.
+  const raw = (receipt.cost_correction ?? '').trim();
+
+  // A shape check, because the old `Number.isFinite` guard was doing two jobs
+  // and only one of them survived the move off the float. A server that sent
+  // something unexpected must not produce "cost of goods sold rose by 0.00" on
+  // a screen a storeman is meant to act on: silence is the honest answer to a
+  // figure nobody can read.
+  if (!/^-?\d+(\.\d+)?$/.test(raw)) return recorded;
+  if (isZero(raw)) return recorded;
+
+  const negative = raw.startsWith('-');
+  const magnitude = negative ? raw.slice(1) : raw;
 
   const units = trimQuantity(receipt.units_recosted);
-  const items = units === '1' ? '1 unit' : `${units} units`;
-  const direction = correction > 0 ? 'rose' : 'fell';
-  // Formatted from the absolute value: the direction is already in the verb, and
-  // "fell by (20.00)" reads as a double negative.
-  const amount = money(Math.abs(correction).toFixed(2));
+  const items =
+    units === '1' ? t('purch.oneUnit') : t('purch.nUnits', { n: units });
 
-  return (
-    `${recorded} ${items} sold before this delivery had been costed at an ` +
-    `estimate, so cost of goods sold ${direction} by ${amount}.`
-  );
+  // The direction is a whole clause rather than a verb slotted into a
+  // sentence. "rose" and "fell" do not survive translation as words -- Arabic
+  // and Bangla put the verb elsewhere -- and a sentence assembled from parts
+  // is a sentence no translator can fix.
+  return negative
+    ? t('purch.costFell', {
+        recorded,
+        items,
+        amount: money(magnitude),
+      })
+    : t('purch.costRose', {
+        recorded,
+        items,
+        amount: money(magnitude),
+      });
 }
 
 /**

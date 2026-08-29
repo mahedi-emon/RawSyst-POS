@@ -247,7 +247,7 @@ function TerminalRow({
   // Separate from the state sentence rather than folded into it. A terminal can
   // be waiting for a code AND unlinked, and a reader who fixes only the one
   // they were told about would find the till still refusing to sell.
-  const cannotSell = sellingBlocked(terminal);
+  const cannotSell = sellingBlocked(terminal, t);
 
   return (
     <tr className={gone ? 'detail__row--aside' : undefined}>

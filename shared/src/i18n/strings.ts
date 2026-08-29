@@ -1477,6 +1477,17 @@ export const en = {
   'pos.quantityToReturn': 'Quantity of {item} to return',
   'shift.confirmTheClose': 'Confirm the close',
   'shift.howMany': 'How many {denomination}',
+
+  /* The delivery notice, which lived in a `.ts` file where the scan that swept
+   * the components for hardcoded English does not look. A shop receiving goods
+   * was told about it in English whatever language it had chosen. */
+
+  'purch.alreadyRecorded': 'That delivery was already recorded as {grn}.',
+  'purch.deliveryRecorded': 'Recorded as {grn}. Stock has been updated.',
+  'purch.oneUnit': '1 unit',
+  'purch.nUnits': '{n} units',
+  'purch.costRose': '{recorded} {items} sold before this delivery had been costed at an estimate, so cost of goods sold rose by {amount}.',
+  'purch.costFell': '{recorded} {items} sold before this delivery had been costed at an estimate, so cost of goods sold fell by {amount}.',
 } as const;
 
 /** Every string the interface can show. */
@@ -1489,6 +1500,42 @@ export type Key = keyof typeof en;
  * builder or anything else with no React in it can accept one without
  * importing a component file.
  */
+/** `{name}` substitution.
+ *
+ * Deliberately the whole of it: anything needing more than a named placeholder
+ * is a sentence that should be its own key.
+ *
+ * It lives beside the catalogue rather than inside the React provider because
+ * it is a property of the strings, not of the rendering. Two non-React callers
+ * -- the buying screens' delivery notice and the terminal's "why it cannot
+ * sell" -- take a `Translate` and fall back to English when they are given
+ * none, and their fallback used to be `(key) => en[key]`, which handed the
+ * caller the raw template: a storeman saw "Recorded as {grn}." with the braces
+ * still in it. A fallback that does not interpolate is not a translator.
+ */
+export function interpolate(
+  text: string | undefined,
+  params?: Record<string, string | number>,
+): string {
+  // Undefined cannot happen for `en` -- the key type is derived from it -- and
+  // reaches here only if a locale table and the fallback are both missing a
+  // key, which the compiler already prevents. Empty rather than "undefined" on
+  // a screen, for the day somebody defeats it with a cast.
+  if (text === undefined) return '';
+  if (!params) return text;
+  return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    name in params ? String(params[name]) : whole,
+  );
+}
+
+/** English, for a caller with no locale in scope.
+ *
+ * A receipt printer, a test, or a pure function called outside a component.
+ * The same shape a real `t` has, so a function taking `Translate` behaves
+ * identically whether it was given one or not. */
+export const plainEnglish: Translate = (key, params) =>
+  interpolate(en[key], params);
+
 export type Translate = (
   key: Key,
   params?: Record<string, string | number>,
@@ -2901,6 +2948,17 @@ export const ar: Record<Key, string> = {
   'pos.quantityToReturn': 'كمية {item} المراد إرجاعها',
   'shift.confirmTheClose': 'تأكيد الإغلاق',
   'shift.howMany': 'كم عدد {denomination}',
+
+  /* The delivery notice, which lived in a `.ts` file where the scan that swept
+   * the components for hardcoded English does not look. A shop receiving goods
+   * was told about it in English whatever language it had chosen. */
+
+  'purch.alreadyRecorded': 'سُجِّلت هذه الشحنة من قبل باسم {grn}.',
+  'purch.deliveryRecorded': 'سُجِّلت باسم {grn}. حُدِّث المخزون.',
+  'purch.oneUnit': 'وحدة واحدة',
+  'purch.nUnits': '{n} وحدة',
+  'purch.costRose': '{recorded} {items} بيعت قبل هذه الشحنة كانت مُقدَّرة التكلفة، فارتفعت تكلفة البضاعة المباعة بمقدار {amount}.',
+  'purch.costFell': '{recorded} {items} بيعت قبل هذه الشحنة كانت مُقدَّرة التكلفة، فانخفضت تكلفة البضاعة المباعة بمقدار {amount}.',
 };
 
 /**
@@ -4202,6 +4260,17 @@ export const bn: Partial<Record<Key, string>> = {
   'shift.closeTheTill': 'কাউন্টার বন্ধ করুন',
   'shift.confirmTheClose': 'বন্ধ করা নিশ্চিত করুন',
   'shift.howMany': '{denomination} কয়টি',
+
+  /* The delivery notice, which lived in a `.ts` file where the scan that swept
+   * the components for hardcoded English does not look. A shop receiving goods
+   * was told about it in English whatever language it had chosen. */
+
+  'purch.alreadyRecorded': 'ওই সরবরাহটি আগেই {grn} নামে রেকর্ড হয়েছে।',
+  'purch.deliveryRecorded': '{grn} নামে রেকর্ড হয়েছে। মজুদ হালনাগাদ হয়েছে।',
+  'purch.oneUnit': '১টি একক',
+  'purch.nUnits': '{n}টি একক',
+  'purch.costRose': '{recorded} এই সরবরাহের আগে বিক্রি হওয়া {items}-এর দাম আন্দাজে ধরা ছিল, তাই বিক্রীত পণ্যের ব্যয় {amount} বেড়েছে।',
+  'purch.costFell': '{recorded} এই সরবরাহের আগে বিক্রি হওয়া {items}-এর দাম আন্দাজে ধরা ছিল, তাই বিক্রীত পণ্যের ব্যয় {amount} কমেছে।',
 };
 
 /**

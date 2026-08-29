@@ -1,4 +1,4 @@
-import type { Key } from '../i18n/strings';
+import { plainEnglish, type Key, type Translate } from '../i18n/strings';
 // The E-invoicing screen's own decisions, separated from its rendering.
 //
 // Four things here decide something: how to describe a unit's certification
@@ -178,11 +178,21 @@ export function unitsForStore(
  *
  *  Only the e-invoicing half is answered here. Pairing and being switched on
  *  are already described by devices.describeState, and repeating them would
- *  give a reader two sentences about the same till that could disagree. */
-export function sellingBlocked(t: Terminal): string | null {
+ *  give a reader two sentences about the same till that could disagree.
+ *
+ *  `translate` is the catalogue's t(), passed rather than reached for by a
+ *  hook, which keeps this a pure function the tests can call — the same shape
+ *  `tenderName` uses. It had the sentence written into it in English, while
+ *  `egs.terminalUnlinked` sat in all three catalogues already translated and
+ *  never once read: a Saudi owner was told in English why their till could not
+ *  sell, and the Arabic for it was three lines away. */
+export function sellingBlocked(
+  t: Terminal,
+  translate?: Translate,
+): string | null {
   if (t.status === 'revoked') return null;
   if (!t.egs_unit_id) {
-    return 'This terminal is not linked to an e-invoicing unit, so it cannot ring up a sale. Edit it and choose one.';
+    return (translate ?? plainEnglish)('egs.terminalUnlinked');
   }
   return null;
 }

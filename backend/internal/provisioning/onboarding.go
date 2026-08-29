@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -13,6 +14,50 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
+
+// The markets this product serves, and what each keeps its books in.
+//
+// Not a general ISO list. A company is only usable in a market whose tax rules
+// are in the regulatory registry -- the sale service resolves a VAT rate from
+// `country` at the date of every sale, and refuses when it cannot -- so
+// accepting a country the registry has never heard of does not create a
+// flexible product, it creates an owner who completes seven setup steps and
+// then discovers at the counter that no sale can be rung up.
+//
+// Checked here, where the choice is made and the message can name what IS
+// offered, rather than at the till.
+var supportedCountries = map[string]string{
+	"sa": "Saudi Arabia",
+	"bd": "Bangladesh",
+	"us": "United States",
+}
+
+// Currencies, checked separately from countries.
+//
+// Deliberately NOT "the currency of the country you chose". A business in one
+// country legitimately keeps its books in another's currency, and the product
+// carries the two as separate facts because they are separate facts: `country`
+// decides the tax rules, `base_currency` decides what the figures are in.
+//
+// The set is the one the rest of the product is built for -- the counter's
+// note-and-coin pad in `pos/src/pos/shift.ts` has denominations for exactly
+// these three, and a fourth would leave a cashier counting a drawer with no
+// pad to count it on.
+var supportedCurrencies = map[string]string{
+	"SAR": "Saudi riyal",
+	"BDT": "Bangladeshi taka",
+	"USD": "United States dollar",
+}
+
+// offered lists what a field will accept, for the message that says so.
+func offered(m map[string]string) string {
+	codes := make([]string, 0, len(m))
+	for code := range m {
+		codes = append(codes, strings.ToUpper(code))
+	}
+	sort.Strings(codes)
+	return strings.Join(codes, ", ")
+}
 
 // The seven steps of blueprint A5, in order.
 const (
@@ -199,12 +244,35 @@ func (s *Service) validateStep(step string, all json.RawMessage) error {
 			e.WithField("legal_name", "Enter the registered legal name of the business.")
 			bad = true
 		}
-		if len(v.Country) != 2 {
+		// Case is normalised on the way in rather than demanded of the caller.
+		// The column carries a CHECK that country is lower and currency is
+		// upper, and the INSERT already applies `lower()` and `upper()`; doing
+		// the same here means the comparison below asks about the value and
+		// not about how somebody happened to type it.
+		country := strings.ToLower(strings.TrimSpace(v.Country))
+		currency := strings.ToUpper(strings.TrimSpace(v.BaseCurrency))
+
+		if country == "" {
 			e.WithField("country", "Choose the country the business operates in.")
 			bad = true
+		} else if _, ok := supportedCountries[country]; !ok {
+			// Named rather than "invalid". An owner who picked a country this
+			// release does not serve needs to know which ones it does, and
+			// the honest answer is short.
+			e.WithField("country", "RawSyst serves "+offered(supportedCountries)+
+				" so far. Tax rules are applied from the regulatory register for "+
+				"the country you choose, and there are none on file for that one.")
+			bad = true
 		}
-		if len(v.BaseCurrency) != 3 {
+
+		if currency == "" {
 			e.WithField("base_currency", "Choose the currency you keep your books in.")
+			bad = true
+		} else if _, ok := supportedCurrencies[currency]; !ok {
+			e.WithField("base_currency", "Books can be kept in "+
+				offered(supportedCurrencies)+". Every figure in the product is "+
+				"stated in this currency, including the notes and coins a "+
+				"cashier counts into the drawer.")
 			bad = true
 		}
 		// Mirrors the database constraint, so the Owner sees a helpful message

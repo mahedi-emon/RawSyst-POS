@@ -391,3 +391,159 @@ func TestProvisioningReportsEveryInvalidField(t *testing.T) {
 		}
 	}
 }
+
+// newOwnerSession provisions a tenant and signs its Owner in.
+//
+// Three tests below need an Owner with an empty onboarding wizard in front of
+// them, and the first one in this file does it inline across forty lines
+// because it is also asserting each step of that flow. This is the same thing
+// with none of the assertions: a fixture, not a test.
+func newOwnerSession(t *testing.T, h *harness) string {
+	t.Helper()
+
+	adminToken := h.login(t, h.seedSuperAdmin(t))
+	ownerEmail := "owner" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12] + "@example.test"
+
+	resp := h.do(t, http.MethodPost, "/api/v1/platform/tenants", adminToken,
+		map[string]string{
+			"name":        "Wizard Fixture",
+			"data_region": "sa",
+			"plan_tier":   "professional",
+			"owner_email": ownerEmail,
+			"owner_name":  "Fixture Owner",
+		})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create tenant status = %d, want 201: %s", resp.StatusCode, readBody(t, resp))
+	}
+
+	var created struct {
+		TenantID          string `json:"tenant_id"`
+		TemporaryPassword string `json:"temporary_password"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	tenantID, err := uuid.Parse(created.TenantID)
+	if err != nil {
+		t.Fatalf("bad tenant id: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = h.pool.TxAsPlatform(context.Background(), func(tx pgx.Tx) error {
+			_, e := tx.Exec(context.Background(), `DELETE FROM tenant WHERE id = $1`, tenantID)
+			return e
+		})
+	})
+
+	loginResp := h.do(t, http.MethodPost, "/api/v1/auth/login", "",
+		map[string]string{"email": ownerEmail, "password": created.TemporaryPassword})
+	defer loginResp.Body.Close()
+	if loginResp.StatusCode != http.StatusOK {
+		t.Fatalf("owner login status = %d, want 200", loginResp.StatusCode)
+	}
+	var session struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(loginResp.Body).Decode(&session); err != nil {
+		t.Fatalf("decode login: %v", err)
+	}
+	return session.AccessToken
+}
+
+// A business step naming a market this release does not serve is refused HERE,
+// with a message that says which ones it does.
+//
+// It used to be accepted: the check was `len(country) != 2` and
+// `len(base_currency) != 3`, so "zz" and "XYZ" passed. Nothing then went wrong
+// for six more setup steps — the company was created, its chart of accounts was
+// seeded, terminals could be registered — and the first sign of trouble was a
+// cashier at a counter being told no VAT rate could be resolved, because the
+// regulatory register has no rules on file for a country nobody serves.
+//
+// The register is the authority on which countries have rules. This is the same
+// fact, stated at the moment somebody can still act on it.
+func TestOnboardingRefusesAMarketTheProductDoesNotServe(t *testing.T) {
+	cases := []struct {
+		name  string
+		body  string
+		field string
+		says  string
+	}{
+		{
+			name:  "a country with no rules on file",
+			body:  `{"legal_name":"Nowhere Trading","country":"zz","base_currency":"SAR"}`,
+			field: "country",
+			says:  "BD, SA, US",
+		},
+		{
+			name:  "a currency the counter cannot count",
+			body:  `{"legal_name":"Nowhere Trading","country":"sa","base_currency":"XYZ"}`,
+			field: "base_currency",
+			says:  "BDT, SAR, USD",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			token := newOwnerSession(t, h)
+
+			save := h.doRaw(t, http.MethodPut,
+				"/api/v1/onboarding/steps/business_info", token, c.body)
+			save.Body.Close()
+
+			resp := h.do(t, http.MethodPost,
+				"/api/v1/onboarding/steps/business_info/complete", token, nil)
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+				t.Fatalf("the step was accepted (status %d)", resp.StatusCode)
+			}
+
+			var env struct {
+				Error struct {
+					Fields map[string]string `json:"fields"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			message := env.Error.Fields[c.field]
+			if message == "" {
+				t.Fatalf("no message against %q; fields = %v", c.field, env.Error.Fields)
+			}
+			// The message names what IS accepted. A refusal that does not is a
+			// dead end: the owner has no way to find the answer from here.
+			if !strings.Contains(message, c.says) {
+				t.Errorf("the refusal does not say what is accepted (%s): %s", c.says, message)
+			}
+		})
+	}
+}
+
+// Case is normalised rather than demanded.
+//
+// The column carries a CHECK that country is lower and currency is upper, and
+// the INSERT already applies lower() and upper(). An owner typing "SA" and
+// "sar" into a public API should therefore get a company, not a constraint
+// violation — and the comparison against the supported set has to agree with
+// that, or the normalising happens too late to help.
+func TestOnboardingAcceptsEitherCaseForCountryAndCurrency(t *testing.T) {
+	h := newHarness(t)
+	token := newOwnerSession(t, h)
+
+	save := h.doRaw(t, http.MethodPut,
+		"/api/v1/onboarding/steps/business_info", token,
+		`{"legal_name":"Case Test LLC","country":"SA","base_currency":"sar"}`)
+	save.Body.Close()
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/onboarding/steps/business_info/complete", token, nil)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want the step to complete: %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+}
