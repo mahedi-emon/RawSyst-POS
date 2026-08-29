@@ -1,10 +1,11 @@
 /* RawSyst POS — the design system, in code.
  *
- * docs/ui-ux/00-design-system.md specifies this. Until now nothing implemented
- * it: the POS had grown its own ad-hoc token names (--ink, --line, --accent)
- * that matched no document and no other surface. This file is the documented
- * system, and the old names are kept below as aliases so the existing screens
- * keep working while new work uses the real vocabulary.
+ * docs/ui-ux/00-design-system.md specifies this. For a long time nothing
+ * implemented it: the POS had grown its own ad-hoc token names (--ink, --line,
+ * --accent) that matched no document and no other surface. This file is the
+ * documented system. The old names lived here as aliases for a while so the
+ * till could migrate a screen at a time; that is done, and they are gone —
+ * there is now one name for each value, in one place.
  *
  * Everything here is product-wide. A change made in this file must be right for
  * the till under fluorescent light, the owner's phone at midnight, and an
@@ -285,26 +286,6 @@
   --shadow-3: 0 20px 48px rgb(0 0 0 / 60%);
 
   color-scheme: dark;
-}
-
-/* ---------------------------------------------------------------------------
- * Compatibility aliases
- *
- * The POS screens were written against names that predate this file. Aliasing
- * rather than renaming everything at once keeps that work untouched and lets
- * it migrate screen by screen; new code uses the real names above.
- * ------------------------------------------------------------------------- */
-
-:root {
-  --ink: var(--text);
-  --ink-quiet: var(--text-muted);
-  --line: var(--border);
-  --accent: var(--brand);
-  --accent-ink: var(--on-brand);
-  --warn-bg: var(--warning-subtle);
-  --warn-line: var(--warning);
-  --radius: var(--radius-md);
-  --tap: var(--tap-pos);
 }
 
 /* ---------------------------------------------------------------------------
@@ -933,7 +914,7 @@ select.input {
 .ds-check > input {
   inline-size: 18px;
   block-size: 18px;
-  accent-color: var(--accent);
+  accent-color: var(--brand);
   cursor: pointer;
 }
 
@@ -1352,7 +1333,7 @@ select.input {
   }
 
   .ds-table tr {
-    border: 1px solid var(--line);
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
     margin-block-end: var(--space-3);
     padding: var(--space-3);
@@ -1373,7 +1354,7 @@ select.input {
    * heading — an actions cell — gets no label and no empty gap. */
   .ds-table td[data-label]::before {
     content: attr(data-label);
-    color: var(--ink-quiet);
+    color: var(--text-muted);
     font-size: 0.75rem;
     font-weight: 500;
     text-align: start;
@@ -1631,7 +1612,7 @@ select.input {
     gap: 0;
 
     background: var(--surface);
-    border-block-start: 1px solid var(--line);
+    border-block-start: 1px solid var(--border);
     /* Clear of the home indicator on a phone with a gesture bar. */
     padding-block-end: env(safe-area-inset-bottom, 0);
   }
@@ -1656,7 +1637,7 @@ select.input {
   }
 
   .app__navlink--on {
-    border-block-start-color: var(--accent);
+    border-block-start-color: var(--brand);
   }
 
   /* Room for the bar, so the last row of a table is not sitting under it. */

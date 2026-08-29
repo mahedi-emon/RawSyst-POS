@@ -13,10 +13,18 @@
  * would expect: the till was dark and green while the back office was light and
  * blue, on the same product, for the same shop, on the same afternoon.
  *
- * Every token below now comes from `@rawsyst/shared/design-system.css`, which
- * defines `--ink`, `--line`, `--accent`, `--radius` and `--tap` as aliases for
- * exactly this reason. A colour this file needs and the system does not have is
- * a change to the system.
+ * Every token below now comes from `@rawsyst/shared/design-system.css`, and by
+ * its real name. There was an intermediate step where the system carried
+ * `--ink`, `--line`, `--accent`, `--radius` and `--tap` as aliases so this file
+ * could migrate a screen at a time; that migration is finished and the aliases
+ * are gone. Two names for one value is the shape that let `.field__input` and
+ * `.input` drift apart until one of them had no rule at all — worth not
+ * leaving lying around once it has served its purpose.
+ *
+ * A colour this file needs and the system does not have is a change to the
+ * system. So is a spacing step: everything here sits on the 4px scale, except
+ * a couple of hairline offsets and one negative pull that the scale has no
+ * name for.
  */
 
 * { box-sizing: border-box; }
@@ -29,7 +37,7 @@
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--ink);
+  color: var(--text);
 }
 
 .app {
@@ -136,8 +144,8 @@ body {
    * browser cannot pair, so this screen has never been in a browser test, and
    * the machine it was developed on was wider than the machine it sells on. */
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 16px;
-  padding: 16px;
+  gap: var(--space-4);
+  padding: var(--space-4);
 }
 @media (max-width: 900px) {
   .counter { grid-template-columns: 1fr; }
@@ -199,13 +207,13 @@ body {
 
 .cart { width: 100%; border-collapse: collapse; }
 .cart th, .cart td {
-  padding: 10px 8px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--border);
   text-align: start;
 }
-.cart th { font-size: 13px; color: var(--ink-quiet); font-weight: 600; }
+.cart th { font-size: 13px; color: var(--text-muted); font-weight: 600; }
 .cart__name { display: block; }
-.cart__sku { display: block; font-size: 12px; color: var(--ink-quiet); }
+.cart__sku { display: block; font-size: 12px; color: var(--text-muted); }
 
 /* The totals block, which is the half of the screen the customer reads.
  *
@@ -269,31 +277,31 @@ body {
 
 .splash, .empty {
   min-height: 60vh;
-  display: grid; place-content: center; gap: 8px;
+  display: grid; place-content: center; gap: var(--space-2);
   text-align: center;
-  padding: 24px;
+  padding: var(--space-5);
 }
 
 /* --- queue status --- */
 
 .queue {
-  margin: 0 0 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border-inline-start: 3px solid var(--line);
+  margin: 0 0 var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border-inline-start: 3px solid var(--border);
   background: var(--bg);
   font-size: 14px;
 }
-.queue--ok   { border-inline-start-color: var(--accent); }
-.queue--warn { border-inline-start-color: var(--warn-line); background: var(--warn-bg); }
+.queue--ok   { border-inline-start-color: var(--brand); }
+.queue--warn { border-inline-start-color: var(--warning); background: var(--warning-subtle); }
 .queue--bad  { border-inline-start-color: var(--danger); }
 
 .counter__notice {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border-inline-start: 3px solid var(--accent);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--brand);
   background: var(--bg);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 /* --- Held sales, the receipt, and the two-line status --------------------
@@ -303,16 +311,16 @@ body {
  * this product is built for.
  */
 
-.status { display: grid; gap: 6px; }
+.status { display: grid; gap: var(--space-2); }
 
-.held { margin-block: 16px; }
+.held { margin-block: var(--space-4); }
 
 .held__title {
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ink-quiet);
-  margin-block-end: 8px;
+  color: var(--text-muted);
+  margin-block-end: var(--space-2);
 }
 
 .held__list {
@@ -320,7 +328,7 @@ body {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .held__list button {
@@ -329,9 +337,9 @@ body {
 }
 
 .receipt {
-  margin-block-start: 16px;
-  padding-block-start: 16px;
-  border-block-start: 1px solid var(--line);
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border);
 }
 
 /* The exact text the thermal printer receives, so what the cashier reads on
@@ -347,10 +355,10 @@ body {
   direction: ltr;
   text-align: start;
   background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 12px;
-  margin-block-end: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-block-end: var(--space-2);
 }
 
 /* Printing gives the customer the receipt and nothing else — no counter, no
@@ -370,9 +378,9 @@ body {
 
 /* --- Returns ------------------------------------------------------------- */
 
-.app__nav { display: flex; gap: 8px; margin-inline-start: 16px; }
+.app__nav { display: flex; gap: var(--space-2); margin-inline-start: var(--space-4); }
 
-.returns { padding: 16px; display: grid; gap: 12px; max-inline-size: 720px; }
+.returns { padding: var(--space-4); display: grid; gap: var(--space-3); max-inline-size: 720px; }
 
 .returns__title { font-size: 1.1rem; margin: 0; }
 
@@ -385,41 +393,41 @@ body {
  * against the start edge, with the tap height a till still needs. */
 .returns__modes {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .returns__modes .button {
   min-inline-size: 8rem;
-  padding-inline: 20px;
+  padding-inline: var(--space-5);
 }
 
-.returns__reason { display: grid; gap: 4px; font-size: 0.85rem; }
+.returns__reason { display: grid; gap: var(--space-1); font-size: 0.85rem; }
 
 /* The sale the reference resolved to. Quiet, one line, and always in the same
  * place: it is there to be glanced at against the paper receipt, not read. */
 .returns__found {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
+  gap: var(--space-1) var(--space-4);
   align-items: baseline;
   margin: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--surface);
   font-size: 0.9rem;
 }
 
-.returns__found span { color: var(--ink-quiet); }
+.returns__found span { color: var(--text-muted); }
 
 .returns__reason input {
-  min-block-size: var(--tap);
-  padding-inline: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  min-block-size: var(--tap-pos);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
 }
 
 /* A line with nothing left to give back is not merely greyed out — it cannot
@@ -503,7 +511,7 @@ body {
 .who__name { font-weight: 600; }
 
 .who__meta {
-  color: var(--ink-quiet);
+  color: var(--text-muted);
   font-size: 14px;
   /* Takes the slack so the two buttons stay together at the end of the row,
    * in both directions of script. */
@@ -524,7 +532,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* What pressing it would put on the account. Shown on the button because the
@@ -536,19 +544,19 @@ body {
 }
 
 .credit {
-  margin: 8px 0 0;
-  padding: 8px 10px;
-  border-inline-start: 3px solid var(--accent);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--brand);
   background: var(--bg);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 14px;
 }
 
 /* A refusal is not an error in the software — it is the shop's own credit
  * policy working. Marked clearly, but not as a fault. */
 .credit--bad {
-  border-inline-start-color: var(--warn-line);
-  background: var(--warn-bg);
+  border-inline-start-color: var(--warning);
+  background: var(--warning-subtle);
   font-weight: 500;
 }
 
@@ -556,19 +564,19 @@ body {
 
 .taken {
   list-style: none;
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .taken__row {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  border-block-end: 1px solid var(--line);
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-block-end: 1px solid var(--border);
 }
 
 /* --- Choosing a customer -------------------------------------------------
@@ -606,7 +614,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .picker__title { margin: 0; font-size: 18px; }
@@ -656,20 +664,20 @@ body {
 }
 
 .picker__hint {
-  padding: 12px 4px;
-  color: var(--ink-quiet);
+  padding: var(--space-3) var(--space-1);
+  color: var(--text-muted);
 }
 
 .picker__row {
   inline-size: 100%;
-  min-block-size: var(--tap);
+  min-block-size: var(--tap-pos);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 10px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -680,16 +688,16 @@ body {
 /* One highlight, driven by the same state whether it was reached by arrow key
  * or by mouse. Two independent hover and keyboard highlights is how a list
  * ends up showing a cashier two different "selected" rows at once. */
-.picker__row--on { background: var(--bg); outline: 2px solid var(--accent); }
+.picker__row--on { background: var(--bg); outline: 2px solid var(--brand); }
 
 .picker__who { display: grid; gap: 2px; }
 .picker__name { font-weight: 600; }
-.picker__meta { color: var(--ink-quiet); font-size: 13px; }
+.picker__meta { color: var(--text-muted); font-size: 13px; }
 
 .picker__credit { display: grid; gap: 2px; justify-items: end; text-align: end; }
 .picker__available { font-weight: 600; }
 .picker__available--none { color: var(--danger); }
-.picker__nocredit { color: var(--ink-quiet); font-size: 14px; }
+.picker__nocredit { color: var(--text-muted); font-size: 14px; }
 
 /* On a phone the dialog fills the screen: a cashier holding a handheld has no
  * spare width for a backdrop margin, and the search box must stay reachable
@@ -720,17 +728,17 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: var(--space-5);
   background: var(--bg);
 }
 
 .setup__card {
   inline-size: min(30rem, 100%);
   display: grid;
-  gap: 12px;
-  padding: 28px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
@@ -738,7 +746,7 @@ body {
 
 .setup__lede {
   margin: 0;
-  color: var(--ink-quiet);
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
@@ -755,47 +763,47 @@ body {
   text-align: center;
   text-transform: uppercase;
   min-block-size: var(--tap-pos, 64px);
-  padding-inline: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
 }
 
 .setup__code:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-.setup__code::placeholder { color: var(--line); letter-spacing: 0.14em; }
-.setup__code:disabled { background: var(--bg); color: var(--ink-quiet); }
+.setup__code::placeholder { color: var(--border); letter-spacing: 0.14em; }
+.setup__code:disabled { background: var(--bg); color: var(--text-muted); }
 
-.setup__help { margin: 0; font-size: 14px; color: var(--ink-quiet); }
+.setup__help { margin: 0; font-size: 14px; color: var(--text-muted); }
 
 .setup__failure {
   margin: 0;
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
   border-inline-start: 3px solid var(--danger);
-  background: var(--warn-bg);
-  border-radius: 8px;
+  background: var(--warning-subtle);
+  border-radius: var(--radius-md);
 }
 
 .setup__failure p { margin: 0; }
 
 /* What to try next, and why it is quieter than the refusal: the refusal is what
  * happened, this is what to do, and a reader needs them in that order. */
-.setup__advice { font-size: 14px; color: var(--ink-quiet); }
+.setup__advice { font-size: 14px; color: var(--text-muted); }
 
 .setup__go { inline-size: 100%; }
 
 .setup__foot {
   margin: 0;
-  padding-block-start: 4px;
+  padding-block-start: var(--space-1);
   font-size: 14px;
-  color: var(--ink-quiet);
-  border-block-start: 1px solid var(--line);
+  color: var(--text-muted);
+  border-block-start: 1px solid var(--border);
 }
 
 /* ---------------------------------------------------------------------------
@@ -850,7 +858,7 @@ body {
 .shift__figures--z {
   margin-block-end: var(--space-4);
   padding-block-end: var(--space-4);
-  border-block-end: 1px solid var(--line);
+  border-block-end: 1px solid var(--border);
 }
 
 /* Said plainly rather than styled as a warning. A blind close is the shop
@@ -882,7 +890,7 @@ body {
 .shift__xray {
   margin-block-start: var(--space-5);
   padding-block-start: var(--space-4);
-  border-block-start: 1px solid var(--line);
+  border-block-start: 1px solid var(--border);
   display: grid;
   gap: var(--space-3);
 }
@@ -901,7 +909,7 @@ body {
   justify-content: space-between;
   gap: var(--space-3);
   padding-block-start: var(--space-3);
-  border-block-start: 1px solid var(--line);
+  border-block-start: 1px solid var(--border);
 }
 
 .shift__expected strong { font-size: 1.3rem; }
@@ -940,8 +948,8 @@ body {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid var(--warn-line);
-  background: var(--warn-bg);
+  border: 1px solid var(--warning);
+  background: var(--warning-subtle);
   border-radius: var(--radius-sm);
 }
 
@@ -1033,7 +1041,7 @@ body {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   text-align: center;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
@@ -1043,9 +1051,9 @@ body {
 .denom__face--coin { border-radius: var(--radius-full); }
 
 .denom__count {
-  min-block-size: var(--tap);
+  min-block-size: var(--tap-pos);
   inline-size: 100%;
-  padding: 6px 8px;
+  padding: var(--space-2) var(--space-2);
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
   border: 1px solid var(--border-strong);
@@ -1077,16 +1085,16 @@ body {
 .counter__shift {
   margin: 0;
   font-size: 14px;
-  color: var(--ink-quiet);
+  color: var(--text-muted);
 }
 
 /* The one state at the counter that stops a sale. Styled as a refusal rather
  * than as a hint, because the pay button is disabled and the cashier needs to
  * know why without hunting for it. */
 .counter__shift--none {
-  padding: 10px 12px;
-  color: var(--ink);
+  padding: var(--space-3) var(--space-3);
+  color: var(--text);
   border-inline-start: 3px solid var(--danger);
-  background: var(--warn-bg);
-  border-radius: 8px;
+  background: var(--warning-subtle);
+  border-radius: var(--radius-md);
 }

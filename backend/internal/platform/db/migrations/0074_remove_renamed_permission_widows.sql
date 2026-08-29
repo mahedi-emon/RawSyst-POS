@@ -1,0 +1,36 @@
+-- Two permission verbs that were renamed, whose old grants were left behind.
+--
+-- `device.view` / `device.manage` were seeded by 0005. 0037 introduced the
+-- terminal-enrolment module under the plural `devices.view` / `devices.manage`
+-- and the routes use the plural. `compliance.view` was seeded by 0005; 0043
+-- introduced the e-invoicing unit module as `einvoicing.view`.
+--
+-- Both renames were complete — 0037 grants `devices.view` to owner, store
+-- manager and auditor, matching 0005's grants exactly, and 0043 grants
+-- `einvoicing.view` to owner, accountant, store manager and auditor, matching
+-- `compliance.view` — so nobody lost access when the verbs moved. What was left
+-- behind is four rows that grant nothing, because no route asks for them.
+--
+-- # Why remove rows that do no harm
+--
+-- They do harm to the next reader. `role_permission` is free text by design:
+-- blueprint A6.2 lists fourteen verbs and its own worked example then uses
+-- three that are not in the list, so the verb set has to be extensible per
+-- module and there is no catalogue table to check a name against. That makes
+-- the seeded grants the only statement of which verbs exist. A grant for a verb
+-- nothing requires is that statement lying.
+--
+-- It will lie to a person first: the role editor is a Phase 2 screen, and it
+-- will build its list of toggles from exactly this table. An owner would be
+-- offered "device.view" and "compliance.view" beside the verbs that work, would
+-- grant them to a role, and would find the screens still refused — with the
+-- product showing them a switch it does not read.
+--
+-- `compliance.retry_submission` is NOT removed. It is also unroutable, but for
+-- a different reason: submission to ZATCA is automatic and strictly ordered,
+-- oldest first, and the compliance screen tells the reader so in as many words.
+-- That is a decision about the product, not a leftover from a rename, and the
+-- verb is where the decision would be reversed if it ever were.
+
+DELETE FROM role_permission
+WHERE permission IN ('device.view', 'device.manage', 'compliance.view');

@@ -3,12 +3,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Every permission-guarded route must refuse a signed-in user who does not
@@ -171,4 +173,180 @@ func TestEveryRouteDeclaresItsAccessHonestly(t *testing.T) {
 		t.Fatal("the server registered no routes at all")
 	}
 	t.Logf("%d routes declared", len(seen))
+}
+
+// A permission a route requires must be one some role actually holds.
+//
+// `TestEveryRouteDeclaresItsAccess` proves each route NAMES a permission. It
+// cannot prove the permission EXISTS, because there is no catalogue table to
+// check against: `role_permission` is free text by design — blueprint A6.2
+// lists fourteen verbs and then uses three that are not in the list, so the
+// verb set has to be extensible per module.
+//
+// The cost of that freedom is that `purchasing.viewe` compiles, registers,
+// passes every existing guard, and returns 403 to every user of the product
+// forever. Nobody finds it until a customer reports a screen that will not
+// open — and the report says "permission denied", which reads as a
+// configuration problem at their end rather than a typo at ours.
+//
+// What makes it checkable is the seeded system roles. A permission granted to
+// no role is a permission nobody can hold.
+func TestEveryRoutePermissionIsOneSomeRoleHolds(t *testing.T) {
+	h := newHarness(t)
+
+	held := map[string]bool{}
+	err := h.pool.TxAsPlatform(context.Background(), func(tx pgx.Tx) error {
+		rows, e := tx.Query(context.Background(),
+			`SELECT DISTINCT permission FROM role_permission`)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p string
+			if e := rows.Scan(&p); e != nil {
+				return e
+			}
+			held[p] = true
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		t.Fatalf("reading the seeded permissions: %v", err)
+	}
+	if len(held) == 0 {
+		t.Fatal("no permissions are seeded at all, so this proves nothing")
+	}
+
+	unreachable := map[string][]string{}
+	for _, rt := range (&Server{}).Routes() {
+		if rt.Access != AccessPermission {
+			continue
+		}
+		p := strings.TrimSpace(rt.Permission)
+		if p == "" || held[p] {
+			continue
+		}
+		unreachable[p] = append(unreachable[p], rt.Method+" "+rt.Pattern)
+	}
+
+	for permission, routes := range unreachable {
+		t.Errorf("no role holds %q, so these routes refuse everybody:\n    %s",
+			permission, strings.Join(routes, "\n    "))
+	}
+}
+
+// And the other direction: a seeded permission with no route behind it.
+//
+// Reported rather than failed. Seeding a module's verbs before its routes is
+// deliberate here — the chart of accounts carries accounts before anything
+// posts to them, and `inventory.adjust_stock` and `inventory.transfer_stock`
+// are seeded for the Phase 2 stock-adjustment module in the same spirit. The
+// list exists so the next reader can tell that kind apart from a verb that was
+// renamed and left a widow behind.
+func TestSeededPermissionsWithNoRoute(t *testing.T) {
+	h := newHarness(t)
+
+	// Every seeded verb that guards no route, and the reason it does not.
+	//
+	// A ledger rather than a pass/fail, because "no route requires this" means
+	// four different things and only one of them is a mistake. What the test
+	// enforces is that somebody DECIDED: a verb reaching a role without an
+	// entry here fails, and the entry has to say which kind it is.
+	//
+	// The kinds, and why each is legitimate:
+	//
+	//   structural — the permission names a decision enforced by the shape of
+	//     the data rather than by a check. `catalog.view_cost_price` is the
+	//     clearest: the till's `SellableVariant` has no cost field at all, so
+	//     cost cannot reach a terminal whatever anybody's role says. A check
+	//     would be weaker than the type, not stronger.
+	//
+	//   local — the action never reaches the server. Holding and resuming a
+	//     cart happens in the till's own SQLite; a draft that is voided was
+	//     never sent. There is no route to guard because there is no request.
+	//
+	//   awaited — seeded ahead of the module that will use it, deliberately,
+	//     the way the chart of accounts carries accounts before anything posts
+	//     to them. Must name the phase.
+	//
+	//   widow — a verb that was renamed, whose old grant was left behind. This
+	//     is the kind that is a mistake, and there should be none: 0071 removed
+	//     the two that existed. An entry appearing here again means a rename
+	//     dropped its cleanup.
+	explained := map[string]string{
+		// structural
+		"catalog.view_cost_price": "structural — SellableVariant carries no cost field, so no till can receive one",
+		"catalog.view_profit_margin": "structural — margin is derived from cost and is absent for the same reason",
+
+		// local to the terminal
+		"sales.hold":       "local — a held cart lives in the till's own SQLite and is never sent",
+		"sales.void_draft": "local — a draft that is voided was never sent to the server",
+		"sales.discount":   "local — a discount is a field on the sale the till submits, priced and floor-checked server-side by sales.create",
+
+		// awaited
+		"inventory.adjust_stock":      "awaited — Phase 2, stock adjustments and counts",
+		"inventory.transfer_stock":    "awaited — Phase 2, inter-warehouse transfers",
+		"identity.create":             "awaited — Phase 2, user management; the wizard's People step is optional and says so",
+		"identity.manage_roles":       "awaited — Phase 2, the role editor",
+		"catalog.edit":                "awaited — Phase 2, product editing; Phase 1 creates and retires",
+		"accounting.approve":          "awaited — Phase 2, journal approval workflow",
+		"accounting.close_period":     "awaited — Phase 2; the period lock itself is enforced in the database from 0015",
+		"accounting.reopen_period":    "awaited — Phase 2, as above",
+		"report.export":               "awaited — Phase 3, report generation and delivery (design 08 job kinds)",
+		"compliance.retry_submission": "awaited — deliberately not offered: submission is automatic and ordered, and the screen says so",
+	}
+
+	required := map[string]bool{}
+	for _, rt := range (&Server{}).Routes() {
+		if rt.Access == AccessPermission {
+			required[strings.TrimSpace(rt.Permission)] = true
+		}
+	}
+
+	var seeded []string
+	err := h.pool.TxAsPlatform(context.Background(), func(tx pgx.Tx) error {
+		rows, e := tx.Query(context.Background(),
+			`SELECT DISTINCT permission FROM role_permission ORDER BY permission`)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p string
+			if e := rows.Scan(&p); e != nil {
+				return e
+			}
+			seeded = append(seeded, p)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		t.Fatalf("reading the seeded permissions: %v", err)
+	}
+	if len(seeded) == 0 {
+		t.Fatal("no permissions are seeded at all, so this proves nothing")
+	}
+
+	for _, p := range seeded {
+		if required[p] {
+			continue
+		}
+		if why, decided := explained[p]; decided {
+			t.Logf("%-28s %s", p, why)
+			continue
+		}
+		t.Errorf("%q is granted to a role and guards no route, and no reason is "+
+			"recorded. Either a route is missing, or the verb was renamed and "+
+			"this grant is a widow. Add it to `explained` with its kind.", p)
+	}
+
+	// The other direction: an entry here for a verb that DOES guard a route is
+	// a stale note, and a stale note is how a ledger stops being read.
+	for p := range explained {
+		if required[p] {
+			t.Errorf("%q is listed as having no route, but a route requires it. "+
+				"Remove the entry.", p)
+		}
+	}
 }

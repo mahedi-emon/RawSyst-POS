@@ -667,7 +667,7 @@
   align-items: start;
   padding-block-end: var(--space-3);
   margin-block-end: var(--space-3);
-  border-block-end: 1px solid var(--line);
+  border-block-end: 1px solid var(--border);
 }
 
 .setupw__drop { align-self: center; }
@@ -733,7 +733,7 @@
   gap: var(--space-3);
   margin-block-start: var(--space-5);
   padding-block-start: var(--space-4);
-  border-block-start: 1px solid var(--line);
+  border-block-start: 1px solid var(--border);
 }
 
 .setupw__review {
@@ -1257,7 +1257,7 @@
 .matrix__search,
 .matrix__select {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* The search box is the widest control: it is the one a shop with forty
@@ -1436,7 +1436,7 @@
   justify-items: center;
   text-align: center;
   padding-block-start: var(--space-3);
-  border-block-start: 1px solid var(--line, var(--border));
+  border-block-start: 1px solid var(--border);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1488,7 +1488,7 @@
 /* Which types a client has written for themselves, at a glance. A dot rather
  * than a word: the tab already carries the name it needs. */
 .tmpl__dot {
-  margin-inline-start: 4px;
+  margin-inline-start: var(--space-1);
   color: var(--success);
   font-weight: 700;
 }
