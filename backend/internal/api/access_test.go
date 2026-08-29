@@ -403,10 +403,16 @@ func TestOwnerHoldsTheFullPermissionSet(t *testing.T) {
 	for _, p := range me.Permissions {
 		held[p] = true
 	}
+	// `einvoicing.view`, not `compliance.view`. The e-invoicing module renamed
+	// the verb when it arrived in 0043 and granted the new name to every role
+	// that had held the old one, so nobody lost access — but the old grant was
+	// left behind, and this list went on naming it. 0074 removed the widow;
+	// this is the verb that has meant "can see where the invoices have got to"
+	// ever since.
 	for _, required := range []string{
 		"catalog.view_cost_price", "catalog.view_profit_margin",
 		"accounting.close_period", "accounting.reopen_period",
-		"identity.manage_roles", "compliance.view", "sales.refund",
+		"identity.manage_roles", "einvoicing.view", "sales.refund",
 	} {
 		if !held[required] {
 			t.Errorf("the seeded Owner role is missing %q", required)

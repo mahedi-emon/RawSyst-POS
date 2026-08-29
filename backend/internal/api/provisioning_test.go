@@ -151,14 +151,58 @@ func TestProvisionTenantThenOwnerCompletesOnboarding(t *testing.T) {
 	for _, p := range me.Permissions {
 		held[p] = true
 	}
-	for _, required := range []string{
-		"identity.manage_roles", "accounting.close_period",
-		"catalog.view_cost_price", "compliance.view",
-	} {
-		if !held[required] {
-			t.Fatalf("the provisioned Owner is missing %q; provisioning did not "+
-				"attach the Owner role correctly", required)
+
+	// Compared against the seeded Owner role rather than against a list.
+	//
+	// This used to name four verbs as a spot check. That reads as an assertion
+	// about those four and is not one — the claim in the failure message is
+	// that provisioning attached the ROLE, and a sample of four cannot show
+	// that. It also goes stale: one of the four was `compliance.view`, which
+	// was renamed to `einvoicing.view` when the e-invoicing module arrived and
+	// removed by 0074, and the test then failed for a reason that had nothing
+	// to do with provisioning.
+	//
+	// Asking the database what the Owner role holds and requiring all of it
+	// proves the actual property, and cannot drift when a verb is added,
+	// renamed or retired.
+	var seeded []string
+	if err := h.pool.TxAsPlatform(context.Background(), func(tx pgx.Tx) error {
+		rows, e := tx.Query(context.Background(), `
+			SELECT rp.permission
+			FROM role_permission rp
+			JOIN role r ON r.id = rp.role_id
+			WHERE r.key = 'owner' AND r.tenant_id IS NULL
+			ORDER BY rp.permission`)
+		if e != nil {
+			return e
 		}
+		defer rows.Close()
+		for rows.Next() {
+			var p string
+			if e := rows.Scan(&p); e != nil {
+				return e
+			}
+			seeded = append(seeded, p)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatalf("reading the seeded Owner role: %v", err)
+	}
+	if len(seeded) < 20 {
+		t.Fatalf("the seeded Owner role holds only %d permissions, which is too "+
+			"few for this to be proving anything", len(seeded))
+	}
+
+	var absent []string
+	for _, p := range seeded {
+		if !held[p] {
+			absent = append(absent, p)
+		}
+	}
+	if len(absent) > 0 {
+		t.Fatalf("the provisioned Owner is missing %d of the %d permissions the "+
+			"seeded Owner role holds, so provisioning did not attach the role "+
+			"correctly: %s", len(absent), len(seeded), strings.Join(absent, ", "))
 	}
 
 	// --- 4. setup starts at the first step ---
