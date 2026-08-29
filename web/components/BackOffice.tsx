@@ -36,6 +36,7 @@ import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
 import { PeopleScreen } from '@rawsyst/shared/people/PeopleScreen';
+import { ShopMark } from '@rawsyst/shared/settings/ShopMark';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
 import { ExpensesScreen } from '@rawsyst/shared/expenses/ExpensesScreen';
@@ -393,11 +394,17 @@ export function BackOffice() {
         className={`bo__rail${railOpen ? ' bo__rail--open' : ''}${drawer ? ' bo__rail--drawer' : ''}`}
         aria-label={t('nav.sections')}
       >
+        {/* The SHOP's name and logo, not the vendor's.
+            A shopkeeper looking at their own till software has no reason to be
+            reminded whose product it is on every screen. `RawSyst` remains the
+            fallback for a tenant that has no company yet, which is the state
+            during onboarding. */}
         <div className="bo__railhead">
-          <span className="bo__mark" aria-hidden="true">
-            R
-          </span>
-          <span className="bo__wordmark">RawSyst</span>
+          <ShopMark
+            companyId={activeCompany}
+            name={hereName}
+            version={reloadKey}
+          />
         </div>
 
         <div className="bo__nav">
@@ -553,7 +560,10 @@ export function BackOffice() {
       ) : section === 'einvoicing' && maySeeEInvoicing ? (
         <EgsUnitsScreen companyId={activeCompany} />
       ) : section === 'branding' && maySeeSetup ? (
-        <BrandingScreen companyId={activeCompany} />
+        <BrandingScreen
+          companyId={activeCompany}
+          onLogoChanged={() => setReloadKey((n) => n + 1)}
+        />
       ) : section === 'inventory' && maySeeInventory ? (
         <VariantMatrixScreen companyId={activeCompany} />
       ) : mayReadFigures ? (

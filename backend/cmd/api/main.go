@@ -41,7 +41,52 @@ import (
 // version is set at build time via -ldflags.
 var version = "dev"
 
+// healthcheck asks the running server whether it is ready, and exits 0 or 1.
+//
+// The container image is `scratch`: no shell, no curl, no wget. That is
+// deliberate — an image with no shell gives a command-injection bug nowhere to
+// go, and there is nothing to patch when a CVE lands in one. The cost is that
+// `docker healthcheck` has nothing to run, so the binary answers for itself.
+//
+// `/readyz` and not `/healthz`. The first says the database answers; the second
+// says only that the process is alive, and a process that is alive with no
+// database is exactly the one that must stop receiving traffic.
+func healthcheck() error {
+	addr := os.Getenv("RAWSYST_HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	// A bare port needs a host to dial. Localhost, always: this runs inside the
+	// same container as the server it is asking about.
+	if strings.HasPrefix(addr, ":") {
+		addr = "127.0.0.1" + addr
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + addr + "/readyz")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("not ready: %s", resp.Status)
+	}
+	return nil
+}
+
 func main() {
+	// Before anything else, and before any configuration is read: a health
+	// check must not need a JWT secret to tell you the server is up.
+	for _, arg := range os.Args[1:] {
+		if arg == "-healthcheck" || arg == "--healthcheck" {
+			if err := healthcheck(); err != nil {
+				fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "api: %v\n", err)
 		os.Exit(1)

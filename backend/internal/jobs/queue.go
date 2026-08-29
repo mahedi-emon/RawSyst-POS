@@ -231,6 +231,39 @@ func (q *Queue) Reap(ctx context.Context, olderThan time.Duration) (int, error) 
 	return released, err
 }
 
+// Prune deletes what has finished and means nothing.
+//
+// Finished jobs and expired credentials, and only those. See migration 0075 for
+// what is deliberately left alone — the audit log, the ZATCA submission
+// attempts, and anything posted to the books, none of which are churn even when
+// they are old.
+//
+// Returns the two counts separately, because they answer different questions: a
+// large job count means the queue has been busy, and a large credential count
+// means a lot of people have signed in. Summed, neither is legible.
+func (q *Queue) Prune(
+	ctx context.Context, keepJobsFor, credentialGrace time.Duration,
+) (jobs int, credentials int, err error) {
+	// Seconds through `make_interval`, not `Duration.String()`.
+	//
+	// Go formats a duration as "168h0m0s", which Postgres happens to parse, and
+	// as "1ns", which it does not — it has no unit below a microsecond. Relying
+	// on the two formats agreeing works until somebody passes a duration whose
+	// Go spelling has no Postgres reading, and then it fails at runtime in the
+	// housekeeping nobody watches. A number of seconds has one meaning in both.
+	err = q.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT prune_finished_jobs(make_interval(secs => $1))`,
+			keepJobsFor.Seconds()).Scan(&jobs); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx,
+			`SELECT prune_expired_credentials(make_interval(secs => $1))`,
+			credentialGrace.Seconds()).Scan(&credentials)
+	})
+	return jobs, credentials, err
+}
+
 // Backoff is the retry schedule from design document 08 §4.
 //
 //	attempt 1  immediate

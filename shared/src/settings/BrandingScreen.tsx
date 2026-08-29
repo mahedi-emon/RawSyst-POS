@@ -49,7 +49,17 @@ type Load =
   | { state: 'failed'; message: string; offline: boolean }
   | { state: 'denied' };
 
-export function BrandingScreen({ companyId }: { companyId: string }) {
+export function BrandingScreen({
+  companyId,
+  onLogoChanged,
+}: {
+  companyId: string;
+  /** Told when the logo is set or removed, so the shop mark in the navigation
+   *  refetches. Without it the rail keeps showing the old picture until the
+   *  next full reload, and the person who just uploaded one concludes it did
+   *  not work. */
+  onLogoChanged?: () => void;
+}) {
   const t = useT();
   const { client, can } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
@@ -140,6 +150,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
       const logo = await putLogo(client, companyId, data);
       setLoad({ state: 'ready', logo });
       setSaved(t('brand.saved'));
+      onLogoChanged?.();
     } catch (err) {
       setProblem(explain(err, t));
     } finally {
@@ -158,6 +169,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
       await deleteLogo(client, companyId);
       setLoad({ state: 'ready', logo: null });
       setSaved(t('brand.removed'));
+      onLogoChanged?.();
     } catch (err) {
       setProblem(explain(err, t));
     } finally {

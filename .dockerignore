@@ -1,0 +1,40 @@
+# What must never reach a build context.
+#
+# Not only for size — though that matters, since the context is uploaded to the
+# daemon on every build and `node_modules` alone is several hundred megabytes.
+# The first three entries are the ones that matter for safety: a `.env` copied
+# into an image is a credential in a layer, readable by anyone who can pull it,
+# and `docker history` will show it even after a later layer deletes the file.
+
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+.github
+.serena
+.claude
+.cursor
+
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/target
+
+# Screenshots and test output.
+shots
+till-shots
+e2e/shots
+
+# Editor and OS noise.
+.DS_Store
+Thumbs.db
+*.swp
+
+# Documentation and specifications do not run.
+docs
+zatca-docs
+*.md
+!README.md

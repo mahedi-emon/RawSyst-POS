@@ -55,6 +55,14 @@ type Worker struct {
 	// assumed abandoned. Longer than the slowest handler, or a job still
 	// working would be released and run twice.
 	ReapAfter time.Duration
+
+	// KeepJobsFor is how long a finished job is kept before it is deleted.
+	// CredentialGrace is how far past expiry a refresh token is kept, which is
+	// how long replay detection can still recognise a stolen one.
+	// PruneEvery is how often both are swept.
+	KeepJobsFor     time.Duration
+	CredentialGrace time.Duration
+	PruneEvery      time.Duration
 }
 
 func NewWorker(q *Queue, log *slog.Logger, name string) *Worker {
@@ -65,6 +73,22 @@ func NewWorker(q *Queue, log *slog.Logger, name string) *Worker {
 		handlers:  map[string]Handler{},
 		IdleWait:  2 * time.Second,
 		ReapAfter: 15 * time.Minute,
+
+		// Retention. Both are deliberately generous.
+		//
+		// A job that failed is worth reading after a weekend — the whole point
+		// of recording `last_error` is that somebody looks at it on Monday —
+		// and a job that succeeded is kept for the same window so the two can
+		// be compared. "Did this ever work" is answered by its neighbours.
+		//
+		// The credential grace is what keeps replay detection working. Reuse
+		// is found by recognising a token that was already rotated; deleting
+		// the family the moment it expires turns "this was stolen and
+		// replayed" into "this is unknown" — the same refusal with the alarm
+		// removed.
+		KeepJobsFor:     7 * 24 * time.Hour,
+		CredentialGrace: 30 * 24 * time.Hour,
+		PruneEvery:      6 * time.Hour,
 	}
 }
 
@@ -78,6 +102,13 @@ func (w *Worker) Run(ctx context.Context) error {
 	reapTicker := time.NewTicker(w.ReapAfter / 3)
 	defer reapTicker.Stop()
 
+	// Housekeeping on its own, much slower clock. Deleting a week of finished
+	// jobs is not urgent and is a write; running it on the reaper's five-minute
+	// tick would put a delete storm in front of the queue every five minutes
+	// for no benefit.
+	pruneTicker := time.NewTicker(w.PruneEvery)
+	defer pruneTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,6 +116,8 @@ func (w *Worker) Run(ctx context.Context) error {
 			return nil
 		case <-reapTicker.C:
 			w.reap(ctx)
+		case <-pruneTicker.C:
+			w.prune(ctx)
 		default:
 		}
 
@@ -191,6 +224,25 @@ func (w *Worker) runGuarded(ctx context.Context, h Handler, j Job) (err error) {
 		}
 	}()
 	return h.Run(ctx, j)
+}
+
+// prune deletes finished jobs and expired credentials.
+//
+// Logged at INFO with the counts, because "the database stopped growing" is
+// something an operator should be able to see happening rather than infer. A
+// failure is logged and swallowed: housekeeping that cannot run is not a reason
+// to stop processing work, and the next tick will try again.
+func (w *Worker) prune(ctx context.Context) {
+	jobs, credentials, err := w.queue.Prune(ctx, w.KeepJobsFor, w.CredentialGrace)
+	if err != nil {
+		w.log.Error("prune failed", slog.String("error", err.Error()))
+		return
+	}
+	if jobs > 0 || credentials > 0 {
+		w.log.Info("pruned",
+			slog.Int("finished_jobs", jobs),
+			slog.Int("expired_credentials", credentials))
+	}
 }
 
 func (w *Worker) reap(ctx context.Context) {

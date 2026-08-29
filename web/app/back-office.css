@@ -1863,3 +1863,21 @@
 }
 
 .otp__note { margin-block: var(--space-4) 0; }
+
+/* The shop's own logo in the rail head.
+ *
+ * Sized to the square the initial occupies, so a business with a logo and one
+ * without produce the same layout — a rail that shifts by a few pixels
+ * depending on whether somebody has uploaded a picture is a rail that looks
+ * broken to whoever has not.
+ *
+ * `contain`, never `cover`: a logo is somebody's mark and cropping it is not a
+ * layout decision anybody made. A wide one letterboxes inside the square. */
+.bo__logo {
+  inline-size: 28px;
+  block-size: 28px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--rail-hover);
+}
