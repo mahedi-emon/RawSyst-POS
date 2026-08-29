@@ -44,11 +44,18 @@ const METHODS = [
 export function ReceiptForm({
   companyId,
   customer,
+  currency,
   onSaved,
   onCancel,
 }: {
   companyId: string;
   customer: Customer;
+  /** The company's, from the ledger this form was opened from.
+   *
+   *  Passed in rather than fetched: the caller already has it, and a second
+   *  request to learn something it holds would be a request that can fail on a
+   *  screen that is about to take money. */
+  currency: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -78,6 +85,7 @@ export function ReceiptForm({
         <ReceiptBody
           companyId={companyId}
           customer={customer}
+          currency={currency}
           invoices={invoices}
           receiptUUID={receiptUUID}
           method={method}
@@ -105,6 +113,7 @@ export function ReceiptForm({
 
 function ReceiptBody({
   customer,
+  currency,
   invoices,
   receiptUUID,
   method,
@@ -127,6 +136,7 @@ function ReceiptBody({
 }: {
   companyId: string;
   customer: Customer;
+  currency: string;
   invoices: OpenInvoice[];
   receiptUUID: string;
   method: string;
@@ -187,8 +197,11 @@ function ReceiptBody({
       setFailure(
         outcome.kind === 'nothing'
           ? t('receipt.allocationHint')
-          : `Invoice ${outcome.invoice} has ${outcome.outstanding} outstanding, ` +
-            `less than the ${outcome.amount} allocated to it.`,
+          : t('rcpt.overAllocatedOne', {
+              invoice: outcome.invoice,
+              outstanding: outcome.outstanding,
+              amount: outcome.amount,
+            }),
       );
       return;
     }
@@ -297,12 +310,16 @@ function ReceiptBody({
                           brought back. */}
                       {minor(invoice.credited) > 0n && (
                         <span className="ds-caption">
-                          {money(invoice.credited)} returned
+                          {t('rcpt.returnedAmount', {
+                            amount: money(invoice.credited, { currency }),
+                          })}
                         </span>
                       )}
                     </td>
                     <td className="ds-date">{shortDate(invoice.due_date, locale)}</td>
-                    <td className="num">{money(invoice.outstanding)}</td>
+                    <td className="num">
+                      {money(invoice.outstanding, { currency })}
+                    </td>
                     <td className="num">
                       <input
                         className={`input num receipt__alloc${over ? ' input--bad' : ''}`}
@@ -320,8 +337,12 @@ function ReceiptBody({
             <tfoot>
               <tr>
                 <td colSpan={2}>{t('rcpt.allocated')}</td>
-                <td className="num ds-subtle">{money(received || '0.00')} received</td>
-                <td className="num">{money(allocated)}</td>
+                <td className="num ds-subtle">
+                  {t('rcpt.receivedAmount', {
+                    amount: money(received || '0.00', { currency }),
+                  })}
+                </td>
+                <td className="num">{money(allocated, { currency })}</td>
               </tr>
               {minor(unplaced) !== 0n && (
                 <tr>
@@ -330,7 +351,9 @@ function ReceiptBody({
                       ? t('receipt.unallocated')
                       : t('receipt.overAllocated')}
                   </td>
-                  <td className="num ds-down">{money(unplaced)}</td>
+                  <td className="num ds-down">
+                    {money(unplaced, { currency })}
+                  </td>
                 </tr>
               )}
             </tfoot>

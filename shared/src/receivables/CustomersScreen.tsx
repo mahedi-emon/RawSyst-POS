@@ -290,12 +290,14 @@ function CustomerRow({
       <td>
         {customer.payment_terms_days === 0
           ? t('cust.atTheTill')
-          : `${customer.payment_terms_days} days`}
+          : t('common.nDays', { n: customer.payment_terms_days })}
       </td>
-      <td className={`num${owes ? '' : ' ds-subtle'}`}>{money(customer.balance)}</td>
+      <td className={`num${owes ? '' : ' ds-subtle'}`}>
+        {money(customer.balance, { currency: customer.currency })}
+      </td>
       <td className="num">
         {customer.credit_limit ? (
-          money(customer.credit_limit)
+          money(customer.credit_limit, { currency: customer.currency })
         ) : (
           <span className="ds-subtle">—</span>
         )}

@@ -105,6 +105,11 @@ function Outstanding({
   const groups = useMemo(() => byMethod(pending), [pending]);
   const check = checkDeposit(pending, selected, netAmount, t);
 
+  // Every pending payment on this screen was taken by one company, so they
+  // share a currency and the first one names it. Undefined when there is
+  // nothing pending, which is the state where this panel is not rendered.
+  const currency = pending[0]?.currency;
+
   const toggle = (id: string) => {
     setSelected((held) => {
       const next = new Set(held);
@@ -161,8 +166,14 @@ function Outstanding({
       <div className="ds-panel">
         <div className="ds-panel__body">
           <p className="ds-body-sm">
+            {/* The one figure on this screen that names the currency.
+                Every amount below it is in the same one — they are all
+                payments taken by this company — so the cells stay bare and
+                this line says it once. Before, nothing on the screen said it
+                at all: a reader was left to assume, and this product is sold
+                into three currencies. */}
             <span className="settle__outstanding num">
-              {money(outstandingTotal(pending))}
+              {money(outstandingTotal(pending), { currency })}
             </span>{' '}
             {t('settle.notYetDeposited')}
           </p>

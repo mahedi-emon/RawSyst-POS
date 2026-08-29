@@ -464,7 +464,7 @@ function SupplierRow({
       <td>
         {supplier.payment_terms_days === 0
           ? t('order.onDelivery')
-          : `${supplier.payment_terms_days} days`}
+          : t('common.nDays', { n: supplier.payment_terms_days })}
       </td>
       <td className="num">
         {supplier.vat_number || <span className="ds-subtle">—</span>}

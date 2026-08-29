@@ -34,6 +34,9 @@ export interface Customer {
   /** What is left of the limit. Empty when there is no limit to have a
    *  remainder of, never negative. */
   available?: string;
+  /** The company's, which is what balance, credit_limit and available are
+   *  in. Sent with them rather than left to the screen to find. */
+  currency: string;
 }
 
 export interface CustomerBody {

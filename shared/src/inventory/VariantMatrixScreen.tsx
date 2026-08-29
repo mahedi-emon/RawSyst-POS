@@ -287,7 +287,9 @@ function Body({
     return (
       <Panel>
         <p className="ds-state__title">
-          {product ? `${product.name} has no variants yet` : t('common.nothingToShow')}
+          {product
+            ? t('matrix.noVariantsYet', { product: product.name })
+            : t('common.nothingToShow')}
         </p>
         <p className="ds-state__body">{t('matrix.needsAttribute')}</p>
       </Panel>

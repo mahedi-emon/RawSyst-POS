@@ -729,7 +729,16 @@ function FinishStep({
   if (created) {
     return (
       <div className="ds-state">
-        <p className="ds-state__title">{business.legal_name} is set up</p>
+        <p className="ds-state__title">
+          {t('setup.businessIsSetUp', {
+            // `Partial<BusinessInfo>`, because the wizard's answers are read
+            // back from whatever has been saved so far. By this screen the
+            // business has been created and the name cannot be missing, but
+            // the type does not know that and a template reading "undefined is
+            // set up" is a worse outcome than a generic sentence.
+            business: business.legal_name ?? t('common.theBusiness'),
+          })}
+        </p>
         <p className="ds-state__body">{t('setup.nextSteps')}</p>
         <button className="ds-btn ds-btn--primary" onClick={onFinished}>
           {t('setup.goToBackOffice')}

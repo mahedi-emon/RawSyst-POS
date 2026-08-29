@@ -148,7 +148,7 @@ export function VariantPicker({
             <li className="picker__empty">
               {catalogue?.length === 0
                 ? t('picker.empty')
-                : `Nothing matches “${term.trim()}”.`}
+                : t('picker.noMatch', { term: term.trim() })}
             </li>
           ) : (
             matches.map((v) => (

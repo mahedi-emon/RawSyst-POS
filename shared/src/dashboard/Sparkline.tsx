@@ -9,6 +9,7 @@
 // tooltip. A sparkline that needs a legend has stopped being a sparkline; the
 // precise numbers live in the tile above it and in the report behind it.
 
+import { useLocale, useT } from '../i18n/locale';
 import { money, shortDate } from '../ui/format';
 import { sparkGeometry, toPlotValue } from './logic';
 import type { TrendPoint } from '../api/dashboard';
@@ -20,7 +21,19 @@ import type { TrendPoint } from '../api/dashboard';
  * lowest day exaggerates every wobble into a cliff — the classic way a chart
  * misleads without containing a single false number.
  */
-export function Sparkline({ points }: { points: TrendPoint[] }) {
+export function Sparkline({
+  points,
+  currency,
+}: {
+  points: TrendPoint[];
+  /** The company's. The spoken label names a figure, and a figure with no
+   *  currency on it is one a listener has to guess at — which is worse for a
+   *  screen reader than for a sighted reader, who at least has the rest of the
+   *  screen to infer from. */
+  currency: string;
+}) {
+  const t = useT();
+  const { locale } = useLocale();
   const geometry = sparkGeometry(points.map((p) => toPlotValue(p.total)));
 
   // Null covers both "too few points to draw a line" and "a fortnight of
@@ -41,9 +54,12 @@ export function Sparkline({ points }: { points: TrendPoint[] }) {
       // for a sighted reader, and the endpoints are the point for everyone else.
       aria-label={
         first && latest
-          ? `Sales from ${shortDate(first.date)} to ${shortDate(latest.date)}, ` +
-            `latest ${money(latest.total)}`
-          : 'Sales trend'
+          ? t('dash.salesTrendRange', {
+              from: shortDate(first.date, locale),
+              to: shortDate(latest.date, locale),
+              amount: money(latest.total, { currency }),
+            })
+          : t('dash.salesTrend')
       }
     >
       <path

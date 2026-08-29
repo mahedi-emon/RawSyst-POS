@@ -248,7 +248,9 @@ function CreditSummary({ customer }: { customer: CounterCustomer }) {
         {customer.available || '0.00'}
       </span>
       <span className="picker__meta">
-        available{Number(customer.balance) > 0 && ` · owes ${customer.balance}`}
+        {t('picker.available')}
+        {Number(customer.balance) > 0 &&
+          ` · ${t('picker.owes', { amount: customer.balance })}`}
       </span>
     </>
   );

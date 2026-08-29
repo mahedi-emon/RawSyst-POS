@@ -80,6 +80,7 @@ export function CustomerDetail({
               <ReceiptForm
                 companyId={companyId}
                 customer={customer}
+                currency={ledger.base_currency}
                 onSaved={() => {
                   setTaking(false);
                   reload();
@@ -96,10 +97,11 @@ export function CustomerDetail({
                   <h1 className="ds-h1">{customer.name}</h1>
                   <p className="ds-caption">
                     {customer.code} · {typeLabel(customer.customer_type, t)}
+                    {' · '}
                     {customer.payment_terms_days === 0
-                      ? ' · paid at the till'
-                      : ` · ${customer.payment_terms_days} day terms`}
-                    {!customer.is_active && ' · retired'}
+                      ? t('cust.paidAtTill')
+                      : t('cust.dayTerms', { n: customer.payment_terms_days })}
+                    {!customer.is_active && ` · ${t('cust.retired')}`}
                   </p>
                 </div>
                 <div className="detail__actions">

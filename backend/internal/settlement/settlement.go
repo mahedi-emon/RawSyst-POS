@@ -68,6 +68,17 @@ type PendingTender struct {
 	Method      string    `json:"method"`
 	Reference   string    `json:"reference,omitempty"`
 	Amount      string    `json:"amount"`
+
+	// Currency is read from the invoice the payment was taken against, not
+	// looked up from the company. The invoice records what it was actually
+	// issued in, and that is the fact this figure belongs to; a company
+	// lookup would answer a slightly different question and would answer it
+	// wrongly for any document raised before a change.
+	//
+	// The screen showed these amounts with no code at all, which is legible
+	// only to somebody who already knows which country the shop is in. This
+	// product is sold into three.
+	Currency string `json:"currency"`
 }
 
 // NewBatch is a deposit as it appears on a bank statement.
@@ -97,6 +108,14 @@ type Batch struct {
 	Net         string          `json:"net_amount"`
 	Tenders     []SettledTender `json:"tenders"`
 
+	// Currency is the company's, not an invoice's. A batch is a deposit into a
+	// bank account and its gross, fee and net are figures in the books —
+	// unlike a pending tender, which belongs to the document it was taken
+	// against. The two agree today because a sale is issued in the company's
+	// base currency, and they are read from their own sources so that stays
+	// true rather than being assumed.
+	Currency string `json:"currency"`
+
 	// AlreadyRecorded marks a replay: the caller sent a deposit that had been
 	// recorded before, and this is the original.
 	AlreadyRecorded bool `json:"already_recorded,omitempty"`
@@ -124,7 +143,7 @@ func (s *Service) Pending(ctx context.Context, scope Scope) ([]PendingTender, er
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT t.id, i.id, coalesce(i.human_number, ''), i.issued_at,
-			       t.method, coalesce(t.reference, ''), t.amount
+			       t.method, coalesce(t.reference, ''), t.amount, i.currency
 			FROM sales_tender t
 			JOIN sales_invoice i ON i.id = t.invoice_id
 			WHERE i.company_id = $1
@@ -142,7 +161,7 @@ func (s *Service) Pending(ctx context.Context, scope Scope) ([]PendingTender, er
 			var issuedAt time.Time
 			var amount decimal.Decimal
 			if e := rows.Scan(&p.TenderID, &p.InvoiceID, &p.HumanNumber, &issuedAt,
-				&p.Method, &p.Reference, &amount); e != nil {
+				&p.Method, &p.Reference, &amount, &p.Currency); e != nil {
 				return e
 			}
 			p.IssuedAt = issuedAt.Format(time.RFC3339)
@@ -515,10 +534,13 @@ func (s *Service) readBatch(
 		batchID         uuid.UUID
 	)
 	err := tx.QueryRow(ctx, `
-		SELECT id, reference, deposited_on, gross_amount, fee_amount, net_amount
-		FROM settlement_batch
-		WHERE `+where+` AND company_id = $2`, arg, scope.CompanyID).
-		Scan(&batchID, &b.Reference, &depositedOn, &gross, &fee, &net)
+		SELECT b.id, b.reference, b.deposited_on,
+		       b.gross_amount, b.fee_amount, b.net_amount,
+		       c.base_currency
+		FROM settlement_batch b
+		JOIN company c ON c.id = b.company_id
+		WHERE b.`+where+` AND b.company_id = $2`, arg, scope.CompanyID).
+		Scan(&batchID, &b.Reference, &depositedOn, &gross, &fee, &net, &b.Currency)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Batch{}, false, nil
 	}

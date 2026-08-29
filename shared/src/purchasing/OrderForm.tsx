@@ -210,7 +210,9 @@ export function OrderForm({
     <form className="ds-panel form" onSubmit={(e) => void submit(e)} noValidate>
       <div className="ds-panel__head">
         <h2 className="ds-h3">
-          {existing ? `Correcting ${existing.po_number}` : t('order.new')}
+          {existing
+            ? t('buy.correctingOrder', { order: existing.po_number })
+            : t('order.new')}
         </h2>
         {existing && <span className="ds-caption">{t('purch.draftNotCommitted')}</span>}
       </div>

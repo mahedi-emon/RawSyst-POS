@@ -1488,6 +1488,44 @@ export const en = {
   'purch.nUnits': '{n} units',
   'purch.costRose': '{recorded} {items} sold before this delivery had been costed at an estimate, so cost of goods sold rose by {amount}.',
   'purch.costFell': '{recorded} {items} sold before this delivery had been costed at an estimate, so cost of goods sold fell by {amount}.',
+
+  /* Two words the source scan could not see.
+   *
+   * `{money(invoice.credited)} returned` is a JSX expression followed by a
+   * bare word. The scan looked for prose in a quoted attribute and for a text
+   * node with two or more words in it, and this is neither: one word, sitting
+   * beside an expression. It was announced in English to every screen reader
+   * whatever language the shop had chosen. */
+
+  'rcpt.returnedAmount': '{amount} returned',
+  'rcpt.receivedAmount': '{amount} received',
+  'setup.businessIsSetUp': '{business} is set up',
+  'common.theBusiness': 'The business',
+  'common.nDays': '{n} days',
+
+  /* Sentences that were being assembled in code.
+   *
+   * A template literal holding both an interpolation and Latin words is a
+   * sentence being built at the call site, and a sentence built at the call
+   * site cannot be translated. Three of these were at the counter: what a
+   * cashier reads when a barcode does not scan, and the credit standing shown
+   * beside every customer they put a sale on account for. */
+
+  'picker.noMatch': 'Nothing matches “{term}”.',
+  'cust.paidAtTill': 'paid at the till',
+  'cust.dayTerms': '{n} day terms',
+  'cust.retired': 'retired',
+  'rcpt.overAllocatedOne': 'Invoice {invoice} has {outstanding} outstanding, less than the {amount} allocated to it.',
+  'picker.available': 'available',
+  'picker.owes': 'owes {amount}',
+  'till.barcodeUnknownOffline': '{barcode} is not in this terminal\'s catalogue, and the server cannot be reached to look it up. Sales already in the cart are safe.',
+  'till.barcodeUnknown': 'Nothing in this catalogue carries the barcode {barcode}.',
+  'dash.salesTrendRange': 'Sales from {from} to {to}, latest {amount}',
+  'dash.salesTrend': 'Sales trend',
+  'matrix.noVariantsYet': '{product} has no variants yet',
+  'bill.paymentAlreadyRecorded': 'That payment was already recorded as {payment}.',
+  'bill.paidRecordedAs': 'Paid. Recorded as {payment}.',
+  'bill.dimensionDoesNotAgree': '{dimension} does not agree.',
 } as const;
 
 /** Every string the interface can show. */
@@ -2959,6 +2997,44 @@ export const ar: Record<Key, string> = {
   'purch.nUnits': '{n} وحدة',
   'purch.costRose': '{recorded} {items} بيعت قبل هذه الشحنة كانت مُقدَّرة التكلفة، فارتفعت تكلفة البضاعة المباعة بمقدار {amount}.',
   'purch.costFell': '{recorded} {items} بيعت قبل هذه الشحنة كانت مُقدَّرة التكلفة، فانخفضت تكلفة البضاعة المباعة بمقدار {amount}.',
+
+  /* Two words the source scan could not see.
+   *
+   * `{money(invoice.credited)} returned` is a JSX expression followed by a
+   * bare word. The scan looked for prose in a quoted attribute and for a text
+   * node with two or more words in it, and this is neither: one word, sitting
+   * beside an expression. It was announced in English to every screen reader
+   * whatever language the shop had chosen. */
+
+  'rcpt.returnedAmount': 'أُعيد {amount}',
+  'rcpt.receivedAmount': 'استُلم {amount}',
+  'setup.businessIsSetUp': 'تم إعداد {business}',
+  'common.theBusiness': 'المنشأة',
+  'common.nDays': '{n} يومًا',
+
+  /* Sentences that were being assembled in code.
+   *
+   * A template literal holding both an interpolation and Latin words is a
+   * sentence being built at the call site, and a sentence built at the call
+   * site cannot be translated. Three of these were at the counter: what a
+   * cashier reads when a barcode does not scan, and the credit standing shown
+   * beside every customer they put a sale on account for. */
+
+  'picker.noMatch': 'لا شيء يطابق ”{term}“.',
+  'cust.paidAtTill': 'يُدفع عند الصندوق',
+  'cust.dayTerms': 'شروط {n} يومًا',
+  'cust.retired': 'موقوف',
+  'rcpt.overAllocatedOne': 'الفاتورة {invoice} عليها {outstanding} مستحقة، وهو أقل من {amount} المخصَّصة لها.',
+  'picker.available': 'متاح',
+  'picker.owes': 'عليه {amount}',
+  'till.barcodeUnknownOffline': '{barcode} غير موجود في كتالوج نقطة البيع هذه، ولا يمكن الوصول إلى الخادم للبحث عنه. المبيعات الموجودة في السلة آمنة.',
+  'till.barcodeUnknown': 'لا شيء في هذا الكتالوج يحمل الباركود {barcode}.',
+  'dash.salesTrendRange': 'المبيعات من {from} إلى {to}، آخرها {amount}',
+  'dash.salesTrend': 'اتجاه المبيعات',
+  'matrix.noVariantsYet': 'لا توجد متغيرات لـ {product} بعد',
+  'bill.paymentAlreadyRecorded': 'سُجِّلت هذه الدفعة من قبل باسم {payment}.',
+  'bill.paidRecordedAs': 'تم الدفع. سُجِّل باسم {payment}.',
+  'bill.dimensionDoesNotAgree': '{dimension} لا يتطابق.',
 };
 
 /**
@@ -4271,6 +4347,44 @@ export const bn: Partial<Record<Key, string>> = {
   'purch.nUnits': '{n}টি একক',
   'purch.costRose': '{recorded} এই সরবরাহের আগে বিক্রি হওয়া {items}-এর দাম আন্দাজে ধরা ছিল, তাই বিক্রীত পণ্যের ব্যয় {amount} বেড়েছে।',
   'purch.costFell': '{recorded} এই সরবরাহের আগে বিক্রি হওয়া {items}-এর দাম আন্দাজে ধরা ছিল, তাই বিক্রীত পণ্যের ব্যয় {amount} কমেছে।',
+
+  /* Two words the source scan could not see.
+   *
+   * `{money(invoice.credited)} returned` is a JSX expression followed by a
+   * bare word. The scan looked for prose in a quoted attribute and for a text
+   * node with two or more words in it, and this is neither: one word, sitting
+   * beside an expression. It was announced in English to every screen reader
+   * whatever language the shop had chosen. */
+
+  'rcpt.returnedAmount': '{amount} ফেরত',
+  'rcpt.receivedAmount': '{amount} পাওয়া গেছে',
+  'setup.businessIsSetUp': '{business} সেট আপ হয়ে গেছে',
+  'common.theBusiness': 'ব্যবসাটি',
+  'common.nDays': '{n} দিন',
+
+  /* Sentences that were being assembled in code.
+   *
+   * A template literal holding both an interpolation and Latin words is a
+   * sentence being built at the call site, and a sentence built at the call
+   * site cannot be translated. Three of these were at the counter: what a
+   * cashier reads when a barcode does not scan, and the credit standing shown
+   * beside every customer they put a sale on account for. */
+
+  'picker.noMatch': '“{term}”-এর সাথে কিছু মেলে না।',
+  'cust.paidAtTill': 'কাউন্টারে পরিশোধ',
+  'cust.dayTerms': '{n} দিনের শর্ত',
+  'cust.retired': 'অবসরপ্রাপ্ত',
+  'rcpt.overAllocatedOne': '{invoice} চালানে {outstanding} বকেয়া আছে, যা এতে বরাদ্দ করা {amount}-এর চেয়ে কম।',
+  'picker.available': 'ব্যবহারযোগ্য',
+  'picker.owes': '{amount} বাকি',
+  'till.barcodeUnknownOffline': '{barcode} এই টার্মিনালের ক্যাটালগে নেই, এবং সার্ভারে পৌঁছে খোঁজাও যাচ্ছে না। কার্টে থাকা বিক্রি নিরাপদ।',
+  'till.barcodeUnknown': 'এই ক্যাটালগে {barcode} বারকোডের কিছু নেই।',
+  'dash.salesTrendRange': '{from} থেকে {to} পর্যন্ত বিক্রি, সবশেষ {amount}',
+  'dash.salesTrend': 'বিক্রির ধারা',
+  'matrix.noVariantsYet': '{product}-এর এখনো কোনো ভ্যারিয়েন্ট নেই',
+  'bill.paymentAlreadyRecorded': 'ওই পরিশোধটি আগেই {payment} নামে রেকর্ড হয়েছে।',
+  'bill.paidRecordedAs': 'পরিশোধ হয়েছে। {payment} নামে রেকর্ড হয়েছে।',
+  'bill.dimensionDoesNotAgree': '{dimension} মেলে না।',
 };
 
 /**

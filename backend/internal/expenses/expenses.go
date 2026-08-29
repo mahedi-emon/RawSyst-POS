@@ -89,6 +89,12 @@ type Head struct {
 	// Spent is what has been booked to this head, so a "where is my money
 	// going" list can be read without a second request.
 	Spent string `json:"spent"`
+
+	// Currency is the company's, which is what `Spent` is in. Sent with the
+	// figure rather than left to the screen to find, because a column of
+	// amounts with no code on it is legible only to somebody who already knows
+	// which country the shop is in — and this product is sold into three.
+	Currency string `json:"currency"`
 }
 
 // NewHead is a head being created.
@@ -116,9 +122,11 @@ func (s *Service) Heads(
 			         FROM expense_line l
 			         JOIN expense x ON x.id = l.expense_id
 			         WHERE l.head_id = h.id AND x.company_id = h.company_id
-			       ), 0)
+			       ), 0),
+			       c.base_currency
 			FROM expense_head h
 			JOIN account a ON a.id = h.account_id
+			JOIN company c ON c.id = h.company_id
 			WHERE h.company_id = $1 AND ($2 OR h.is_active)
 			ORDER BY h.is_active DESC, h.name`,
 			scope.CompanyID, includeRetired)
@@ -132,7 +140,8 @@ func (s *Service) Heads(
 			var spent decimal.Decimal
 			if e := rows.Scan(&h.ID, &h.Code, &h.Name, &h.NameAr,
 				&h.AccountID, &h.AccountCode, &h.AccountName, &h.AccountNameAr,
-				&h.InputVATRecoverable, &h.IsActive, &spent); e != nil {
+				&h.InputVATRecoverable, &h.IsActive, &spent,
+				&h.Currency); e != nil {
 				return e
 			}
 			h.Spent = spent.StringFixed(moneyScale)

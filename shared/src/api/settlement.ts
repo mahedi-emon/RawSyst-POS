@@ -21,6 +21,11 @@ export interface PendingTender {
   method: string;
   reference?: string;
   amount: string;
+  /** What the invoice this payment was taken against was issued in.
+   *
+   *  Read from the document rather than from the company, so a figure always
+   *  says what it actually is. */
+  currency: string;
 }
 
 /** One payment inside a recorded deposit, with the share of the fee it bore. */
@@ -43,6 +48,9 @@ export interface SettlementBatch {
   net_amount: string;
   tenders: SettledTender[];
   already_recorded?: boolean;
+  /** The company's, not a document's: a batch is a deposit into a bank account
+   *  and its gross, fee and net are figures in the books. */
+  currency: string;
 }
 
 export interface SettlementBody {

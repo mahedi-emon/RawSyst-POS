@@ -91,8 +91,8 @@ export function BillDetail({
       setPayAmount('');
       setNotice(
         payment.already_paid
-          ? `That payment was already recorded as ${payment.payment_number}.`
-          : `Paid. Recorded as ${payment.payment_number}.`,
+          ? t('bill.paymentAlreadyRecorded', { payment: payment.payment_number })
+          : t('bill.paidRecordedAs', { payment: payment.payment_number }),
       );
       reload();
     } catch (err) {
@@ -224,7 +224,10 @@ function HeldNotice({ bill }: { bill: Bill }) {
         {breaches.length > 0 && (
           <ul className="purchase__breaches">
             {breaches.map((m, i) => (
-              <li key={i}>{m.detail || `${m.dimension} does not agree.`}</li>
+              <li key={i}>
+                {m.detail ||
+                  t('bill.dimensionDoesNotAgree', { dimension: m.dimension })}
+              </li>
             ))}
           </ul>
         )}

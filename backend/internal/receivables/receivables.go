@@ -102,6 +102,15 @@ type Customer struct {
 	// Available is the limit less the balance, or empty when there is no limit.
 	// The figure a cashier actually needs: "can I put 400 on this account".
 	Available string `json:"available,omitempty"`
+
+	// Currency is the company's, which is what the three figures above are in.
+	//
+	// Sent with them rather than left to the screen to find. The customers list
+	// showed a balance, a limit and an available figure with no code on any of
+	// them, which is legible only to somebody who already knows which country
+	// the shop is in — and "can I put 400 on this account" is a question whose
+	// answer depends on which 400.
+	Currency string `json:"currency"`
 }
 
 func (s *Service) CreateCustomer(
@@ -311,8 +320,10 @@ const customerSelect = `
 	       -- formatted amount beside one raw one looks like a bug to a reader.
 	       coalesce(round(c.credit_limit, 2)::text,''),
 	       coalesce(c.notes,''), c.is_active,
-	       round(customer_balance(c.id), 2)::text
-	FROM customer c`
+	       round(customer_balance(c.id), 2)::text,
+	       co.base_currency
+	FROM customer c
+	JOIN company co ON co.id = c.company_id`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -322,7 +333,8 @@ func scanCustomer(row scanner) (Customer, error) {
 	var c Customer
 	if err := row.Scan(&c.ID, &c.Code, &c.Name, &c.NameAr, &c.Type,
 		&c.Phone, &c.Email, &c.VATNumber, &c.Address, &c.TermsDays,
-		&c.CreditLimit, &c.Notes, &c.IsActive, &c.Balance); err != nil {
+		&c.CreditLimit, &c.Notes, &c.IsActive, &c.Balance,
+		&c.Currency); err != nil {
 		return Customer{}, err
 	}
 	c.Available = headroom(c.CreditLimit, c.Balance)

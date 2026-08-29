@@ -180,7 +180,7 @@ export function Dashboard({
                   />
                 )
               }
-              chart={<Sparkline points={d.sales.trend} />}
+              chart={<Sparkline points={d.sales.trend} currency={currency} />}
             />
 
             <Kpi

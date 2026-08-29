@@ -35,6 +35,9 @@ export interface ExpenseHead {
    *  permission. */
   input_vat_recoverable: boolean;
   is_active: boolean;
+  /** The company's, which is what `spent` is in. Sent with the figure rather
+   *  than left to the screen to find. */
+  currency: string;
   /** What has been booked to this category, so a list can be read without a
    *  second request. */
   spent: string;

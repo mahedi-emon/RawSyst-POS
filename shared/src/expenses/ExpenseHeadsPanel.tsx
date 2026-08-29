@@ -191,7 +191,7 @@ function HeadRow({
           )}
         </span>
       </td>
-      <td className="num">{money(head.spent)}</td>
+      <td className="num">{money(head.spent, { currency: head.currency })}</td>
       <td>
         <div className="supplier__actions">
           <button className="ds-btn ds-btn--quiet" onClick={onEdit}>

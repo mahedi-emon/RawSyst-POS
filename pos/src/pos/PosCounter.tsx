@@ -197,12 +197,9 @@ export function PosCounter() {
         // Offline AND not cached. Says which, because the two have different
         // answers: one waits for the network, the other is a product this
         // terminal has genuinely never been told about.
-        setNotice(
-          `${barcode} is not in this terminal's catalogue, and the server ` +
-            'cannot be reached to look it up. Sales already in the cart are safe.',
-        );
+        setNotice(t('till.barcodeUnknownOffline', { barcode }));
       } else if (err instanceof RequestFailed && err.status === 404) {
-        setNotice(`Nothing in this catalogue carries the barcode ${barcode}.`);
+        setNotice(t('till.barcodeUnknown', { barcode }));
       } else {
         setNotice(err instanceof Error ? err.message : t('till.scanFailed'));
       }
