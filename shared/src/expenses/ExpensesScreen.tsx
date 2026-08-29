@@ -28,7 +28,7 @@ import { useRemote } from '../dashboard/useRemote';
 import { Field, FormActions, FormError, TextInput } from '../ui/Form';
 import type { FieldErrors } from '../ui/Form';
 import { money, longDate } from '../ui/format';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 import {
   listExpenses,
@@ -185,6 +185,7 @@ function PeriodPicker({
 /** The answer to the question C3 asks, above the receipts that make it up. */
 function Spending({ summary }: { summary: ExpenseSummary }) {
   const t = useT();
+  const { locale } = useLocale();
   const split = splitOf(summary);
   const borne = borneBy(summary);
   // Every expense in a period is in the company's own currency, so the first
@@ -270,7 +271,7 @@ function Spending({ summary }: { summary: ExpenseSummary }) {
             <tbody>
               {summary.expenses.map((x: Expense) => (
                 <tr key={x.id}>
-                  <td className="ds-date">{longDate(x.expense_date)}</td>
+                  <td className="ds-date">{longDate(x.expense_date, locale)}</td>
                   <td>
                     <span className="detail__strong">{x.expense_no}</span>
                     {x.reference && <span className="ds-caption">{x.reference}</span>}

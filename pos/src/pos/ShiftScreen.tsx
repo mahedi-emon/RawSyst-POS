@@ -680,7 +680,7 @@ function CloseShift({
   }
 
   return (
-    <section className="shift__form" aria-label="Close the till">
+    <section className="shift__form" aria-label={t('shift.closeTheTill')}>
       <h2 className="ds-h3">{t('shift.countDrawer')}</h2>
       <p className="ds-body-sm ds-muted">
         {blind
@@ -748,7 +748,7 @@ function CloseShift({
           an inline step keeps the counted figure on screen while the cashier
           decides, and the figure is what they are confirming. */}
       {confirming ? (
-        <div className="shift__confirm" role="alertdialog" aria-label="Confirm the close">
+        <div className="shift__confirm" role="alertdialog" aria-label={t('shift.confirmTheClose')}>
           <p className="ds-body-sm">
             {t('shift.confirmClose', {
               counted: money(counted, { currency: currency ?? undefined }),
@@ -936,7 +936,7 @@ function DenominationPad({
                 min={0}
                 step={1}
                 inputMode="numeric"
-                aria-label={`How many ${d.label}`}
+                aria-label={t('shift.howMany', { denomination: d.label })}
                 value={count === undefined || Number.isNaN(count) ? '' : String(count)}
                 autoFocus={index === 0}
                 onChange={(e) => {

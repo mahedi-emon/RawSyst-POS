@@ -22,7 +22,7 @@ import { receiptNotice, receivingDefaults } from './purchasing';
 import { issueOrder, readOrder, receiveGoods, type Order } from '../api/purchasing';
 import { OrderStatus } from './PurchasingScreen';
 import { OrderForm } from './OrderForm';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 
 export function OrderDetail({
@@ -35,6 +35,7 @@ export function OrderDetail({
   onBack: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client, can } = useAuth();
   const load = useCallback(
     () => readOrder(client, companyId, poId),
@@ -122,8 +123,8 @@ export function OrderDetail({
         // screen would be the same fields twice, and the two would drift.
         editing ? (
           <DetailScreen
-            title={`Correcting ${order.po_number}`}
-            subtitle="Draft — nothing is committed to the supplier yet"
+            title={t('buy.correctingOrder', { order: order.po_number })}
+            subtitle={t('buy.draftNotCommitted')}
             backLabel={order.po_number}
             onBack={() => setEditing(false)}
           >
@@ -141,7 +142,10 @@ export function OrderDetail({
         ) : (
         <DetailScreen
           title={order.po_number}
-          subtitle={`${order.supplier} · ordered ${longDate(order.ordered_on)}`}
+          subtitle={t('buy.orderedOn', {
+            supplier: order.supplier,
+            date: longDate(order.ordered_on, locale),
+          })}
           backLabel="Orders"
           onBack={onBack}
           onRefresh={reload}
@@ -212,7 +216,7 @@ export function OrderDetail({
 
             <div className="ds-panel__body ds-scroll-x">
               {(order.lines ?? []).length === 0 ? (
-                <EmptyState title={t('purch.noLines')} body="Nothing was ordered." />
+                <EmptyState title={t('purch.noLines')} body={t('buy.nothingOrdered')} />
               ) : (
                 <table className="ds-table">
                   <thead>
@@ -260,7 +264,7 @@ export function OrderDetail({
                                 onChange={(e) =>
                                   setQty((p) => ({ ...p, [line.id]: e.target.value }))
                                 }
-                                aria-label={`Quantity of ${line.description} that arrived`}
+                                aria-label={t('buy.qtyArrived', { item: line.description })}
                               />
                             </td>
                             <td>
@@ -276,7 +280,7 @@ export function OrderDetail({
                                 onChange={(e) =>
                                   setRejected((p) => ({ ...p, [line.id]: e.target.value }))
                                 }
-                                aria-label={`Quantity of ${line.description} rejected`}
+                                aria-label={t('buy.qtyRejected', { item: line.description })}
                               />
                             </td>
                           </>

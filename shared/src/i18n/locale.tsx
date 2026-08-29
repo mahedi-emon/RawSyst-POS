@@ -25,7 +25,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { catalogues, directionOf, type Key, type Locale } from './strings';
+import { catalogues, directionOf, en, type Key, type Locale } from './strings';
 
 const STORAGE_KEY = 'rawsyst.locale';
 
@@ -105,7 +105,15 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       locale,
       direction: directionOf(locale),
       setLocale,
-      t: (key, params) => interpolate(table[key], params),
+      // English where the chosen language has not said it yet.
+      //
+      // `ar` is exhaustive by type and never reaches the fallback. A partially
+      // translated language does, and what it falls back TO matters: a key
+      // ("shift.countedCash") is unreadable, a blank is a broken screen, and
+      // English is a language the accountant of a Bangladeshi shop reads. See
+      // the note on `catalogues` for why a third language is allowed to be
+      // partial at all.
+      t: (key, params) => interpolate(table[key] ?? en[key], params),
     };
   }, [locale, setLocale]);
 
@@ -138,9 +146,14 @@ export function useT() {
 /** `{name}` substitution. Deliberately the whole of it: anything needing more
  *  than a named placeholder is a sentence that should be its own key. */
 function interpolate(
-  text: string,
+  text: string | undefined,
   params?: Record<string, string | number>,
 ): string {
+  // Undefined cannot happen for `en` — the key type is derived from it — and
+  // reaches here only if a locale table and the fallback are both missing a
+  // key, which the compiler already prevents. Empty rather than "undefined"
+  // on a screen, for the day somebody defeats it with a cast.
+  if (text === undefined) return '';
   if (!params) return text;
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
     name in params ? String(params[name]) : whole,

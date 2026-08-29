@@ -109,7 +109,7 @@ export function EgsUnitsScreen({ companyId }: { companyId: string }) {
                 {loaded.units.length === 0 ? (
                   <EmptyState
                     title={t('egs.noUnits')}
-                    body="A unit is what signs your invoices and keeps them in one numbered sequence. Add one before you register a terminal — a till with no unit cannot ring up a sale."
+                    body={t('egs.whatIsAUnit')}
                   />
                 ) : (
                   <table className="ds-table">

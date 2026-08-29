@@ -4,76 +4,95 @@
  * a till screen is often a cheap panel in bright light; a very large total
  * because that is what the customer leans over to read.
  *
- * Light and dark both defined on :root and swapped under prefers-color-scheme,
- * so a terminal in a bright shop and one in a stockroom both work. */
-
-:root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --ink: #14181f;
-  --ink-quiet: #5b6472;
-  --line: #d9dee6;
-  --accent: #0b6b57;
-  --accent-ink: #ffffff;
-  --warn-bg: #fff6e5;
-  --warn-line: #d9a441;
-  --danger: #a8332b;
-  --radius: 10px;
-  /* Design system §5 sets the POS minimum at 56×56: "fast, repeated,
-   * sometimes with gloves". This was 48, which is the ordinary web touch
-   * target and not what a till is. The token is defined in the design system
-   * as --tap-pos; this alias keeps the existing rules reading naturally. */
-  --tap: var(--tap-pos, 56px);
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg: #10141a;
-    --surface: #171d26;
-    --ink: #eef2f7;
-    --ink-quiet: #9aa6b6;
-    --line: #2a333f;
-    --accent: #2f9e83;
-    --accent-ink: #06120f;
-    --warn-bg: #2e2413;
-    --warn-line: #d9a441;
-    --danger: #e8776d;
-  }
-}
+ * # This file no longer defines a single colour
+ *
+ * It used to open with its own palette — its own greys, its own green accent,
+ * and its own `prefers-color-scheme` block — declared AFTER the design system
+ * it imports and therefore overriding it. That is precisely the second design
+ * system the shared file's header warns about, and it had the consequence you
+ * would expect: the till was dark and green while the back office was light and
+ * blue, on the same product, for the same shop, on the same afternoon.
+ *
+ * Every token below now comes from `@rawsyst/shared/design-system.css`, which
+ * defines `--ink`, `--line`, `--accent`, `--radius` and `--tap` as aliases for
+ * exactly this reason. A colour this file needs and the system does not have is
+ * a change to the system.
+ */
 
 * { box-sizing: border-box; }
 
+/* The face and the size come from the design system, which loads Inter, IBM
+ * Plex Sans Arabic and Noto Sans Bengali for real. This file used to name
+ * `system-ui` here, which threw all three away and set the whole till in
+ * whatever Windows happened to have. A till a shop reads all day is not the
+ * place to be indifferent about the typeface. */
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-/* Numbers are tabular so a column of prices lines up and a changing total does
-   not jitter as digits change width. */
-.num {
-  font-variant-numeric: tabular-nums;
-  text-align: end;
+.app {
+  min-block-size: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
-.app { min-height: 100vh; display: flex; flex-direction: column; }
-
+/* The bar a cashier navigates by. Taller than the back office's, because it is
+ * pressed rather than clicked, and sticky because the counter scrolls. */
 .app__bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  min-block-size: 60px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  border-block-end: 1px solid var(--border);
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 20;
 }
-.app__brand { font-weight: 650; letter-spacing: 0.01em; }
+
+.app__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-size: 1rem;
+}
+
+/* The same mark the back office wears, so the two halves of one product are
+ * recognisably one product. */
+.app__mark {
+  inline-size: 26px;
+  block-size: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
 .app__spacer { flex: 1; }
 
+/* A banner states an operating condition. It is a tinted strip with a rule at
+ * the start edge — not a full amber wash, which is what the till wore and which
+ * teaches a cashier that amber means nothing. */
 .banner {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--warn-line);
-  background: var(--warn-bg);
-  font-size: 14px;
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--border);
+  border-inline-start: 3px solid var(--warning);
+  background: var(--warning-subtle);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.banner--warning {
+  border-inline-start-color: var(--warning);
+  background: var(--warning-subtle);
 }
 
 /* --- controls: till-specific sizing only ---------------------------------
@@ -126,26 +145,56 @@ body {
 
 .counter__cart, .counter__totals {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  padding: var(--space-4);
   /* The floor above stops the TRACK stretching; this stops the panel inside it
    * doing the same thing one level down. */
   min-inline-size: 0;
 }
-.counter__totals { display: grid; gap: 10px; align-content: start; }
-.counter__empty { color: var(--ink-quiet); }
+.counter__totals {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  /* The totals stay on screen while a long cart scrolls. A cashier reading the
+   * total to a customer should not have to scroll to find it. */
+  position: sticky;
+  inset-block-start: calc(var(--topbar-height) + var(--space-4));
+}
 
-.scan { margin-bottom: 14px; }
+.counter__empty {
+  color: var(--text-muted);
+  padding-block: var(--space-5);
+}
+
+.scan { margin-block-end: var(--space-3); }
+
+/* The scan field is the busiest control in the product.
+ *
+ * It was a grey box on a white panel with a hairline round it — the styling of
+ * something switched off. A cashier's hand goes here between every item, so it
+ * gets the weight of a primary control: white, a real border, and a brand ring
+ * when it has focus, which it holds for the whole sale. */
 .scan__input {
-  width: 100%;
-  min-height: var(--tap);
-  padding: 0 14px;
-  font: inherit; font-size: 17px;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  inline-size: 100%;
+  min-block-size: var(--tap-pos);
+  padding-inline: var(--space-4);
+  font: inherit;
+  font-size: 1.06rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.scan__input::placeholder { color: var(--text-subtle); }
+
+.scan__input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-subtle);
 }
 
 .cart { width: 100%; border-collapse: collapse; }
@@ -158,17 +207,65 @@ body {
 .cart__name { display: block; }
 .cart__sku { display: block; font-size: 12px; color: var(--ink-quiet); }
 
-.totals { margin: 0; display: grid; gap: 6px; }
-.totals > div { display: flex; justify-content: space-between; gap: 12px; }
-.totals dt, .totals dd { margin: 0; }
-.totals__grand {
-  margin-top: 6px; padding-top: 10px;
-  border-top: 1px solid var(--line);
-  font-size: 26px; font-weight: 700;
+/* The totals block, which is the half of the screen the customer reads.
+ *
+ * Design system §3 gives the running total the `display` step — the largest
+ * type in the product and the only thing at that size — because it is read
+ * across a counter, upside down, by somebody deciding whether to hand over a
+ * note. The subtotal and the tax are context and are set as context. */
+.totals {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
 }
-.totals__owed { color: var(--danger); font-weight: 600; }
 
-.tenders { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.totals > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.totals dt,
+.totals dd { margin: 0; }
+
+.totals dt { color: var(--text-muted); }
+
+.totals__grand {
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--border);
+}
+
+.totals__grand dt {
+  color: var(--text);
+  font-size: 1.13rem;
+  font-weight: 600;
+}
+
+.totals__grand dd {
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.4rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* What is still owed is the one figure on this panel that means somebody has
+ * to do something, so it carries the colour AND the weight. */
+.totals__owed dt,
+.totals__owed dd {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* The tender buttons. Two across, because Cash and the local card scheme are
+ * ninety per cent of what a counter takes and a cashier reaches for them
+ * without looking. */
+.tenders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
 
 .splash, .empty {
   min-height: 60vh;
@@ -380,16 +477,26 @@ body {
  * Logical properties throughout. The counter mirrors wholly in Arabic and a
  * hard-coded left is a bug that only appears in the market this is built for.
  */
+/* Who the sale is for.
+ *
+ * A bordered full-width box holding the words "Add a customer" and nothing
+ * else, seventy pixels tall, directly under the scan field — the loudest empty
+ * thing on the counter. Most sales are to a walk-in and never touch this, so at
+ * rest it is a link on the page; it earns its border once a customer is
+ * actually attached and there are facts in it worth boxing. */
 .who {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  margin-bottom: 12px;
-  padding: 8px 10px;
-  min-height: var(--tap);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  margin-block-end: var(--space-3);
+  min-block-size: var(--tap-mobile);
+}
+
+.who--chosen {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
@@ -473,23 +580,26 @@ body {
 .picker__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 100;
   display: grid;
   place-items: start center;
-  padding: 6vh 16px 16px;
-  background: rgb(20 24 31 / 45%);
+  padding: 6dvh var(--space-4) var(--space-4);
+  background: rgb(8 11 18 / 45%);
 }
 
 .picker {
   inline-size: min(560px, 100%);
-  max-block-size: 80vh;
+  max-block-size: 80dvh;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: 0 12px 32px rgb(20 24 31 / 22%);
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  /* Level 3, like every other floating surface in the product. A dialog with
+   * its own shadow recipe is a dialog from a different product. */
+  box-shadow: var(--shadow-3);
 }
 
 .picker__head {
@@ -503,33 +613,39 @@ body {
 
 .picker__search {
   inline-size: 100%;
-  min-block-size: var(--tap);
-  padding-inline: 12px;
+  min-block-size: var(--tap-pos);
+  padding-inline: var(--space-4);
   font: inherit;
-  font-size: 17px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  font-size: 1.06rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
+}
+
+.picker__search:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-subtle);
 }
 
 .picker__stale {
   margin: 0;
-  padding: 8px 10px;
-  border-inline-start: 3px solid var(--warn-line);
-  background: var(--warn-bg);
-  border-radius: 8px;
-  font-size: 14px;
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--warning);
+  background: var(--warning-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.866rem;
 }
 
 .picker__failure {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   border-inline-start: 3px solid var(--danger);
-  background: var(--bg);
-  border-radius: 8px;
+  background: var(--danger-subtle);
+  border-radius: var(--radius-sm);
   color: var(--danger);
-  font-size: 14px;
+  font-size: 0.866rem;
 }
 
 .picker__results {

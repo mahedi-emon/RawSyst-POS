@@ -379,7 +379,7 @@ function AgeingView({
               {ageing.rows.length === 0 ? (
                 <EmptyState
                   title={t('common.nothingOutstanding')}
-                  body="Every customer invoice has been settled. Sales put on account will appear here until they are paid."
+                  body={t('cust.allInvoicesSettled')}
                 />
               ) : (
                 <table className="ds-table">

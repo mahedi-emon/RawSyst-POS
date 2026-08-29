@@ -35,25 +35,46 @@ That is the bar. Everything below serves it.
 
 ## 2. Colour
 
-Semantic tokens, defined once, consumed everywhere. Light and dark are both first-class.
+Semantic tokens, defined once, consumed everywhere.
+
+**Light is the default and dark is opt-in.** The palette used to be defined
+twice — once on `:root` and again under `prefers-color-scheme: dark` — which
+meant a shop whose Windows install had dark mode on got a dark ledger nobody
+had chosen. An accounting screen is read all day under fluorescent light and
+photographed, printed and forwarded; light is the right default for it, and
+dark belongs behind a switch the person actually pressed (`data-theme="dark"`,
+remembered in `localStorage`).
 
 ```css
 :root {
   /* Neutrals — the interface is mostly this */
-  --bg:              #FBFBFD;
-  --surface:         #FFFFFF;
-  --surface-sunken:  #F4F5F7;
-  --border:          #E3E5E9;
-  --border-strong:   #C9CDD4;
-  --text:            #16181D;
-  --text-muted:      #5C6270;
-  --text-subtle:     #878D9A;
+  --bg:              #f6f7f9;
+  --surface:         #ffffff;
+  --surface-sunken:  #f1f3f6;
+  --surface-raised:  #ffffff;
+  --border:          #e4e7ec;
+  --border-strong:   #cdd2dc;
+  --text:            #101423;
+  --text-muted:      #545c6f;
+  --text-subtle:     #858da0;
 
   /* Brand — used sparingly: primary actions, active nav, focus */
-  --brand:           #1F6FEB;
-  --brand-hover:     #1A5FCC;
-  --brand-subtle:    #EAF1FE;
-  --on-brand:        #FFFFFF;
+  --brand:           #2b57d4;
+  --brand-hover:     #2247b4;
+  --brand-active:    #1c3c99;
+  --brand-subtle:    #eef2fd;
+  --brand-border:    #c9d6f8;
+  --on-brand:        #ffffff;
+
+  /* The navigation rail. Its own scale, because it is the one dark surface in
+     a light interface and its contrast is against itself, not against the
+     page. */
+  --rail:            #131a2b;
+  --rail-hover:      #1d2740;
+  --rail-active:     #24304e;
+  --rail-text:       #c3cadb;
+  --rail-text-strong:#ffffff;
+  --rail-border:     #232c44;
 
   /* Semantic */
   --success:         #17803D;   --success-subtle: #E7F6EC;
@@ -95,16 +116,28 @@ Semantic tokens, defined once, consumed everywhere. Light and dark are both firs
 ## 3. Typography
 
 ```css
---font-latin:  'Inter', system-ui, sans-serif;
---font-arabic: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', sans-serif;
---font-mono:   'JetBrains Mono', ui-monospace, monospace;   /* all numbers */
+--font-latin:   'Inter', system-ui, sans-serif;
+--font-arabic:  'IBM Plex Sans Arabic', 'Noto Sans Arabic', sans-serif;
+--font-bengali: 'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif;
+--font-mono:    'JetBrains Mono', ui-monospace, monospace;  /* machine output */
 ```
 
-**Numbers are always monospaced with tabular figures.** In a column of currency, proportional digits make totals visually jagged and genuinely harder to scan.
+**Numbers are always tabular, and always in the interface face.** In a column
+of currency, proportional digits make totals visually jagged and genuinely
+harder to scan — that part was right and has not changed. What was wrong was
+using the *monospace* face to get it. JetBrains Mono draws a slashed zero and a
+dotted one; "SAR 0.00" set in it on a dashboard tile is the visual language of
+a terminal, not of a set of books, and no accounting product a business would
+recognise sets its money that way. Inter has real tabular figures, which is the
+feature that was actually wanted.
 
 ```css
-.numeric { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.num, .numeric { font-variant-numeric: tabular-nums; }
 ```
+
+The mono family is kept for the things that genuinely **are** machine output
+and are read for their shape rather than their value: a base64 certificate
+request, a CSID, an invoice hash, a pairing code.
 
 | Token | Size / line-height | Use |
 |---|---|---|
@@ -117,7 +150,10 @@ Semantic tokens, defined once, consumed everywhere. Light and dark are both firs
 | `caption` | 12 / 16 | Labels, metadata |
 | `pos-line` | **18 / 26** | **POS cart lines — deliberately larger than back-office body** |
 
-**Arabic runs ~15% larger** at the same nominal size to match Latin x-height perception. Applied automatically via `:lang(ar)`.
+**Arabic runs ~15% larger** at the same nominal size to match Latin x-height
+perception. **Bangla runs ~10% larger with a looser line** — Bengali script
+carries matras above and descenders below the baseline, and at Latin leading
+the rows of a table collide. Both are applied automatically via `:lang()`.
 
 ---
 
@@ -125,9 +161,37 @@ Semantic tokens, defined once, consumed everywhere. Light and dark are both firs
 
 4px base scale: `4 · 8 · 12 · 16 · 24 · 32 · 48 · 64`.
 
-Radius: `sm 6px` (inputs, chips) · `md 10px` (cards, buttons) · `lg 16px` (modals) · `full` (pills, avatars).
+Radius: `sm 6px` (inputs, chips) · `md 8px` (cards, buttons) · `lg 12px`
+(modals) · `full` (pills, avatars). Tightened from 10/16: a large radius reads
+as consumer software, and this is a ledger.
 
 Elevation is used sparingly — three levels only. Flat surfaces with clear borders read better under fluorescent showroom lighting than soft shadows.
+
+---
+
+### Fields
+
+One field primitive, defined once, under both of the names the product grew for
+it: `.field__input` and `.input`. They carry the same declarations in the same
+rule.
+
+The duplication is deliberate. Two names for one thing is how the gap opened in
+the first place: `.field__input` was used by twenty-one controls across ten
+files — the sign-in form, the setup wizard, the inventory filter, the expense
+form, the shift count — and **no stylesheet anywhere defined it**. Every one
+rendered as a bare operating-system widget. Defining both names on one rule
+means a change to the way a field looks cannot reach half the product and not
+the other half.
+
+A `<select>` is drawn from scratch (`appearance: none` plus an inline SVG
+chevron that flips edge under RTL), because a native one keeps the platform's
+arrow, font metrics and height however the box around it is styled. Number
+spinners are removed: a stray scroll over a focused money field silently
+changes an amount.
+
+Fields are `--tap-desk` (34px) on a desktop and `--tap-mobile` (44px) on a
+phone or under `pointer: coarse`. A form that is 44px-per-row on a monitor is
+not dense, it is loud.
 
 ---
 
@@ -144,7 +208,26 @@ Spacing between adjacent touch targets is never below 8 px.
 
 ---
 
-## 6. RTL — full mirroring
+## 6. Languages, and RTL — full mirroring
+
+The product ships three: **English (International)** as the default, **العربية
+(Saudi Arabia)** and **বাংলা (Bangladesh)**. English and Bangla run
+left-to-right; Arabic is a full mirror.
+
+Arabic is `Record<Key, string>` — a string added to the interface without an
+Arabic translation does not compile. Bangla is `Partial<Record<Key, string>>`
+with English fallback: not because it is a lesser language, but because a
+contract that refuses to build until twelve hundred strings are translated has
+exactly two outcomes, and both are worse than a visible gap. `coverageOf()`
+measures it and a test holds it to a floor. As of this pass Bangla is complete;
+the partial type is what lets the *next* feature ship and be translated after.
+
+**Adding a fourth language** is: add it to `Locale`, add a partial catalogue,
+add it to `LOCALES`. Nothing else in the product changes.
+
+**Dates carry a named month in the reader's own language** — never `08/09`,
+which is September in one market and August in another, and never an English
+`Aug` in the middle of a Bangla sentence.
 
 Blueprint G3: *"Full RTL layout mirroring for Arabic (menus, receipts, invoices, dashboards) — not just translated text sitting in an LTR layout."*
 
@@ -155,6 +238,7 @@ Blueprint G3: *"Full RTL layout mirroring for Arabic (menus, receipts, invoices,
 3. **Do NOT mirror:** clock faces, media playback controls, checkmarks, the barcode graphic itself, logos.
 4. **Numbers stay LTR** even inside Arabic text. `SAR 1,150.00` reads left-to-right in both languages. Arabic-Indic numerals are a **per-tenant preference**, off by default — Saudi retail commonly uses Western digits on receipts.
 5. **Mixed content is the norm, not the edge case.** A product named `قميص رجالي Slim Fit — L` must render correctly. This is explicitly QA gate M6. Every component is tested with a mixed-script fixture string.
+6. **The language switch is reachable before sign-in.** It sits in the top bar of both front ends *and* on the sign-in page, where it keeps its written name rather than collapsing to a globe. The person most likely to need that button is the person least able to read the page around it, and asking them to read an English form to reach the control that would have translated it is not a design.
 
 ```css
 .cart-row { padding-inline: var(--space-4); border-inline-start: 3px solid transparent; }

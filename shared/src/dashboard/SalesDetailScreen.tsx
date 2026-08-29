@@ -13,7 +13,7 @@ import { money, shortDate, longDate } from '../ui/format';
 import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { InvoiceState } from './InvoiceState';
 import { useRemote } from './useRemote';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 export function SalesDetailScreen({
   companyId,
@@ -29,6 +29,7 @@ export function SalesDetailScreen({
   onOpenInvoice?: (invoiceId: string) => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client } = useAuth();
   const load = useCallback(
     () => fetchSales(client, companyId, date),
@@ -39,7 +40,7 @@ export function SalesDetailScreen({
   return (
     <DetailScreen
       title={t('common.sales')}
-      subtitle={shortDate(date)}
+      subtitle={shortDate(date, locale)}
       onBack={onBack}
       onRefresh={reload}
       refreshing={refreshing}
@@ -70,8 +71,8 @@ export function SalesDetailScreen({
               <div className="ds-panel__body ds-scroll-x">
                 {d.rows.length === 0 ? (
                   <EmptyState
-                    title={`Nothing was rung up on ${shortDate(date)}`}
-                    body="Sales appear here as the till records them. Nothing is wrong."
+                    title={t('sales.nothingRungUpOn', { date: shortDate(date, locale) })}
+                    body={t('sales.appearAsRecorded')}
                   />
                 ) : (
                   <table className="ds-table">
@@ -120,9 +121,10 @@ function Row({
   currency: string;
   onOpen?: (invoiceId: string) => void;
 }) {
+  const { locale } = useLocale();
   return (
     <tr className={row.is_credit_note ? 'detail__row--credit' : undefined}>
-      <td className="ds-date">{longDate(row.issued_at)}</td>
+      <td className="ds-date">{longDate(row.issued_at, locale)}</td>
       <td>
         {/* The number is the handle people quote, so it is the thing that
             opens the document. A whole clickable row would swallow selecting

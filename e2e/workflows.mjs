@@ -43,7 +43,7 @@ function check(condition, what) {
 }
 
 const go = async (page, section) => {
-  await page.locator('.app__navlink', { hasText: section }).first().click();
+  await page.locator('.bo__link, .app__navlink', { hasText: section }).first().click();
   await page.waitForTimeout(1000);
 };
 
@@ -63,6 +63,34 @@ async function tab(page, label) {
   return true;
 }
 
+/* The navigation moved, and these three scripts drive it.
+ *
+ * The rail is off-canvas below 640px and the language options live in a menu
+ * rather than side by side, so both now need opening before they can be used.
+ * One helper rather than three copies. */
+async function openNav(page) {
+  const menu = page.locator('.bo__menu');
+  if (await menu.count() && await menu.isVisible()) {
+    await menu.click().catch(() => {});
+    await page.waitForTimeout(250);
+  }
+}
+
+async function chooseLanguage(page, label) {
+  const trigger = page.locator('.lang__trigger').first();
+  if (!(await trigger.count())) return false;
+  await trigger.click().catch(() => {});
+  await page.waitForTimeout(200);
+  const opt = page.locator('button.lang__opt', { hasText: label }).first();
+  if (!(await opt.count())) {
+    await page.keyboard.press('Escape');
+    return false;
+  }
+  await opt.click();
+  await page.waitForTimeout(900);
+  return true;
+}
+
 async function signIn(page) {
   step = 'Login';
   await page.goto(WEB, { waitUntil: 'domcontentloaded' });
@@ -73,7 +101,7 @@ async function signIn(page) {
     await page.fill('input[type=password]', PASSWORD);
     await page.locator('form button').first().click();
     try {
-      await page.waitForSelector('.app__navlink', { timeout: 15000 });
+      await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(700);
       done.push('Login');
       return;

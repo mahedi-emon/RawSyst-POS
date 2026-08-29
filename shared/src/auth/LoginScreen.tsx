@@ -10,6 +10,7 @@ import { useState, type FormEvent } from 'react';
 import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from './session';
 import { useT } from '../i18n/locale';
+import { LanguageSwitch } from '../i18n/LanguageSwitch';
 
 export function LoginScreen() {
   const { signIn, status, tenantChoices, clearTenantChoices } = useAuth();
@@ -69,6 +70,17 @@ export function LoginScreen() {
   if (tenantChoices.length > 0) {
     return (
       <main className="login">
+      {/* Before the password, not after it.
+        *
+        * The one screen in the product a person reaches before the interface
+        * knows anything about them, and the only place a cashier who reads
+        * Arabic or Bangla and not English can do anything at all. Leaving the
+        * switch until after sign-in means asking them to read an English form
+        * to reach the control that would have translated it. */}
+      <div className="login__lang">
+        <LanguageSwitch />
+      </div>
+
         <div className="login__card">
           <h1 className="login__title">RawSyst</h1>
           <p className="login__subtitle">{t('login.chooseTenant')}</p>
@@ -112,6 +124,17 @@ export function LoginScreen() {
 
   return (
     <main className="login">
+      {/* Before the password, not after it.
+        *
+        * The one screen in the product a person reaches before the interface
+        * knows anything about them, and the only place a cashier who reads
+        * Arabic or Bangla and not English can do anything at all. Leaving the
+        * switch until after sign-in means asking them to read an English form
+        * to reach the control that would have translated it. */}
+      <div className="login__lang">
+        <LanguageSwitch />
+      </div>
+
       <form className="login__card" onSubmit={submit}>
         <h1 className="login__title">RawSyst</h1>
         {/* The screen is shared by the till and the back office, so it does

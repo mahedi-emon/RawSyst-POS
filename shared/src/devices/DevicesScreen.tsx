@@ -31,7 +31,7 @@ import { describeState, offered } from './devices';
 import { TerminalForm } from './TerminalForm';
 import { EnrolmentCode } from './EnrolmentCode';
 import { RevokeDialog } from './RevokeDialog';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 interface Loaded {
   terminals: Terminal[];
@@ -171,7 +171,7 @@ export function DevicesScreen({ companyId }: { companyId: string }) {
                   {loaded.terminals.length === 0 ? (
                     <EmptyState
                       title={t('dev.noTerminals')}
-                      body="A terminal is one till. Add one here, then type the code it gives you into the machine on your counter — that is what lets it ring up sales."
+                      body={t('devices.whatIsATerminal')}
                     />
                   ) : (
                     <table className="ds-table">
@@ -240,6 +240,7 @@ function TerminalRow({
   onRevoke: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const state = describeState(terminal);
   const controls = offered(terminal, mayManage);
   const gone = terminal.status === 'revoked';
@@ -281,7 +282,7 @@ function TerminalRow({
       </td>
       <td className="ds-date">
         {terminal.last_active_at ? (
-          shortDate(terminal.last_active_at)
+          shortDate(terminal.last_active_at, locale)
         ) : (
           <span className="ds-subtle">—</span>
         )}

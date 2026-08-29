@@ -43,6 +43,8 @@ import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
 import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
+import { Icon, type IconName } from '@rawsyst/shared/ui/Icon';
+import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 
 type Section =
   | 'dashboard'
@@ -66,6 +68,41 @@ export function BackOffice() {
   // screen's key. Its whole job is to make pressing the CURRENT section mean
   // something: see the click handler below.
   const [sectionNonce, setSectionNonce] = useState(0);
+
+  // Whether the rail shows its labels, and whether the phone's drawer is open.
+  //
+  // The pin is remembered per device, which is the right scope: the same person
+  // wants the labels on a laptop and the width back on a tablet, and the
+  // machine is what tells the two apart.
+  const [railOpen, setRailOpen] = useState(false);
+  const [drawer, setDrawer] = useState(false);
+
+  useEffect(() => {
+    try {
+      setRailOpen(localStorage.getItem('rawsyst.rail') === 'open');
+    } catch {
+      /* A browser refusing storage is not a reason to fail to render. */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('rawsyst.rail', railOpen ? 'open' : 'icons');
+    } catch {
+      /* As above. */
+    }
+  }, [railOpen]);
+
+  // Escape closes the drawer, because a drawer over the whole screen with no
+  // visible way out is a trap on a phone.
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawer(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawer]);
   // The company list carries the tenant it was fetched for.
   //
   // Storing them apart was a bug: clearing the selection in an effect still
@@ -178,98 +215,271 @@ export function BackOffice() {
       ? companyId
       : null;
 
-  const sections: Array<{ key: Section; label: string; shown: boolean }> = [
-    { key: 'dashboard', label: t('nav.dashboard'), shown: mayReadFigures },
-    { key: 'buying', label: t('nav.buying'), shown: mayBuy },
-    { key: 'customers', label: t('nav.customers'), shown: maySeeCustomers },
-    { key: 'inventory', label: t('nav.inventory'), shown: maySeeInventory },
+  // Grouped, because ten destinations in one list is a list somebody reads
+  // every time instead of learning. The groups are the three questions an owner
+  // opens this with: how is the business doing, what is the money doing, and
+  // how is the shop set up.
+  const sections: Array<{
+    key: Section;
+    label: string;
+    icon: IconName;
+    group: 'overview' | 'trade' | 'admin';
+    shown: boolean;
+  }> = [
+    {
+      key: 'dashboard',
+      label: t('nav.dashboard'),
+      icon: 'dashboard',
+      group: 'overview',
+      shown: mayReadFigures,
+    },
+    {
+      key: 'buying',
+      label: t('nav.buying'),
+      icon: 'buying',
+      group: 'trade',
+      shown: mayBuy,
+    },
+    {
+      key: 'inventory',
+      label: t('nav.inventory'),
+      icon: 'inventory',
+      group: 'trade',
+      shown: maySeeInventory,
+    },
+    {
+      key: 'customers',
+      label: t('nav.customers'),
+      icon: 'customers',
+      group: 'trade',
+      shown: maySeeCustomers,
+    },
     // Beside Buying and Customers, because it is the third thing money does:
     // what the shop bought, what it is owed, and what it spent.
-    { key: 'expenses', label: t('nav.expenses'), shown: maySeeExpenses },
+    {
+      key: 'expenses',
+      label: t('nav.expenses'),
+      icon: 'expenses',
+      group: 'trade',
+      shown: maySeeExpenses,
+    },
     // Between the money screens and the hardware ones, because reconciling a
     // bank statement is bookkeeping rather than administration.
-    { key: 'settlement', label: t('nav.settlement'), shown: maySeeAccounting },
-    { key: 'devices', label: t('nav.devices'), shown: maySeeDevices },
-    { key: 'einvoicing', label: t('nav.einvoicing'), shown: maySeeEInvoicing },
-    { key: 'setup', label: t('nav.setup'), shown: maySeeSetup },
+    {
+      key: 'settlement',
+      label: t('nav.settlement'),
+      icon: 'settlement',
+      group: 'trade',
+      shown: maySeeAccounting,
+    },
+    {
+      key: 'devices',
+      label: t('nav.devices'),
+      icon: 'devices',
+      group: 'admin',
+      shown: maySeeDevices,
+    },
+    {
+      key: 'einvoicing',
+      label: t('nav.einvoicing'),
+      icon: 'einvoicing',
+      group: 'admin',
+      shown: maySeeEInvoicing,
+    },
+    {
+      key: 'setup',
+      label: t('nav.setup'),
+      icon: 'setup',
+      group: 'admin',
+      shown: maySeeSetup,
+    },
     // I2. Reads with identity.view and writes with identity.edit, the same
     // pair the rest of company settings carries.
-    { key: 'branding', label: t('nav.branding'), shown: maySeeSetup },
+    {
+      key: 'branding',
+      label: t('nav.branding'),
+      icon: 'branding',
+      group: 'admin',
+      shown: maySeeSetup,
+    },
   ];
   const visible = sections.filter((s) => s.shown);
+  const groups: Array<{ key: 'overview' | 'trade' | 'admin'; label: string }> = [
+    { key: 'overview', label: t('nav.overview') },
+    { key: 'trade', label: t('nav.trade') },
+    { key: 'admin', label: t('nav.administration') },
+  ];
+
+  const current = visible.find((s) => s.key === section);
+
+  // The company whose books are on screen, for the bar. Trade name where a
+  // shop has one, because that is what its own staff call it.
+  const here = companies?.find((c) => c.id === activeCompany);
+  const hereName = here ? here.trade_name || here.legal_name : null;
+
+  function go(key: Section) {
+    setSection(key);
+    // Leaving a section clears the drill, so returning starts at the top
+    // rather than three levels into last week.
+    setDrill(null);
+    // Pressing the section you are ALREADY in takes you back to its top.
+    // Without this the click did nothing at all: the section value was
+    // unchanged, so React kept the mounted screen and its private state, and a
+    // buyer halfway through a new purchase order who reached for "Buying" —
+    // which is what everybody reaches for — stayed on the form. The only way
+    // out was a back control they had to notice first.
+    //
+    // Each screen owns its own sub-view, so there is nothing here to reset;
+    // bumping a key remounts the screen, which returns every one of them to
+    // its index at once.
+    setSectionNonce((n) => n + 1);
+    // And on a phone the drawer closes behind you, because a navigation that
+    // stays open over the screen it just opened is one tap of housekeeping
+    // per move.
+    setDrawer(false);
+  }
 
   return (
     <div className="bo">
-      <header className="bo__bar">
-        <span className="bo__brand">RawSyst</span>
+      {/* The scrim exists only while the drawer is open, and only on a phone
+          — where the rail is over the page rather than beside it. */}
+      {drawer && (
+        <button
+          type="button"
+          className="bo__scrim"
+          aria-label={t('nav.closeMenu')}
+          onClick={() => setDrawer(false)}
+        />
+      )}
 
-        {visible.length > 1 && (
-          <nav className="app__nav" aria-label={t('nav.sections')}>
-            {visible.map((s) => (
-              <button
-                key={s.key}
-                className={`app__navlink${section === s.key ? ' app__navlink--on' : ''}`}
-                aria-current={section === s.key ? 'page' : undefined}
-                onClick={() => {
-                  setSection(s.key);
-                  // Leaving a section clears the drill, so returning starts at
-                  // the top rather than three levels into last week.
-                  setDrill(null);
-                  // Pressing the section you are ALREADY in takes you back to
-                  // its top. Without this the click did nothing at all: the
-                  // section value was unchanged, so React kept the mounted
-                  // screen and its private state, and a buyer halfway through
-                  // a new purchase order who reached for "Buying" — which is
-                  // what everybody reaches for — stayed on the form. The only
-                  // way out was a back control they had to notice first.
-                  //
-                  // Each screen owns its own sub-view, so there is nothing
-                  // here to reset; bumping a key remounts the screen, which
-                  // returns every one of them to its index at once.
-                  setSectionNonce((n) => n + 1);
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
+      <nav
+        className={`bo__rail${railOpen ? ' bo__rail--open' : ''}${drawer ? ' bo__rail--drawer' : ''}`}
+        aria-label={t('nav.sections')}
+      >
+        <div className="bo__railhead">
+          <span className="bo__mark" aria-hidden="true">
+            R
+          </span>
+          <span className="bo__wordmark">RawSyst</span>
+        </div>
+
+        <div className="bo__nav">
+          {groups.map((g) => {
+            const inGroup = visible.filter((x) => x.group === g.key);
+            if (inGroup.length === 0) return null;
+            return (
+              <div key={g.key}>
+                <p className="bo__group">{g.label}</p>
+                {inGroup.map((x) => (
+                  <button
+                    key={x.key}
+                    type="button"
+                    className={`bo__link${section === x.key ? ' bo__link--on' : ''}`}
+                    aria-current={section === x.key ? 'page' : undefined}
+                    // The label again, for the collapsed rail where the words
+                    // are not on screen. A native title is the one tooltip
+                    // that works before any JavaScript has run.
+                    title={x.label}
+                    onClick={() => go(x.key)}
+                  >
+                    <Icon name={x.icon} />
+                    <span className="bo__linklabel">{x.label}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bo__railfoot">
+          <button
+            type="button"
+            className="bo__link"
+            title={t('nav.signOut')}
+            onClick={() => void signOut()}
+          >
+            <Icon name="signout" />
+            <span className="bo__linklabel">{t('nav.signOut')}</span>
+          </button>
+        </div>
+      </nav>
+
+      <div className="bo__screen">
+        <header className="bo__bar">
+          <button
+            type="button"
+            className="bo__iconbtn bo__menu"
+            aria-label={t('nav.openMenu')}
+            aria-expanded={drawer}
+            onClick={() => setDrawer(true)}
+          >
+            <Icon name="menu" size={20} />
+          </button>
+
+          {/* The rail is pinned open or left to collapse, and the choice is
+              remembered. An owner on a 1280px laptop wants the labels; the
+              same person on a 1024px tablet wants the width back. */}
+          <button
+            type="button"
+            className="bo__iconbtn bo__pin"
+            aria-label={t('nav.toggleMenu')}
+            aria-pressed={railOpen}
+            onClick={() => setRailOpen((v) => !v)}
+          >
+            <Icon name="menu" size={20} />
+          </button>
+
+          {/* Which company, then which section.
+            *
+            * The section name alone repeated the page's own heading eighty
+            * pixels below it, which reads as a stutter rather than as
+            * orientation. The company is the thing the bar can say that the
+            * page cannot: a tenant with two companies needs to know which
+            * books they are looking at before they read a figure, and a tenant
+            * with one has never been told the name at all. */}
+          <nav className="bo__crumbs" aria-label={t('nav.sections')}>
+            {hereName && <span className="bo__crumb">{hereName}</span>}
+            {hereName && (
+              <span className="bo__crumbsep" aria-hidden="true">
+                <Icon name="chevron" size={14} />
+              </span>
+            )}
+            <h1 className="bo__title">{current?.label ?? 'RawSyst'}</h1>
           </nav>
-        )}
 
-        <div className="app__spacer" />
+          <div className="bo__baractions">
+            {/* Only when there is a genuine choice. A picker offering one
+                option is a control that cannot be used. */}
+            {companies && companies.length > 1 && (
+              <label className="app__company">
+                <span className="ds-visually-hidden">{t('nav.company')}</span>
+                <select
+                  className="field__input"
+                  value={companyId ?? ''}
+                  onChange={(e) => {
+                    setCompanyId(e.target.value);
+                    // The drill belongs to the company it was opened from.
+                    setDrill(null);
+                  }}
+                >
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.trade_name || c.legal_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
-        {/* Only when there is a genuine choice. A picker offering one option
-            is a control that cannot be used. */}
-        {companies && companies.length > 1 && (
-          <label className="app__company">
-            <span className="ds-caption">Company</span>
-            <select
-              value={companyId ?? ''}
-              onChange={(e) => {
-                setCompanyId(e.target.value);
-                // The drill belongs to the company it was opened from.
-                setDrill(null);
-              }}
-            >
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.trade_name || c.legal_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <LanguageSwitch />
-
-        <button className="ds-btn ds-btn--quiet" onClick={() => void signOut()}>
-          {t('nav.signOut')}
-        </button>
-      </header>
+            <ThemeSwitch />
+            <LanguageSwitch />
+          </div>
+        </header>
 
       {/* The key is what makes a press of the current section take effect. It
         * changes when the section changes, which React would have done anyway,
         * AND when the same section is pressed again, which it would not. */}
-      <div className="bo__screen" key={`${section}:${sectionNonce}`}>
+        <div className="bo__body" key={`${section}:${sectionNonce}`}>
       {visible.length === 0 ? (
         <NoSections />
       ) : section === 'setup' && maySeeSetup ? (
@@ -311,6 +521,7 @@ export function BackOffice() {
       ) : (
         <NoSections />
       )}
+        </div>
       </div>
     </div>
   );

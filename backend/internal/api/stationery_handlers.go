@@ -38,6 +38,15 @@ type stationeryResponse struct {
 	StoreName string `json:"store_name"`
 	VATNumber string `json:"vat_number"`
 
+	// What the shop keeps its books in. Every figure the till shows and every
+	// figure it prints is an amount in this, and until now the till was never
+	// told: it displayed bare numbers and the receipt carried no code either.
+	//
+	// Sent with the stationery rather than as its own call because it is the
+	// same fact for the same reason — this is what a receipt has to say — and
+	// the till already caches this response for use offline.
+	BaseCurrency string `json:"base_currency"`
+
 	// The simplified-invoice template: what a counter sale is. The other three
 	// document types are back-office documents and no till prints them.
 	Header         string `json:"header_text"`
@@ -91,6 +100,7 @@ func (s *Server) handleTillStationery(w http.ResponseWriter, r *http.Request) {
 	}
 	out.StoreName = seller.Name
 	out.VATNumber = seller.VATNumber
+	out.BaseCurrency = seller.BaseCurrency
 
 	httpx.JSON(w, http.StatusOK, out)
 }

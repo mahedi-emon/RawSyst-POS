@@ -110,83 +110,87 @@ export function isZero(amount: string | null | undefined): boolean {
   return /^-?0*\.?0*$/.test(amount.trim());
 }
 
+/* Month names, per language.
+ *
+ * The product writes dates with a NAMED month rather than a numeric one, and
+ * the reason is in `shortDate` below: "08/09" is September in one market and
+ * August in another, and this is sold into both. That decision is right and it
+ * stays.
+ *
+ * What was wrong is that the name was always English. An Arabic dashboard read
+ * "لا مبيعات في 29 Aug" and a Bangla one "29 Aug" -- three Latin letters in the
+ * middle of a right-to-left sentence, which is both a localisation gap and, in
+ * Arabic, a direction change mid-line that the eye trips over.
+ *
+ * Abbreviated in English because a table column is narrow. Arabic and Bangla
+ * month names have no established three-letter abbreviation, so they are
+ * written out: يناير, জানুয়ারি. They are short words already.
+ */
+const MONTHS: Record<Locale, readonly string[]> = {
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+       'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
+  bn: ['জানু', 'ফেব্রু', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+       'জুলাই', 'আগস্ট', 'সেপ্ট', 'অক্টো', 'নভে', 'ডিসে'],
+};
+
+/** The date part of an ISO date or an RFC3339 timestamp, as [year, month, day].
+ *
+ *  Written for `YYYY-MM-DD`, and splitting on the hyphen worked perfectly for
+ *  one. Half the callers hand it a timestamp instead -- the API sends RFC3339
+ *  for anything with a time on it -- and then the third piece is
+ *  "28T22:45:00+06:00", whose Number() is NaN. Card settlement listed eleven
+ *  payments as taken on "NaN Aug", and the Terminals list said the same about
+ *  when each till was last seen.
+ *
+ *  Trimmed here rather than at each call site: a formatter that is wrong for
+ *  half the strings the product actually holds is the formatter's problem, and
+ *  the next screen to pass a timestamp should not have to know. */
+function datePartsOf(iso: string): { y: string; m: number; d: number } | null {
+  const [date = ''] = iso.split('T');
+  const [y = '', mm = '', dd = ''] = date.split('-');
+  const m = Number(mm);
+  const d = Number(dd);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return null;
+  if (!Number.isFinite(d) || d < 1 || d > 31) return null;
+  return { y, m, d };
+}
+
 /** A short, unambiguous date for a chart axis or a row.
  *
- * Deliberately not locale-formatted: the axis has room for five characters and
- * "16 Aug" is readable to every market this product serves, where "8/16" and
- * "16/8" mean different things in different ones. */
-export function shortDate(iso: string): string {
-  // The DATE part, before anything else is looked at.
-  //
-  // This was written for `YYYY-MM-DD` and splitting on the hyphen worked
-  // perfectly for one. Half its callers hand it a timestamp instead — the API
-  // sends RFC3339 for anything with a time on it — and then the third piece is
-  // "28T22:45:00+06:00", whose Number() is NaN. Card settlement listed eleven
-  // payments as taken on "NaN Aug", and the Terminals list said the same about
-  // when each till was last seen.
-  //
-  // Trimmed here rather than at each call site: a formatter that is wrong for
-  // half the strings the product actually holds is the formatter's problem,
-  // and the next screen to pass a timestamp should not have to know.
-  const [date = ''] = iso.split('T');
-  const [, m = '', d = ''] = date.split('-');
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  const month = months[Number(m) - 1];
-  const day = Number(d);
-  if (!month || !Number.isFinite(day) || day < 1 || day > 31) return iso;
-  return `${day} ${month}`;
+ * Deliberately not `toLocaleDateString`: the axis has room for a few
+ * characters, and "8/16" and "16/8" mean different things in different markets
+ * this product serves. A named month cannot be misread.
+ *
+ * The name is in the reader's language. Callers inside React pass the locale
+ * from `useLocale()`; a receipt printer or a test calling this with no locale
+ * gets English, which is the same fallback the catalogue uses. */
+export function shortDate(iso: string, locale: Locale = 'en'): string {
+  const parts = datePartsOf(iso);
+  if (!parts) return iso;
+  return `${parts.d} ${MONTHS[locale][parts.m - 1]}`;
 }
 
 /** A date on a document, with its year.
  *
- * `shortDate` drops the year because a chart axis has room for five characters
- * and every point on it is inside one window. A purchase order, a bill and an
- * invoice are not: a list of them spans years, and "28 Aug" on a document whose
- * payment terms have run out for two years is a genuinely misleading thing to
- * print.
- *
- * Written out rather than passed to `toLocaleDateString`, for the same reason
- * shortDate is: "08/28/2026" and "28/08/2026" are both plausible readings of
- * the same nine characters, and this product is sold into markets that read
- * them differently. A named month cannot be misread.
+ * `shortDate` drops the year because a chart axis has room for a few
+ * characters and every point on it is inside one window. A purchase order, a
+ * bill and an invoice are not: a list of them spans years, and "28 Aug" on a
+ * document whose payment terms have run out for two years is a genuinely
+ * misleading thing to print.
  *
  * The ISO string is what the API sends and what the eight screens using this
- * were printing RAW — `2026-08-28`, set in a monospace face, which reads as a
+ * were printing RAW -- `2026-08-28`, set in a monospace face, which reads as a
  * database column rather than as the date somebody placed an order. */
-export function longDate(iso: string | null | undefined): string {
+export function longDate(
+  iso: string | null | undefined,
+  locale: Locale = 'en',
+): string {
   if (!iso) return '—';
-  const [y = '', m = '', rest = ''] = iso.split('-');
-  const d = rest.slice(0, 2);
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  const month = months[Number(m) - 1];
-  if (!month || !y || !d) return iso;
-  return `${Number(d)} ${month} ${y}`;
+  const parts = datePartsOf(iso);
+  if (!parts || !parts.y) return iso;
+  return `${parts.d} ${MONTHS[locale][parts.m - 1]} ${parts.y}`;
 }
 
 /**

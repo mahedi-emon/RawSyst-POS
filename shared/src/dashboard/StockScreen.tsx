@@ -42,7 +42,7 @@ export function StockScreen({
   return (
     <DetailScreen
       title={t('dash.stockToReorder')}
-      subtitle="Counted across every warehouse in this business"
+      subtitle={t('stock.countedEverywhere')}
       onBack={onBack}
       onRefresh={reload}
       refreshing={refreshing}

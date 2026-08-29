@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
 import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
+import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import { useAuth } from '@rawsyst/shared/auth/session';
 import { listCompanies, type Company } from '@rawsyst/shared/api/companies';
@@ -220,7 +221,12 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   return (
     <div className="app">
       <header className="app__bar">
-        <span className="app__brand">RawSyst</span>
+        <span className="app__brand">
+          <span className="app__mark" aria-hidden="true">
+            R
+          </span>
+          RawSyst
+        </span>
 
         {/* Only rendered when there is a genuine choice. A single-destination
             nav is chrome that teaches nothing. */}
@@ -251,8 +257,9 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
             single option is a control that cannot be used. */}
         {screen === 'dashboard' && companies && companies.length > 1 && (
           <label className="app__company">
-            <span className="ds-caption">Company</span>
+            <span className="ds-visually-hidden">{t('nav.company')}</span>
             <select
+              className="field__input"
               value={companyId ?? ''}
               onChange={(e) => setCompanyId(e.target.value)}
             >
@@ -265,6 +272,7 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
           </label>
         )}
 
+        <ThemeSwitch />
         <LanguageSwitch />
 
         <button className="ds-btn ds-btn--quiet" onClick={() => void signOut()}>

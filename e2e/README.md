@@ -183,8 +183,48 @@ RS_PASSWORD=... node e2e/layout-probe.mjs
 RS_PASSWORD=... RS_POS=http://localhost:5173 node e2e/workflows.mjs
 ```
 
-`shots.mjs` is the fourth and is not a check: it writes a screenshot of every
-screen at every width in both languages, for the judgements the others refuse to
-make. Whether a screen is crowded, whether the hierarchy reads, whether the
-Arabic mirror actually mirrors — those need eyes, and this is how you get them
-in front of a person quickly.
+
+## Two source lints
+
+Neither needs a browser, a database or a running server. Both exist because
+they found something the type checker, the unit tests and a browser walk all
+looked straight past.
+
+```
+node e2e/classes.mjs
+node e2e/strings.mjs
+```
+
+`classes.mjs` compares the class names the components use against the names the
+stylesheets define. A missing rule is not a build error, not a type error and
+not a runtime error — it is simply a screen that looks wrong to whoever opens
+it. It found `.dialog`, `.dialog__backdrop` and `.dialog__body`, which meant the
+one dialog in the product that asks somebody to type a name before doing
+something irreversible rendered as unstyled markup over an invisible backdrop.
+
+`strings.mjs` finds user-facing English that never reaches the catalogue: prose
+passed as a prop, and template literals that stitch English around a value. It
+found forty-one, including every empty state on the purchasing screens and the
+`aria-label` on each numeric input of a purchase order — which said "Quantity
+billed on line 3" in English to a screen reader whatever language the shop had
+chosen, to the one reader with nothing else to go on.
+
+Both report rather than fail: some class names are built at runtime, and some
+strings genuinely are the same in every language. They are there to be read.
+
+## The screenshots
+
+`shots.mjs` is not a check: it writes a screenshot of every screen at every
+width in every language, for the judgements the others refuse to make. Whether
+a screen is crowded, whether the hierarchy reads, whether the Arabic mirror
+actually mirrors — those need eyes, and this is how you get them in front of a
+person quickly.
+
+```
+RS_PASSWORD=... RS_WIDTH=desktop RS_LANGS=en,ar,bn RS_OUT=shots node e2e/shots.mjs
+```
+
+`RS_LANGS` takes locale codes, not the names in the menu. Passing "العربية"
+through an environment variable came back re-encoded, the option never matched,
+and the run produced a second set of screenshots that were quietly identical to
+the English ones.

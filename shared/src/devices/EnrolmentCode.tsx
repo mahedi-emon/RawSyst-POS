@@ -61,7 +61,9 @@ export function EnrolmentCode({
             otherwise be read as two unrelated words. */}
         <p
           className={`pairing__code${expired ? ' pairing__code--dead' : ''}`}
-          aria-label={`Enrolment code, ${issued.code.split('').join(' ')}`}
+          aria-label={t('devices.enrolmentCodeIs', {
+            code: issued.code.split('').join(' '),
+          })}
         >
           {codeGroups(issued.code).map((group, i) => (
             <span key={i} className="pairing__group">

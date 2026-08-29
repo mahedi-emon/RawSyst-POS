@@ -78,7 +78,7 @@
   min-inline-size: 0;
   max-inline-size: 100%;
   font: inherit;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   padding: var(--space-2) var(--space-3);
   min-block-size: var(--tap-mobile);
   border: 1px solid var(--border-strong);
@@ -289,6 +289,14 @@
   overflow-wrap: anywhere;
 }
 
+/* The sentence under the title of an attention row. Used and never defined:
+ * it took its size and colour from the utilities beside it and had no space
+ * above, so the two lines ran together. */
+.attention__detail {
+  display: block;
+  margin-block-start: 2px;
+}
+
 .attention__row--critical { border-inline-start-color: var(--danger); }
 .attention__row--warning  { border-inline-start-color: var(--warning); }
 .attention__row--notice   { border-inline-start-color: var(--offline); }
@@ -346,8 +354,15 @@
  * does not have, the system is what should change.
  */
 
+/* A page inside the shell.
+ *
+ * The shell already gives the section a name in its top bar, so the page's own
+ * header is the heading, the sentence that says what the screen is for, and
+ * the actions — not a repeat of the word above it. The padding is the shell's
+ * gutter and is the same on every screen, which is what makes them feel like
+ * one product rather than ten. */
 .detail {
-  padding: var(--space-5) var(--space-4) var(--space-7);
+  padding: var(--space-5) var(--space-5) var(--space-7);
   display: grid;
   /* minmax(0, 1fr) for the reason .dash carries: a bare 1fr floors at
    * min-content, so one child that will not shrink stretches the track and the
@@ -424,11 +439,15 @@
 .detail__head--flat { grid-template-areas: 'titles' 'actions'; }
 
 .detail__titles { grid-area: titles; }
+/* A primary action and a view switcher sit here together -- "New order" beside
+ * Orders / Bills / Suppliers. At the old gap the blue button touched the
+ * switcher and the two read as one four-part control, so a glance could not
+ * tell which of them changed the page and which changed the data. */
 .detail__actions {
   grid-area: actions;
   justify-self: end;
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-3);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -602,6 +621,10 @@ span.detail__strong { display: block; }
   flex-wrap: wrap;
   max-inline-size: 100%;
   background: var(--surface-sunken);
+  /* A hairline round the group. Without it the track is a slightly-grey shape
+   * on a white page and the unselected half reads as disabled text floating
+   * next to a button, rather than as the other half of one switch. */
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 2px;
   gap: 2px;
@@ -647,9 +670,12 @@ span.detail__strong { display: block; }
   }
 }
 
+.segmented__btn:hover:not(.segmented__btn--on) { color: var(--text); }
+
 .segmented__btn--on {
   background: var(--surface);
   color: var(--text);
+  font-weight: 600;
   box-shadow: var(--shadow-1);
 }
 
@@ -793,7 +819,6 @@ span.detail__strong { display: block; }
   grid-template-columns: 1fr;
 }
 
-.field { display: grid; gap: var(--space-1); min-inline-size: 0; }
 
 .field__label { font-size: 0.87rem; font-weight: 500; }
 
@@ -813,22 +838,10 @@ span.detail__strong { display: block; }
   font-weight: 500;
 }
 
-.input {
-  font: inherit;
-  inline-size: 100%;
-  min-block-size: var(--tap-mobile);
-  padding-inline: var(--space-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.input::placeholder { color: var(--text-subtle); }
-.input:disabled { background: var(--surface-sunken); color: var(--text-muted); }
-.input--narrow { inline-size: 7rem; text-align: end; font-family: var(--font-mono); }
-
-.field--bad .input { border-color: var(--danger); }
+/* The shape and colour of `.input` now live in the design system beside
+ * `.field__input`, which is the same control under the other name the product
+ * grew. Only what is particular to this stylesheet is left here. */
+.input--narrow { inline-size: 7rem; text-align: end; font-variant-numeric: tabular-nums; }
 
 .form__error {
   margin: 0;
@@ -1059,7 +1072,7 @@ span.detail__strong { display: block; }
 .receipt__alloc {
   inline-size: 8rem;
   text-align: end;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* On a phone the standing figures stack rather than shrinking to unreadable

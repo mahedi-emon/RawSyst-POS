@@ -63,6 +63,9 @@
 @import '@fontsource/ibm-plex-sans-arabic/400.css';
 @import '@fontsource/ibm-plex-sans-arabic/500.css';
 @import '@fontsource/ibm-plex-sans-arabic/600.css';
+@import '@fontsource/noto-sans-bengali/400.css';
+@import '@fontsource/noto-sans-bengali/500.css';
+@import '@fontsource/noto-sans-bengali/600.css';
 
 /* ---------------------------------------------------------------------------
  * Colour
@@ -91,44 +94,81 @@
 }
 
 :root {
-  /* Neutrals — the interface is mostly this. */
-  --bg: #fbfbfd;
+  /* ---------------------------------------------------------------------
+   * Neutrals — nine tenths of the interface.
+   *
+   * A cool grey ramp with a faint blue cast rather than pure neutral: on the
+   * white surfaces this product is mostly made of, a dead-neutral grey reads
+   * slightly yellow beside them, and every serious financial interface picks
+   * a side. The canvas is deliberately close to white — a page that is
+   * obviously grey looks like a template with cards dropped on it.
+   * ------------------------------------------------------------------- */
+  --bg: #f6f7f9;
   --surface: #ffffff;
-  --surface-sunken: #f4f5f7;
-  --border: #e3e5e9;
-  --border-strong: #c9cdd4;
-  --text: #16181d;
-  --text-muted: #5c6270;
-  --text-subtle: #878d9a;
+  --surface-sunken: #f1f3f6;
+  --surface-raised: #ffffff;
+  --border: #e4e7ec;
+  --border-strong: #cdd2dc;
+  --text: #101423;
+  --text-muted: #545c6f;
+  --text-subtle: #858da0;
 
-  /* Brand — primary actions, active nav, focus. Used sparingly. */
-  --brand: #1f6feb;
-  --brand-hover: #1a5fcc;
-  --brand-subtle: #eaf1fe;
+  /* -----------------------------------------------------------------------
+   * Brand — primary actions, active navigation, focus. Nowhere else.
+   *
+   * A deep royal blue rather than the bright default every framework ships.
+   * It has to sit under a total in SAR, BDT and USD without shouting, and it
+   * has to look deliberate beside a red refund and a green settlement.
+   * --------------------------------------------------------------------- */
+  --brand: #2b57d4;
+  --brand-hover: #2247b4;
+  --brand-active: #1c3c99;
+  --brand-subtle: #eef2fd;
+  --brand-border: #c9d6f8;
   --on-brand: #ffffff;
 
+  /* The navigation rail, which is the one large dark surface in the product.
+   * Dark enough to recede, warm enough not to read as a void. */
+  --rail: #131a2b;
+  --rail-hover: #1d2740;
+  --rail-active: #24304e;
+  --rail-text: #c3cadb;
+  --rail-text-strong: #ffffff;
+  --rail-border: #232c44;
+
   /* Semantic */
-  --success: #17803d;
-  --success-subtle: #e7f6ec;
-  --warning: #a65b00;
-  --warning-subtle: #fdf2e3;
-  --danger: #c02626;
-  --danger-subtle: #fdecec;
-  --info: #0f6c94;
-  --info-subtle: #e8f4fb;
+  --success: #0f7a3d;
+  --success-subtle: #e6f6ec;
+  --success-border: #b5e3c6;
+  --warning: #96540a;
+  --warning-subtle: #fdf3e4;
+  --warning-border: #f2d6a8;
+  --danger: #bb2525;
+  --danger-subtle: #fdeceb;
+  --danger-border: #f4c4c1;
+  --info: #0d6b93;
+  --info-subtle: #e8f4fa;
+  --info-border: #b7ddef;
 
   /* Offline is a NEUTRAL operating state, not a warning. The POS is designed
    * to work offline; colouring it amber teaches cashiers to ignore amber. */
-  --offline: #5c6270;
-  --offline-subtle: #f0f1f4;
+  --offline: #545c6f;
+  --offline-subtle: #eef0f4;
 
   /* Financial direction. Paired with a sign, never colour alone. */
-  --credit: #17803d;
-  --debit: #c02626;
+  --credit: #0f7a3d;
+  --debit: #bb2525;
 
-  /* Type */
+  /* -----------------------------------------------------------------------
+   * Type
+   *
+   * Three scripts, three faces, one scale. Bengali is loaded for real: a
+   * Bangladeshi shop reading its own books in a fallback face is the same
+   * tell as an Arabic one, and this product sells into both markets.
+   * --------------------------------------------------------------------- */
   --font-latin: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-arabic: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', system-ui, sans-serif;
+  --font-bengali: 'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   /* 4px base scale. */
@@ -141,83 +181,98 @@
   --space-7: 48px;
   --space-8: 64px;
 
+  /* Tighter than before. A 16px radius on a data table reads as a toy; the
+   * things that carry figures get 8px and the things you press get 6px. */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-full: 999px;
 
-  /* Three levels only. Flat surfaces with clear borders read better under
-   * showroom lighting than soft shadows do. */
-  --shadow-1: 0 1px 2px rgb(16 24 40 / 6%);
-  --shadow-2: 0 4px 12px rgb(16 24 40 / 8%);
-  --shadow-3: 0 16px 40px rgb(16 24 40 / 14%);
+  /* Borders do the separating; shadows only lift what genuinely floats.
+   * Three levels, and level 3 is for dialogs alone. */
+  --shadow-1: 0 1px 2px rgb(16 20 35 / 5%);
+  --shadow-2: 0 2px 8px rgb(16 20 35 / 7%), 0 1px 2px rgb(16 20 35 / 4%);
+  --shadow-3: 0 20px 48px rgb(16 20 35 / 16%), 0 4px 12px rgb(16 20 35 / 8%);
 
   /* Touch targets. */
-  --tap-pos: 56px;
+  --tap-pos: 52px;
   --tap-mobile: 44px;
-  --tap-desk: 32px;
-}
+  --tap-desk: 34px;
 
-:root[data-theme='dark'],
-:root:not([data-theme='light']) {
+  /* The shell. */
+  --rail-width: 244px;
+  --rail-width-collapsed: 68px;
+  --topbar-height: 56px;
+
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg: #0e1014;
-    --surface: #171a20;
-    --surface-sunken: #101318;
-    --border: #262a33;
-    --border-strong: #3a404c;
-    --text: #f2f3f5;
-    --text-muted: #a2a9b8;
-    --text-subtle: #757d8c;
-    --brand: #5b9bff;
-    --brand-hover: #7fb0ff;
-    --brand-subtle: #16233a;
-    --on-brand: #06120f;
-    --success: #4ade80;
-    --success-subtle: #10261a;
-    --warning: #fbbf6b;
-    --warning-subtle: #2a1d0b;
-    --danger: #ff7b72;
-    --danger-subtle: #2c1416;
-    --info: #7cc7e8;
-    --info-subtle: #0f2029;
-    --offline: #a2a9b8;
-    --offline-subtle: #1b1f26;
-    --credit: #4ade80;
-    --debit: #ff7b72;
-    color-scheme: dark;
-  }
-}
+/* ---------------------------------------------------------------------------
+ * Light first, and light unless somebody asks otherwise.
+ *
+ * This used to follow `prefers-color-scheme`, so the entire product — the back
+ * office AND the till — rendered dark on any machine whose operating system was
+ * set that way. That is the wrong default for this product for two reasons that
+ * have nothing to do with taste:
+ *
+ *   - A till is a shared machine in a shop. Its appearance should be the shop's
+ *     decision, taken once, not the decision of whoever last touched the
+ *     Windows display settings.
+ *   - A dark interface is harder to read under the fluorescent lighting a
+ *     showroom actually has, and the design brief targets AAA contrast on POS
+ *     screens for exactly that reason.
+ *
+ * Dark is still first-class and still complete — it is opt-in, by setting
+ * `data-theme="dark"` on the root, which the appearance control writes.
+ * ------------------------------------------------------------------------- */
 
 :root[data-theme='dark'] {
-  --bg: #0e1014;
-  --surface: #171a20;
-  --surface-sunken: #101318;
-  --border: #262a33;
-  --border-strong: #3a404c;
-  --text: #f2f3f5;
-  --text-muted: #a2a9b8;
-  --text-subtle: #757d8c;
-  --brand: #5b9bff;
-  --brand-hover: #7fb0ff;
-  --brand-subtle: #16233a;
-  --on-brand: #06120f;
+  --bg: #0d1017;
+  --surface: #151a24;
+  --surface-sunken: #10141c;
+  --surface-raised: #1a202c;
+  --border: #242b39;
+  --border-strong: #38414f;
+  --text: #eef1f6;
+  --text-muted: #9fa8bb;
+  --text-subtle: #737c90;
+
+  --brand: #6c92f5;
+  --brand-hover: #86a6f8;
+  --brand-active: #a3bcfb;
+  --brand-subtle: #182444;
+  --brand-border: #2c3d6e;
+  --on-brand: #08101f;
+
+  --rail: #0a0d14;
+  --rail-hover: #161c28;
+  --rail-active: #1e2635;
+  --rail-text: #9fa8bb;
+  --rail-text-strong: #ffffff;
+  --rail-border: #1c2331;
+
   --success: #4ade80;
-  --success-subtle: #10261a;
-  --warning: #fbbf6b;
-  --warning-subtle: #2a1d0b;
-  --danger: #ff7b72;
-  --danger-subtle: #2c1416;
-  --info: #7cc7e8;
-  --info-subtle: #0f2029;
-  --offline: #a2a9b8;
-  --offline-subtle: #1b1f26;
+  --success-subtle: #0e2618;
+  --success-border: #1d4a31;
+  --warning: #f5b453;
+  --warning-subtle: #2a1e0b;
+  --warning-border: #4d3a15;
+  --danger: #ff8078;
+  --danger-subtle: #2c1517;
+  --danger-border: #52272a;
+  --info: #74c4e8;
+  --info-subtle: #0e1f29;
+  --info-border: #1d3c4c;
+
+  --offline: #9fa8bb;
+  --offline-subtle: #1a1f2a;
   --credit: #4ade80;
-  --debit: #ff7b72;
+  --debit: #ff8078;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-2: 0 2px 8px rgb(0 0 0 / 45%);
+  --shadow-3: 0 20px 48px rgb(0 0 0 / 60%);
+
   color-scheme: dark;
 }
 
@@ -275,8 +330,22 @@ html {
   font-family: var(--font-arabic);
 }
 
+:lang(bn) {
+  font-family: var(--font-bengali);
+}
+
 html:lang(ar) {
   font-size: 17.25px; /* 15px × 1.15, stated rather than computed by cascade */
+}
+
+/* Bengali carries more above and below the baseline than Latin — the
+ * matras hang off the top of every word and several conjuncts descend — so it
+ * needs a little more size and noticeably more leading than the same nominal
+ * setting in English. Set once at the root for the reason Arabic is: `em` on an
+ * inherited selector compounds at every level of nesting. */
+html:lang(bn) {
+  font-size: 16.5px;
+  line-height: 1.62;
 }
 
 body {
@@ -285,13 +354,26 @@ body {
   color: var(--text);
 }
 
-/* All numbers, everywhere. Tabular figures keep a column of currency aligned
- * on the decimal without any per-cell effort. */
+/* All numbers, everywhere.
+ *
+ * Tabular figures, and the interface face rather than the monospace one.
+ *
+ * The mono face was doing the alignment job, and it did it -- but it also made
+ * every total in the product look like program output. JetBrains Mono draws a
+ * slashed zero and a dotted one; "SAR 0.00" set in it on a dashboard tile is
+ * the visual language of a terminal, not of a set of books. No accounting
+ * product a business would recognise sets its money that way.
+ *
+ * `tabular-nums` is the feature that actually matters, and Inter has it: every
+ * digit takes the same width, so a column of currency aligns on the decimal
+ * with no per-cell effort and no code face. The mono family is kept for the
+ * things that ARE machine output and are read for their shape -- a base64
+ * certificate request, a CSID, a hash. */
 .num,
 .numeric {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
+  font-feature-settings: 'tnum' 1, 'cv05' 1;
+  letter-spacing: 0;
   text-align: end;
   white-space: nowrap;
 }
@@ -331,11 +413,20 @@ body {
   unicode-bidi: isolate;
 }
 
-.ds-display { font-size: 2.6rem; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
-.ds-h1      { font-size: 1.55rem; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
-.ds-h2      { font-size: 1.2rem;  line-height: 1.3;  font-weight: 600; margin: 0; }
-.ds-h3      { font-size: 1rem;    line-height: 1.4;  font-weight: 600; margin: 0; }
-.ds-body-sm { font-size: 0.87rem; line-height: 1.45; }
+/* The scale.
+ *
+ * Tightened a step. `h1` at 1.55rem and `h2` at 1.2rem left almost nothing
+ * between a page title, a section and a card title, so every screen read as
+ * one flat wall of semibold text — which is most of what makes a dashboard
+ * look generated. The gaps are wider now and the weights differ, so the
+ * hierarchy is visible without reading.
+ *
+ * `display` is the POS running total and nothing else. */
+.ds-display { font-size: 2.6rem; line-height: 1.08; font-weight: 700; letter-spacing: -0.025em; }
+.ds-h1      { font-size: 1.46rem; line-height: 1.25; font-weight: 650; letter-spacing: -0.018em; margin: 0; }
+.ds-h2      { font-size: 1.06rem; line-height: 1.35; font-weight: 600; letter-spacing: -0.008em; margin: 0; }
+.ds-h3      { font-size: 0.933rem; line-height: 1.4; font-weight: 600; margin: 0; }
+.ds-body-sm { font-size: 0.866rem; line-height: 1.5; }
 .ds-caption {
   font-size: 0.75rem;
   line-height: 1.35;
@@ -391,41 +482,229 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-block-size: var(--tap-mobile);
+  min-block-size: var(--tap-desk);
   padding-inline: var(--space-4);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font: inherit;
+  font-size: 0.933rem;
   font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
   background: transparent;
   color: var(--text);
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
-.ds-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ds-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+ * Fields
+ *
+ * `.field__input` was used by twenty-one controls across ten files -- the sign
+ * in form, the setup wizard, the inventory filter, the expense form, the shift
+ * count -- and no stylesheet anywhere defined it. Every one of them rendered as
+ * a bare operating-system widget: a hairline box on Windows, a rounded grey
+ * pill on macOS, and a raw grey dropdown with the platform's own chevron.
+ *
+ * A second vocabulary, `.input`, WAS defined, in the dashboard stylesheet. Two
+ * names for one thing is how the gap opened: whichever a screen happened to
+ * pick decided whether its form looked like the product.
+ *
+ * So both names are defined here, together, on the same declarations. The
+ * duplication is the point -- a change to the way a field looks cannot now
+ * reach one half of the product and not the other. `.input` keeps its extra
+ * modifiers where they are; this is the shape and the colour, which is what
+ * was missing.
+ * ------------------------------------------------------------------------- */
+
+.field { display: grid; gap: var(--space-1); min-inline-size: 0; }
+
+.field__input,
+.input {
+  font: inherit;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: var(--tap-desk);
+  padding-block: 0;
+  padding-inline: var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+textarea.field__input,
+textarea.input {
+  min-block-size: 5.5rem;
+  padding-block: var(--space-2);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field__input::placeholder,
+.input::placeholder { color: var(--text-subtle); }
+
+/* Hover is a real affordance on a field: it is how a mouse learns the whole box
+ * is the target and not just the caret. */
+.field__input:hover:not(:disabled):not(:read-only),
+.input:hover:not(:disabled):not(:read-only) { border-color: var(--text-subtle); }
+
+.field__input:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-subtle);
+}
+
+.field__input:disabled,
+.input:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.field__input[aria-invalid='true'],
+.field--bad .field__input,
+.field--bad .input,
+.input--bad { border-color: var(--danger); }
+
+.field__input[aria-invalid='true']:focus,
+.input--bad:focus { box-shadow: 0 0 0 3px var(--danger-subtle); }
+
+/* A native select keeps the platform's chevron, its platform font metrics and
+ * its platform height however the box around it is styled, so it is drawn from
+ * scratch. The arrow is an inline SVG data URI -- no network, no icon font, and
+ * it flips to the other edge under RTL with the rest of the layout. */
+select.field__input,
+select.input {
+  appearance: none;
+  cursor: pointer;
+  padding-inline-end: calc(var(--space-3) + 18px);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23545c6f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  background-size: 16px;
+}
+
+[dir='rtl'] select.field__input,
+[dir='rtl'] select.input { background-position: left var(--space-3) center; }
+
+:root[data-theme='dark'] select.field__input,
+:root[data-theme='dark'] select.input {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a2abbe' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* A date or time field draws its own picker button, which sits badly on a
+ * compact box and ignores the text colour. */
+.field__input[type='date'],
+.field__input[type='time'],
+.input[type='date'],
+.input[type='time'] { padding-inline-end: var(--space-2); }
+
+/* Number spinners are a hazard on a money field -- a stray scroll over a
+ * focused input silently changes an amount -- and every such field in this
+ * product has a keypad or a typed value instead. */
+.field__input[type='number'],
+.input[type='number'] { appearance: textfield; }
+
+.field__input[type='number']::-webkit-outer-spin-button,
+.field__input[type='number']::-webkit-inner-spin-button,
+.input[type='number']::-webkit-outer-spin-button,
+.input[type='number']::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* A field a finger uses is bigger than a field a mouse uses. The counter and
+ * the phone get the full target; a desktop form stays dense. */
+@media (max-width: 640px) {
+  .field__input,
+  .input { min-block-size: var(--tap-mobile); }
+}
+
+/* One focus ring for every control in the product, drawn OUTSIDE the border so
+ * it is visible on a filled button and on a white field alike. */
+.ds-btn:focus-visible,
+.field__input:focus-visible,
+.ds-check:focus-within,
+.app__navlink:focus-visible,
+.lang__opt:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 
 .ds-btn--primary {
   background: var(--brand);
   color: var(--on-brand);
+  box-shadow: var(--shadow-1);
 }
 .ds-btn--primary:hover:not(:disabled) { background: var(--brand-hover); }
+.ds-btn--primary:active:not(:disabled) { background: var(--brand-active); }
 
 .ds-btn--secondary {
   background: var(--surface);
   border-color: var(--border-strong);
+  color: var(--text);
 }
-.ds-btn--secondary:hover:not(:disabled) { background: var(--surface-sunken); }
+.ds-btn--secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--text-subtle);
+}
 
 /* Quiet actions carry no border at rest. Borders around every control produce
  * the boxed-in look the brief rules out. */
-.ds-btn--quiet { color: var(--text-muted); }
+/* The quiet button is what a table row's actions are made of -- Connect, Edit,
+ * Void. Grey text with no border and no underline is indistinguishable from the
+ * data in the cell next to it, so it reads as a label rather than as something
+ * to press. It keeps the low weight, which is right for an action repeated on
+ * every row, and takes the brand colour so it is legible AS an action; the
+ * surface and the hairline arrive under the pointer. */
+.ds-btn--quiet {
+  color: var(--brand);
+  padding-inline: var(--space-3);
+}
 .ds-btn--quiet:hover:not(:disabled) {
-  background: var(--surface-sunken);
-  color: var(--text);
+  background: var(--brand-subtle);
+  border-color: var(--brand-border);
+  color: var(--brand-hover);
+}
+.ds-btn--quiet:active:not(:disabled) { background: var(--brand-border); }
+
+.ds-btn--danger {
+  background: var(--danger);
+  color: #fff;
+  box-shadow: var(--shadow-1);
+}
+.ds-btn--danger:hover:not(:disabled) { filter: brightness(0.93); }
+
+/* A destructive action that is not the primary one: the word carries it, and
+ * the fill is saved for the button somebody is meant to press. */
+.ds-btn--danger-quiet {
+  color: var(--danger);
+  background: transparent;
+}
+.ds-btn--danger-quiet:hover:not(:disabled) { background: var(--danger-subtle); }
+
+.ds-btn--sm {
+  min-block-size: 28px;
+  padding-inline: var(--space-3);
+  font-size: 0.866rem;
 }
 
-.ds-btn--danger { background: var(--danger); color: #fff; }
+/* Wider than tall, for a row of one. */
+.ds-btn--block {
+  display: flex;
+  inline-size: 100%;
+}
 
 /* ---------------------------------------------------------------------------
  * Surfaces
@@ -438,38 +717,94 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
 }
 
+/* The head is separated by a rule rather than by whitespace alone. A panel
+ * whose title floats above its contents with nothing between them reads as two
+ * unrelated things; the rule is what makes it one object with a name. */
 .ds-panel__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) 0;
+  min-block-size: 48px;
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--border);
+}
+
+.ds-panel__head > .ds-h2,
+.ds-panel__head > .ds-h3 { margin: 0; }
+
+/* Actions in a panel head sit together at the far edge. */
+.ds-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .ds-panel__body { padding: var(--space-4); }
+
+/* A body that holds only a table has no padding of its own — the table's own
+ * cell padding is the margin, and doubling it wastes a column's width. */
+.ds-panel__body--flush { padding: 0; }
+
+.ds-panel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-block-start: 1px solid var(--border);
+  background: var(--surface-sunken);
+  border-end-start-radius: var(--radius-md);
+  border-end-end-radius: var(--radius-md);
+}
 
 /* ---------------------------------------------------------------------------
  * Badges and status
  * ------------------------------------------------------------------------- */
 
+/* A badge is a status, so it carries a hairline as well as a tint: a pale fill
+ * alone disappears on a white row, and on a dark theme it disappears twice. */
 .ds-badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 2px var(--space-2);
+  padding: 1px var(--space-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
-  font-size: 0.75rem;
+  font-size: 0.733rem;
   font-weight: 500;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
-.ds-badge--success { background: var(--success-subtle); color: var(--success); }
-.ds-badge--warning { background: var(--warning-subtle); color: var(--warning); }
-.ds-badge--danger  { background: var(--danger-subtle);  color: var(--danger); }
-.ds-badge--info    { background: var(--info-subtle);    color: var(--info); }
-.ds-badge--neutral { background: var(--offline-subtle); color: var(--offline); }
+.ds-badge--success {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  color: var(--success);
+}
+.ds-badge--warning {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+.ds-badge--danger {
+  background: var(--danger-subtle);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+.ds-badge--info {
+  background: var(--info-subtle);
+  border-color: var(--info-border);
+  color: var(--info);
+}
+.ds-badge--neutral {
+  background: var(--offline-subtle);
+  border-color: var(--border);
+  color: var(--offline);
+}
 
 /* Financial direction. The sign does the work; colour reinforces it. */
 .ds-up   { color: var(--credit); }
@@ -491,10 +826,12 @@ body {
 
 .ds-table th {
   text-align: start;
-  font-size: 0.75rem;
+  font-size: 0.733rem;
   font-weight: 600;
-  color: var(--text-muted);
-  padding: var(--space-2) var(--space-3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  padding: var(--space-3) var(--space-3);
   border-block-end: 1px solid var(--border);
   white-space: nowrap;
   /* Headers stay put on long tables. An owner scrolling a hundred rows should
@@ -522,6 +859,14 @@ body {
   border-block-end: 1px solid var(--border);
   vertical-align: baseline;
 }
+
+/* The first and last columns line up with the panel's own edge rather than
+ * sitting a cell's padding inside it, so a table in a flush body reads as part
+ * of the panel instead of as a box within a box. */
+.ds-panel__body--flush .ds-table th:first-child,
+.ds-panel__body--flush .ds-table td:first-child { padding-inline-start: var(--space-4); }
+.ds-panel__body--flush .ds-table th:last-child,
+.ds-panel__body--flush .ds-table td:last-child { padding-inline-end: var(--space-4); }
 
 /* A checkbox with nothing to grow around it.
  *
@@ -613,6 +958,10 @@ body {
 .ds-table tbody tr:last-child td { border-block-end: none; }
 .ds-table tbody tr:hover td { background: var(--surface-sunken); }
 
+/* A row that leads somewhere says so on approach. Only where the row is
+ * actually a button — `.detail__rowbtn` — so a static list does not pretend. */
+.ds-table tbody tr:has(.detail__rowbtn):hover td { cursor: pointer; }
+
 /* Totals belong to the table, not to a paragraph underneath it. */
 .ds-table tfoot td {
   font-weight: 600;
@@ -668,12 +1017,32 @@ body {
   color: var(--text-muted);
 }
 
+/* An empty state is a paragraph and a heading, and both arrive as <p> carrying
+ * the browser's own block margin. Left alone it opened a gap between the two
+ * lines wider than the gap around the whole block, which read as two unrelated
+ * sentences rather than a statement and its explanation. */
+.ds-state > * { margin: 0; }
+
 .ds-state__title {
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text);
 }
 
-.ds-state__body { max-inline-size: 52ch; font-size: 0.9rem; }
+.ds-state__body {
+  max-inline-size: 46ch;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* Room for a call to action under the words, which several of these have. */
+.ds-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
 
 /* ---------------------------------------------------------------------------
  * RTL
@@ -879,6 +1248,30 @@ body {
     font-variant-numeric: tabular-nums;
   }
 
+  /* A cell that holds more than one thing.
+   *
+   * Most do: a name and a caption under it, a status badge and the sentence
+   * saying what to do next, a figure and a note. On a desktop table those are
+   * stacked inside one cell and read as a value with a gloss.
+   *
+   * The card rules made the cell a flex row so the ::before label could sit
+   * opposite its value -- which also spread every OTHER child of the cell
+   * across the same line. On the e-invoicing card that put "Not registered
+   * yet" and a ten-item list of missing registration fields side by side in
+   * two narrow columns, one phrase per line, forty lines tall.
+   *
+   * The value stays on the label's line. Everything after it takes a line of
+   * its own, which is the shape it had on the desktop table and the shape a
+   * gloss under a value is supposed to have. */
+  .ds-table td[data-label] { flex-wrap: wrap; }
+
+  .ds-table td[data-label] > * { text-align: end; }
+
+  .ds-table td[data-label] > * ~ * {
+    flex: 1 0 100%;
+    margin-block-start: var(--space-1);
+  }
+
   /* A row heading inside the body — a grouped section — reads as the card's
    * title rather than as another labelled row. */
   .ds-table tbody th {
@@ -914,6 +1307,84 @@ body {
   /* The scroll container has nothing left to scroll. Releasing it stops the
    * card list inheriting a horizontal scrollbar it does not need. */
   .ds-scroll-x { overflow-x: visible; }
+
+  /* -----------------------------------------------------------------------
+   * Two-column tables
+   *
+   * The card treatment above is built for a WIDE table -- a purchase order
+   * with eight columns, which cannot be read across a phone and is better as
+   * a stack of labelled cards.
+   *
+   * A lot of this product's tables are not that. "Where the money is" is a
+   * label and an amount; so are the stock summary, the expense breakdown and
+   * the shift takings. Turned into cards they became the worst of both: every
+   * row a bordered box with the label on one line and the figure on the next,
+   * so six rows filled a phone screen and the amounts no longer lined up with
+   * each other -- which is the entire reason they were a table.
+   *
+   * A pair table stays a pair on a phone. One line per row, label at the
+   * start, figure at the end, and no box round it. It reads like a receipt,
+   * which is what it is.
+   * -------------------------------------------------------------------- */
+  .ds-table--pairs tr {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    margin-block-end: 0;
+    border: none;
+    border-block-end: 1px solid var(--border);
+    border-radius: 0;
+    background: none;
+  }
+
+  .ds-table--pairs tbody tr:last-child { border-block-end: none; }
+
+  /* `width: 100%` is what the card rules above give every cell, and it is
+   * right for a stack of blocks. Inside a flex row it makes BOTH cells ask for
+   * the full line, so the browser shrinks them to fit and the label collapses
+   * to one word per line -- "With / the / card / processor". The cells here
+   * are laid out by flex, so they take the width flex gives them. */
+  .ds-table--pairs td {
+    display: block;
+    width: auto;
+    padding: 0;
+    border: none;
+    min-inline-size: 0;
+  }
+
+  /* The label takes the slack so a long one wraps rather than crushing the
+   * figure, which must not wrap at all. */
+  .ds-table--pairs td:first-child { flex: 1 1 auto; }
+
+  .ds-table--pairs td.num {
+    flex: 0 0 auto;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The note under a label is a second line, not a second column. The card
+   * rules turn every cell into a flex row for the ::before label, which put
+   * "Taken, not yet paid out" alongside "With the card processor" and made
+   * both of them wrap. */
+  .ds-table--pairs td > .ds-caption,
+  .ds-table--pairs td > .dash__note {
+    display: block;
+    margin-block-start: 2px;
+  }
+
+  .ds-table--pairs tfoot tr {
+    border-block-end: none;
+    border-block-start: 2px solid var(--border-strong);
+    padding-block-start: var(--space-3);
+  }
+
+  /* One rule above the total, not two. The cells carry their own bottom border
+   * from the desktop table, which drew a second short line under the amount
+   * only -- a hairline that stopped halfway across the panel. */
+  .ds-table--pairs tfoot td,
+  .ds-table--pairs tbody td { border: none; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1065,92 +1536,162 @@ body {
  * top bar of both front ends including the sign-in screen: a person who cannot
  * read the interface has to be able to change it before signing in.
  */
+/* ---------------------------------------------------------------------------
+ * Dialogs
+ * ---------------------------------------------------------------------------
+ *
+ * `.dialog`, `.dialog__backdrop` and `.dialog__body` were USED and never
+ * DEFINED. The terminal-revoke confirmation — the one place in the product
+ * where somebody types a name to prove they mean it — rendered as unstyled
+ * markup in the top-left corner of the page over an invisible backdrop.
+ *
+ * A dialog is a surface that floats, so it is the one thing in this system that
+ * gets shadow level 3. Everything else about it is the same panel the rest of
+ * the product is made of.
+ * ------------------------------------------------------------------------- */
+
+.dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(8 11 18 / 45%);
+  /* On a phone a dialog is a sheet at the bottom, which is where a thumb is.
+   * `end` here and `center` above 640px, so one rule covers both. */
+  align-items: end;
+}
+
+.dialog {
+  inline-size: min(480px, 100%);
+  max-block-size: min(86dvh, 720px);
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+}
+
+.dialog__body {
+  margin: 0;
+  font-size: 0.933rem;
+  color: var(--text-muted);
+}
+
+/* A dialog that asks for something irreversible says so in its own colour. */
+.dialog--danger {
+  border-color: var(--danger-border);
+  border-block-start: 3px solid var(--danger);
+}
+
+@media (min-width: 640px) {
+  .dialog__backdrop { align-items: center; }
+}
+
+/* ---------------------------------------------------------------------------
+ * The language menu
+ *
+ * One control whatever the list holds. Two pills were right for two languages;
+ * a third makes the top bar a row of tabs competing with the navigation, and a
+ * fourth does not fit on a phone at all.
+ * ------------------------------------------------------------------------- */
+
 .lang {
+  position: relative;
+  display: inline-block;
+}
+
+.lang__trigger {
   display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-full);
-  overflow: hidden;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: 34px;
+  padding-inline: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.lang__trigger:hover { background: var(--surface-sunken); color: var(--text); }
+
+.lang__current { white-space: nowrap; }
+
+.lang__menu {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-end: 0;
+  z-index: 60;
+  min-inline-size: 220px;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
 }
 
 .lang__opt {
-  min-height: var(--tap-desk);
-  padding-inline: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 var(--space-2);
+  inline-size: 100%;
+  min-block-size: var(--tap-mobile);
+  padding: var(--space-2) var(--space-3);
   border: none;
-  background: none;
-  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
   font: inherit;
-  font-size: 0.8125rem;
+  text-align: start;
   cursor: pointer;
 }
 
 .lang__opt:hover { background: var(--surface-sunken); }
 
-/* The selected language is filled, not merely coloured — colour is never the
- * only signal, and aria-pressed carries it for anyone not seeing either. */
-.lang__opt--on {
-  background: var(--accent);
-  color: var(--accent-ink);
+.lang__opt--on { background: var(--brand-subtle); }
+
+.lang__native {
+  grid-column: 1;
+  font-weight: 500;
 }
 
-.lang__opt:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+/* The region under the name, so a support engineer reading over somebody's
+ * shoulder can tell Arabic-for-Saudi from any other Arabic we might add. */
+.lang__region {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 0.78rem;
+  color: var(--text-subtle);
 }
 
-/* On a phone the switch keeps a full touch target rather than shrinking with
- * the bar around it. */
-@media (max-width: 639px) {
-  .lang__opt { min-height: var(--tap-mobile); }
-}
-
-/* --- Form fields ----------------------------------------------------------
- *
- * `field`, `field__label` and `field__input` are emitted by shared components
- * — the sign-in screen and the variant matrix among them — and were styled
- * only in the POS stylesheet, which the back office does not import. So those
- * controls rendered as unstyled native inputs in the browser app.
- *
- * That is also what produced a horizontal overflow in Arabic: an unstyled
- * <select> takes its width from its widest option, and Arabic option text made
- * one 666px wide inside a 180px grid cell. The width cap below is the fix for
- * both.
- */
-.field {
+.lang__tick {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   display: grid;
-  gap: var(--space-2);
-  /* A grid or flex child defaults to a min-content floor. Without this a field
-   * holding a long option refuses to shrink and stretches its container. */
-  min-inline-size: 0;
+  place-items: center;
+  color: var(--brand);
 }
 
-
-
-.field__label {
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-}
-
-.field__input {
-  inline-size: 100%;
-  /* Never wider than the space it was given, whatever it contains. */
-  max-inline-size: 100%;
-  min-inline-size: 0;
-  min-block-size: var(--tap-desk);
-  padding: var(--space-2) var(--space-3);
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-}
-
-.field__input:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
-}
-
+/* On a phone the globe is the affordance and the page title needs the width.
+ *
+ * Except on the sign-in page, which has no title to compete with and is the
+ * one screen where the language control has to be self-explanatory: a globe on
+ * its own asks somebody to guess, and the person most likely to need this
+ * button is the person least able to read the page around it. */
 @media (max-width: 639px) {
-  .field__input { min-block-size: var(--tap-mobile); }
+  .lang__current { display: none; }
+  .login__lang .lang__current { display: inline; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1197,9 +1738,11 @@ body {
   background: var(--brand);
   color: var(--on-brand);
   border-color: transparent;
+  box-shadow: var(--shadow-1);
 }
 
 .button--primary:hover:not(:disabled) { background: var(--brand-hover); }
+.button--primary:active:not(:disabled) { background: var(--brand-active); }
 
 .button--quiet {
   background: transparent;
@@ -1207,6 +1750,13 @@ body {
 }
 
 .button--quiet:hover:not(:disabled) { background: var(--surface-sunken); }
+
+/* A tender button is pressed by thumb, hundreds of times a shift, while the
+ * cashier is looking at the customer. It gets a face big enough to read at a
+ * glance and a border strong enough to find without one. */
+.tenders .button {
+  font-size: 1.06rem;
+}
 
 /* A primary action that must not be mis-tapped: full width of its column. */
 .button--large {
@@ -1233,12 +1783,28 @@ body {
  * every user meets before anything else — completely unstyled.
  * ------------------------------------------------------------------------- */
 
+/* The sign-in page.
+ *
+ * Two rows: the language switch along the top, the card centred in what is
+ * left. `1fr` on the second row is what keeps the card in the middle of the
+ * page rather than pushed down by the height of the switch above it. */
 .login {
-  min-block-size: 100vh;
+  min-block-size: 100dvh;
   display: grid;
-  place-items: center;
+  grid-template-rows: auto 1fr;
+  justify-items: center;
   padding: var(--space-5);
+  gap: var(--space-5);
 }
+
+.login__lang {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+}
+
+/* Centred in the row rather than at the top of it. */
+.login__card { align-self: center; }
 
 .login__card {
   inline-size: min(400px, 100%);

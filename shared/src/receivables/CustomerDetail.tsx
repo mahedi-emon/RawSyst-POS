@@ -29,7 +29,7 @@ import {
 } from '../api/receivables';
 import { canReversePayment, creditStanding } from './receivables';
 import { ReceiptForm } from './ReceiptForm';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 
 export function CustomerDetail({
@@ -142,7 +142,7 @@ export function CustomerDetail({
                   {ledger.rows.length === 0 ? (
                     <EmptyState
                       title={t('cust.nothingOnAccount')}
-                      body="Sales put on account appear here, along with every payment received against them."
+                      body={t('cust.accountActivity')}
                     />
                   ) : (
                     <table className="ds-table">
@@ -399,15 +399,16 @@ function LedgerLine({
   onConfirm: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   return (
     <tr>
-      <td className="ds-date">{shortDate(row.date)}</td>
+      <td className="ds-date">{shortDate(row.date, locale)}</td>
       <td>
         <span className="detail__strong">{row.reference}</span>
         <span className="ds-caption">{kindLabel(row.kind, t)}</span>
       </td>
       <td className="num">
-        {row.due_date ? shortDate(row.due_date) : <span className="ds-subtle">—</span>}
+        {row.due_date ? shortDate(row.due_date, locale) : <span className="ds-subtle">—</span>}
       </td>
       <td className="num">
         {row.charged ? money(row.charged, { currency }) : <span className="ds-subtle">—</span>}

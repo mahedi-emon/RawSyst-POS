@@ -177,6 +177,9 @@ CREATE TABLE IF NOT EXISTS cached_stationery (
   id              INTEGER PRIMARY KEY CHECK (id = 1),
   store_name      TEXT NOT NULL DEFAULT '',
   vat_number      TEXT NOT NULL DEFAULT '',
+  -- SAR, BDT, USD. Empty on a till that has never been online, which prints
+  -- the amount without a code rather than inventing one.
+  base_currency   TEXT NOT NULL DEFAULT '',
   header_text     TEXT NOT NULL DEFAULT '',
   header_text_ar  TEXT NOT NULL DEFAULT '',
   footer_text     TEXT NOT NULL DEFAULT '',
@@ -191,6 +194,8 @@ CREATE TABLE IF NOT EXISTS cached_stationery (
 );`,
 
   `INSERT OR IGNORE INTO cached_stationery (id) VALUES (1);`,
+
+
 
   `
 CREATE TABLE IF NOT EXISTS held_cart (
@@ -216,11 +221,39 @@ interface Row {
 }
 
 /** Opens the terminal's local database, creating it on first run. */
+/**
+ * Statements that are EXPECTED to fail on a till that has already run them.
+ *
+ * `CREATE TABLE IF NOT EXISTS` does nothing to a table that exists, so a column
+ * added to a table an installed till already has needs an ALTER — and SQLite
+ * has no `IF NOT EXISTS` for one. Running it inside SCHEMA would abort the
+ * whole schema on the second launch and leave the till with no local store at
+ * all, which is the failure that once reported itself as "this terminal has no
+ * local storage".
+ *
+ * So they are separate and their failures are swallowed. A statement here must
+ * be safe to run twice and safe to fail: adding a column with a default is
+ * both.
+ */
+export const MIGRATIONS: readonly string[] = [
+  `ALTER TABLE cached_stationery ADD COLUMN base_currency TEXT NOT NULL DEFAULT '';`,
+];
+
 export async function openLocalStore(): Promise<LocalStores> {
   const db = await Database.load('sqlite:rawsyst-pos.db');
   for (const statement of SCHEMA) {
     const sql = statement.trim();
     if (sql) await db.execute(sql);
+  }
+  for (const statement of MIGRATIONS) {
+    const sql = statement.trim();
+    if (!sql) continue;
+    try {
+      await db.execute(sql);
+    } catch {
+      // Already applied. See MIGRATIONS for why this is the expected path on
+      // every launch after the first.
+    }
   }
   return {
     queue: new SqliteQueueStore(db),
@@ -249,9 +282,9 @@ export class SqliteStationeryStore {
 
   async read(): Promise<CachedStationery | null> {
     const rows = await this.db.select<Array<Record<string, unknown>>>(
-      `SELECT store_name, vat_number, header_text, header_text_ar, footer_text,
-              footer_text_ar, return_policy, return_policy_ar, show_tax_number,
-              fetched_at
+      `SELECT store_name, vat_number, base_currency, header_text,
+              header_text_ar, footer_text, footer_text_ar, return_policy,
+              return_policy_ar, show_tax_number, fetched_at
        FROM cached_stationery WHERE id = 1`,
     );
     const row = rows[0];
@@ -262,6 +295,7 @@ export class SqliteStationeryStore {
     return {
       storeName: String(row.store_name ?? ''),
       vatNumber: String(row.vat_number ?? ''),
+      baseCurrency: String(row.base_currency ?? ''),
       headerText: String(row.header_text ?? ''),
       headerTextAr: String(row.header_text_ar ?? ''),
       footerText: String(row.footer_text ?? ''),
@@ -276,13 +310,13 @@ export class SqliteStationeryStore {
   async write(s: CachedStationery): Promise<void> {
     await this.db.execute(
       `UPDATE cached_stationery SET
-         store_name = $1, vat_number = $2, header_text = $3,
-         header_text_ar = $4, footer_text = $5, footer_text_ar = $6,
-         return_policy = $7, return_policy_ar = $8, show_tax_number = $9,
-         fetched_at = $10
+         store_name = $1, vat_number = $2, base_currency = $3, header_text = $4,
+         header_text_ar = $5, footer_text = $6, footer_text_ar = $7,
+         return_policy = $8, return_policy_ar = $9, show_tax_number = $10,
+         fetched_at = $11
        WHERE id = 1`,
       [
-        s.storeName, s.vatNumber, s.headerText, s.headerTextAr,
+        s.storeName, s.vatNumber, s.baseCurrency, s.headerText, s.headerTextAr,
         s.footerText, s.footerTextAr, s.returnPolicy, s.returnPolicyAr,
         s.showTaxNumber ? 1 : 0, s.fetchedAt,
       ],
@@ -294,6 +328,12 @@ export class SqliteStationeryStore {
 export interface CachedStationery {
   storeName: string;
   vatNumber: string;
+  /** The code the shop keeps its books in — SAR, BDT, USD.
+   *
+   *  Cached with the rest of the stationery because it is the same kind of
+   *  fact for the same reason: the receipt printed at the counter has to carry
+   *  it, and cannot wait for a round trip to find out what it is. */
+  baseCurrency: string;
   headerText: string;
   headerTextAr: string;
   footerText: string;

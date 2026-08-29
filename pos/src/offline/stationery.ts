@@ -25,6 +25,7 @@ import type { CachedStationery } from './sqlite';
 
 /** What the till's own stationery route returns. */
 interface StationeryPayload {
+  base_currency?: string;
   store_name: string;
   vat_number: string;
   header_text: string;
@@ -86,6 +87,7 @@ export class Stationery {
     const next: CachedStationery = {
       storeName: payload.store_name || FALLBACK_STORE_NAME,
       vatNumber: payload.vat_number ?? '',
+      baseCurrency: payload.base_currency ?? '',
       headerText: payload.header_text ?? '',
       headerTextAr: payload.header_text_ar ?? '',
       footerText: payload.footer_text ?? '',
@@ -108,6 +110,10 @@ export class Stationery {
 export interface ReceiptStationery {
   storeName: string;
   vatNumber: string;
+  /** The code the shop keeps its books in. Printed beside every amount, and
+   *  shown beside every amount on the counter — a total is not a number, it is
+   *  an amount of something, and this product sells into three currencies. */
+  baseCurrency: string;
   addressLines: string[];
   returnPolicy: string;
   closing: string;
@@ -131,6 +137,10 @@ export function receiptStationery(
     return {
       storeName: FALLBACK_STORE_NAME,
       vatNumber: '',
+      // Empty rather than a guess. A till that has never been online does not
+      // know what country it is in, and printing the wrong code on a receipt
+      // is worse than printing none.
+      baseCurrency: '',
       addressLines: [],
       returnPolicy: '',
       closing: FALLBACK_CLOSING,
@@ -139,6 +149,7 @@ export function receiptStationery(
 
   return {
     storeName: held.storeName || FALLBACK_STORE_NAME,
+    baseCurrency: held.baseCurrency ?? '',
     // The template decides whether it prints, not whether the shop happens to
     // have one: a business between registrations should not have its number
     // appear and disappear on its own.

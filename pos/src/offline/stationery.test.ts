@@ -63,6 +63,10 @@ describe('the till holding the shop stationery', () => {
     expect(receiptStationery(s.current())).toEqual({
       storeName: FALLBACK_STORE_NAME,
       vatNumber: '',
+      // Empty rather than a guess: a till that has never been online does not
+      // know which of the three currencies this shop keeps its books in, and
+      // printing the wrong code is worse than printing none.
+      baseCurrency: '',
       addressLines: [],
       returnPolicy: '',
       closing: FALLBACK_CLOSING,
@@ -119,6 +123,7 @@ describe('turning what is held into what is printed', () => {
   const held = (over: Partial<CachedStationery> = {}): CachedStationery => ({
     storeName: 'Olaya Trading',
     vatNumber: '311111111111113',
+    baseCurrency: 'SAR',
     headerText: 'Olaya Branch',
     headerTextAr: 'فرع العليا',
     footerText: 'See you again soon.',
@@ -205,6 +210,7 @@ describe('printing it on 42 columns', () => {
     const out = print(
       receiptStationery({
         storeName: 'Olaya Trading',
+        baseCurrency: 'SAR',
         vatNumber: '311111111111113',
         headerText: 'King Fahd Road',
         headerTextAr: '',

@@ -33,7 +33,7 @@ import {
   checkDeposit,
   outstandingTotal,
 } from './settlement';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 export function SettlementScreen({ companyId }: { companyId: string }) {
   const { client, can } = useAuth();
@@ -92,6 +92,7 @@ function Outstanding({
   onRecorded: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client } = useAuth();
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -236,7 +237,7 @@ function Outstanding({
                     <td>
                       {tender.invoice_number || tender.invoice_id.slice(0, 8)}
                     </td>
-                    <td>{shortDate(tender.issued_at)}</td>
+                    <td>{shortDate(tender.issued_at, locale)}</td>
                     <td className="num">{money(tender.amount)}</td>
                   </tr>
                 ))}

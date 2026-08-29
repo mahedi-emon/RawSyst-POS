@@ -37,7 +37,7 @@ import {
 } from '../api/branding';
 import { InvoiceState, invoiceStateHint } from '../dashboard/InvoiceState';
 import { money, longDate, tenderName } from '../ui/format';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 import {
   auditActionName,
@@ -77,6 +77,7 @@ export function InvoiceDetailScreen({
   onIssueCreditNote?: (invoice: Invoice) => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client, can } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [logo, setLogo] = useState<string | null>(null);
@@ -288,7 +289,7 @@ export function InvoiceDetailScreen({
             <p className="inv__number num">
               {invoice.human_number ?? invoice.uuid.slice(0, 8)}
             </p>
-            <p className="ds-caption">{longDate(invoice.issue_date)}</p>
+            <p className="ds-caption">{longDate(invoice.issue_date, locale)}</p>
             <InvoiceState state={invoice.state} />
           </div>
         </header>

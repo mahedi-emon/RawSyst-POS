@@ -103,7 +103,7 @@ export function RemoteBody<T>({
       return (
         <Panel
           title={t('dash.noAccessThis')}
-          body="Your role does not include permission to view these records. An owner can change that under Settings > People."
+          body={t('detail.noPermission')}
         />
       );
 
@@ -112,7 +112,7 @@ export function RemoteBody<T>({
       return (
         <Panel
           title={t('common.noConnection')}
-          body="These records are held on the server, so they need a connection. Selling is unaffected — the till keeps working offline."
+          body={t('detail.needsConnection')}
           onRetry={onRetry}
         />
       );

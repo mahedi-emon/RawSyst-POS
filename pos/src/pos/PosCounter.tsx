@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { scan } from '../api/pos';
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
+import { money } from '@rawsyst/shared/ui/format';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import { currentShift, type ShiftSession } from '@rawsyst/shared/api/shift';
 import { openedAtTime } from './shift';
@@ -112,6 +113,19 @@ export function PosCounter() {
 
   const totals = useMemo(() => totalCart(lines, DISPLAY_RATE), [lines]);
   const owed = outstanding(totals.totalInclusive, tenders);
+
+  // What the shop keeps its books in — SAR, BDT, USD.
+  //
+  // The counter used to print "Total 0.00" with no code at all, which is
+  // legible only to somebody who already knows which country the till is in.
+  // This product is sold into three, and a shop that switched its books to
+  // taka would have seen no difference anywhere on this screen.
+  //
+  // Taken from the cached stationery, so it survives the connection going: it
+  // is the same fact the receipt has to carry and is cached for the same
+  // reason. Empty on a till that has never been online, which shows the bare
+  // amount rather than inventing a currency.
+  const currency = terminal.stationery?.baseCurrency || undefined;
   // `shift === null` is the one refusal here: the server has answered, and the
   // answer was that this till has no open session. `undefined` — unasked or
   // unreachable — does not block, because an offline till must keep trading.
@@ -350,7 +364,7 @@ export function PosCounter() {
             hunt for it mid-sale, and never insistent — the overwhelming
             majority of sales have no customer and the row stays quiet
             about it. */}
-        <div className="who">
+        <div className={`who${customer ? ' who--chosen' : ''}`}>
           {customer ? (
             <>
               <span className="who__name">{customer.name}</span>
@@ -475,7 +489,7 @@ export function PosCounter() {
                           ),
                         )
                       }
-                      aria-label={`Quantity of ${l.description}`}
+                      aria-label={t('pos.quantityOf', { item: l.description })}
                     />
                   </td>
                   {/* The string as it came from the server. Never parsed into
@@ -487,7 +501,7 @@ export function PosCounter() {
                       onClick={() =>
                         setLines((prev) => prev.filter((_, j) => j !== i))
                       }
-                      aria-label={`Remove ${l.description}`}
+                      aria-label={t('pos.removeItem', { item: l.description })}
                     >
                       {t('common.remove')}
                     </button>
@@ -505,20 +519,22 @@ export function PosCounter() {
         <dl className="totals">
           <div>
             <dt>{t('pos.subtotal')}</dt>
-            <dd className="num">{totals.subtotalNet}</dd>
+            <dd className="num">{money(totals.subtotalNet, { currency })}</dd>
           </div>
           <div>
             <dt>{t('pos.vat')}</dt>
-            <dd className="num">{totals.taxTotal}</dd>
+            <dd className="num">{money(totals.taxTotal, { currency })}</dd>
           </div>
           <div className="totals__grand">
             <dt>{t('pos.total')}</dt>
-            <dd className="num">{totals.totalInclusive}</dd>
+            <dd className="num">
+              {money(totals.totalInclusive, { currency })}
+            </dd>
           </div>
           {tenders.length > 0 && (
             <div className={owed === '0.00' ? '' : 'totals__owed'}>
               <dt>{t('pos.outstanding')}</dt>
-              <dd className="num">{owed}</dd>
+              <dd className="num">{money(owed, { currency })}</dd>
             </div>
           )}
         </dl>
@@ -561,7 +577,7 @@ export function PosCounter() {
                   : undefined
               }
             >
-              On account
+              {t('tender.onAccount')}
               <span className="tenders__hint num">{accountOffer}</span>
             </button>
           )}
@@ -593,7 +609,7 @@ export function PosCounter() {
                   onClick={() =>
                     setTenders((prev) => prev.filter((_, j) => j !== i))
                   }
-                  aria-label={`Remove the ${tenderLabel(taken.method)} payment`}
+                  aria-label={t('pos.removePayment', { method: tenderLabel(taken.method) })}
                 >
                   {t('common.remove')}
                 </button>

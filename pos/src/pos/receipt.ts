@@ -32,6 +32,14 @@ import type { CartLine, CartTender } from './cart';
 import type { CartTotals } from './cart';
 
 export interface ReceiptHeader {
+  /** The code the shop keeps its books in — SAR, BDT, USD. Printed beside
+   *  every amount. Empty on a till that has never reached the server, which
+   *  prints the figure alone rather than a currency it is guessing at.
+   *
+   *  Named as the stationery names it, because the stationery is handed to
+   *  this whole as the header and a second name for one fact is a mapping
+   *  somebody has to remember. */
+  baseCurrency?: string;
   /** The trading name as the customer knows it. */
   storeName: string;
   /** Printed because a simplified tax invoice must carry the seller's VAT
@@ -186,16 +194,34 @@ export function renderReceipt(
   }
 
   out.push(rule);
-  out.push(columns('Subtotal', receipt.totals.subtotalNet, width));
-  out.push(columns('VAT', receipt.totals.taxTotal, width));
-  out.push(columns('TOTAL', receipt.totals.totalInclusive, width));
+
+  // Every amount on the paper carries the code the books are kept in.
+  //
+  // It carried none: a receipt read "TOTAL 172.50", which is legible only to
+  // somebody who already knows which country the till is in. This product is
+  // sold into three currencies, and a Bangladeshi shop's receipt saying the
+  // same thing as a Saudi one is a document that cannot be filed.
+  //
+  // Only the code is added — the figure is the string the server computed and
+  // is not re-formatted here. Empty on a till that has never been online,
+  // which prints the bare amount rather than a currency it is guessing at.
+  const ccy = (amount: string) =>
+    receipt.header.baseCurrency
+      ? `${receipt.header.baseCurrency} ${amount}`
+      : amount;
+
+  out.push(columns(say('receipt.subtotal', 'Subtotal'), ccy(receipt.totals.subtotalNet), width));
+  out.push(columns(say('receipt.vat', 'VAT'), ccy(receipt.totals.taxTotal), width));
+  out.push(
+    columns(say('receipt.total', 'TOTAL'), ccy(receipt.totals.totalInclusive), width),
+  );
   out.push('');
 
   for (const tender of receipt.tenders) {
-    out.push(columns(label(tender.method), tender.amount, width));
+    out.push(columns(label(tender.method), ccy(tender.amount), width));
   }
   if (receipt.change !== '0.00') {
-    out.push(columns('Change', receipt.change, width));
+    out.push(columns(say('receipt.change', 'Change'), ccy(receipt.change), width));
   }
 
   out.push(rule);

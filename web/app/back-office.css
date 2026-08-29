@@ -5,60 +5,352 @@
  * exactly the risk a separate app like this runs, so it is kept to the shell.
  */
 
+/* ---------------------------------------------------------------------------
+ * The shell
+ * ---------------------------------------------------------------------------
+ *
+ * A navigation RAIL down the side, not a row of buttons across the top.
+ *
+ * The row was the single thing that made this look like a template rather than
+ * a product. Ten sections across the top of a page is what a starter dashboard
+ * does; every commercial ERP a shop has used — and every one they might buy
+ * instead of this — puts its sections down the left, grouped, with the page's
+ * own title and actions along the top. It is not a matter of taste: a top row
+ * has no room to group, no room to grow past about eight items, and it wraps
+ * onto a second line on a tablet, which is where this one was.
+ *
+ * The rail is dark. It is the only large dark surface in the product and it is
+ * there to recede — a rail the same white as the page needs a border to exist
+ * at all, and then the border is the loudest line on the screen.
+ *
+ * Three widths, one layout:
+ *
+ *   ≥1100px  rail open, labels showing
+ *   ≥640px   rail collapsed to icons, labels on hover as a title
+ *   <640px   rail off-canvas, opened by the menu button, closed on navigation
+ * ------------------------------------------------------------------------- */
+
 .bo {
   min-block-size: 100dvh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  background: var(--bg);
 }
 
-/* The wrapper the mounted section lives in.
- *
- * It exists to carry a key — see BackOffice.tsx — and must therefore not change
- * the layout it wraps: `.bo` is a flex column and the section used to be a
- * direct child of it, so this takes the growth the section had. */
+/* --- the rail ------------------------------------------------------------ */
+
+.bo__rail {
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  inline-size: var(--rail-width-collapsed);
+  background: var(--rail);
+  color: var(--rail-text);
+  border-inline-end: 1px solid var(--rail-border);
+  position: sticky;
+  inset-block-start: 0;
+  block-size: 100dvh;
+  z-index: 30;
+  transition: inline-size 160ms ease;
+}
+
+.bo__railhead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: var(--topbar-height);
+  padding-inline: var(--space-4);
+  border-block-end: 1px solid var(--rail-border);
+  overflow: hidden;
+}
+
+/* The mark, which is the product's only piece of ornament and is therefore
+ * allowed to be one: a square in brand blue with the initial in it. */
+.bo__mark {
+  flex: 0 0 auto;
+  inline-size: 28px;
+  block-size: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: -0.02em;
+}
+
+.bo__wordmark {
+  font-weight: 600;
+  font-size: 0.966rem;
+  letter-spacing: -0.01em;
+  color: var(--rail-text-strong);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.bo__nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* A group heading, which is the whole reason the rail exists. Hidden when the
+ * rail is collapsed — a heading with no room for its word is a smudge. */
+.bo__group {
+  padding: var(--space-4) var(--space-3) var(--space-1);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.bo__group:first-child { padding-block-start: 0; }
+
+.bo__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  inline-size: 100%;
+  min-block-size: var(--tap-mobile);
+  padding-inline: var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--rail-text);
+  font: inherit;
+  font-size: 0.933rem;
+  font-weight: 500;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.bo__link svg { flex: 0 0 auto; }
+
+.bo__linklabel {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.bo__link:hover { background: var(--rail-hover); color: var(--rail-text-strong); }
+
+/* The current section is filled, because on a dark rail a 2px underline is
+ * invisible and weight alone is not enough at this contrast. The marker on the
+ * inline edge is the second signal. */
+.bo__link--on {
+  background: var(--rail-active);
+  color: var(--rail-text-strong);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+[dir='rtl'] .bo__link--on { box-shadow: inset -3px 0 0 var(--brand); }
+
+.bo__link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.bo__railfoot {
+  padding: var(--space-2);
+  border-block-start: 1px solid var(--rail-border);
+}
+
+/* Open: labels appear and the rail takes its full width. */
+.bo__rail--open {
+  inline-size: var(--rail-width);
+}
+
+.bo__rail--open .bo__wordmark,
+.bo__rail--open .bo__group,
+.bo__rail--open .bo__linklabel {
+  opacity: 1;
+}
+
+/* --- the top bar --------------------------------------------------------- */
+
 .bo__screen {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
   min-inline-size: 0;
+  min-block-size: 100dvh;
 }
 
 .bo__bar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  min-block-size: var(--topbar-height);
+  padding-inline: var(--space-4);
   background: var(--surface);
   border-block-end: 1px solid var(--border);
-  min-block-size: 56px;
-  flex-wrap: wrap;
-  /* The bar stays put while a long table scrolls. In a back office the nav is
-   * how you leave a report, and hunting for it by scrolling back up is friction
-   * on the commonest action there is. */
   position: sticky;
   inset-block-start: 0;
-  z-index: 10;
+  z-index: 20;
 }
 
-.bo__brand {
-  font-weight: 650;
+/* Company, then section. The separator is a chevron rather than a slash: a
+ * slash reverses meaning in Arabic and a chevron mirrors with the layout. */
+.bo__crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.bo__crumb {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-inline-size: 22ch;
+}
+
+.bo__crumbsep {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-subtle);
+}
+
+[dir='rtl'] .bo__crumbsep { transform: scaleX(-1); }
+
+/* On a phone the section is what matters; the company name is one tap away in
+ * the picker and the width belongs to the title. */
+@media (max-width: 639px) {
+  .bo__crumb,
+  .bo__crumbsep { display: none; }
+}
+
+.bo__title {
+  font-size: 1.033rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  font-size: 1rem;
+  margin: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bo__baractions {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* An icon-only control in the bar: square, quiet, and a real tap target. */
+.bo__iconbtn {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 34px;
+  block-size: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bo__iconbtn:hover { background: var(--surface-sunken); color: var(--text); }
+
+.bo__iconbtn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* The menu button belongs to the phone. */
+.bo__menu { display: none; }
+
+.bo__body {
+  flex: 1 1 auto;
+  min-inline-size: 0;
 }
 
 .bo__splash {
   min-block-size: 100dvh;
   display: grid;
   place-items: center;
+  background: var(--bg);
 }
 
-/* On a phone the bar wraps rather than compressing the brand and the nav into
- * illegibility. */
-/* xs, per design system §7. The nav is not wrapped here any more: below this
- * width the design system lifts it out of the bar into a fixed bottom bar, so
- * only the brand needs a row of its own. */
+/* The scrim behind the drawer. Present in the tree only on a phone. */
+.bo__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(8 11 18 / 45%);
+  border: none;
+  z-index: 25;
+  cursor: pointer;
+}
+
+/* --- ≥640px: the rail is there, collapsed to icons ------------------------ */
+ *
+ * Deliberately NOT expanding on hover. That was the first version and it is the
+ * kind of cleverness that reads well in a stylesheet and badly on a screen: the
+ * rail became `position: fixed` to avoid reflowing the page, which took it out
+ * of the grid column it was reserving, and the page title and the first
+ * hundred pixels of every screen went underneath it. A pin the person presses
+ * is one control, does one thing, and is still there when they take their hand
+ * off the mouse. */
+
+@media (min-width: 640px) {
+  /* The pin belongs to the pointer; the phone gets the drawer button instead. */
+  .bo__pin { display: inline-grid; }
+}
+
+/* Below that, the pin has nothing to pin — the rail is a drawer. */
+.bo__pin { display: none; }
+
+/* --- ≥1100px: room for the labels all the time ---------------------------- */
+
+@media (min-width: 1100px) {
+  .bo__rail { inline-size: var(--rail-width); }
+  .bo__wordmark,
+  .bo__group,
+  .bo__linklabel { opacity: 1; }
+}
+
+/* --- <640px: off-canvas -------------------------------------------------- */
+
 @media (max-width: 639px) {
-  .bo__brand { flex-basis: 100%; }
+  .bo { grid-template-columns: minmax(0, 1fr); }
+
+  .bo__rail {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: var(--rail-width);
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+    box-shadow: var(--shadow-3);
+  }
+
+  [dir='rtl'] .bo__rail { transform: translateX(100%); }
+
+  .bo__rail--drawer { transform: none; }
+
+  .bo__rail .bo__wordmark,
+  .bo__rail .bo__group,
+  .bo__rail .bo__linklabel { opacity: 1; }
+
+  .bo__menu { display: inline-grid; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -87,6 +379,14 @@
 }
 
 .setupw > * { inline-size: 100%; }
+
+/* The panel a wizard step lives in. Used and never defined, so a step was a
+ * bare `.ds-panel` and the padding below it came from nowhere. */
+.setupw__panel {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
 
 .setupw__head {
   display: flex;
@@ -123,6 +423,12 @@
   padding: 0;
   list-style: none;
 }
+
+/* The step's own name inside its pill. Used since the wizard was written and
+ * never given a rule — it inherited whatever the button around it had, which
+ * meant the number and the word were the same weight and the pill read as one
+ * long label rather than "step 3, Tax". */
+.rail__title { font-weight: 500; }
 
 .rail__item { flex: 0 0 auto; }
 
@@ -295,15 +601,28 @@
  * second set of rules.
  * ------------------------------------------------------------------------- */
 
+/* Branding is a settings page: one column, centred, with a measure narrow
+ * enough that a line of guidance stays readable.
+ *
+ * It was a 620px column pinned to the left edge of a 1196px area, so more than
+ * half the screen was empty grey and the form sat off to one side of it. The
+ * grid was asked to centre itself with `justify-content`, which sizes tracks
+ * rather than items and left the single auto track filling the row -- the
+ * panel then started where any block starts. `margin-inline: auto` centres the
+ * box itself and cannot be argued with.
+ *
+ * 820px rather than 620px: the bilingual pairs on this page are two fields
+ * side by side, and at 620 each half was 286px -- too narrow for a payment
+ * term or a returns policy, which is what they hold. */
 .brand {
   padding: var(--space-5);
-  display: grid;
-  justify-content: center;
-  align-content: start;
   inline-size: 100%;
 }
 
-.brand__panel { inline-size: min(620px, 100%); }
+.brand__panel {
+  inline-size: min(820px, 100%);
+  margin-inline: auto;
+}
 .brand__lede { margin-block: 0 var(--space-4); }
 
 /* A fixed frame rather than letting the image set the height: a wide mark and
@@ -974,7 +1293,17 @@
  * documents look like. One type at a time, both languages side by side.
  * ------------------------------------------------------------------------- */
 
-.tmpl { inline-size: min(620px, 100%); }
+/* Same measure as the panel above it, and centred the same way: the two are
+ * one page and a step in width between them would read as a mistake. */
+.tmpl { inline-size: min(820px, 100%); margin-inline: auto; }
+/* The form for one document type. Used and never defined, so the fields inside
+ * it sat with no rhythm at all — the panel's own padding was the only spacing
+ * on the branding screen. */
+.tmpl__form {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .tmpl__lede { margin-block: 0 var(--space-4); }
 
 .tmpl__tabs {

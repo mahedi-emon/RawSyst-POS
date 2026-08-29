@@ -165,7 +165,7 @@ export function TerminalForm({
               id="term-label"
               value={label}
               onChange={setLabel}
-              placeholder="Till 2"
+              placeholder={t('devices.tillNamePlaceholder')}
               error={fields.terminal_label}
               autoFocus
             />

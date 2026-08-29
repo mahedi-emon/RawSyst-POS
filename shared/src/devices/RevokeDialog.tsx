@@ -76,7 +76,7 @@ export function RevokeDialog({
       }}
     >
       <form
-        className="dialog"
+        className="dialog dialog--danger"
         role="dialog"
         aria-modal="true"
         aria-labelledby="revoke-title"

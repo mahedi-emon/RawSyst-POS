@@ -38,6 +38,7 @@ import {
   localName,
   tenderName,
   shortDate,
+  longDate,
 } from '../ui/format';
 import { Sparkline } from './Sparkline';
 import { TenderMix } from './TenderMix';
@@ -70,6 +71,7 @@ export function Dashboard({
   onOpen: (target: DrillTarget) => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client } = useAuth();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [date, setDate] = useState<string | undefined>(undefined);
@@ -119,7 +121,11 @@ export function Dashboard({
       <header className="dash__head">
         <div>
           <h1 className="ds-h1">{t('dash.today')}</h1>
-          <p className="ds-caption">{d.date}</p>
+          {/* Written out, not the ISO string the server sent. "2026-08-29"
+              under a heading that says আজ is a database column, and it read
+              the same in all three languages -- the one date on the screen
+              that never spoke the reader's. */}
+          <p className="ds-caption">{longDate(d.date, locale)}</p>
         </div>
 
         {/* A date field, not a range picker. The question this screen answers
@@ -246,7 +252,7 @@ export function Dashboard({
               <h2 className="ds-h3">{t('dash.whereTheMoneyIs')}</h2>
             </div>
             <div className="ds-panel__body ds-scroll-x">
-              <table className="ds-table">
+              <table className="ds-table ds-table--pairs">
                 <tbody>
                   <MoneyRow
                     label={t('common.cash')}
@@ -473,7 +479,7 @@ function ExpenseBreakdown({
             <p className="ds-state__body">{t('dash.expensesAppearHere')}</p>
           </div>
         ) : (
-          <table className="ds-table">
+          <table className="ds-table ds-table--pairs">
             <thead>
               <tr>
                 <th scope="col">{t('common.account')}</th>
@@ -534,11 +540,12 @@ function NotBuiltYet({ modules }: { modules: string[] }) {
 
 function NoTradingYet({ date }: { date: string }) {
   const t = useT();
+  const { locale } = useLocale();
   return (
     <div className="ds-panel">
       <div className="ds-state">
         <p className="ds-state__title">
-          {t('dash.noSalesOn')} {shortDate(date)}
+          {t('dash.noSalesOn')} {shortDate(date, locale)}
         </p>
         <p className="ds-state__body">{t('dash.tillNotStarted')}</p>
       </div>

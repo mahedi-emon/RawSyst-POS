@@ -310,7 +310,7 @@ export function BrandingScreen({ companyId }: { companyId: string }) {
               that implied otherwise would have a client wondering why their
               receipts had not changed. */}
           <p className="brand__scope ds-body-sm" role="note">
-            <strong>{t('brand.whereAppears')}</strong>{t('brand.whereItAppears')}</p>
+            <strong>{t('brand.whereAppears')}</strong>{' '}{t('brand.whereItAppears')}</p>
         </div>
       </div>
 

@@ -132,6 +132,34 @@ const probe = () => {
   return out;
 };
 
+/* The navigation moved, and these three scripts drive it.
+ *
+ * The rail is off-canvas below 640px and the language options live in a menu
+ * rather than side by side, so both now need opening before they can be used.
+ * One helper rather than three copies. */
+async function openNav(page) {
+  const menu = page.locator('.bo__menu');
+  if (await menu.count() && await menu.isVisible()) {
+    await menu.click().catch(() => {});
+    await page.waitForTimeout(250);
+  }
+}
+
+async function chooseLanguage(page, label) {
+  const trigger = page.locator('.lang__trigger').first();
+  if (!(await trigger.count())) return false;
+  await trigger.click().catch(() => {});
+  await page.waitForTimeout(200);
+  const opt = page.locator('button.lang__opt', { hasText: label }).first();
+  if (!(await opt.count())) {
+    await page.keyboard.press('Escape');
+    return false;
+  }
+  await opt.click();
+  await page.waitForTimeout(900);
+  return true;
+}
+
 async function signIn(page) {
   await page.goto(WEB, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle').catch(() => {});
@@ -140,7 +168,7 @@ async function signIn(page) {
     await page.fill('input[type=email]', EMAIL);
     await page.fill('input[type=password]', PASSWORD);
     await page.locator('form button').first().click();
-    try { await page.waitForSelector('.app__navlink', { timeout: 15000 });
+    try { await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(700); return; } catch { await page.waitForTimeout(1200); }
   }
   throw new Error('sign-in failed');
@@ -161,13 +189,13 @@ async function main() {
     await signIn(page);
 
     for (const lang of ['English', 'العربية']) {
-      const btn = page.locator('button.lang__opt', { hasText: lang }).first();
-      if (await btn.count()) { await btn.click(); await page.waitForTimeout(900); }
+      await chooseLanguage(page, lang);
+      await openNav(page);
       const sections = await page.evaluate(() =>
-        [...document.querySelectorAll('.app__navlink')].map((e) => e.innerText.trim()));
+        [...document.querySelectorAll('.bo__link, .app__navlink')].map((e) => e.innerText.trim()));
 
       for (const s of sections) {
-        const link = page.locator('.app__navlink', { hasText: s }).first();
+        const link = page.locator('.bo__link, .app__navlink', { hasText: s }).first();
         if (!(await link.count())) continue;
         await link.click({ timeout: 6000 }).catch(() => {});
         await page.waitForTimeout(900);

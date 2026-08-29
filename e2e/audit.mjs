@@ -150,6 +150,34 @@ const probe = (tapMin) => {
   return out;
 };
 
+/* The navigation moved, and these three scripts drive it.
+ *
+ * The rail is off-canvas below 640px and the language options live in a menu
+ * rather than side by side, so both now need opening before they can be used.
+ * One helper rather than three copies. */
+async function openNav(page) {
+  const menu = page.locator('.bo__menu');
+  if (await menu.count() && await menu.isVisible()) {
+    await menu.click().catch(() => {});
+    await page.waitForTimeout(250);
+  }
+}
+
+async function chooseLanguage(page, label) {
+  const trigger = page.locator('.lang__trigger').first();
+  if (!(await trigger.count())) return false;
+  await trigger.click().catch(() => {});
+  await page.waitForTimeout(200);
+  const opt = page.locator('button.lang__opt', { hasText: label }).first();
+  if (!(await opt.count())) {
+    await page.keyboard.press('Escape');
+    return false;
+  }
+  await opt.click();
+  await page.waitForTimeout(900);
+  return true;
+}
+
 async function signIn(page, width) {
   await page.goto(WEB + '/', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('input[type=email]', { timeout: 30000 });
@@ -173,7 +201,7 @@ async function signIn(page, width) {
     await page.locator('form button').first().click();
 
     try {
-      await page.waitForSelector('.app__navlink', { timeout: 15000 });
+      await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(1000);
       return;
     } catch {
@@ -189,16 +217,16 @@ async function signIn(page, width) {
 }
 
 async function setLanguage(page, which) {
-  const btn = page.locator('button.lang__opt', { hasText: which }).first();
-  if ((await btn.count()) > 0) {
-    await btn.click();
-    await page.waitForTimeout(1200);
-  }
+  await chooseLanguage(page, which);
 }
 
 async function walk(page, width, language, problems) {
+  // The rail is off-canvas on a phone, so its links are not clickable until
+  // the drawer is open. They are in the DOM either way, which is why reading
+  // the section names still works from here.
+  await openNav(page);
   const sections = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('.app__navlink')).map((e) => e.innerText.trim()),
+    Array.from(document.querySelectorAll('.bo__link, .app__navlink')).map((e) => e.innerText.trim()),
   );
   if (sections.length === 0) {
     problems.push({ what: 'no navigation rendered', language });
@@ -208,7 +236,7 @@ async function walk(page, width, language, problems) {
   let checks = 0;
   {
     for (const section of sections) {
-      const link = page.locator('.app__navlink', { hasText: section }).first();
+      const link = page.locator('.bo__link, .app__navlink', { hasText: section }).first();
       if ((await link.count()) === 0) {
         problems.push({
           what: 'a navigation entry vanished mid-walk',

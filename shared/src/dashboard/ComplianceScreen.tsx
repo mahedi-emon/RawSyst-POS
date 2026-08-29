@@ -29,7 +29,7 @@ import { DetailScreen, EmptyState, RemoteBody } from './DetailScreen';
 import { InvoiceState } from './InvoiceState';
 import { useRemote } from './useRemote';
 import { formatAge } from './drilldown';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 export function ComplianceScreen({
   companyId,
@@ -49,7 +49,7 @@ export function ComplianceScreen({
   return (
     <DetailScreen
       title={t('comp.reportingToZatca')}
-      subtitle="Invoices that have not completed reporting"
+      subtitle={t('comp.subtitle')}
       onBack={onBack}
       onRefresh={reload}
       refreshing={refreshing}
@@ -75,7 +75,7 @@ export function ComplianceScreen({
                 {d.rows.length === 0 ? (
                   <EmptyState
                     title={t('comp.everythingReported')}
-                    body="No invoice is waiting. Nothing needs doing here."
+                    body={t('comp.nothingWaiting')}
                   />
                 ) : (
                   <table className="ds-table">
@@ -128,7 +128,7 @@ function GateNotice({ outstanding }: { outstanding: number }) {
         </p>
 
         <p className="gate__body">
-          <strong>{t('comp.salesAreFine')}</strong>{t('comp.allRecorded')}</p>
+          <strong>{t('comp.salesAreFine')}</strong>{' '}{t('comp.allRecorded')}</p>
 
         <p className="gate__body ds-muted">{t('comp.nothingToRetry')}</p>
       </div>
@@ -138,9 +138,10 @@ function GateNotice({ outstanding }: { outstanding: number }) {
 
 function Row({ row, currency }: { row: ComplianceRow; currency: string }) {
   const t = useT();
+  const { locale } = useLocale();
   return (
     <tr>
-      <td className="ds-date">{longDate(row.issued_at)}</td>
+      <td className="ds-date">{longDate(row.issued_at, locale)}</td>
       <td>
         <span className="detail__strong">
           {row.human_number || row.invoice_id.slice(0, 8)}

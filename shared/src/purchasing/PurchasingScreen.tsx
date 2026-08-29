@@ -31,7 +31,7 @@ import { BillDetail } from './BillDetail';
 import { SupplierForm } from './SupplierForm';
 import { OrderForm } from './OrderForm';
 import { BillForm } from './BillForm';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 
 type Tab = 'orders' | 'bills' | 'suppliers' | 'ageing';
@@ -222,6 +222,7 @@ function Orders({
   onOpen: (id: string) => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client } = useAuth();
   const load = useCallback(() => listOrders(client, companyId), [client, companyId]);
   const { remote, reload } = useRemote(load);
@@ -256,7 +257,7 @@ function Orders({
                         </button>
                       </td>
                       <td>{o.supplier}</td>
-                      <td className="ds-date">{longDate(o.ordered_on)}</td>
+                      <td className="ds-date">{longDate(o.ordered_on, locale)}</td>
                       <td>
                         <OrderStatus status={o.status} />
                       </td>
@@ -284,6 +285,7 @@ function Bills({
   onOpen: (id: string) => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client } = useAuth();
   const load = useCallback(() => listBills(client, companyId), [client, companyId]);
   const { remote, reload } = useRemote(load);
@@ -296,7 +298,7 @@ function Bills({
             {bills.length === 0 ? (
               <EmptyState
                 title={t('purch.noBills')}
-                body="Bills appear here as you record them. Each is checked against its order and what actually arrived before it can be paid."
+                body={t('buy.billsAppearHere')}
               />
             ) : (
               <table className="ds-table">
@@ -319,7 +321,7 @@ function Bills({
                         </button>
                       </td>
                       <td>{b.supplier}</td>
-                      <td className="ds-date">{longDate(b.due_date)}</td>
+                      <td className="ds-date">{longDate(b.due_date, locale)}</td>
                       <td>
                         <BillStatus bill={b} />
                       </td>
@@ -404,7 +406,7 @@ function Suppliers({
               {suppliers.length === 0 ? (
                 <EmptyState
                   title={t('purch.noSuppliers')}
-                  body="Add the businesses you buy from. Their payment terms set when each bill falls due."
+                  body={t('buy.addSuppliers')}
                 />
               ) : (
                 <table className="ds-table">
@@ -525,7 +527,7 @@ function AgeingView({ companyId }: { companyId: string }) {
             {ageing.rows.length === 0 ? (
               <EmptyState
                 title={t('common.nothingOutstanding')}
-                body="Every supplier bill has been settled."
+                body={t('buy.allBillsSettled')}
               />
             ) : (
               <table className="ds-table">

@@ -346,7 +346,7 @@ export function ReturnsScreen() {
                             [line.line_id]: e.target.value,
                           }))
                         }
-                        aria-label={`Quantity of ${line.description} to return`}
+                        aria-label={t('pos.quantityToReturn', { item: line.description })}
                       />
                     </td>
                   </tr>
@@ -448,7 +448,7 @@ export function ReturnsScreen() {
                                 prev.filter((_, j) => j !== i),
                               )
                             }
-                            aria-label={`Remove ${line.description}`}
+                            aria-label={t('pos.removeItem', { item: line.description })}
                           >
                             {t('common.remove')}
                           </button>

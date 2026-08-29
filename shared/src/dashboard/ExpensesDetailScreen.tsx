@@ -37,7 +37,7 @@ export function ExpensesDetailScreen({
   return (
     <DetailScreen
       title={t('common.expenses')}
-      subtitle={shortDate(date)}
+      subtitle={shortDate(date, locale)}
       onBack={onBack}
       onRefresh={reload}
       refreshing={refreshing}
@@ -57,7 +57,7 @@ export function ExpensesDetailScreen({
           d.by_account.length === 0 && d.entries.length === 0 ? (
             <div className="ds-panel">
               <EmptyState
-                title={`No expenses were posted on ${shortDate(date)}`}
+                title={t('expenses.nonePostedOn', { date: shortDate(date, locale) })}
                 body={
                   accountId
                     ? t('expenses.nothingPosted')
@@ -72,7 +72,7 @@ export function ExpensesDetailScreen({
                   <h2 className="ds-h3">{t('dash.byAccount')}</h2>
                 </div>
                 <div className="ds-panel__body ds-scroll-x">
-                  <table className="ds-table">
+                  <table className="ds-table ds-table--pairs">
                     <tbody>
                       {d.by_account.map((line) => {
                         const active = line.account_id === accountId;
@@ -136,7 +136,7 @@ export function ExpensesDetailScreen({
                   {d.entries.length === 0 ? (
                     <EmptyState
                       title={t('dash.nothingPostedAccount')}
-                      body="Choose another account, or show them all."
+                      body={t('expenses.chooseAnother')}
                     />
                   ) : (
                     <table className="ds-table">

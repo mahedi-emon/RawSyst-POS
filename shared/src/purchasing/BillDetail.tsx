@@ -29,7 +29,7 @@ import {
 } from '../api/purchasing';
 import { BillStatus } from './PurchasingScreen';
 import { payable } from './purchasing';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 import type { Key } from '../i18n/strings';
 
 export function BillDetail({
@@ -42,6 +42,7 @@ export function BillDetail({
   onBack: () => void;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const { client, can } = useAuth();
   const load = useCallback(
     () => readBill(client, companyId, billId),
@@ -106,7 +107,10 @@ export function BillDetail({
       {(bill) => (
         <DetailScreen
           title={bill.supplier_ref}
-          subtitle={`${bill.supplier} · due ${longDate(bill.due_date)}`}
+          subtitle={t('buy.billDueOn', {
+            supplier: bill.supplier,
+            date: longDate(bill.due_date, locale),
+          })}
           backLabel="Bills"
           onBack={onBack}
           onRefresh={reload}

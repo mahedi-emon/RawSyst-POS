@@ -20,6 +20,46 @@ const WIDTHS = [
   { name: 'desktop', w: 1440, h: 900, touch: false },
 ];
 
+/* The navigation moved, and these three scripts drive it.
+ *
+ * The rail is off-canvas below 640px and the language options live in a menu
+ * rather than side by side, so both now need opening before they can be used.
+ * One helper rather than three copies. */
+async function openNav(page) {
+  const menu = page.locator('.bo__menu');
+  if (await menu.count() && await menu.isVisible()) {
+    await menu.click().catch(() => {});
+    await page.waitForTimeout(250);
+  }
+}
+
+/* By locale code rather than by the name in the menu.
+ *
+ * Matching on "العربية" meant passing Arabic through an environment variable,
+ * and the shell handed it over re-encoded -- the option never matched, the
+ * click never happened, and the run produced a second set of screenshots that
+ * were quietly identical to the English ones. A two-letter code cannot be
+ * mangled on the way in, and the menu stamps each option with the one it
+ * selects. */
+async function chooseLanguage(page, code) {
+  if (code === 'en' && (await page.evaluate(() => document.documentElement.lang)) === 'en') {
+    return true;
+  }
+  const trigger = page.locator('.lang__trigger').first();
+  if (!(await trigger.count())) return false;
+  await trigger.click().catch(() => {});
+  await page.waitForTimeout(250);
+  const opt = page.locator(`button.lang__opt[lang="${code}"]`).first();
+  if (!(await opt.count())) {
+    await page.keyboard.press('Escape');
+    console.error(`no option for locale ${code}`);
+    return false;
+  }
+  await opt.click();
+  await page.waitForTimeout(1400);
+  return true;
+}
+
 async function signIn(page) {
   await page.goto(WEB, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle').catch(() => {});
@@ -29,7 +69,7 @@ async function signIn(page) {
     await page.fill('input[type=password]', PASSWORD);
     await page.locator('form button').first().click();
     try {
-      await page.waitForSelector('.app__navlink', { timeout: 15000 });
+      await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(800);
       return;
     } catch { await page.waitForTimeout(1200); }
@@ -57,22 +97,30 @@ async function main() {
 
     await signIn(page);
 
-    for (const lang of (process.env.RS_LANGS ?? 'English').split(',')) {
-      const btn = page.locator('button.lang__opt', { hasText: lang }).first();
-      if (await btn.count()) { await btn.click(); await page.waitForTimeout(1000); }
+    for (const lang of (process.env.RS_LANGS ?? 'en').split(',')) {
+      if (!(await chooseLanguage(page, lang))) continue;
 
+      await openNav(page);
       const sections = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('.app__navlink')).map((e) => e.innerText.trim()));
+        Array.from(document.querySelectorAll('.bo__link, .app__navlink')).map((e) => e.innerText.trim()));
 
       let i = 1;
       for (const s of sections) {
-        const link = page.locator('.app__navlink', { hasText: s }).first();
+        /* Reopened before EVERY press, not once at the top.
+         *
+         * The drawer closes itself when a section is chosen, which is right --
+         * a phone should show the page it just navigated to, not the menu over
+         * it. But it meant every press after the first landed on a link that
+         * was translated off-screen, so eleven of the twelve phone screenshots
+         * were the dashboard photographed eleven times. */
+        await openNav(page);
+        const link = page.locator('.bo__link, .app__navlink', { hasText: s }).first();
         if (!(await link.count())) continue;
         await link.click({ timeout: 6000 }).catch(() => {});
         await page.waitForTimeout(1100);
         const slug = String(i).padStart(2, '0') + '-' +
           s.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24);
-        const tag = lang === 'English' ? '' : '-ar';
+        const tag = lang === 'en' ? '' : `-${lang}`;
         await page.screenshot({
           path: `${OUT}/${width.name}-${slug}${tag}.png`, fullPage: true,
         });

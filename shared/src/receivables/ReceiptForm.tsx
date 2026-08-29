@@ -29,7 +29,7 @@ import {
 } from '../api/receivables';
 import { allocateOldestFirst, checkAllocation, major, minor } from './receivables';
 import { Field, FormActions, FormError, SelectInput, TextInput } from '../ui/Form';
-import { useT } from '../i18n/locale';
+import { useLocale, useT } from '../i18n/locale';
 
 const METHODS = [
   { id: 'cash', label: 'Cash' },
@@ -154,6 +154,7 @@ function ReceiptBody({
   }) => Promise<unknown>;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const outcome = useMemo(
     () => checkAllocation(invoices, allocations),
     [invoices, allocations],
@@ -227,7 +228,7 @@ function ReceiptBody({
         <div className="ds-panel__body">
           <EmptyState
             title={t('common.nothingOutstanding')}
-            body={`${customer.name} has settled everything on their account, so there is nothing to allocate a payment against.`}
+            body={t('rcpt.nothingToAllocate', { customer: customer.name })}
           />
           <div className="form__actions">
             <button className="ds-btn ds-btn--quiet" type="button" onClick={onCancel}>
@@ -300,14 +301,14 @@ function ReceiptBody({
                         </span>
                       )}
                     </td>
-                    <td className="ds-date">{shortDate(invoice.due_date)}</td>
+                    <td className="ds-date">{shortDate(invoice.due_date, locale)}</td>
                     <td className="num">{money(invoice.outstanding)}</td>
                     <td className="num">
                       <input
                         className={`input num receipt__alloc${over ? ' input--bad' : ''}`}
                         value={allocations[invoice.invoice_id] ?? ''}
                         inputMode="decimal"
-                        aria-label={`Allocate to invoice ${label}`}
+                        aria-label={t('rcpt.allocateToInvoice', { invoice: label })}
                         aria-invalid={over ? true : undefined}
                         onChange={(e) => setOne(invoice.invoice_id, e.target.value)}
                       />

@@ -1,7 +1,7 @@
 import { initialLocale } from './locale';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ar, catalogues, directionOf, en, type Key } from './strings';
+import { ar, bn, catalogues, coverageOf, directionOf, en, type Key } from './strings';
 
 // QA gate M6, from the design system §6 rule 5: "Mixed content is the norm, not
 // the edge case. A product named `قميص رجالي Slim Fit — L` must render
@@ -33,6 +33,24 @@ const SAME_IN_BOTH = new Set<string>([
   'tender.bkash',
   'tender.nagad',
 ]);
+
+/**
+ * Names that are written in Latin letters in every language, Bangla included.
+ *
+ * Stripped rather than allow-listed by key. An allow-list of thirty-one keys
+ * would have said "these particular sentences may contain English", which is
+ * not the rule -- the rule is that ZATCA is called ZATCA, that their portal is
+ * called Fatoora, and that a file format and a worked example of an invoice
+ * number are quoted as they are printed. Naming the words says that; naming
+ * the keys would let a genuinely untranslated sentence hide behind one of them
+ * forever.
+ *
+ * The Arabic check above keeps its key allow-list because its list is four
+ * entries long and its strings do not carry these names -- Arabic has its own
+ * word for the authority.
+ */
+const PROPER_NOUNS =
+  /RawSyst|ZATCA|Fatoora|JPEG|JPG|PNG|SVG|YYYY|MM|DD|Wave|Manufacturer|Model|Serial|Acme|Textiles|ACME|Noor|NOOR|Trading|LLC/g;
 
 describe('the string catalogue', () => {
   it('says everything in both languages', () => {
@@ -98,10 +116,43 @@ describe('the string catalogue', () => {
   it('knows which way each language runs', () => {
     expect(directionOf('en')).toBe('ltr');
     expect(directionOf('ar')).toBe('rtl');
+    // Bangla is left-to-right. Stated rather than assumed: the product now has
+    // three languages and two directions, and the one that is not Arabic being
+    // silently mirrored would be a hard failure to spot on a screenshot.
+    expect(directionOf('bn')).toBe('ltr');
   });
 
   it('offers exactly the locales it has catalogues for', () => {
-    expect(Object.keys(catalogues).sort()).toEqual(['ar', 'en']);
+    expect(Object.keys(catalogues).sort()).toEqual(['ar', 'bn', 'en']);
+  });
+
+  it('says enough of the interface in Bangla', () => {
+    // A floor rather than an equality.
+    //
+    // `bn` is `Partial` on purpose — see the comment above `catalogues`: it is
+    // what lets a feature ship its English strings and be translated after,
+    // instead of blocking the feature or filling the gap with English to get
+    // past the compiler. The cost of that freedom is that coverage can drift
+    // down one commit at a time with nobody noticing.
+    //
+    // So the number is asserted. It stood at 46% when Bangla was added and is
+    // complete now; the floor is set just under, which fails on a real
+    // regression and does not fail on the ordinary rounding of one new key.
+    expect(coverageOf('bn')).toBeGreaterThan(0.98);
+
+    // And every Bangla string is actually Bangla. A key present but left as
+    // its English text compiles, counts towards coverage, and ships an English
+    // sentence to a Bangladeshi shop. Brands and placeholders are the honest
+    // exceptions, for the same reason they are in Arabic.
+    const strip = (text: string) =>
+      text.replace(/\{\w+\}/g, '').replace(PROPER_NOUNS, '');
+    const english = (Object.keys(en) as Key[]).filter((k) => {
+      const t = bn[k];
+      if (t === undefined) return false;
+      if (SAME_IN_BOTH.has(k) || k.startsWith('language.')) return false;
+      return t === en[k] || /[A-Za-z]{4,}/.test(strip(t));
+    });
+    expect(english, 'Bangla strings still carrying English words').toEqual([]);
   });
 });
 

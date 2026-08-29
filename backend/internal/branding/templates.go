@@ -296,6 +296,14 @@ type Seller struct {
 	// otherwise. Never blank: a receipt with no seller on it is not a document.
 	Name      string
 	VATNumber string
+
+	// BaseCurrency is the code the company keeps its books in — SAR, BDT, USD.
+	//
+	// It travels with the seller because the till needs it for the same reason
+	// the receipt does: a total is not a number, it is an amount of something.
+	// The counter used to print "Total 0.00" with no code at all, which is
+	// legible only to somebody who already knows which country they are in.
+	BaseCurrency string
 }
 
 // ReadSeller names the business, for the surfaces that print one.
@@ -304,9 +312,10 @@ func (s *Service) ReadSeller(ctx context.Context, scope Scope) (Seller, error) {
 	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			SELECT coalesce(nullif(btrim(trade_name), ''), legal_name),
-			       coalesce(vat_number, '')
+			       coalesce(vat_number, ''),
+			       base_currency
 			FROM company WHERE id = $1`, scope.CompanyID).
-			Scan(&out.Name, &out.VATNumber)
+			Scan(&out.Name, &out.VATNumber, &out.BaseCurrency)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Seller{}, errs.New(errs.CodeNotFound, "That business was not found.")

@@ -294,7 +294,7 @@ export function OrderForm({
                         className="input input--narrow"
                         inputMode="decimal"
                         value={line.qty}
-                        aria-label={`Quantity for line ${i + 1}`}
+                        aria-label={t('buy.qtyForLine', { line: i + 1 })}
                         onChange={(e) => setLine(i, { qty: e.target.value })}
                       />
                     </td>
@@ -303,7 +303,7 @@ export function OrderForm({
                         className="input input--narrow"
                         inputMode="decimal"
                         value={line.unitCost}
-                        aria-label={`Unit cost for line ${i + 1}`}
+                        aria-label={t('buy.costForLine', { line: i + 1 })}
                         onChange={(e) => setLine(i, { unitCost: e.target.value })}
                       />
                     </td>
@@ -313,7 +313,7 @@ export function OrderForm({
                         type="button"
                         className="ds-btn ds-btn--quiet"
                         onClick={() => setLines((p) => p.filter((_, j) => j !== i))}
-                        aria-label={`Remove line ${i + 1}`}
+                        aria-label={t('buy.removeLine', { line: i + 1 })}
                       >
                         {t('common.remove')}
                       </button>
