@@ -23,7 +23,7 @@
 // `data-theme` on the root element, which is what design-system.css branches
 // on. Nothing else in the product decides a colour.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useT } from '../i18n/locale';
 import { Icon } from './Icon';
@@ -54,16 +54,33 @@ export function ThemeSwitch({ className }: { className?: string }) {
     setTheme(stored());
   }, []);
 
+  // The DOM follows the state; storage does not.
+  //
+  // Writing storage from an effect keyed on `theme` looks equivalent and is
+  // not. Effects run in declaration order, so on mount this one ran with
+  // `theme` still at its initial 'light' and wrote 'light' over a stored
+  // 'dark' before the read above had been applied — and under React's
+  // development double-mount the second mount then read back the value the
+  // first had just clobbered. The same shape cost the navigation rail's pin
+  // its memory; see BackOffice.tsx.
+  //
+  // A press is the only thing that changes this preference, so a press is
+  // where it is saved. Nothing is left to run in an order.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-      /* As above. */
-    }
   }, [theme]);
 
   const next: Theme = theme === 'dark' ? 'light' : 'dark';
+
+  const choose = useCallback((chosen: Theme) => {
+    setTheme(chosen);
+    try {
+      localStorage.setItem(STORAGE_KEY, chosen);
+    } catch {
+      /* A browser refusing storage still gets the theme it asked for; it
+         just does not get it again tomorrow. */
+    }
+  }, []);
 
   return (
     <button
@@ -73,7 +90,7 @@ export function ThemeSwitch({ className }: { className?: string }) {
       // user needs; the icon shows the same thing.
       aria-label={next === 'dark' ? t('theme.toDark') : t('theme.toLight')}
       title={next === 'dark' ? t('theme.toDark') : t('theme.toLight')}
-      onClick={() => setTheme(next)}
+      onClick={() => choose(next)}
     >
       <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} />
     </button>

@@ -90,20 +90,28 @@ remembered in `localStorage`).
   --debit:           #C02626;
 }
 
+/* Dark is a four-step ladder, and the steps have to be far enough apart to
+   see. The light theme's structure is a dark rail against a light page — the
+   rail is a different KIND of surface and reads as one from across a room. An
+   early dark palette made the rail three points darker than the page, and the
+   whole left edge of the product became one flat field with a hairline in it.
+   Rail darkest, then the page, then a panel, then a raised panel. */
 :root[data-theme="dark"] {
-  --bg:              #0E1014;
-  --surface:         #171A20;
-  --surface-sunken:  #101318;
-  --border:          #262A33;
-  --border-strong:   #3A404C;
-  --text:            #F2F3F5;
-  --text-muted:      #A2A9B8;
-  --text-subtle:     #757D8C;
-  --brand:           #5B9BFF;
-  --brand-subtle:    #16233A;
-  --success:         #4ADE80;   --success-subtle: #10261A;
-  --warning:         #FBBF6B;   --warning-subtle: #2A1D0B;
-  --danger:          #FF7B72;   --danger-subtle:  #2C1416;
+  --rail:            #080b11;   /* darkest */
+  --bg:              #11151d;
+  --surface:         #1a1f2a;
+  --surface-sunken:  #141821;
+  --surface-raised:  #202634;   /* lightest */
+  --border:          #242b39;
+  --border-strong:   #38414f;
+  --text:            #eef1f6;
+  --text-muted:      #9fa8bb;
+  --text-subtle:     #737c90;
+  --brand:           #6c92f5;
+  --brand-subtle:    #182444;
+  --success:         #4ade80;   --success-subtle: #0e2618;
+  --warning:         #f5b453;   --warning-subtle: #2a1e0b;
+  --danger:          #ff8078;   --danger-subtle:  #2c1517;
 }
 ```
 

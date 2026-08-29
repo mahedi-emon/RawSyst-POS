@@ -227,10 +227,21 @@
  * ------------------------------------------------------------------------- */
 
 :root[data-theme='dark'] {
-  --bg: #0d1017;
-  --surface: #151a24;
-  --surface-sunken: #10141c;
-  --surface-raised: #1a202c;
+  /* A four-step ladder, and the steps have to be far enough apart to see.
+   *
+   * The light theme's structure is a dark rail against a light page: the rail
+   * is a different KIND of surface and reads as one from across a room. In
+   * dark mode that structure was lost — the rail was three points darker than
+   * the page, so the only thing separating them was a hairline and the whole
+   * left edge of the product read as one flat field.
+   *
+   * Rail darkest, then the page, then a panel, then a raised panel. Each step
+   * is wide enough to be seen on a cheap monitor in a lit shop, which is where
+   * this is actually read. */
+  --bg: #11151d;
+  --surface: #1a1f2a;
+  --surface-sunken: #141821;
+  --surface-raised: #202634;
   --border: #242b39;
   --border-strong: #38414f;
   --text: #eef1f6;
@@ -244,9 +255,9 @@
   --brand-border: #2c3d6e;
   --on-brand: #08101f;
 
-  --rail: #0a0d14;
+  --rail: #080b11;
   --rail-hover: #161c28;
-  --rail-active: #1e2635;
+  --rail-active: #202836;
   --rail-text: #9fa8bb;
   --rail-text-strong: #ffffff;
   --rail-border: #1c2331;
@@ -727,10 +738,33 @@ select.input {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Wraps rather than overflowing. A panel head is a title and whatever
+   * controls belong to that panel, and on a narrow screen there is not always
+   * room for both across. */
+  flex-wrap: wrap;
   gap: var(--space-3);
   min-block-size: 48px;
   padding: var(--space-3) var(--space-4);
   border-block-end: 1px solid var(--border);
+}
+
+/* On a phone the head stacks: title, then its controls.
+ *
+ * Centred against a tall control block, the title ended up in the MIDDLE of it
+ * — on the customers screen the head read "[search field] / Customers /
+ * [include retired]", with the panel's own name between two of its own
+ * controls. A reader meets the controls before they have been told what the
+ * controls are for.
+ *
+ * Stacked and start-aligned, it reads in the order it is written. */
+@media (max-width: 639px) {
+  .ds-panel__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .ds-panel__head > * { min-inline-size: 0; }
 }
 
 .ds-panel__head > .ds-h2,
