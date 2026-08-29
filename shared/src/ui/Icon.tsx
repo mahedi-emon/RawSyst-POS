@@ -32,6 +32,7 @@ export type IconName =
   | 'expenses'
   | 'settlement'
   | 'devices'
+  | 'people'
   | 'einvoicing'
   | 'setup'
   | 'branding'
@@ -62,6 +63,10 @@ const PATHS: Record<IconName, string> = {
   expenses: 'M3 7h13v8H3zM9.5 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M18 11h4M20 9l2 2-2 2',
   // Settlement is two halves being matched.
   settlement: 'M4 8h10l-3-3M20 16H10l3 3M4 8v3M20 16v-3',
+  // Staff: two figures, the second half behind the first. Deliberately not the
+  // `customers` glyph — a shop's own people and the people it sells to are
+  // different lists and must not look like the same one.
+  people: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2 20a7 7 0 0 1 14 0M16.5 11.5a3 3 0 1 0 0-6M18 20h4a6 6 0 0 0-4.5-5.8',
   devices: 'M5 3h14v13H5zM9 20h6M12 16v4',
   // E-invoicing is a document that has been signed.
   einvoicing: 'M6 3h8l4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM14 3v4h4M8 13l2 2 4-4',

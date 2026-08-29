@@ -35,6 +35,7 @@ import { InvoiceDetailScreen } from '@rawsyst/shared/invoices/InvoiceDetailScree
 import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
 import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
 import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
+import { PeopleScreen } from '@rawsyst/shared/people/PeopleScreen';
 import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
 import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
 import { ExpensesScreen } from '@rawsyst/shared/expenses/ExpensesScreen';
@@ -48,6 +49,7 @@ import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 
 type Section =
   | 'dashboard'
+  | 'people'
   | 'buying'
   | 'customers'
   | 'expenses'
@@ -152,6 +154,12 @@ export function BackOffice() {
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
+
+  // Reading the staff list. Adding somebody needs `identity.create` AND
+  // `identity.manage_roles` — the screen asks for those itself, because a
+  // person who may keep the list current is not necessarily one who may decide
+  // what anybody is allowed to do.
+  const maySeePeople = may('identity.view');
   // Card settlement reads with accounting.view. A cashier takes the money and
   // does not decide it has arrived — matching a bank statement to a day's
   // takings is bookkeeping, and the routes refuse them either way.
@@ -290,6 +298,16 @@ export function BackOffice() {
       icon: 'settlement',
       group: 'trade',
       shown: maySeeAccounting,
+    },
+    // First in Administration, because it is the first thing a newly
+    // onboarded shop needs: A5 hands the Owner a business and A6 is how they
+    // staff it.
+    {
+      key: 'people',
+      label: t('nav.people'),
+      icon: 'people',
+      group: 'admin',
+      shown: maySeePeople,
     },
     {
       key: 'devices',
@@ -528,6 +546,8 @@ export function BackOffice() {
         <ExpensesScreen companyId={activeCompany} />
       ) : section === 'settlement' && maySeeAccounting ? (
         <SettlementScreen companyId={activeCompany} />
+      ) : section === 'people' && maySeePeople ? (
+        <PeopleScreen />
       ) : section === 'devices' && maySeeDevices ? (
         <DevicesScreen companyId={activeCompany} />
       ) : section === 'einvoicing' && maySeeEInvoicing ? (

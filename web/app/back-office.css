@@ -1746,3 +1746,120 @@
   font-size: 0.9rem;
   color: var(--text-muted);
 }
+
+/* ---------------------------------------------------------------------------
+ * People
+ *
+ * Blueprint A5 hands the Owner a business and A6 is how they staff it. Two
+ * shapes here are worth the rules: a list of roles inside a table cell, and a
+ * password that exists in exactly one place.
+ * ------------------------------------------------------------------------- */
+
+/* The roles somebody holds, inside their row. A list rather than a comma-joined
+ * string, because each one carries its own scopes underneath it. */
+.people__roles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.people__roles > li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* What the chosen role actually carries.
+ *
+ * A6.2's promise is that an Owner decides exactly what somebody can do, and a
+ * dropdown of twelve names decides nothing. This is the panel that turns a
+ * label into a decision, so it is set apart from the field above it rather
+ * than reading as more form. */
+.people__preview {
+  margin-block: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.people__perms {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Why a role cannot be handed over. Informational, not an error: the person
+ * reading it has done nothing wrong, they simply do not hold what they are
+ * trying to give away. */
+.people__withheld {
+  margin-block: var(--space-3) 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 3px solid var(--info);
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * A one-time password
+ *
+ * It exists in exactly one place — the response that created it — because the
+ * stored form is an argon2id hash. So this holds the screen rather than
+ * flashing: a toast that fades after three seconds throws the only copy away on
+ * a timer, while the person it belongs to is still walking over.
+ * ------------------------------------------------------------------------- */
+
+.otp {
+  inline-size: min(34rem, 100%);
+  margin-inline: auto;
+  border-color: var(--brand-border);
+}
+
+.otp__facts {
+  margin: 0 0 var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.otp__facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.otp__facts dt,
+.otp__facts dd { margin: 0; }
+
+/* The password itself: the largest thing on the screen, in the interface face
+ * with tabular figures, and selectable. Somebody is reading this aloud across a
+ * counter or copying it by hand, and a generated password is exactly the string
+ * where a 0 and an O being indistinguishable costs somebody a support call. */
+.otp__password {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  font-size: clamp(1.4rem, 1rem + 1.4vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: center;
+  word-break: break-all;
+  background: var(--brand-subtle);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  user-select: all;
+}
+
+.otp__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.otp__note { margin-block: var(--space-4) 0; }
