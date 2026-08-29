@@ -1,7 +1,17 @@
 import { initialLocale } from './locale';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ar, bn, catalogues, coverageOf, directionOf, en, type Key } from './strings';
+import {
+  ar,
+  bn,
+  catalogues,
+  coverageOf,
+  directionOf,
+  en,
+  interpolate,
+  plain,
+  type Key,
+} from './strings';
 
 // QA gate M6, from the design system §6 rule 5: "Mixed content is the norm, not
 // the edge case. A product named `قميص رجالي Slim Fit — L` must render
@@ -245,5 +255,71 @@ describe('which language the product opens in', () => {
       },
     });
     expect(initialLocale()).toBe('en');
+  });
+});
+
+describe('bidi isolation of interpolated values', () => {
+  // The design system (§6 rule 4) calls isolation on a currency or a number not
+  // optional, and gives the failure it prevents: a total placed next to Arabic
+  // text can visually reorder its digits.
+  //
+  // `.num` carries `unicode-bidi: isolate` for amounts that get an element of
+  // their own. An amount interpolated INTO a sentence has no element — the
+  // whole thing is one text node — so the fence has to be in the string, which
+  // is what U+2068 and U+2069 are for.
+  //
+  // These characters are invisible and zero-width, which is exactly why they
+  // need a test: nothing about looking at the screen tells you whether they
+  // are there, and everything about looking at the screen tells you when they
+  // are missing and the reader is in Arabic.
+  const FSI = '\u2068';
+  const PDI = '\u2069';
+
+  it('fences every substituted value', () => {
+    const out = interpolate('cost of goods sold rose by {amount}.', {
+      amount: 'SAR 1,250.00',
+    });
+    expect(out).toBe(`cost of goods sold rose by ${FSI}SAR 1,250.00${PDI}.`);
+  });
+
+  it('fences a value that is not a number', () => {
+    // A customer's name, a supplier's reference and a product code are all
+    // mixed-script in a shop trading in two languages. Guessing which values
+    // need fencing is how the one that does gets missed.
+    const out = interpolate('{customer} has settled everything.', {
+      customer: 'مؤسسة النخيل Trading',
+    });
+    expect(out).toBe(`${FSI}مؤسسة النخيل Trading${PDI} has settled everything.`);
+  });
+
+  it('fences a number given as a number', () => {
+    expect(interpolate('{n} days', { n: 30 })).toBe(`${FSI}30${PDI} days`);
+  });
+
+  it('leaves an empty value alone rather than fencing nothing', () => {
+    expect(interpolate('{a}b', { a: '' })).toBe('b');
+  });
+
+  it('leaves a placeholder nobody supplied as it found it', () => {
+    expect(interpolate('{a} and {b}', { a: 'x' })).toBe(`${FSI}x${PDI} and {b}`);
+  });
+
+  it('adds nothing when there is nothing to substitute', () => {
+    expect(interpolate('a plain sentence')).toBe('a plain sentence');
+    expect(interpolate('a plain sentence', {})).toBe('a plain sentence');
+  });
+
+  it('round-trips through plain(), which is what a test asserts on', () => {
+    const out = interpolate('rose by {amount}.', { amount: 'SAR 1,250.00' });
+    expect(plain(out)).toBe('rose by SAR 1,250.00.');
+    // And plain() is safe on text that was never fenced.
+    expect(plain('rose by SAR 1,250.00.')).toBe('rose by SAR 1,250.00.');
+  });
+
+  // The marks are zero-width, so a length a person would count is unchanged.
+  it('does not change what the sentence says', () => {
+    const out = interpolate('{n} units', { n: 2 });
+    expect(plain(out)).toBe('2 units');
+    expect(out).toContain('2 units'.slice(2));
   });
 });

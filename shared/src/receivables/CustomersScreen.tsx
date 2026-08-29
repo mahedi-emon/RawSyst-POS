@@ -385,6 +385,13 @@ function AgeingView({
                 />
               ) : (
                 <table className="ds-table">
+                  {/* Said once, before the figures. Six money columns that
+                      each repeated it would be unreadable, and a reader who
+                      does not know what these amounts are denominated in
+                      cannot use the table at all. */}
+                  <caption>
+                    {t('common.amountsIn', { currency: ageing.base_currency })}
+                  </caption>
                   <thead>
                     <tr>
                       <th scope="col">{t('common.customer')}</th>

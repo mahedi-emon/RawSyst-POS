@@ -318,10 +318,33 @@ information.
 | Loading | < 1s inline spinner · 1–5s skeleton · > 5s background job with notification |
 | Error | What happened → why → what to do. Never a bare code |
 | Destructive | Type the entity name. Reserved for genuinely reversible-but-serious actions, since financial records are never deleted |
-| Amounts | Tabular figures, currency code always shown, LTR-isolated |
+| Amounts | Tabular figures, LTR-isolated, and the currency **named** — on the figure itself, or once for a table of them in its `<caption>` |
 | Dates | `15 Aug 2026` — never `08/15/26`, which is ambiguous internationally |
 | Tables | Scroll inside their own container |
 | Focus | Visible ring, 2px, brand colour, 2px offset |
+
+---
+
+### On "the currency is named"
+
+This row used to read "currency code always shown", and taken literally it
+cannot be met: the receivables ageing table is six money columns wide, and a
+row reading `SAR 0.00 SAR 0.00 SAR 0.00 SAR 0.00 SAR 0.00 SAR 0.00` is not more
+informative than one that says it once — it is less, because nothing stands
+out.
+
+What the rule is protecting against is written in the row beneath it, about
+dates: **ambiguity for an international product**. A figure whose currency a
+reader has to assume is the defect. So the requirement is that the currency is
+NAMED, and where a table is a column of figures in one currency, the caption is
+where it is named — before the rows, which is also where a screen reader meets
+it. `e2e/currency.mjs` enforces the version that matters: a screen that shows
+money and never says which currency fails, and a deviation has to record why
+the reader already knows.
+
+`unicode-bidi: isolate` is on `.num`, and on every value interpolated into a
+translated sentence — those have no element to carry it, so `interpolate()`
+fences them with U+2068/U+2069 instead. See §6 rule 4 of the design system.
 
 ---
 

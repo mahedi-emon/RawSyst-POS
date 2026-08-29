@@ -1502,6 +1502,7 @@ export const en = {
   'setup.businessIsSetUp': '{business} is set up',
   'common.theBusiness': 'The business',
   'common.nDays': '{n} days',
+  'common.amountsIn': 'Amounts in {currency}',
 
   /* Sentences that were being assembled in code.
    *
@@ -1562,8 +1563,54 @@ export function interpolate(
   if (text === undefined) return '';
   if (!params) return text;
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in params ? String(params[name]) : whole,
+    name in params ? isolate(String(params[name])) : whole,
   );
+}
+
+/** U+2068 FIRST STRONG ISOLATE and U+2069 POP DIRECTIONAL ISOLATE. */
+const FSI = '⁨';
+const PDI = '⁩';
+
+/**
+ * Fence a substituted value off from the sentence it lands in.
+ *
+ * The design system (§6 rule 4) says isolation on a currency or number is not
+ * optional, and gives the failure: a total placed next to Arabic text can
+ * visually reorder its digits. `.num` carries `unicode-bidi: isolate` for the
+ * amounts that get an element of their own — but an amount interpolated INTO a
+ * sentence has no element. "فارتفعت تكلفة البضاعة المباعة بمقدار SAR 1,250.00."
+ * is one text node, and the bidi algorithm resolves it as one paragraph: the
+ * trailing full stop belongs to the Arabic, the amount is a left-to-right run,
+ * and where the two meet the punctuation can end up on the wrong side of the
+ * number.
+ *
+ * FSI...PDI is the Unicode-level version of the CSS property, and the only
+ * tool available inside a plain string. It says: whatever is between these,
+ * work out its own direction and do not let it argue with the text around it.
+ *
+ * Applied to EVERY substituted value, not only ones that look like numbers.
+ * A customer's name, a supplier's reference, a product code and an invoice
+ * number are all mixed-script in a shop that trades in two languages, and
+ * guessing which of them needs fencing is how the one that does gets missed.
+ *
+ * The characters are zero-width and invisible. They do not affect a comparison
+ * a person makes by eye, and the tests that assert on exact output strip them
+ * with `plain()` so an assertion says what it means.
+ */
+function isolate(value: string): string {
+  if (value === '') return value;
+  return FSI + value + PDI;
+}
+
+/**
+ * The same text without its isolation marks.
+ *
+ * For a test asserting on exact output, and for anywhere a string is compared
+ * or measured rather than displayed. Never for rendering: stripping these puts
+ * the reordering back.
+ */
+export function plain(text: string): string {
+  return text.split(FSI).join('').split(PDI).join('');
 }
 
 /** English, for a caller with no locale in scope.
@@ -3011,6 +3058,7 @@ export const ar: Record<Key, string> = {
   'setup.businessIsSetUp': 'تم إعداد {business}',
   'common.theBusiness': 'المنشأة',
   'common.nDays': '{n} يومًا',
+  'common.amountsIn': 'المبالغ بـ{currency}',
 
   /* Sentences that were being assembled in code.
    *
@@ -4361,6 +4409,7 @@ export const bn: Partial<Record<Key, string>> = {
   'setup.businessIsSetUp': '{business} সেট আপ হয়ে গেছে',
   'common.theBusiness': 'ব্যবসাটি',
   'common.nDays': '{n} দিন',
+  'common.amountsIn': '{currency}-এ পরিমাণ',
 
   /* Sentences that were being assembled in code.
    *

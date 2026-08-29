@@ -7,6 +7,11 @@
 
 import { describe, expect, it } from 'vitest';
 
+// Isolation marks are invisible and are how an amount stops the Arabic
+// around it reordering its digits. A test asserting on what a person READS
+// strips them; see `interpolate` in i18n/strings.ts.
+import { plain } from '../i18n/strings';
+
 import {
   canReverseSupplierPayment,
   matchSummary,
@@ -218,7 +223,7 @@ describe('how much of an order has arrived', () => {
 
 describe('what a storeman is told after a delivery', () => {
   it('says the stock landed and stops there when nothing was corrected', () => {
-    const notice = receiptNotice(receipt());
+    const notice = plain(receiptNotice(receipt()));
     expect(notice).toBe('Recorded as GRN-0007. Stock has been updated.');
     // Nothing about costs. The overwhelmingly common delivery corrects nothing,
     // and an explanation of a correction that did not happen is noise.
@@ -226,7 +231,7 @@ describe('what a storeman is told after a delivery', () => {
   });
 
   it('recognises a delivery it has already recorded', () => {
-    expect(receiptNotice(receipt({ already_received: true }))).toBe(
+    expect(plain(receiptNotice(receipt({ already_received: true })))).toBe(
       'That delivery was already recorded as GRN-0007.',
     );
   });
@@ -236,18 +241,18 @@ describe('what a storeman is told after a delivery', () => {
     // the goods turned out dearer. Cost of goods sold on a sale already reported
     // moves, and a figure changing on last week's numbers unannounced is how
     // people stop trusting a system.
-    const notice = receiptNotice(
+    const notice = plain(receiptNotice(
       receipt({ cost_correction: '80.00', units_recosted: '2' }),
-    );
+    ));
     expect(notice).toContain('Recorded as GRN-0007.');
     expect(notice).toContain('2 units');
     expect(notice).toContain('cost of goods sold rose by 80.00');
   });
 
   it('explains a correction the other way without a double negative', () => {
-    const notice = receiptNotice(
+    const notice = plain(receiptNotice(
       receipt({ cost_correction: '-60.00', units_recosted: '2' }),
-    );
+    ));
     expect(notice).toContain('cost of goods sold fell by 60.00');
     // money() renders a negative in parentheses, which after "fell by" would
     // read as a correction in the opposite direction to the one described.
@@ -255,35 +260,35 @@ describe('what a storeman is told after a delivery', () => {
   });
 
   it('counts a single unit in the singular', () => {
-    const notice = receiptNotice(
+    const notice = plain(receiptNotice(
       receipt({ cost_correction: '12.50', units_recosted: '1' }),
-    );
+    ));
     expect(notice).toContain('1 unit sold');
     expect(notice).not.toContain('1 units');
   });
 
   it('trims the trailing zeroes a numeric quantity arrives with', () => {
-    const notice = receiptNotice(
+    const notice = plain(receiptNotice(
       receipt({ cost_correction: '80.00', units_recosted: '2.0000' }),
-    );
+    ));
     expect(notice).toContain('2 units');
     expect(notice).not.toContain('2.0000');
   });
 
   it('groups a large correction so it can be read at a glance', () => {
-    const notice = receiptNotice(
+    const notice = plain(receiptNotice(
       receipt({ cost_correction: '12345.60', units_recosted: '400' }),
-    );
+    ));
     expect(notice).toContain('12,345.60');
   });
 
   it('says nothing about costs when the figure is not a number', () => {
     // A server that sent something unexpected must not produce "rose by NaN" on
     // a screen a storeman is meant to act on.
-    expect(receiptNotice(receipt({ cost_correction: 'oops' }))).toBe(
+    expect(plain(receiptNotice(receipt({ cost_correction: 'oops' })))).toBe(
       'Recorded as GRN-0007. Stock has been updated.',
     );
-    expect(receiptNotice(receipt({ cost_correction: '' }))).toBe(
+    expect(plain(receiptNotice(receipt({ cost_correction: '' })))).toBe(
       'Recorded as GRN-0007. Stock has been updated.',
     );
   });

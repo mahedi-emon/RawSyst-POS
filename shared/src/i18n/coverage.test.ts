@@ -137,7 +137,20 @@ const FORMATS = new Set([
  * spelled that way in Arabic Windows too. Translating one would stop the
  * keyboard working.
  */
-const PLATFORM = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown']);
+const PLATFORM = new Set([
+  // A KeyboardEvent's `key`, which the browser defines.
+  'ArrowUp',
+  'ArrowDown',
+  'PageUp',
+  'PageDown',
+  // An element's `tagName`, which the browser also defines and which it
+  // reports in upper case. The counter's keyboard layer asks whether focus is
+  // somewhere that takes typed characters, and these are the answers.
+  'TEXTAREA',
+  'SELECT',
+  'INPUT',
+  'BUTTON',
+]);
 
 /** Prose, as opposed to an identifier, a class name or a code. */
 const PROSE = /^[A-Z][A-Za-z0-9 ,.'’“”…\-–—()/&%:!?]{6,}$/;

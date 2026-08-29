@@ -1009,6 +1009,22 @@ select.input {
  * It mirrors for free: both edges carry the same pair, so RTL needs nothing.
  * ------------------------------------------------------------------------- */
 
+/* A table's caption, which is where it says what it is denominated in.
+ *
+ * UI spec §8 requires an amount to carry its currency. A column of them does
+ * not need to carry it a dozen times, and a table six money-columns wide that
+ * did would be unreadable; it needs to say it once, before the figures, where
+ * a reader and a screen reader both meet it first. That is what a caption is
+ * for, and `caption-side: top` is what makes it come first visually as well as
+ * in the markup. */
+.ds-table caption {
+  caption-side: top;
+  text-align: start;
+  padding-block-end: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
 .ds-scroll-x {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -1202,7 +1218,24 @@ select.input {
 
 /* Numbers stay LTR inside an RTL page. A currency amount is read
  * most-significant-digit first in both scripts, and mirroring it produces a
- * figure that is simply wrong. */
+ * figure that is simply wrong.
+ *
+ * `isolate` as well as `direction`, because they do different jobs and the
+ * design system document (§6 rule 4) calls the second one not optional.
+ * `direction` sets the base direction INSIDE the box; `isolate` takes the box
+ * out of the surrounding bidi paragraph so it can neither be reordered by the
+ * Arabic around it nor reorder that Arabic itself. Only the first was set, so
+ * an amount sitting inline in a sentence — "بمقدار SAR 1,250.00" — was still
+ * a participant in a paragraph whose direction disagreed with it.
+ *
+ * Applied in both directions, not only under `[dir='rtl']`. A shop's product
+ * names, customer names and references are mixed-script in every language: an
+ * Arabic name in an English sentence has the same problem in mirror image. */
+.num,
+.numeric {
+  unicode-bidi: isolate;
+}
+
 [dir='rtl'] .num,
 [dir='rtl'] .numeric {
   direction: ltr;

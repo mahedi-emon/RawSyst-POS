@@ -531,6 +531,11 @@ function AgeingView({ companyId }: { companyId: string }) {
               />
             ) : (
               <table className="ds-table">
+                {/* Said once, before the figures — see the customers ageing
+                    table for why six money columns do not each repeat it. */}
+                <caption>
+                  {t('common.amountsIn', { currency: ageing.base_currency })}
+                </caption>
                 <thead>
                   <tr>
                     <th scope="col">{t('common.supplier')}</th>
