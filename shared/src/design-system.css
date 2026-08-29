@@ -196,7 +196,7 @@
   --shadow-3: 0 20px 48px rgb(16 20 35 / 16%), 0 4px 12px rgb(16 20 35 / 8%);
 
   /* Touch targets. */
-  --tap-pos: 52px;
+  --tap-pos: 56px;
   --tap-mobile: 44px;
   --tap-desk: 34px;
 

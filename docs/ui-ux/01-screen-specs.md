@@ -66,6 +66,22 @@ money.
 `F2` search · `F4` customer · `F8` hold · `F9` resume · `F12` pay · `Esc` cancel ·
 `Ctrl+K` command palette. Fully operable with no mouse.
 
+**Built**, in `pos/src/pos/keys.ts`, except `Ctrl+K`: there is no command
+palette yet, and a shortcut that opens nothing is worse than one that is not
+there. `Esc` backs out of what is open before it clears anything — a dialog,
+then a notice, then the cart — because clearing is destructive and must not
+also be how a dialog is dismissed.
+
+The same file implements the "no field focus needed to scan" non-negotiable.
+`autoFocus` on the scan box was not enough: it focuses once, and the first
+tender button a cashier presses takes focus away for good, after which a
+barcode lands in whatever has it. Keystrokes are captured at the document and
+routed to the scan box whenever focus is somewhere that does not take typed
+characters — a button, a link, the body, a checkbox — and left entirely alone
+when somebody is typing. It does not try to tell a scanner from a person by
+timing: a scanner interleaved with a fast typist produces the same intervals,
+and a wedge that guesses wrong drops a barcode on the day the shop is busiest.
+
 ### Arabic
 
 Full mirror: catalogue moves right, cart left. Product names render mixed

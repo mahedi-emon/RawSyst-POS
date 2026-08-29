@@ -19,9 +19,10 @@
 // is a courtesy — the server refuses whatever the screen offered, and QA gate
 // M7 proves it. Blueprint A6.2: a hidden button is never real security.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { scan } from '../api/pos';
+import { handleCounterKey } from './keys';
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
 import { money } from '@rawsyst/shared/ui/format';
@@ -69,6 +70,7 @@ export function PosCounter() {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [tenders, setTenders] = useState<CartTender[]>([]);
   const [scanInput, setScanInput] = useState('');
+  const scanBox = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [parked, setParked] = useState<HeldCart[]>([]);
@@ -334,6 +336,76 @@ export function PosCounter() {
     }
   }
 
+  // The counter's keyboard.
+  //
+  // UI spec §1 names seven shortcuts and says the counter is "fully operable
+  // with no mouse". None of them existed. The same section makes "no field
+  // focus needed to scan" a non-negotiable and writes the reason beside it:
+  // requiring a click loses sales at a busy counter. `autoFocus` alone does not
+  // deliver that — it focuses the box once, and the first tender button a
+  // cashier presses takes focus away for good.
+  //
+  // Registered on the document with `capture: true` so a shortcut is not
+  // swallowed by whatever has focus, and rebuilt whenever the actions it calls
+  // change, because they close over the cart.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const { handled } = handleCounterKey(e, {
+        focusScan: () => scanBox.current?.focus(),
+        chooseCustomer: () => setPicking(true),
+        hold: () => {
+          if (lines.length > 0 && terminal.held) void holdCart();
+        },
+        resume: () => {
+          // The most recently parked cart, which is the one a cashier who
+          // just held one wants back. Nothing to do when there is none.
+          const last = parked[parked.length - 1];
+          if (last) void resumeCart(last.id);
+        },
+        pay: () => {
+          if (canFinish) void finishSale();
+        },
+        cancel: () => {
+          // Back out of what is open before clearing anything. Escape on a
+          // dialog closes the dialog; Escape on the counter clears the cart,
+          // which is destructive and must not also be the way a dialog is
+          // dismissed.
+          if (receipt) {
+            setReceipt(null);
+            return;
+          }
+          if (picking) {
+            setPicking(false);
+            return;
+          }
+          if (notice) {
+            setNotice(null);
+            return;
+          }
+          setLines([]);
+          setTenders([]);
+          setCustomer(null);
+        },
+        scanned: (char) => {
+          scanBox.current?.focus();
+          setScanInput((held) => held + char);
+        },
+      });
+      if (handled) e.preventDefault();
+    }
+
+    document.addEventListener('keydown', onKey, { capture: true });
+    return () => document.removeEventListener('keydown', onKey, { capture: true });
+  }, [
+    lines.length,
+    parked,
+    canFinish,
+    receipt,
+    picking,
+    notice,
+    terminal.held,
+  ]);
+
   return (
     <main className="counter">
       <section className="counter__cart" aria-label={t('pos.currentSale')}>
@@ -345,10 +417,12 @@ export function PosCounter() {
           }}
         >
           <input
+            ref={scanBox}
             className="scan__input"
             // A barcode scanner types and presses Enter, so this holds focus
             // for the whole sale. A cashier should never have to click the box
-            // between items.
+            // between items — and when something else takes focus anyway, the
+            // document-level capture in `keys.ts` puts the scan back here.
             autoFocus
             placeholder={t('pos.scanPlaceholder')}
             value={scanInput}
