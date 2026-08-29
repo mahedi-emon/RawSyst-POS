@@ -157,6 +157,23 @@ func (h *harness) seedUserWithRole(t *testing.T, roleKey string) string {
 			Scan(&tenantID); err != nil {
 			return err
 		}
+		// The plan's ceilings, which real provisioning always writes (see
+		// provisioning.Service). Without the row a tenant has no user
+		// allowance on record, and the staff routes correctly refuse to guess
+		// one — so a fixture that omits it makes them fail for a reason that
+		// has nothing to do with the test.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO tenant_limit
+			  (tenant_id, max_companies, max_stores, max_users, max_terminals,
+			   max_skus, max_held_carts, max_custom_roles, max_storage_mb,
+			   sms_credits)
+			SELECT $1, max_companies, max_stores, max_users, max_terminals,
+			       max_skus, max_held_carts, max_custom_roles, max_storage_mb,
+			       sms_credits
+			FROM plan_tier_default WHERE tier = 'professional'::plan_tier`,
+			tenantID); err != nil {
+			return err
+		}
 		return tx.QueryRow(ctx, `
 			INSERT INTO app_user (tenant_id, email, full_name, password_hash, status)
 			VALUES ($1,$2,'Test User',$3,'active') RETURNING id`,
@@ -219,6 +236,59 @@ func (h *harness) seedUserWithRole(t *testing.T, roleKey string) string {
 	})
 	return email
 }
+
+// grantPermissions adds verbs to the role a seeded user already holds.
+//
+// For a test about delegation. The subset rule compares the role being
+// assigned against the CALLER's own permissions, so a test that wants to prove
+// a store manager cannot create an Owner has to first give that manager enough
+// to make the attempt — otherwise the request is refused for want of
+// `identity.create` and proves nothing about escalation.
+func (h *harness) grantPermissions(t *testing.T, email string, permissions ...string) {
+	t.Helper()
+	ctx := context.Background()
+
+	var tenantID uuid.UUID
+	if err := h.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT tenant_id FROM app_user WHERE email = $1`, email).Scan(&tenantID)
+	}); err != nil {
+		t.Fatalf("finding the tenant for %s: %v", email, err)
+	}
+
+	if err := h.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		for _, p := range permissions {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO role_permission (role_id, permission)
+				SELECT a.role_id, $2
+				FROM user_role_assignment a
+				JOIN app_user u ON u.id = a.user_id
+				WHERE u.email = $1
+				ON CONFLICT DO NOTHING`, email, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("granting %v to %s: %v", permissions, email, err)
+	}
+}
+
+// roleID returns a platform template role's id, which is what the people
+// routes offer and accept.
+func (h *harness) roleID(t *testing.T, key string) string {
+	t.Helper()
+	var id string
+	if err := h.pool.TxAsPlatform(context.Background(), func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(),
+			`SELECT id::text FROM role WHERE tenant_id IS NULL AND key = $1`, key).
+			Scan(&id)
+	}); err != nil {
+		t.Fatalf("finding the %s role: %v", key, err)
+	}
+	return id
+}
+
 
 func (h *harness) login(t *testing.T, email string) string {
 	t.Helper()

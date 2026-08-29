@@ -287,8 +287,6 @@ func TestSeededPermissionsWithNoRoute(t *testing.T) {
 		// awaited
 		"inventory.adjust_stock":      "awaited — Phase 2, stock adjustments and counts",
 		"inventory.transfer_stock":    "awaited — Phase 2, inter-warehouse transfers",
-		"identity.create":             "awaited — Phase 2, user management; the wizard's People step is optional and says so",
-		"identity.manage_roles":       "awaited — Phase 2, the role editor",
 		"catalog.edit":                "awaited — Phase 2, product editing; Phase 1 creates and retires",
 		"accounting.approve":          "awaited — Phase 2, journal approval workflow",
 		"accounting.close_period":     "awaited — Phase 2; the period lock itself is enforced in the database from 0015",

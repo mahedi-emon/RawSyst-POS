@@ -186,6 +186,41 @@ func (s *Server) Routes() []Route {
 			"returns the caller's own identity and permissions, so the client can shape its UI"},
 		{http.MethodPost, "/api/v1/auth/change-password", AccessAuthenticated, "", s.handleChangePassword,
 			"changes the caller's own password; the current password is re-verified"},
+
+		// --- staff (blueprint A5, A6) ---
+		//
+		// Three verbs, not one. Reading the list, keeping it current, and
+		// deciding what somebody may do are separately dangerous: an office
+		// manager can reasonably keep a staff list up to date without also
+		// being able to hand somebody the bank ledger.
+		//
+		// `identity.manage_roles` additionally carries the subset rule — a
+		// role may only be assigned by somebody who holds everything in it —
+		// so delegation cannot become escalation.
+		{http.MethodGet, "/api/v1/people", AccessPermission, "identity.view",
+			s.handleListPeople,
+			"everybody in the business and the roles they hold"},
+		{http.MethodGet, "/api/v1/people/roles", AccessPermission, "identity.view",
+			s.handleListRoles,
+			"the roles this tenant can assign, marked with which the caller may hand over"},
+		{http.MethodPost, "/api/v1/people", AccessPermission, "identity.create",
+			s.handleCreatePerson,
+			"adds a member of staff and issues their one-time password; also needs identity.manage_roles, because adding somebody means deciding what they may do"},
+		{http.MethodPut, "/api/v1/people/{userID}", AccessPermission, "identity.create",
+			s.handleUpdatePerson,
+			"changes a name, phone or sign-in address"},
+		{http.MethodPost, "/api/v1/people/{userID}/active", AccessPermission, "identity.create",
+			s.handleSetPersonActive,
+			"suspends or restores somebody; never deletes, because their name is on the invoices they rang up"},
+		{http.MethodPost, "/api/v1/people/{userID}/reset-password", AccessPermission, "identity.create",
+			s.handleResetPersonPassword,
+			"issues a new one-time password for a member of staff; the Owner-level twin of A4.2"},
+		{http.MethodPost, "/api/v1/people/{userID}/roles", AccessPermission, "identity.manage_roles",
+			s.handleAssignRole,
+			"gives somebody a role, scoped by company, store, warehouse, amount and time window"},
+		{http.MethodDelete, "/api/v1/people/roles/{assignmentID}", AccessPermission, "identity.manage_roles",
+			s.handleRemoveAssignment,
+			"takes a role away; refuses your own last one, which would leave you signed in and unable to act"},
 		{http.MethodGet, "/api/v1/catalog/snapshot", AccessPermission, "catalog.view", s.handleCatalogSnapshot,
 			"the sellable catalogue a till caches to scan offline; cursored so later pulls are deltas"},
 		{http.MethodGet, "/api/v1/meta/ping", AccessAuthenticated, "", s.handlePing,
