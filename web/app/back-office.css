@@ -86,8 +86,12 @@
   letter-spacing: -0.01em;
   color: var(--rail-text-strong);
   white-space: nowrap;
+  /* Same reasoning as the group heading: collapsed, it takes no width rather
+   * than taking its full width invisibly. */
+  inline-size: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity 120ms ease, inline-size 120ms ease;
 }
 
 .bo__nav {
@@ -100,8 +104,19 @@
   gap: var(--space-1);
 }
 
-/* A group heading, which is the whole reason the rail exists. Hidden when the
- * rail is collapsed — a heading with no room for its word is a smudge. */
+/* A group heading, which is the whole reason the rail exists.
+ *
+ * Collapsed, it becomes a RULE rather than an invisible caption.
+ *
+ * It used to be hidden with `opacity: 0` alone, which turns the ink off and
+ * changes nothing else: "ADMINISTRATION" was still laid out at its full 113px
+ * inside a 51px box on every screen at tablet width, still overflowed it, and
+ * was still read aloud by a screen reader as a heading for a list of icons.
+ * Opacity is not hiding; it is invisible ink.
+ *
+ * Collapsing the text to nothing and drawing a hairline keeps the grouping
+ * legible — a reader still sees three sets of icons rather than nine in a row —
+ * without pretending there is room for a word there is no room for. */
 .bo__group {
   padding: var(--space-4) var(--space-3) var(--space-1);
   font-size: 0.7rem;
@@ -110,11 +125,24 @@
   text-transform: uppercase;
   color: var(--text-subtle);
   white-space: nowrap;
-  opacity: 0;
-  transition: opacity 120ms ease;
+
+  /* Collapsed: no text, a rule instead. */
+  overflow: hidden;
+  text-indent: -200px;
+  block-size: 1px;
+  margin-block: var(--space-3) var(--space-2);
+  margin-inline: var(--space-3);
+  padding: 0;
+  background: var(--rail-border);
+  border-radius: 1px;
 }
 
-.bo__group:first-child { padding-block-start: 0; }
+/* The first group needs no rule above it — there is nothing above it to
+ * separate it from. */
+.bo__group:first-child {
+  block-size: 0;
+  margin-block-start: 0;
+}
 
 .bo__link {
   display: flex;
@@ -140,7 +168,9 @@
 
 .bo__linklabel {
   min-inline-size: 0;
+  inline-size: 0;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
   opacity: 0;
   transition: opacity 120ms ease;
@@ -175,11 +205,34 @@
   inline-size: var(--rail-width);
 }
 
+/* Expanded: the words come back, and the group heading stops being a rule and
+ * goes back to being a heading. */
 .bo__rail--open .bo__wordmark,
-.bo__rail--open .bo__group,
 .bo__rail--open .bo__linklabel {
+  inline-size: auto;
   opacity: 1;
 }
+
+.bo__rail--open .bo__linklabel { flex: 1 1 auto; }
+
+.bo__rail--open .bo__group {
+  block-size: auto;
+  margin: 0;
+  padding: var(--space-4) var(--space-3) var(--space-1);
+  text-indent: 0;
+  background: none;
+  border-radius: 0;
+}
+
+.bo__rail--open .bo__group:first-child {
+  block-size: auto;
+  padding-block-start: 0;
+}
+
+/* Sign out is styled as a rail link and is not a destination. The modifier
+ * exists so the harnesses that walk the rail can tell the difference; it needs
+ * no appearance of its own. */
+.bo__link--signout { color: var(--rail-text); }
 
 /* --- the top bar --------------------------------------------------------- */
 
@@ -300,15 +353,24 @@
   cursor: pointer;
 }
 
-/* --- ≥640px: the rail is there, collapsed to icons ------------------------ */
+/* --- ≥640px: the rail is there, collapsed to icons ------------------------
  *
- * Deliberately NOT expanding on hover. That was the first version and it is the
- * kind of cleverness that reads well in a stylesheet and badly on a screen: the
- * rail became `position: fixed` to avoid reflowing the page, which took it out
- * of the grid column it was reserving, and the page title and the first
- * hundred pixels of every screen went underneath it. A pin the person presses
- * is one control, does one thing, and is still there when they take their hand
- * off the mouse. */
+ * The opening line of this comment used to close itself -- a star and a
+ * slash -- before the prose began, so everything from "Deliberately" to the
+ * next brace was parsed as a SELECTOR, and the brace it eventually found was
+ * the one belonging to the media query below. The whole block went with it, which is why the pin button
+ * that expands the rail has never appeared on a tablet or a desktop. No error,
+ * no warning: an unknown selector is not a mistake to a CSS parser, it is just
+ * a rule that matches nothing.
+ *
+ * The rail deliberately does NOT expand on hover. That was the first version
+ * and it is the kind of cleverness that reads well in a stylesheet and badly on
+ * a screen: the rail became `position: fixed` to avoid reflowing the page,
+ * which took it out of the grid column it was reserving, and the page title and
+ * the first hundred pixels of every screen went underneath it. A pin the person
+ * presses is one control, does one thing, and is still there when they take
+ * their hand off the mouse.
+ * ------------------------------------------------------------------------- */
 
 @media (min-width: 640px) {
   /* The pin belongs to the pointer; the phone gets the drawer button instead. */
@@ -344,7 +406,19 @@
 
   [dir='rtl'] .bo__rail { transform: translateX(100%); }
 
-  .bo__rail--drawer { transform: none; }
+  /* Open beats closed, in both directions.
+   *
+   * `.bo__rail--drawer` is one class, specificity 0-1-0. The RTL rule above is
+   * an attribute AND a class, 0-1-1, so in Arabic the CLOSED state outranked
+   * the OPEN one and the drawer never came in. Every section on an Arabic
+   * phone was unreachable, and the rail was sitting exactly one screen-width
+   * off the right edge the whole time.
+   *
+   * Matched specificity rather than `!important`: the rule that says "open"
+   * should be as specific as the rule that says "where closed lives", and no
+   * more. */
+  .bo__rail--drawer,
+  [dir='rtl'] .bo__rail--drawer { transform: none; }
 
   .bo__rail .bo__wordmark,
   .bo__rail .bo__group,
@@ -382,11 +456,28 @@
 
 /* The panel a wizard step lives in. Used and never defined, so a step was a
  * bare `.ds-panel` and the padding below it came from nowhere. */
+/* The wizard's panel.
+ *
+ * Two things were wrong with it, and neither showed in English.
+ *
+ * It padded itself with `--space-5` AND wrapped a `.ds-panel__body`, which pads
+ * itself with `--space-4`. On a 390px phone that is 80px of a 342px panel spent
+ * on nothing, and the fields inside were narrower than they needed to be on the
+ * one screen a new customer meets first. The body already knows how to pad a
+ * panel; the panel does not need to do it again.
+ *
+ * And a grid item's default `min-inline-size: auto` means it will not shrink
+ * below its own min-content. Bangla words are longer than their English
+ * equivalents, so the form's min-content came out at 323px inside a 292px
+ * track and the body hung 6px out through the panel's right border. English
+ * fitted, so nothing had ever shown it. `0` lets the track govern, and the
+ * content wraps as it is supposed to. */
 .setupw__panel {
   display: grid;
   gap: var(--space-4);
-  padding: var(--space-5);
 }
+
+.setupw__panel > * { min-inline-size: 0; }
 
 .setupw__head {
   display: flex;

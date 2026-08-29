@@ -163,20 +163,34 @@ async function openNav(page) {
   }
 }
 
-async function chooseLanguage(page, label) {
+/* By locale code rather than by the name in the menu.
+ *
+ * Matching "العربية" meant carrying Arabic through an environment variable and
+ * a source file, and it came back re-encoded: the option never matched, the
+ * click never happened, and the run walked English twice and reported the
+ * Arabic screens clean without ever having been in Arabic. A two-letter code
+ * cannot be mangled, and the menu stamps each option with the one it picks. */
+async function chooseLanguage(page, code) {
+  // A menu left open from the previous switch swallows the next click.
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(150);
   const trigger = page.locator('.lang__trigger').first();
   if (!(await trigger.count())) return false;
   await trigger.click().catch(() => {});
-  await page.waitForTimeout(200);
-  const opt = page.locator('button.lang__opt', { hasText: label }).first();
+  await page.waitForTimeout(250);
+  const opt = page.locator(`button.lang__opt[lang="${code}"]`).first();
   if (!(await opt.count())) {
     await page.keyboard.press('Escape');
     return false;
   }
   await opt.click();
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(1400);
   return true;
 }
+
+/** The languages this run walks, and what to call them in a report. */
+const LANGUAGES = (process.env.RS_LANGS ?? 'en,ar,bn').split(',');
+const LANGUAGE_NAMES = { en: 'English', ar: 'Arabic', bn: 'Bangla' };
 
 async function signIn(page, width) {
   await page.goto(WEB + '/', { waitUntil: 'domcontentloaded' });
@@ -201,7 +215,7 @@ async function signIn(page, width) {
     await page.locator('form button').first().click();
 
     try {
-      await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
+      await page.waitForSelector('.bo__link:not(.bo__link--signout), .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(1000);
       return;
     } catch {
@@ -217,7 +231,7 @@ async function signIn(page, width) {
 }
 
 async function setLanguage(page, which) {
-  await chooseLanguage(page, which);
+  return chooseLanguage(page, which);
 }
 
 async function walk(page, width, language, problems) {
@@ -226,7 +240,7 @@ async function walk(page, width, language, problems) {
   // the section names still works from here.
   await openNav(page);
   const sections = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('.bo__link, .app__navlink')).map((e) => e.innerText.trim()),
+    Array.from(document.querySelectorAll('.bo__link:not(.bo__link--signout), .app__navlink')).map((e) => e.innerText.trim()),
   );
   if (sections.length === 0) {
     problems.push({ what: 'no navigation rendered', language });
@@ -236,7 +250,13 @@ async function walk(page, width, language, problems) {
   let checks = 0;
   {
     for (const section of sections) {
-      const link = page.locator('.bo__link, .app__navlink', { hasText: section }).first();
+      /* Reopened before EVERY press. The drawer closes itself when a section is
+       * chosen, which is right for a phone -- and it meant every press after
+       * the first landed on a link translated off-screen, so ten of the eleven
+       * phone sections were reported as "could not be opened" while the
+       * application was behaving exactly as designed. */
+      await openNav(page);
+      const link = page.locator('.bo__link:not(.bo__link--signout), .app__navlink', { hasText: section }).first();
       if ((await link.count()) === 0) {
         problems.push({
           what: 'a navigation entry vanished mid-walk',
@@ -344,11 +364,13 @@ async function main() {
 
       await signIn(page, width);
 
-      await setLanguage(page, 'English');
-      checks += await walk(page, width, 'English', problems);
-
-      await setLanguage(page, 'العربية');
-      checks += await walk(page, width, 'Arabic', problems);
+      for (const code of LANGUAGES) {
+        if (!(await setLanguage(page, code))) {
+          problems.push({ what: 'language could not be chosen', detail: code });
+          continue;
+        }
+        checks += await walk(page, width, LANGUAGE_NAMES[code] ?? code, problems);
+      }
 
       await context.close();
     }

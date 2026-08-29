@@ -145,18 +145,27 @@ async function openNav(page) {
   }
 }
 
-async function chooseLanguage(page, label) {
+/* By locale code, not by the name in the menu -- see shots.mjs for why: the
+ * Arabic label came back re-encoded through the environment and the option
+ * never matched, so a run that reported "no faults in Arabic" had never been
+ * in Arabic. The menu stamps each option with the locale it selects. */
+async function chooseLanguage(page, code) {
+  // A menu left open from the previous switch swallows the next click on the
+  // trigger, and the run then reports the screens it never reached as clean.
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(150);
   const trigger = page.locator('.lang__trigger').first();
   if (!(await trigger.count())) return false;
   await trigger.click().catch(() => {});
-  await page.waitForTimeout(200);
-  const opt = page.locator('button.lang__opt', { hasText: label }).first();
+  await page.waitForTimeout(250);
+  const opt = page.locator(`button.lang__opt[lang="${code}"]`).first();
   if (!(await opt.count())) {
     await page.keyboard.press('Escape');
+    console.error(`no menu option for locale ${code}`);
     return false;
   }
   await opt.click();
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(1400);
   return true;
 }
 
@@ -168,7 +177,7 @@ async function signIn(page) {
     await page.fill('input[type=email]', EMAIL);
     await page.fill('input[type=password]', PASSWORD);
     await page.locator('form button').first().click();
-    try { await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
+    try { await page.waitForSelector('.bo__link:not(.bo__link--signout), .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(700); return; } catch { await page.waitForTimeout(1200); }
   }
   throw new Error('sign-in failed');
@@ -188,20 +197,25 @@ async function main() {
     const page = await ctx.newPage();
     await signIn(page);
 
-    for (const lang of ['English', 'العربية']) {
-      await chooseLanguage(page, lang);
+    for (const lang of (process.env.RS_LANGS ?? 'en,ar,bn').split(',')) {
+      if (!(await chooseLanguage(page, lang))) continue;
       await openNav(page);
       const sections = await page.evaluate(() =>
-        [...document.querySelectorAll('.bo__link, .app__navlink')].map((e) => e.innerText.trim()));
+        [...document.querySelectorAll('.bo__link:not(.bo__link--signout), .app__navlink')].map((e) => e.innerText.trim()));
 
       for (const s of sections) {
-        const link = page.locator('.bo__link, .app__navlink', { hasText: s }).first();
+        /* Reopened before every press. The drawer closes itself when a section
+         * is chosen -- right for a phone, and it meant every press after the
+         * first landed on a link translated off-screen, so the phone pass
+         * probed the dashboard eleven times and called it eleven screens. */
+        await openNav(page);
+        const link = page.locator('.bo__link:not(.bo__link--signout), .app__navlink', { hasText: s }).first();
         if (!(await link.count())) continue;
         await link.click({ timeout: 6000 }).catch(() => {});
         await page.waitForTimeout(900);
         checks++;
         const r = await page.evaluate(probe);
-        const where = `${lang === 'English' ? 'en' : 'ar'}/${width.name}/${s}`;
+        const where = `${lang}/${width.name}/${s}`;
         for (const k of ['overflowing', 'escaping', 'misaligned'])
           for (const d of r[k]) problems.push(`${k}  [${where}]  ${d}`);
       }

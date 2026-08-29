@@ -64,3 +64,69 @@ if (missing.length === 0) {
     console.log(`  .${name.padEnd(28)} ${where.replace(/\\/g, '/')}`);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Prose that is not a comment
+ *
+ * A CSS parser has no opinion about a selector it does not recognise. It skips
+ * to the next declaration block and carries on, which means a comment that
+ * closes itself one line early turns the paragraph after it into a selector —
+ * and takes the rule that follows with it, silently.
+ *
+ * That shipped here. A section heading in the back-office stylesheet ended
+ * with a star and a slash before its own prose began, so eleven lines of
+ * English became a selector whose block turned out to be `@media (min-width:
+ * 640px)`. The pin button that expands the navigation rail had therefore never
+ * appeared on any tablet or desktop, on any screen, in any language. No build
+ * error, no console warning, no failing test: just a control nobody could find
+ * and nobody could explain.
+ *
+ * The shape is unmistakable and worth checking for directly: a line beginning
+ * with `*` that the parser is not currently inside a comment for.
+ * ------------------------------------------------------------------------- */
+
+const orphaned = [];
+for (const root of roots) {
+  for (const file of walk(root, /\.css$/)) {
+    const css = readFileSync(file, 'utf8');
+    let inComment = false;
+    css.split('\n').forEach((line, i) => {
+      const trimmed = line.trim();
+      // `*` is also the universal selector, which is legitimate CSS: `*,`,
+      // `*::before`, `* { box-sizing: border-box; }`. Comment prose is a star
+      // followed by a SPACE and then a word — never by a comma, a brace, a
+      // colon or a pseudo-element.
+      const looksLikeProse =
+        /^\*\s+[A-Za-z(`"']/.test(trimmed) && !/^\*\s*[,{:]/.test(trimmed);
+      if (!inComment && looksLikeProse) {
+        orphaned.push([file, i + 1, trimmed.slice(0, 64)]);
+      }
+      // Track comment state across the line, which can open and close several.
+      let pos = 0;
+      for (;;) {
+        if (inComment) {
+          const close = line.indexOf('*/', pos);
+          if (close === -1) break;
+          inComment = false;
+          pos = close + 2;
+        } else {
+          const open = line.indexOf('/*', pos);
+          if (open === -1) break;
+          inComment = true;
+          pos = open + 2;
+        }
+      }
+    });
+  }
+}
+
+if (orphaned.length === 0) {
+  console.log('\nno prose is being parsed as a selector');
+} else {
+  console.log(`\n${orphaned.length} line(s) outside a comment that look like comment prose:\n`);
+  for (const [file, line, text] of orphaned) {
+    console.log(`  ${file.split(String.fromCharCode(92)).join('/')}:${line}  ${text}`);
+  }
+  console.log('\nEverything from there to the next { is being parsed as a selector,');
+  console.log('and the rule that { belongs to is being consumed with it.');
+}

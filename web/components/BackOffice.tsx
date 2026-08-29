@@ -392,9 +392,15 @@ export function BackOffice() {
         </div>
 
         <div className="bo__railfoot">
+          {/* Styled as a rail link because that is what it looks like, and
+              marked as not one because that is what it is. Every harness that
+              walks the rail enumerates `.bo__link`; without the modifier the
+              last "section" each of them visited was sign-out, which ended the
+              session — so the Arabic and Bangla passes found no rail at all and
+              reported eleven screens clean by never having looked at them. */}
           <button
             type="button"
-            className="bo__link"
+            className="bo__link bo__link--signout"
             title={t('nav.signOut')}
             onClick={() => void signOut()}
           >

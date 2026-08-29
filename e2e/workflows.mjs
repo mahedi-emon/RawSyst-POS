@@ -43,7 +43,7 @@ function check(condition, what) {
 }
 
 const go = async (page, section) => {
-  await page.locator('.bo__link, .app__navlink', { hasText: section }).first().click();
+  await page.locator('.bo__link:not(.bo__link--signout), .app__navlink', { hasText: section }).first().click();
   await page.waitForTimeout(1000);
 };
 
@@ -101,7 +101,7 @@ async function signIn(page) {
     await page.fill('input[type=password]', PASSWORD);
     await page.locator('form button').first().click();
     try {
-      await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
+      await page.waitForSelector('.bo__link:not(.bo__link--signout), .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(700);
       done.push('Login');
       return;

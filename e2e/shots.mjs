@@ -69,7 +69,7 @@ async function signIn(page) {
     await page.fill('input[type=password]', PASSWORD);
     await page.locator('form button').first().click();
     try {
-      await page.waitForSelector('.bo__link, .app__navlink', { timeout: 15000 });
+      await page.waitForSelector('.bo__link:not(.bo__link--signout), .app__navlink', { timeout: 15000 });
       await page.waitForTimeout(800);
       return;
     } catch { await page.waitForTimeout(1200); }
@@ -102,7 +102,7 @@ async function main() {
 
       await openNav(page);
       const sections = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('.bo__link, .app__navlink')).map((e) => e.innerText.trim()));
+        Array.from(document.querySelectorAll('.bo__link:not(.bo__link--signout), .app__navlink')).map((e) => e.innerText.trim()));
 
       let i = 1;
       for (const s of sections) {
@@ -114,7 +114,7 @@ async function main() {
          * was translated off-screen, so eleven of the twelve phone screenshots
          * were the dashboard photographed eleven times. */
         await openNav(page);
-        const link = page.locator('.bo__link, .app__navlink', { hasText: s }).first();
+        const link = page.locator('.bo__link:not(.bo__link--signout), .app__navlink', { hasText: s }).first();
         if (!(await link.count())) continue;
         await link.click({ timeout: 6000 }).catch(() => {});
         await page.waitForTimeout(1100);
