@@ -205,17 +205,40 @@
   inline-size: var(--rail-width);
 }
 
-/* Expanded: the words come back, and the group heading stops being a rule and
- * goes back to being a heading. */
+/* --- the rail showing its words -----------------------------------------
+ *
+ * Two things put the rail into this state and they must agree: the pin, at any
+ * width; and a screen wide enough that there was never a reason to collapse it
+ * (the `@media (min-width: 1100px)` block below adds itself to these
+ * selectors).
+ *
+ * Written once, as a selector list, because they did NOT agree. Hiding the
+ * labels was changed from `opacity: 0` -- which leaves a 113px word laid out
+ * inside a 51px box -- to zero width, and the change reached the pinned rule
+ * and not the wide one, which still only turned the opacity back up. A 1440px
+ * desktop therefore showed nine icons and no words: fully visible labels, zero
+ * pixels wide.
+ * ------------------------------------------------------------------------- */
+
+/* `--drawer` is in this list because a drawer is the rail at its full 244px:
+ * there is no width to save and no reason to collapse anything. Left out, an
+ * open drawer on a phone was nine icons in a 244px panel with the words that
+ * name them sitting at zero width beside them. */
 .bo__rail--open .bo__wordmark,
-.bo__rail--open .bo__linklabel {
+.bo__rail--open .bo__linklabel,
+.bo__rail--drawer .bo__wordmark,
+.bo__rail--drawer .bo__linklabel {
   inline-size: auto;
   opacity: 1;
 }
 
-.bo__rail--open .bo__linklabel { flex: 1 1 auto; }
+.bo__rail--open .bo__linklabel,
+.bo__rail--drawer .bo__linklabel { flex: 1 1 auto; }
 
-.bo__rail--open .bo__group {
+/* Expanded, the group heading stops being a rule and goes back to being a
+ * heading. */
+.bo__rail--open .bo__group,
+.bo__rail--drawer .bo__group {
   block-size: auto;
   margin: 0;
   padding: var(--space-4) var(--space-3) var(--space-1);
@@ -224,7 +247,8 @@
   border-radius: 0;
 }
 
-.bo__rail--open .bo__group:first-child {
+.bo__rail--open .bo__group:first-child,
+.bo__rail--drawer .bo__group:first-child {
   block-size: auto;
   padding-block-start: 0;
 }
@@ -372,21 +396,59 @@
  * their hand off the mouse.
  * ------------------------------------------------------------------------- */
 
-@media (min-width: 640px) {
-  /* The pin belongs to the pointer; the phone gets the drawer button instead. */
+/* The pin, at the one width band where it means anything.
+ *
+ * Below 640px the rail is a drawer and there is nothing to pin; at 1100px and
+ * up the labels are always shown and there is nothing to expand. In between —
+ * a tablet, a laptop, a half-width browser window — the rail is icons and the
+ * pin is the only way to see what they mean.
+ *
+ * The default was written AFTER the media query that turned it on, at the same
+ * specificity, so the later rule won at every width and the pin has never been
+ * visible anywhere. Stated as a band instead, so there is one rule and no
+ * ordering to get wrong. */
+.bo__pin { display: none; }
+
+@media (min-width: 640px) and (max-width: 1099px) {
   .bo__pin { display: inline-grid; }
 }
 
-/* Below that, the pin has nothing to pin — the rail is a drawer. */
-.bo__pin { display: none; }
-
 /* --- ≥1100px: room for the labels all the time ---------------------------- */
+
+/* --- ≥1100px: room for the labels all the time --------------------------- */
 
 @media (min-width: 1100px) {
   .bo__rail { inline-size: var(--rail-width); }
+
+  /* Exactly what `.bo__rail--open` does, because it is exactly the same state.
+   * Duplicated deliberately and adjacently: a CSS media query cannot be
+   * factored into a selector list, and the alternative -- setting the modifier
+   * class from JavaScript on a window resize -- makes the layout depend on a
+   * listener firing. */
   .bo__wordmark,
-  .bo__group,
-  .bo__linklabel { opacity: 1; }
+  .bo__linklabel {
+    inline-size: auto;
+    opacity: 1;
+  }
+
+  .bo__linklabel { flex: 1 1 auto; }
+
+  .bo__group {
+    block-size: auto;
+    margin: 0;
+    padding: var(--space-4) var(--space-3) var(--space-1);
+    text-indent: 0;
+    background: none;
+    border-radius: 0;
+  }
+
+  .bo__group:first-child {
+    block-size: auto;
+    padding-block-start: 0;
+  }
+
+  /* The pin has nothing left to pin once the labels are always shown. */
+  .bo__pin { display: none; }
 }
 
 /* --- <640px: off-canvas -------------------------------------------------- */

@@ -21,7 +21,7 @@
 // security: a bar full of destinations that refuse you teaches people to
 // distrust the whole thing.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
 import { useAuth } from '@rawsyst/shared/auth/session';
@@ -77,6 +77,9 @@ export function BackOffice() {
   const [railOpen, setRailOpen] = useState(false);
   const [drawer, setDrawer] = useState(false);
 
+  // Read after mount, never during render: the page is server-rendered and the
+  // server has no localStorage, so reading it in `useState` would hydrate to a
+  // different tree than it rendered.
   useEffect(() => {
     try {
       setRailOpen(localStorage.getItem('rawsyst.rail') === 'open');
@@ -85,13 +88,29 @@ export function BackOffice() {
     }
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('rawsyst.rail', railOpen ? 'open' : 'icons');
-    } catch {
-      /* As above. */
-    }
-  }, [railOpen]);
+  /* Written when the preference CHANGES, not whenever the state does.
+   *
+   * This was a second effect keyed on `railOpen`, and effects run in the order
+   * they are declared: on mount, the read above scheduled an update and this
+   * one then ran with `railOpen` still at its initial `false` and wrote
+   * "icons" — erasing the stored preference before the read of it had been
+   * applied. The pin worked, persisted, and was forgotten on every reload,
+   * which is a worse failure than not persisting at all: it is a control that
+   * lies about having remembered.
+   *
+   * A click is the only thing that changes this preference, so a click is
+   * where it is saved. There is no ordering left to get wrong. */
+  const togglePin = useCallback(() => {
+    setRailOpen((open) => {
+      const next = !open;
+      try {
+        localStorage.setItem('rawsyst.rail', next ? 'open' : 'icons');
+      } catch {
+        /* As above. */
+      }
+      return next;
+    });
+  }, []);
 
   // Escape closes the drawer, because a drawer over the whole screen with no
   // visible way out is a trap on a phone.
@@ -430,7 +449,7 @@ export function BackOffice() {
             className="bo__iconbtn bo__pin"
             aria-label={t('nav.toggleMenu')}
             aria-pressed={railOpen}
-            onClick={() => setRailOpen((v) => !v)}
+            onClick={togglePin}
           >
             <Icon name="menu" size={20} />
           </button>

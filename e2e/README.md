@@ -228,3 +228,24 @@ RS_PASSWORD=... RS_WIDTH=desktop RS_LANGS=en,ar,bn RS_OUT=shots node e2e/shots.m
 through an environment variable came back re-encoded, the option never matched,
 and the run produced a second set of screenshots that were quietly identical to
 the English ones.
+
+## Getting data onto the screens
+
+```
+RS_PASSWORD=... node e2e/seed-trade.mjs
+```
+
+A dev database has one company, one store, four products and no history, so
+every screen the other scripts walk was empty — and every judgement about the
+dense screens was being made against an empty state. This puts customers with
+credit limits, suppliers, three purchase orders in three different states, a
+delivery, a bill and a week of expenses into the shop.
+
+Everything goes through the real HTTP API with a real owner's token, so what
+lands in the database is data the product could actually have produced. Nothing
+is inserted behind the business rules' back, and nothing here is asserted on —
+it is a tool, like `shots.mjs`, not a test.
+
+It found two things on its first run that an empty screen could not have shown:
+the navigation rail had lost its labels at desktop width, and the dashboard's
+short panel left 270px of grey below itself once the panel beside it had rows.

@@ -183,11 +183,32 @@
  *
  * The bottom edges no longer line up, and that is the trade: ragged edges
  * between cards, or a band of nothing inside one. */
+/* The panel grid.
+ *
+ * `align-items: start` was right when these were tiles of similar height and
+ * wrong once they held real data: "How today was paid" is four lines and
+ * "Where the money is" beside it is seven rows and a total, so the short one
+ * sat at the top of a row sized by the tall one and left 270px of grey below
+ * itself before the next row began. A dashboard with a hole in it reads as a
+ * screen that failed to load half of itself.
+ *
+ * Stretched, the panel fills its row and its contents stay at the top where
+ * they belong. The white carries on to where the eye expects the column to
+ * continue, and nothing moves. */
 .dash__grid {
   display: grid;
   gap: var(--space-4);
-  align-items: start;
+  align-items: stretch;
 }
+
+/* Contents at the top of a panel that is now taller than they are. */
+.dash__grid > .ds-panel {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.dash__grid > .ds-panel > .ds-panel__body { flex: 1 1 auto; }
 
 .dash__figure {
   font-size: 1.5rem;
