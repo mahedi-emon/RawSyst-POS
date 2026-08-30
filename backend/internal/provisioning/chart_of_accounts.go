@@ -168,6 +168,26 @@ var defaultChart = []seedAccount{
 	// cost is a quality problem, and folding it into COGS hides it inside the
 	// margin on everything else.
 	{"5450", "Warranty & Service Cost", "تكلفة الضمان والصيانة", "expense", "warranty_cost", ""},
+
+	// C6's payroll. The wage is EARNED in the month worked and PAID some days
+	// later, so what is owed sits in its own liability rather than being
+	// netted against the expense — otherwise the month a shop pays late looks
+	// like a month it employed nobody.
+	{"2600", "Wages Payable", "الأجور المستحقة", "liability", "wages_payable", ""},
+	// What is withheld from staff plus what the employer owes on top, both
+	// payable to the same authority and both distinct from the wage itself.
+	{"2610", "GOSI Payable", "التأمينات الاجتماعية المستحقة", "liability", "gosi_payable", ""},
+	// E6's end-of-service obligation. A real liability that grows every month
+	// somebody is employed; accruing it monthly is what stops a shop
+	// discovering its size on the day somebody resigns.
+	{"2620", "End of Service Provision", "مخصص نهاية الخدمة", "liability", "eosb_provision", ""},
+	// An advance is a loan to the employee, not a cost of employing them.
+	{"1250", "Employee Advances", "سلف الموظفين", "asset", "employee_advances", ""},
+	{"5240", "Employer GOSI", "حصة صاحب العمل بالتأمينات", "expense", "employer_gosi", ""},
+	{"5250", "End of Service Cost", "تكلفة نهاية الخدمة", "expense", "eosb_expense", ""},
+	// Commission is a cost of selling, kept apart from Salaries so an owner can
+	// see what the incentive scheme costs separately from the wage bill.
+	{"5260", "Sales Commission", "عمولات المبيعات", "expense", "commission_expense", ""},
 }
 
 // SeedChartOfAccounts gives a new company the accounts its modules post to.

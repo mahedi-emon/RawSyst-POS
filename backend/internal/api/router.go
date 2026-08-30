@@ -31,6 +31,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
@@ -110,6 +111,7 @@ type Server struct {
 	loyalty      *loyalty.Service
 	wallet       *wallet.Service
 	aftersales   *aftersales.Service
+	people       *people.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -181,6 +183,7 @@ func NewServer(
 	loyaltySvc *loyalty.Service,
 	walletSvc *wallet.Service,
 	aftersalesSvc *aftersales.Service,
+	peopleSvc *people.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -212,6 +215,7 @@ func NewServer(
 		loyalty:      loyaltySvc,
 		wallet:       walletSvc,
 		aftersales:   aftersalesSvc,
+		people:       peopleSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -1135,6 +1139,87 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/installments/accrue", AccessPermission, "installment.manage",
 			s.handleAccrueFinanceIncome,
 			"earns the finance income on instalments now due and charges late fees"},
+
+		// --- Employees, attendance and leave (C5) ---
+		//
+		// `hr.view` is the directory; `hr.view_pay` is what somebody earns.
+		// A6.2 requires staff to be blockable from "other employees'
+		// salaries", so a Store Manager holds the first and not the second:
+		// they roster their branch without learning what the branch is paid.
+		// The split is applied in the service by omitting the fields, not by a
+		// screen choosing not to render them.
+		{http.MethodGet, "/api/v1/employees", AccessPermission, "hr.view",
+			s.handleListEmployees, "the staff directory"},
+		{http.MethodPost, "/api/v1/employees", AccessPermission, "hr.manage",
+			s.handleHireEmployee,
+			"adds somebody to the payroll; setting pay additionally needs hr.view_pay"},
+		{http.MethodGet, "/api/v1/employees/expiring", AccessPermission, "hr.view",
+			s.handleExpiringDocuments,
+			"C5's Iqama and ID expiry alert: an expired document stops somebody working"},
+		{http.MethodGet, "/api/v1/employees/{employeeID}", AccessPermission, "hr.view",
+			s.handleReadEmployee, "one member of staff"},
+		{http.MethodPut, "/api/v1/employees/{employeeID}", AccessPermission, "hr.manage",
+			s.handleUpdateEmployee, "amends a record; changing pay needs hr.view_pay"},
+		{http.MethodPost, "/api/v1/employees/{employeeID}/leaving", AccessPermission, "hr.manage",
+			s.handleEmployeeLeaves,
+			"records a departure; the record stays, because their name is on the payslips they were paid"},
+
+		{http.MethodGet, "/api/v1/attendance", AccessPermission, "hr.view",
+			s.handleReadAttendance, "who was in, and when"},
+		{http.MethodPost, "/api/v1/attendance", AccessPermission, "hr.manage",
+			s.handleRecordAttendance,
+			"records or corrects days; one row per person per day, because two would double-count the hours payroll reads"},
+
+		{http.MethodGet, "/api/v1/leave", AccessPermission, "hr.view",
+			s.handleListLeave, "time off, asked for and granted"},
+		{http.MethodPost, "/api/v1/leave", AccessPermission, "hr.view",
+			s.handleRequestLeave,
+			"asks for time off; anybody who can see the directory can ask, because asking is not granting"},
+		{http.MethodPost, "/api/v1/leave/{leaveID}/decision", AccessPermission, "hr.manage",
+			s.handleDecideLeave,
+			"grants or refuses; approved leave becomes attendance, so payroll reads one source"},
+
+		// --- Advances (C5) ---
+		{http.MethodGet, "/api/v1/advances", AccessPermission, "hr.view_pay",
+			s.handleListAdvances, "money lent against future wages"},
+		{http.MethodPost, "/api/v1/advances", AccessPermission, "payroll.run",
+			s.handleIssueAdvance,
+			"lends against future wages: a loan, not a cost, recovered automatically by the next run"},
+
+		// --- Payroll (C6) ---
+		//
+		// Preparing and approving are separate permissions because C6 makes
+		// them separate acts: a draft is a calculation somebody checks while
+		// it can still be corrected, and approving it is what commits the
+		// business to paying those figures.
+		{http.MethodGet, "/api/v1/payroll", AccessPermission, "payroll.view",
+			s.handleListPayrollRuns, "payroll runs"},
+		{http.MethodPost, "/api/v1/payroll", AccessPermission, "payroll.run",
+			s.handlePreparePayroll,
+			"computes a draft run for a month; posts nothing"},
+		{http.MethodGet, "/api/v1/payroll/{runID}", AccessPermission, "payroll.view",
+			s.handleReadPayrollRun, "one run and its payslips"},
+		{http.MethodPost, "/api/v1/payroll/{runID}/approve", AccessPermission, "payroll.approve",
+			s.handleApprovePayroll,
+			"signs the run off and posts what it owes; the wage is earned here, not paid"},
+		{http.MethodPost, "/api/v1/payroll/{runID}/pay", AccessPermission, "payroll.approve",
+			s.handlePayPayroll, "settles an approved run from a cash or bank account"},
+		{http.MethodPost, "/api/v1/payroll/{runID}/wage-file", AccessPermission, "payroll.approve",
+			s.handleGenerateWageFile,
+			"builds the WPS submission; refuses while the Mudad layout is unverified, because a file in the wrong layout is rejected rather than partly right"},
+
+		// --- End of service and commission (E6, C6) ---
+		{http.MethodGet, "/api/v1/eosb", AccessPermission, "payroll.view",
+			s.handleEOSBPositions,
+			"what the business owes each person if they left today"},
+		{http.MethodPost, "/api/v1/eosb/accrue", AccessPermission, "payroll.run",
+			s.handleAccrueEOSB,
+			"charges one month's end-of-service benefit; monthly, so the liability is never discovered at termination"},
+		{http.MethodGet, "/api/v1/commission-rules", AccessPermission, "payroll.view",
+			s.handleListCommissionRules, "the commission schemes in force"},
+		{http.MethodPost, "/api/v1/commission-rules", AccessPermission, "payroll.run",
+			s.handleSetCommissionRule,
+			"creates a scheme, flat or tiered, by employee or store"},
 
 		// --- the audit trail (D4) ---
 		//

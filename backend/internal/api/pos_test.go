@@ -154,6 +154,17 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 			// fixture without it cannot complete a warranty repair — the
 			// hand-built-chart gap this list keeps re-learning.
 			{"5450", "Warranty & Service Cost", "expense", "warranty_cost"},
+			// C6's payroll. Approving a run posts the wage, what is withheld
+			// from it and what the employer owes on top — so a fixture without
+			// these cannot complete a payroll run, the same gap the two
+			// accounts above were added to close.
+			{"5220", "Salaries", "expense", "expense_salaries"},
+			{"2600", "Wages Payable", "liability", "wages_payable"},
+			{"2610", "GOSI Payable", "liability", "gosi_payable"},
+			{"1250", "Employee Advances", "asset", "employee_advances"},
+			{"5240", "Employer GOSI", "expense", "employer_gosi"},
+			{"5250", "End of Service Cost", "expense", "eosb_expense"},
+			{"2620", "End of Service Provision", "liability", "eosb_provision"},
 		}
 		for _, a := range accounts {
 			var id uuid.UUID
