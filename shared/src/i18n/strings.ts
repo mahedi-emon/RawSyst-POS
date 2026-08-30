@@ -1634,6 +1634,31 @@ export const en = {
   'perm.sales.refund': 'Refund a sale',
   'perm.sales.view': 'See sales',
   'perm.sales.void_draft': 'Void a draft sale',
+
+  /* Getting back into an account whose password is lost (blueprint A4.2).
+   *
+   * `recover.sentIfExists` is the load-bearing one. The server answers the same
+   * for an address that is on an account and one that is not — deliberately, so
+   * the endpoint cannot be used to confirm which of a leaked address list are
+   * customers — which means the screen does not know whether a mail was sent
+   * and must not say "check your email". */
+
+  'recover.forgot': 'I have forgotten my password',
+  'recover.title': 'Get back into your account',
+  'recover.intro': 'Give the email address you sign in with and we will send a code.',
+  'recover.sendCode': 'Send a code',
+  'recover.enterCode': 'Enter the code',
+  'recover.sentIfExists': 'If {email} is on an account, a code is on its way. It expires in ten minutes.',
+  'recover.code': 'Code',
+  'recover.codeHint': 'Six digits, from the email.',
+  'recover.newPassword': 'New password',
+  'recover.newPasswordHint': 'At least 12 characters. A phrase you can remember is stronger than a short password with symbols in it.',
+  'recover.confirmPassword': 'Type it again',
+  'recover.passwordsDiffer': 'Those two do not match. Type the new password again.',
+  'recover.setPassword': 'Set my password',
+  'recover.changed': 'Your password has been changed',
+  'recover.changedBody': 'Sign in with it now. Everywhere you were already signed in has been signed out, in case somebody else was.',
+  'recover.backToSignIn': 'Sign in',
 } as const;
 
 /** Every string the interface can show. */
@@ -3297,6 +3322,31 @@ export const ar: Record<Key, string> = {
   'perm.sales.refund': 'إرجاع عملية بيع',
   'perm.sales.view': 'الاطلاع على المبيعات',
   'perm.sales.void_draft': 'إلغاء مسودة بيع',
+
+  /* Getting back into an account whose password is lost (blueprint A4.2).
+   *
+   * `recover.sentIfExists` is the load-bearing one. The server answers the same
+   * for an address that is on an account and one that is not — deliberately, so
+   * the endpoint cannot be used to confirm which of a leaked address list are
+   * customers — which means the screen does not know whether a mail was sent
+   * and must not say "check your email". */
+
+  'recover.forgot': 'نسيت كلمة المرور',
+  'recover.title': 'استعادة الوصول إلى حسابك',
+  'recover.intro': 'أدخل البريد الإلكتروني الذي تسجّل الدخول به وسنرسل رمزًا.',
+  'recover.sendCode': 'إرسال رمز',
+  'recover.enterCode': 'أدخل الرمز',
+  'recover.sentIfExists': 'إذا كان {email} مرتبطًا بحساب فالرمز في طريقه إليك. تنتهي صلاحيته خلال عشر دقائق.',
+  'recover.code': 'الرمز',
+  'recover.codeHint': 'ستة أرقام من البريد الإلكتروني.',
+  'recover.newPassword': 'كلمة المرور الجديدة',
+  'recover.newPasswordHint': 'اثنا عشر حرفًا على الأقل. عبارة يمكنك تذكّرها أقوى من كلمة قصيرة مليئة بالرموز.',
+  'recover.confirmPassword': 'أعد كتابتها',
+  'recover.passwordsDiffer': 'الكلمتان غير متطابقتين. أعد كتابة كلمة المرور الجديدة.',
+  'recover.setPassword': 'تعيين كلمة المرور',
+  'recover.changed': 'تم تغيير كلمة المرور',
+  'recover.changedBody': 'سجّل الدخول بها الآن. أُنهيت كل الجلسات السابقة، تحسّبًا لأن يكون غيرك قد سجّل الدخول.',
+  'recover.backToSignIn': 'تسجيل الدخول',
 };
 
 /**
@@ -4755,6 +4805,31 @@ export const bn: Partial<Record<Key, string>> = {
   'perm.sales.refund': 'বিক্রি ফেরত দেওয়া',
   'perm.sales.view': 'বিক্রি দেখা',
   'perm.sales.void_draft': 'খসড়া বিক্রি বাতিল',
+
+  /* Getting back into an account whose password is lost (blueprint A4.2).
+   *
+   * `recover.sentIfExists` is the load-bearing one. The server answers the same
+   * for an address that is on an account and one that is not — deliberately, so
+   * the endpoint cannot be used to confirm which of a leaked address list are
+   * customers — which means the screen does not know whether a mail was sent
+   * and must not say "check your email". */
+
+  'recover.forgot': 'আমি পাসওয়ার্ড ভুলে গেছি',
+  'recover.title': 'আপনার অ্যাকাউন্টে ফিরুন',
+  'recover.intro': 'যে ইমেইল দিয়ে সাইন ইন করেন তা দিন, আমরা একটি কোড পাঠাব।',
+  'recover.sendCode': 'কোড পাঠান',
+  'recover.enterCode': 'কোডটি লিখুন',
+  'recover.sentIfExists': '{email} কোনো অ্যাকাউন্টে থাকলে কোড পাঠানো হয়েছে। দশ মিনিট পর মেয়াদ শেষ।',
+  'recover.code': 'কোড',
+  'recover.codeHint': 'ইমেইলে পাঠানো ছয় অঙ্ক।',
+  'recover.newPassword': 'নতুন পাসওয়ার্ড',
+  'recover.newPasswordHint': 'অন্তত ১২টি অক্ষর। মনে রাখার মতো একটি বাক্য প্রতীকভরা ছোট পাসওয়ার্ডের চেয়ে শক্তিশালী।',
+  'recover.confirmPassword': 'আবার লিখুন',
+  'recover.passwordsDiffer': 'দুটি মিলছে না। নতুন পাসওয়ার্ডটি আবার লিখুন।',
+  'recover.setPassword': 'পাসওয়ার্ড নির্ধারণ করুন',
+  'recover.changed': 'আপনার পাসওয়ার্ড বদলে গেছে',
+  'recover.changedBody': 'এখন সেটি দিয়ে সাইন ইন করুন। আগের সব জায়গা থেকে সাইন আউট করা হয়েছে, যদি অন্য কেউ ঢুকে থাকে সেই কারণে।',
+  'recover.backToSignIn': 'সাইন ইন',
 };
 
 /**

@@ -2246,3 +2246,15 @@ select.input {
     min-block-size: var(--tap-mobile);
   }
 }
+
+/* The way back in, under the sign-in button.
+ *
+ * Quiet, and deliberately not a link: it does something rather than going
+ * somewhere, and a person who has just failed to sign in should find it without
+ * hunting. A4.2 puts self-service ahead of the phone call to the platform
+ * operator, and a recovery route nobody can see is that phone call with extra
+ * steps. */
+.login__forgot {
+  justify-self: center;
+  margin-block-start: calc(var(--space-2) * -1);
+}

@@ -11,9 +11,18 @@ import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from './session';
 import { useT } from '../i18n/locale';
 import { LanguageSwitch } from '../i18n/LanguageSwitch';
+import { ForgotPassword } from './ForgotPassword';
 
 export function LoginScreen() {
   const { signIn, status, tenantChoices, clearTenantChoices } = useAuth();
+
+  // Recovery is a state of this screen rather than a route of its own.
+  //
+  // Both front ends render <LoginScreen /> with no props — the till because it
+  // has no router at all, the back office because sign-in is what it shows
+  // when there is no session. Making the caller own this state would mean
+  // teaching both of them about a screen neither otherwise knows exists.
+  const [recovering, setRecovering] = useState(false);
 
   const t = useT();
   const [email, setEmail] = useState('');
@@ -67,6 +76,10 @@ export function LoginScreen() {
   //
   // It is a list of buttons rather than a dropdown and a Continue: there are
   // two or three of them, and a dropdown would add a press for nothing.
+  if (recovering) {
+    return <ForgotPassword onBack={() => setRecovering(false)} />;
+  }
+
   if (tenantChoices.length > 0) {
     return (
       <main className="login">
@@ -180,6 +193,18 @@ export function LoginScreen() {
 
         <button className="button button--primary button--large" disabled={busy}>
           {busy ? t('login.working') : t('login.submit')}
+        </button>
+
+        {/* The way back in, on the screen where somebody discovers they need
+            it. A4.2 puts self-service ahead of the phone call to the platform
+            operator, and a recovery route nobody can find is the phone call
+            with extra steps. */}
+        <button
+          type="button"
+          className="button button--quiet login__forgot"
+          onClick={() => setRecovering(true)}
+        >
+          {t('recover.forgot')}
         </button>
       </form>
     </main>
