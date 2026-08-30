@@ -29,9 +29,11 @@ import { StatementsPanel } from './StatementsPanel';
 import { PeriodsPanel } from './PeriodsPanel';
 import { AuditTrailPanel } from './AuditTrailPanel';
 import { VATReturnPanel } from './VATReturnPanel';
+import { TreasuryPanel } from './TreasuryPanel';
+import { ReconcilePanel } from './ReconcilePanel';
 import { monthToDate } from './accounting';
 
-type Tab = 'statements' | 'vat' | 'periods' | 'trail';
+type Tab = 'statements' | 'treasury' | 'reconcile' | 'vat' | 'periods' | 'trail';
 
 export function AccountingArea({ companyId }: { companyId: string }) {
   const { client, can } = useAuth();
@@ -56,6 +58,10 @@ export function AccountingArea({ companyId }: { companyId: string }) {
   const tabs = useMemo<Array<{ key: Tab; label: Key }>>(
     () => [
       { key: 'statements', label: 'acct.statements' },
+      // Beside the statements, because a bank balance is the one figure on a
+      // balance sheet somebody can check against an outside party.
+      { key: 'treasury', label: 'treasury.title' },
+      { key: 'reconcile', label: 'recon.title' },
       { key: 'vat', label: 'acct.vatReturn' },
       { key: 'periods', label: 'acct.periods' },
       { key: 'trail', label: 'acct.trail' },
@@ -99,6 +105,8 @@ export function AccountingArea({ companyId }: { companyId: string }) {
           calendar={calendar}
         />
       )}
+      {tab === 'treasury' && <TreasuryPanel companyId={companyId} />}
+      {tab === 'reconcile' && <ReconcilePanel companyId={companyId} />}
       {tab === 'vat' && (
         <VATReturnPanel
           companyId={companyId}

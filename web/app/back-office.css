@@ -2237,3 +2237,71 @@
   font-family: var(--font-mono);
   font-size: 0.6875rem;
 }
+
+/* ---------------------------------------------------------------------------
+ * Cash, bank and reconciliation (C2, C11)
+ * ---------------------------------------------------------------------------
+ */
+
+/* A form that opens above the list it will add to. Shared by the transfer
+ * form and the statement import. */
+.acct__form { margin-block-end: var(--space-4); }
+
+/* A figure that should be nil and is not, in a table cell. The panel-level
+ * `.acct__outofbalance` says it in words above the figures; this marks the
+ * cell in the list where a person is scanning several statements at once. */
+.acct__off {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* The two figures the whole screen is about, side by side and large enough to
+ * compare at a glance. A person opening a reconciliation is asking one
+ * question — do these two agree — and reads the answer before anything else. */
+.recon__totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.recon__totals dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Candidate ledger entries while matching a bank line by hand. Capped and
+ * scrollable: an account with a year of history offers hundreds, and the line
+ * being matched must stay on screen. */
+.recon__picklist {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-block-size: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.recon__pick {
+  inline-size: 100%;
+  justify-content: flex-start;
+  text-align: start;
+  display: grid;
+  gap: 0;
+}
+
+/* Where a statement is pasted. Monospace, because the thing being pasted is
+ * columns and a proportional face makes a misaligned row invisible. */
+.recon__csv {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  min-block-size: 12rem;
+  white-space: pre;
+  overflow-x: auto;
+}

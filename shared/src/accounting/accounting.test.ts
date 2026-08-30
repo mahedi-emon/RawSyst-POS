@@ -6,6 +6,7 @@ import {
   isOff,
   monthToDate,
   nextYearToOpen,
+  parseStatementCsv,
   periodsTouching,
   reopenable,
   settlednessOf,
@@ -180,5 +181,88 @@ describe('the range a statement opens on', () => {
   it('handles the first of the month', () => {
     const r = monthToDate(new Date('2026-08-01T00:30:00Z'));
     expect(r).toEqual({ from: '2026-08-01', to: '2026-08-01' });
+  });
+});
+
+// Reading a bank statement somebody pasted out of a spreadsheet.
+//
+// The direction of the money is the thing that must never be guessed wrong: a
+// debit read as a credit turns a charge into a deposit, the reconciliation then
+// balances, and the difference is twice the amount and invisible.
+describe('reading a pasted bank statement', () => {
+  it('reads the plain three-column form', () => {
+    const p = parseStatementCsv(
+      '2026-08-15,Cash deposit,500.00\n2026-08-20,Bank charge,-25.00',
+    );
+    expect(p.problem).toBeNull();
+    expect(p.lines).toEqual([
+      { value_date: '2026-08-15', description: 'Cash deposit', reference: undefined, amount: '500.00' },
+      { value_date: '2026-08-20', description: 'Bank charge', reference: undefined, amount: '-25.00' },
+    ]);
+  });
+
+  it('reads a tab-separated paste, which is what Excel actually produces', () => {
+    const p = parseStatementCsv('2026-08-15\tCash deposit\t500.00');
+    expect(p.problem).toBeNull();
+    expect(p.lines[0]!.amount).toBe('500.00');
+  });
+
+  it('takes a reference column when there is one', () => {
+    const p = parseStatementCsv('2026-08-15,Transfer,REF99,500.00');
+    expect(p.lines[0]!.reference).toBe('REF99');
+    expect(p.lines[0]!.amount).toBe('500.00');
+  });
+
+  // Accounting parentheses are how a great many banks write a debit. Reading
+  // one as a positive number puts the money IN rather than out.
+  it('reads parentheses as money leaving', () => {
+    const p = parseStatementCsv('2026-08-20,Fee,(1,234.56)');
+    expect(p.lines[0]!.amount).toBe('-1234.56');
+  });
+
+  it('strips thousands separators', () => {
+    const p = parseStatementCsv('2026-08-15,Deposit,"12,000.00"');
+    expect(p.lines[0]!.amount).toBe('12000.00');
+  });
+
+  it('skips a heading row, because people paste one nearly every time', () => {
+    const p = parseStatementCsv(
+      'Date,Description,Amount\n2026-08-15,Deposit,500.00',
+    );
+    expect(p.problem).toBeNull();
+    expect(p.lines).toHaveLength(1);
+  });
+
+  // Nothing is imported when one row is wrong. Importing thirty-nine of forty
+  // rows leaves a difference nobody can explain, and the person who pasted it
+  // has no way to know which row went missing.
+  it('refuses the whole paste when one row cannot be read', () => {
+    const p = parseStatementCsv(
+      '2026-08-15,Deposit,500.00\n15/08/2026,Deposit,500.00',
+    );
+    expect(p.lines).toHaveLength(0);
+    expect(p.problem).toBe('date:2');
+  });
+
+  it('names the row whose amount is not a number', () => {
+    const p = parseStatementCsv(
+      '2026-08-15,Deposit,500.00\n2026-08-16,Deposit,five hundred',
+    );
+    expect(p.problem).toBe('amount:2');
+  });
+
+  it('names a row with too few columns', () => {
+    const p = parseStatementCsv('2026-08-15,500.00');
+    expect(p.problem).toBe('columns:1');
+  });
+
+  it('says so when there is nothing to read', () => {
+    expect(parseStatementCsv('').problem).toBe('empty:0');
+    expect(parseStatementCsv('Date,Description,Amount').problem).toBe('empty:0');
+  });
+
+  // A zero line is not a movement, and a bank that exports one is padding.
+  it('refuses a line for nothing', () => {
+    expect(parseStatementCsv('2026-08-15,Nothing,0.00').problem).toBe('amount:1');
   });
 });
