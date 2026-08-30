@@ -3,75 +3,26 @@ package identity
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"math/big"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
 
-// auditEntry is one row for the append-only audit log.
+// auditEntry and writeAudit are this package's names for `audit.Entry` and
+// `audit.Write`.
 //
-// Blueprint D4 fixes the six fields exactly: who, what, when, where,
-// before-value, after-value. "When" is the database default, so it cannot be
-// back-dated by a caller.
-type auditEntry struct {
-	TenantID   *uuid.UUID
-	ActorID    *uuid.UUID
-	ActorLabel string
-	Action     string
-	EntityType string
-	EntityID   *uuid.UUID
-	IP         string
-	Device     string
-	Before     map[string]any
-	After      map[string]any
-}
+// Kept as an alias rather than replaced at four call sites, because the shape
+// was right and the only thing wrong with it was that three packages each had
+// their own copy — including one that omitted `actor_label`, the field that
+// exists so the trail survives a user being deleted.
+type auditEntry = audit.Entry
 
-// writeAudit appends one entry inside the caller's transaction.
-//
-// Being in the same transaction is the point: an action that commits without
-// its audit record, or an audit record for an action that rolled back, are both
-// worse than no log at all, because either makes the log unreliable as
-// evidence.
-//
-// Never log a credential. The After map is written by callers who must not put
-// a password, token or key in it; the field masking in the logging package does
-// not apply here, since this is a database row rather than a log line.
 func writeAudit(ctx context.Context, tx pgx.Tx, e auditEntry) error {
-	var before, after []byte
-	var err error
-
-	if e.Before != nil {
-		if before, err = json.Marshal(e.Before); err != nil {
-			return errs.Wrap(err, errs.CodeInternal, "Could not record this action.")
-		}
-	}
-	if e.After != nil {
-		if after, err = json.Marshal(e.After); err != nil {
-			return errs.Wrap(err, errs.CodeInternal, "Could not record this action.")
-		}
-	}
-
-	_, err = tx.Exec(ctx, `
-		INSERT INTO audit_log
-		  (tenant_id, actor_id, actor_label, action, entity_type, entity_id,
-		   ip, device_label, before_value, after_value)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		e.TenantID, e.ActorID, nullIfEmpty(e.ActorLabel), e.Action,
-		e.EntityType, e.EntityID, nullIfEmpty(e.IP), nullIfEmpty(e.Device),
-		nullOrJSON(before), nullOrJSON(after))
-	return err
-}
-
-func nullOrJSON(b []byte) any {
-	if len(b) == 0 {
-		return nil
-	}
-	return b
+	return audit.Write(ctx, tx, e)
 }
 
 // temporaryPasswordAlphabet excludes characters that are misread when a

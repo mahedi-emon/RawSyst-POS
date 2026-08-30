@@ -469,7 +469,29 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 			return err
 		}
 
-		return SeedChartOfAccounts(ctx, tx, a.TenantID, companyID)
+		if err := SeedChartOfAccounts(ctx, tx, a.TenantID, companyID); err != nil {
+			return err
+		}
+
+		// And the calendar the chart is kept against.
+		//
+		// Every journal entry needs a fiscal period, and everything this
+		// product does financially is a journal entry — so a company without
+		// one cannot ring up a sale, record an expense, receive a delivery or
+		// close a till. Before 0080 nothing created one, and the refusal a
+		// cashier met told them to ask an owner to open the period, which no
+		// owner could do.
+		//
+		// This year and next. The second is not caution: a shop whose calendar
+		// ends on 31 December stops trading at midnight, and the roll-forward
+		// in the worker keeps that year of headroom afterwards.
+		if _, err := tx.Exec(ctx,
+			`SELECT open_fiscal_year($1, fiscal_year_of($1, current_date)),
+			        open_fiscal_year($1, fiscal_year_of($1, current_date) + 1)`,
+			companyID); err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		if errs.As(err) != nil {

@@ -25,7 +25,9 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
@@ -93,6 +95,8 @@ type Server struct {
 	settlement   *settlement.Service
 	expenses     *expenses.Service
 	stock        *stockops.Service
+	fiscal       *fiscal.Service
+	audit        *audit.Service
 	health       func() error
 	version      string
 
@@ -155,6 +159,8 @@ func NewServer(
 	settlementSvc *settlement.Service,
 	expenseSvc *expenses.Service,
 	stockSvc *stockops.Service,
+	fiscalSvc *fiscal.Service,
+	auditSvc *audit.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -177,6 +183,8 @@ func NewServer(
 		settlement:   settlementSvc,
 		expenses:     expenseSvc,
 		stock:        stockSvc,
+		fiscal:       fiscalSvc,
+		audit:        auditSvc,
 		health:       health,
 		version:      version,
 
@@ -760,6 +768,41 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/dashboard/stock", AccessPermission, "inventory.view",
 			s.handleStockDetail,
 			"variants low or out of stock, summed across the company's warehouses"},
+		// --- the accounting calendar (C10) ---
+		//
+		// Two verbs seeded in 0005 and unreachable ever since -- the route audit
+		// listed both as "awaited", and 0080 says what that actually meant:
+		// nothing had ever created a fiscal period either, so a journal entry had
+		// nowhere to go and no company provisioned through this product could
+		// post anything at all.
+		//
+		// Closing needs `accounting.close_period`; reopening needs
+		// `accounting.reopen_period`, which C10 puts at Owner level because
+		// reopening changes figures somebody has already reported.
+		{http.MethodGet, "/api/v1/accounting/periods", AccessPermission, "accounting.view",
+			s.handleFiscalCalendar,
+			"anybody who may read the accounts needs to know which months are open; " +
+				"a figure means something different in a closed month"},
+		{http.MethodPost, "/api/v1/accounting/periods", AccessPermission, "accounting.close_period",
+			s.handleOpenFiscalYear,
+			"opening a year is the same authority as closing a month: it decides " +
+				"which dates the books will accept"},
+		{http.MethodPost, "/api/v1/accounting/periods/{periodID}/close", AccessPermission, "accounting.close_period",
+			s.handleClosePeriod, ""},
+		{http.MethodPost, "/api/v1/accounting/periods/{periodID}/reopen", AccessPermission, "accounting.reopen_period",
+			s.handleReopenPeriod, ""},
+
+		// --- the audit trail (D4) ---
+		//
+		// Read-only, and there is no write route by design: an audit row is
+		// written inside the transaction of the thing it records, never by
+		// somebody calling an endpoint. 0003 puts a trigger on the table that
+		// refuses every UPDATE and DELETE, Owner included.
+		{http.MethodGet, "/api/v1/audit", AccessPermission, "accounting.view",
+			s.handleAuditTrail,
+			"the trail is evidence about the books, so it is gated with the books " +
+				"rather than behind a verb of its own that nobody holds"},
+
 		{http.MethodGet, "/api/v1/reports/trial-balance", AccessPermission, "accounting.view",
 			s.handleTrialBalance, ""},
 		{http.MethodGet, "/api/v1/reports/profit-and-loss", AccessPermission, "accounting.view",

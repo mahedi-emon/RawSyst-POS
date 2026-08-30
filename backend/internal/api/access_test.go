@@ -30,7 +30,9 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -124,7 +126,7 @@ func newHarness(t *testing.T) *harness {
 	// exactly how the shift module stayed unreachable while its tests passed.
 	shiftSvc := shift.NewService(pool)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules), stockops.NewService(pool),
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules), stockops.NewService(pool), fiscal.NewService(pool), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 

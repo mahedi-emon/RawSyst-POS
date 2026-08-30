@@ -233,7 +233,8 @@ func TestPostingIntoAClosedPeriodSaysWhatToDo(t *testing.T) {
 
 	if err := b.pool.TxAsTenant(context.Background(), b.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(context.Background(),
-			`UPDATE fiscal_period SET state = 'closed' WHERE id = $1`, b.periodID)
+			`UPDATE fiscal_period SET state = 'closed', closed_at = now(), closed_by = $2
+			 WHERE id = $1`, b.periodID, b.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close the period: %v", err)

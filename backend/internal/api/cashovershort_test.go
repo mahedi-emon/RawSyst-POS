@@ -259,8 +259,8 @@ func TestAClosedPeriodRollsBackTheWholeClose(t *testing.T) {
 	// Close every period the company has, so the variance has nowhere to post.
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx,
-			`UPDATE fiscal_period SET state = 'closed' WHERE company_id = $1`,
-			f.companyID)
+			`UPDATE fiscal_period SET state = 'closed', closed_at = now(), closed_by = $2
+			 WHERE company_id = $1`, f.companyID, f.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close the periods: %v", err)

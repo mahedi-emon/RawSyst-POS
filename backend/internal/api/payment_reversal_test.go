@@ -437,8 +437,8 @@ func TestAClosedPeriodRollsThePaymentReversalBack(t *testing.T) {
 	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(t.Context(), `
 			UPDATE fiscal_period
-			SET state = 'closed', closed_at = now()
-			WHERE company_id = $1 AND state = 'open'`, f.companyID)
+			SET state = 'closed', closed_at = now(), closed_by = $2
+			WHERE company_id = $1 AND state = 'open'`, f.companyID, f.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close the period: %v", err)

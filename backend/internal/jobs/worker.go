@@ -63,6 +63,16 @@ type Worker struct {
 	KeepJobsFor     time.Duration
 	CredentialGrace time.Duration
 	PruneEvery      time.Duration
+
+	// CalendarHorizon is how far ahead every company's accounting calendar is
+	// kept open. Swept on the same ticker as the pruning, because both are
+	// housekeeping that has to happen and neither is urgent to the minute.
+	//
+	// A year. Shorter would work -- the calendar only has to outlast the gap
+	// between two sweeps -- but a year means a database restored from an old
+	// backup, or a worker that has been down for a month, still has periods
+	// to post into while somebody works out what happened.
+	CalendarHorizon time.Duration
 }
 
 func NewWorker(q *Queue, log *slog.Logger, name string) *Worker {
@@ -89,6 +99,7 @@ func NewWorker(q *Queue, log *slog.Logger, name string) *Worker {
 		KeepJobsFor:     7 * 24 * time.Hour,
 		CredentialGrace: 30 * 24 * time.Hour,
 		PruneEvery:      6 * time.Hour,
+		CalendarHorizon: 365 * 24 * time.Hour,
 	}
 }
 
@@ -118,6 +129,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			w.reap(ctx)
 		case <-pruneTicker.C:
 			w.prune(ctx)
+			w.rollCalendar(ctx)
 		default:
 		}
 
@@ -232,6 +244,23 @@ func (w *Worker) runGuarded(ctx context.Context, h Handler, j Job) (err error) {
 // something an operator should be able to see happening rather than infer. A
 // failure is logged and swallowed: housekeeping that cannot run is not a reason
 // to stop processing work, and the next tick will try again.
+// rollCalendar opens the next accounting year for any company running out.
+//
+// Logged only when it did something. A sweep that finds every company
+// already has a year in hand is the ordinary case, four times a day, and a
+// line saying so is a line that trains people to skim the worker's log.
+func (w *Worker) rollCalendar(ctx context.Context) {
+	made, err := w.queue.RollCalendarForward(ctx, w.CalendarHorizon)
+	if err != nil {
+		w.log.Error("rolling the accounting calendar forward failed",
+			slog.String("error", err.Error()))
+		return
+	}
+	if made > 0 {
+		w.log.Info("accounting periods opened", slog.Int("periods", made))
+	}
+}
+
 func (w *Worker) prune(ctx context.Context) {
 	jobs, credentials, err := w.queue.Prune(ctx, w.KeepJobsFor, w.CredentialGrace)
 	if err != nil {

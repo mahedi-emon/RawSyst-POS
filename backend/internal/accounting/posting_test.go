@@ -29,6 +29,10 @@ type books struct {
 	tenantID  uuid.UUID
 	companyID uuid.UUID
 	periodID  uuid.UUID
+	// userID is whoever closes a period in these tests. 0080 requires a closed
+	// period to name the person who closed it, and a fixture with nobody in it
+	// was arranging a state no real company can be in.
+	userID    uuid.UUID
 	cash      uuid.UUID
 	revenue   uuid.UUID
 	outputVAT uuid.UUID
@@ -60,10 +64,20 @@ func newBooks(t *testing.T) *books {
 			Scan(&b.tenantID); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `
+		if err := tx.QueryRow(ctx, `
 			INSERT INTO company (tenant_id, legal_name, country, base_currency)
 			VALUES ($1, 'Books Test Co', 'sa', 'SAR') RETURNING id`,
-			b.tenantID).Scan(&b.companyID)
+			b.tenantID).Scan(&b.companyID); err != nil {
+			return err
+		}
+		// Somebody to close a period. 0080 requires a closed period to name the
+		// person who closed it, and a fixture with nobody in it was setting up
+		// a state the product cannot produce.
+		return tx.QueryRow(ctx, `
+			INSERT INTO app_user (tenant_id, email, full_name, password_hash, status)
+			VALUES ($1, 'books-' || gen_random_uuid() || '@example.test',
+			        'Books Test Owner', 'x', 'active')
+			RETURNING id`, b.tenantID).Scan(&b.userID)
 	})
 	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
@@ -289,8 +303,8 @@ func TestClosedPeriodRefusesEntries(t *testing.T) {
 
 	if err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx,
-			`UPDATE fiscal_period SET state = 'closed', closed_at = now() WHERE id = $1`,
-			b.periodID)
+			`UPDATE fiscal_period SET state = 'closed', closed_at = now(), closed_by = $2
+			 WHERE id = $1`, b.periodID, b.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close period: %v", err)
@@ -476,7 +490,8 @@ func TestReopeningRequiresARealReason(t *testing.T) {
 
 	if err := b.pool.TxAsTenant(ctx, b.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx,
-			`UPDATE fiscal_period SET state='closed', closed_at=now() WHERE id=$1`, b.periodID)
+			`UPDATE fiscal_period SET state='closed', closed_at=now(), closed_by=$2
+			 WHERE id=$1`, b.periodID, b.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close: %v", err)

@@ -287,12 +287,15 @@ func TestSeededPermissionsWithNoRoute(t *testing.T) {
 		// awaited
 		//
 		// `inventory.adjust_stock` and `inventory.transfer_stock` used to head
-		// this list. 0079 built the module they were waiting for, so they have
-		// routes now and this test says so by refusing the entries.
+		// this list, and `accounting.close_period` and
+		// `accounting.reopen_period` sat below them described as "awaited —
+		// Phase 2; the period lock itself is enforced in the database from
+		// 0015". That description was true and it was also the whole problem:
+		// the lock was enforced and the calendar it locked did not exist, so
+		// every posting in a company provisioned by this product was refused
+		// for want of a period. 0079 and 0080 built both modules.
 		"catalog.edit":                "awaited — Phase 2, product editing; Phase 1 creates and retires",
 		"accounting.approve":          "awaited — Phase 2, journal approval workflow",
-		"accounting.close_period":     "awaited — Phase 2; the period lock itself is enforced in the database from 0015",
-		"accounting.reopen_period":    "awaited — Phase 2, as above",
 		"report.export":               "awaited — Phase 3, report generation and delivery (design 08 job kinds)",
 		"compliance.retry_submission": "awaited — deliberately not offered: submission is automatic and ordered, and the screen says so",
 	}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -167,13 +168,18 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 	// Audited on the platform plane, since this is a Super Admin action on a
 	// tenant. Blueprint A4 requires every such action to be permanently logged.
 	_ = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO audit_log
-			  (tenant_id, actor_id, action, entity_type, entity_id, after_value)
-			VALUES ($1, $2, 'tenant_provisioned', 'tenant', $1, $3)`,
-			out.TenantID, a.UserID,
-			[]byte(`{"plan_tier":"`+req.PlanTier+`","data_region":"`+req.DataRegion+`"}`))
-		return err
+		// Through the shared writer, which fills in `actor_label` — the field
+		// this INSERT used to omit, and the one that exists so the trail
+		// survives the user being deleted.
+		return audit.Write(ctx, tx, audit.Entry{
+			TenantID: &out.TenantID, ActorID: &a.UserID,
+			ActorLabel: audit.LabelFor(ctx, tx, a.UserID),
+			Action:     "tenant_provisioned",
+			EntityType: "tenant", EntityID: &out.TenantID,
+			After: map[string]any{
+				"plan_tier": req.PlanTier, "data_region": req.DataRegion,
+			},
+		})
 	})
 
 	return out, nil

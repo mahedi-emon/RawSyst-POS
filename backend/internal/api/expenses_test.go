@@ -606,9 +606,10 @@ func TestAnExpenseInAClosedPeriodIsRefusedWhole(t *testing.T) {
 	ctx := context.Background()
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx, `
-			UPDATE fiscal_period SET state = 'closed'
+			UPDATE fiscal_period
+			SET state = 'closed', closed_at = now(), closed_by = $2
 			WHERE company_id = $1 AND fiscal_year = 2026 AND period_no = 8`,
-			f.companyID)
+			f.companyID, f.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close the period: %v", err)

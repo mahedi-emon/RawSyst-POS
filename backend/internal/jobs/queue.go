@@ -264,6 +264,25 @@ func (q *Queue) Prune(
 	return jobs, credentials, err
 }
 
+// RollCalendarForward keeps a year of accounting periods in front of every
+// company, so no shop discovers on the first of January that it cannot post.
+//
+// The whole loop is a SQL function, because writing to `fiscal_period` needs
+// `app.tenant_id` set to each tenant in turn and an application that changes
+// its own row-level-security context in a loop is one statement away from
+// writing a tenant's row under another tenant's context.
+func (q *Queue) RollCalendarForward(
+	ctx context.Context, horizon time.Duration,
+) (int, error) {
+	var made int
+	err := q.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT roll_fiscal_calendar_forward($1)`,
+			int(horizon.Hours()/24)).Scan(&made)
+	})
+	return made, err
+}
+
 // Backoff is the retry schedule from design document 08 §4.
 //
 //	attempt 1  immediate

@@ -28,14 +28,17 @@ import (
 )
 
 type shop struct {
-	pool        *db.Pool
-	chain       *zatca.Chain
-	svc         *Service
-	tenantID    uuid.UUID
-	companyID   uuid.UUID
-	storeID     uuid.UUID
-	unitID      uuid.UUID
-	periodID    uuid.UUID
+	pool      *db.Pool
+	chain     *zatca.Chain
+	svc       *Service
+	tenantID  uuid.UUID
+	companyID uuid.UUID
+	storeID   uuid.UUID
+	unitID    uuid.UUID
+	periodID  uuid.UUID
+	// userID is whoever closes a period in these tests. 0080 requires a closed
+	// period to name the person who closed it.
+	userID      uuid.UUID
 	variantID   uuid.UUID
 	warehouseID uuid.UUID
 
@@ -85,6 +88,15 @@ func newShop(t *testing.T) *shop {
 			VALUES ($1,'Sale Test Co','sa','SAR') RETURNING id`,
 			s.tenantID).Scan(&s.companyID)
 	})
+	if err == nil {
+		err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `
+				INSERT INTO app_user (tenant_id, email, full_name, password_hash, status)
+				VALUES ($1, 'sale-' || gen_random_uuid() || '@example.test',
+				        'Sale Test Owner', 'x', 'active')
+				RETURNING id`, s.tenantID).Scan(&s.userID)
+		})
+	}
 	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
@@ -599,8 +611,8 @@ func TestSaleIntoAClosedPeriodIsRefused(t *testing.T) {
 
 	if err := s.pool.TxAsTenant(ctx, s.tenantID, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx,
-			`UPDATE fiscal_period SET state='closed', closed_at=now() WHERE id=$1`,
-			s.periodID)
+			`UPDATE fiscal_period SET state='closed', closed_at=now(), closed_by=$2
+			 WHERE id=$1`, s.periodID, s.userID)
 		return e
 	}); err != nil {
 		t.Fatalf("close period: %v", err)
