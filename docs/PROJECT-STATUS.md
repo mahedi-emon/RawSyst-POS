@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-28 |
+| **Last updated** | 2026-08-30 |
 | **Branch** | `main` @ `aa16f46` |
 | **Backend** | 190 Go files, ~58,000 lines, 1,285 integration tests + 425 unit tests, 70 migrations |
 | **HTTP routes live** | 109 — auth, e-invoicing onboarding (status, compliance CSID, production CSID, renewal), invoice reprint (logged), branding (company logo upload/replace/remove/serve), onboarding, platform, card settlement (pending / record deposit / read batch), POS (incl. signed-document upload), sync, shifts (open, current, peek, X-report, cash drop, Z-report close), statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, payment reversal, ageing, supplier edit/retire), customers and receivables (accounts, credit limits, ledger, open invoices, receipts, receipt reversal, ageing, till snapshot), terminals (register, enrol, identity, branches, rename/reassign, pause, revoke), companies, reachability ping |
@@ -182,6 +182,47 @@ fixing it involves.
 | ~~P87~~ | ~~**An unknown item at the till answered 500.**~~ **DONE.** A stock movement naming a variant that is not in this company's catalogue was caught by the foreign key, and the raw driver error travelled to the API as "Something went wrong on our side". Nothing is wrong on our side: it is a barcode to rescan or a product to add, and a cashier told the server is broken calls the shop's IT instead of doing either. | Reachable from a sale, a return, an exchange and an offline replay. The existing exchange test asserted only "not 201" and accepted the 500. | — |
 | ~~P88~~ | ~~**The leaked `sale.revenue` test rule.**~~ **DONE** (0070). A development database carried a version 2 of `sale.revenue`, effective 2026-09-01, naming a role no chart maps — left by an earlier form of `TestARuleIsResolvedAtTheTransactionDate`, which edited a real rule. From 1 September no sale could post in that database at all. **Superseded rather than deleted**: `posting_rule` carries `reject_delete()` and a frozen trigger, and removing the row needs `session_replication_role = replica`, which disables EVERY trigger on the connection — journal immutability, the period lock, the write-once stamp. Turning all of that off to tidy one row is a far worse trade than the row. A version 3 carrying the correct lines from the same date wins on the registry's own resolution order, and the migration is guarded on the bad row being present so it does nothing on a clean database. | The two tests that found it walked every stored version's roles rather than the version that would resolve, so they also reported a permanently-superseded row as a defect. They now ask the question the posting engine asks, at every date a rule changes shape. | — |
 | **P19** | **No PDPL-specific implementation.** Audit logging and RLS exist; consent records, data-subject access/erasure, and the retention schedule do not. | Required before a Saudi go-live. | Depends on legal review (§ open questions in `00-architecture-overview.md`). |
+
+---
+
+### 2026-08-30 — two blockers that made the product unusable, and the modules that closed them
+
+Both were the same shape, and it is worth naming the shape because it has now
+appeared five times: **a layer that works, with no path through it**. The shift
+service mounted nowhere (P3). The terminal that could never sell (P30). The
+store commit that nothing called. And these two.
+
+| # | Problem | What it meant |
+|---|---|---|
+| **P89** | **Nothing in the product had ever created a `warehouse`.** The only INSERTs against that table in the whole repository were in test fixtures. `sales.resolveWarehouse` refused every sale with "This branch has no stock location set up... An owner can add one under Settings > Stock locations" — a screen that did not exist, behind a route that did not exist. | A tenant taken through the entire A5 wizard — stores, staff, chart of accounts, paired till, tax profile — **could not ring up a single sale**. |
+| **P90** | **Nothing had ever created a `fiscal_period` either.** `accounting.resolvePeriod` refuses every posting for a date no period covers, and told the reader to ask an owner to open one. No owner could. | Worse than P89. A journal entry needs a period and everything this product does financially is a journal entry, so the same tenant could not record an expense, receive a delivery, take a payment or close a till either. |
+
+Both are closed (0078, 0080), backfilled for every existing company, wired into
+provisioning, and pinned by tests that ask the question the refusing code asks
+rather than checking that a row was written.
+
+**Four "awaited" permissions became reachable.** `inventory.adjust_stock`,
+`inventory.transfer_stock`, `accounting.close_period` and
+`accounting.reopen_period` had been seeded since 0005 and guarded nothing.
+`TestSeededPermissionsWithNoRoute` refused the stale entries, which is the
+guard working.
+
+| Module | What landed |
+|---|---|
+| **B4 stock operations** | 0078–0079. Stock locations with a shop-floor/store-room/central/transit model; adjustments and wastage with B4's mandatory category and note; a three-stage physical count; the inter-branch transfer B4 specifies as Request → Approval → Dispatch → Receive. Posting rule 10 (`inventory.writeoff`), seeded in 0025 and never once called, now posts; rule 10a (`inventory.writeon`) is its mirror for found stock, against the same account and never as income — 0052's reasoning for cash over/short, applied to stock. |
+| **C10 the accounting calendar** | 0080. Twelve monthly periods from the company's own `fiscal_year_start_month` (on the table since 0002, never read). Closing in order, a signed close, reopening with a mandatory reason, and a worker sweep that keeps a year of headroom so no shop stops trading at midnight on 31 December. |
+| **D4 the audit trail** | `internal/platform/audit` is now the one definition of an audit row — three packages had their own INSERT and one omitted `actor_label` — plus a read surface and a screen. There is deliberately no write route. |
+| **C9.3 the statements** | The trial balance, P&L, balance sheet and cash flow all had routes and **no front end had ever called them**. So did the VAT return. All five now have screens, and all five now state which currency their figures are in, which none of them did. |
+
+**The transfer's tie-out is the piece most worth re-reading before changing.**
+A transfer posts nothing — the company is no richer for moving its own stock —
+so the entire weight of C13 falls on the valuation side, unwatched by any
+journal entry that would refuse to balance. In-transit stock therefore lives in
+a real system-owned location the valuation counts, and each leg is a `Consume`
+followed by a `Restore` of *exactly* the value the Consume reported.
+`TestTheValuationTiesThroughEveryLegOfATransfer` walks it and asserts the
+tie-out at every point, with a weighted-average cost chosen not to divide
+evenly.
 
 ---
 
