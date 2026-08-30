@@ -84,6 +84,25 @@ func run() error {
 	// would have heard it from its accountant months later.
 	worker.Register(jobs.KindAccountingTieOut, jobs.NewTieOutSweeper(pool))
 
+	// Sending a message, which for now means password-recovery codes.
+	//
+	// There is no mail provider configured for this product, and choosing one
+	// is a business decision — it costs money, needs a domain with SPF and
+	// DKIM, and under E4.2's residency requirement may need regional presence.
+	// So the seam is a Mailer with two honest implementations and no third that
+	// pretends.
+	//
+	// In development the message is logged, which is how somebody tests the
+	// recovery flow before wiring a provider: the code is in
+	// `docker compose logs`. Anywhere else the job FAILS, retries, escalates
+	// and shows up in the failed-jobs view — which is an operator discovering
+	// that recovery does not work before a locked-out shopkeeper does.
+	var mailer jobs.Mailer = jobs.RefusingMailer{}
+	if cfg.Env == config.EnvDevelopment {
+		mailer = jobs.LogMailer{Log: log}
+	}
+	worker.Register("notify.send", jobs.NotifyHandler{Mailer: mailer, Log: log})
+
 	// Registering the submitter even when it cannot submit is deliberate:
 	// invoices queue up, the staleness sweep escalates, and an Owner sees a
 	// growing backlog with a truthful reason — rather than the system looking

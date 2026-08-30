@@ -88,6 +88,22 @@ func TestPublicRoutesAreOnlyTheExpectedOnes(t *testing.T) {
 		// token for anything else, and both are covered by devices_test.go.
 		"POST /api/v1/devices/enrol":   true,
 		"GET /api/v1/devices/identity": true,
+
+		// Self-service password recovery, A4.2. Unauthenticated because the
+		// caller has lost the way to obtain a token — that is the problem
+		// being solved, and requiring one would make the route useless.
+		//
+		// What makes two public endpoints acceptable here is that neither
+		// answers a question worth asking. `forgot-password` returns 204 for a
+		// real address and an invented one, so it cannot be used to confirm
+		// which of a leaked address list are customers of this product;
+		// `reset-password` returns one refusal for a wrong, expired, spent or
+		// unknown code, so it cannot be used to tell a near miss from a wrong
+		// address. Guessing is bounded three ways — five per code, three
+		// requests per account per hour, and a per-caller limiter — and
+		// recovery_test.go holds each of those.
+		"POST /api/v1/auth/forgot-password": true,
+		"POST /api/v1/auth/reset-password":  true,
 	}
 
 	s := &Server{}

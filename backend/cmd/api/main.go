@@ -20,6 +20,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -176,7 +177,11 @@ func run() error {
 		// Secure cookies everywhere but a developer's laptop. A browser
 		// silently DROPS a Secure cookie sent over plain HTTP, which presents
 		// as a sign-in that appears to succeed and then has no session.
-		WithSecureCookies(cfg.Env != config.EnvDevelopment)
+		WithSecureCookies(cfg.Env != config.EnvDevelopment).
+		// The queue, which is how a password-recovery code reaches a mailbox.
+		// Sending inside the request would make the reset endpoint exactly as
+		// available as the mail provider.
+		WithQueue(jobs.NewQueue(pool))
 
 	handler := srv.Handler(
 		httpx.RequestID,

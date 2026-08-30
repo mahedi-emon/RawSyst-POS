@@ -16,6 +16,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -93,6 +94,20 @@ type Server struct {
 	health       func() error
 	version      string
 
+	// queue is how a recovery code reaches a mailbox: the send is a
+	// `notify.send` job rather than I/O inside the request, so a mail provider
+	// being down cannot make the reset endpoint unavailable.
+	//
+	// Optional. An installation with no queue wired still serves every other
+	// route; the recovery ones report that they cannot send rather than
+	// panicking, which is the honest failure for a feature that needs
+	// infrastructure somebody has not set up.
+	queue identity.Enqueuer
+
+	// recoveryLimit caps the two PUBLIC recovery routes per caller. See
+	// recovery_handlers.go for why it is in memory and what that costs.
+	recoveryLimit *recoveryLimiter
+
 	// onboarding is optional: an installation with no data encryption key
 	// cannot hold a ZATCA credential, and the routes report that rather than
 	// failing to start.
@@ -160,7 +175,22 @@ func NewServer(
 		expenses:     expenseSvc,
 		health:       health,
 		version:      version,
+
+		// Ten attempts a quarter hour from one caller. Generous for somebody
+		// mistyping a code off a screen, useless for walking an address list.
+		recoveryLimit: newRecoveryLimiter(10, 15*time.Minute),
 	}
+}
+
+// WithQueue supplies the background queue, which is how a recovery code reaches
+// a mailbox.
+//
+// Optional rather than a constructor argument: every other route works without
+// it, and an installation that has not set up a mail provider should still
+// start and serve. The recovery routes report that they cannot send.
+func (s *Server) WithQueue(q identity.Enqueuer) *Server {
+	s.queue = q
+	return s
 }
 
 // Routes returns every route as data.
@@ -186,6 +216,18 @@ func (s *Server) Routes() []Route {
 			"returns the caller's own identity and permissions, so the client can shape its UI"},
 		{http.MethodPost, "/api/v1/auth/change-password", AccessAuthenticated, "", s.handleChangePassword,
 			"changes the caller's own password; the current password is re-verified"},
+
+		// --- self-service recovery (blueprint A4.2) ---
+		//
+		// Public, necessarily: the caller has lost the way to get a token. That
+		// is safe because neither route says whether an account exists, and
+		// guessing is bounded per code, per account and per caller.
+		{http.MethodPost, "/api/v1/auth/forgot-password", AccessPublic, "",
+			s.handleForgotPassword,
+			"asks for a reset code. Answers 204 whether or not the address is on an account, because an endpoint that distinguishes them confirms which of a leaked address list are customers"},
+		{http.MethodPost, "/api/v1/auth/reset-password", AccessPublic, "",
+			s.handleResetPassword,
+			"exchanges a code for a new password. One refusal for a wrong, expired, spent or unknown code, for the same reason"},
 
 		// --- staff (blueprint A5, A6) ---
 		//
