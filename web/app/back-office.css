@@ -2418,3 +2418,224 @@
 @media (pointer: coarse) {
   .promo__check { min-block-size: var(--tap-mobile); }
 }
+
+/* Quotations and sales orders (blueprint B11, B12).
+ * ------------------------------------------------------------------------ */
+
+.orders__form { margin-block-end: var(--space-4); }
+
+.orders__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.orders__lines td { vertical-align: top; }
+
+/* The line table needs room for a picker in the first column and narrow
+ * numeric boxes in the rest. Left to itself the browser gives the widest
+ * column to whichever cell holds the longest product name. */
+.orders__lines { table-layout: auto; }
+
+.orders__lines .input {
+  inline-size: 7rem;
+  text-align: end;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.orders__totals {
+  display: grid;
+  gap: var(--space-1);
+  justify-content: end;
+  margin: var(--space-4) 0 0;
+}
+
+.orders__totals > div {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, auto);
+  gap: var(--space-4);
+}
+
+.orders__totals dt { color: var(--text-muted); }
+
+.orders__totals dd {
+  margin: 0;
+  text-align: end;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.orders__totals-final {
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--border-strong);
+  font-weight: 600;
+  font-size: 1.0625rem;
+}
+
+/* The lifecycle, drawn. Six steps a person reads left to right — and right to
+ * left in Arabic, which flex-direction handles on its own because the list is
+ * in document order rather than positioned. */
+.orders__track {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  padding: 0 var(--space-6);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 40rem) {
+  .orders__track { padding-inline: var(--space-4); }
+}
+
+.orders__step {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-subtle);
+}
+
+.orders__step--done {
+  border-color: var(--brand-border);
+  background: var(--brand-subtle);
+  color: var(--text);
+}
+
+/* The current step is the one somebody is looking for, so it is the only one
+ * that is filled rather than tinted. */
+.orders__step--now {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+.orders__cancelled {
+  margin: 0 var(--space-6) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.orders__hint {
+  margin: 0 var(--space-6) var(--space-4);
+  max-inline-size: 60ch;
+}
+
+@media (max-width: 40rem) {
+  .orders__cancelled,
+  .orders__hint { margin-inline: var(--space-4); }
+}
+
+/* The printable documents.
+ * ------------------------------------------------------------------------ */
+
+.sheet__bar { position: sticky; inset-block-start: 0; }
+
+.sheet__page {
+  max-inline-size: 48rem;
+  margin-inline: auto;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block-end: var(--space-3);
+  border-block-end: 2px solid var(--border-strong);
+}
+
+.sheet__no {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.sheet__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0;
+}
+
+.sheet__facts dt {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.sheet__facts dd { margin: 0; font-weight: 500; }
+
+.sheet__lines { margin-block-start: var(--space-4); }
+
+.sheet__note {
+  margin-block-start: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+/* Two ruled lines somebody signs and dates. A delivery note nobody signed is
+ * a delivery nobody can prove. */
+.sheet__signature {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) auto minmax(6rem, 12rem);
+  align-items: end;
+  gap: var(--space-3);
+  margin-block-start: var(--space-8);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.sheet__rule { border-block-end: 1px solid var(--border-strong); }
+
+@media (max-width: 40rem) {
+  .sheet__signature { grid-template-columns: auto minmax(6rem, 1fr); }
+}
+
+/* Printing.
+ *
+ * The warehouse prints this on whatever is nearest, twenty times a day, so it
+ * goes through the browser's own dialogue rather than a PDF the server draws.
+ * Everything that is not the sheet is hidden: the navigation rail, the bar,
+ * the buttons on the sheet itself. */
+@media print {
+  .bo__rail,
+  .bo__bar,
+  .bo__scrim,
+  .detail__head,
+  .detail__actions,
+  .orders__track,
+  .sheet__bar {
+    display: none !important;
+  }
+
+  .bo,
+  .bo__screen,
+  .bo__body { display: block; min-block-size: 0; }
+
+  /* Everything on the page except the sheet. A delivery note that came out of
+   * the printer with the order list stapled behind it is somebody's afternoon. */
+  .detail > .ds-panel:not(.sheet) { display: none; }
+
+  .sheet {
+    border: none;
+    box-shadow: none;
+    background: #fff;
+    color: #000;
+  }
+
+  .sheet__page { max-inline-size: none; padding: 0; }
+
+  /* The sheet is forced to black on white above, so the rules between rows
+   * have to leave the themed palette too: a light-theme border is invisible
+   * on paper and a dark-theme one is a black bar. */
+  .ds-table th,
+  .ds-table td { border-color: currentColor; opacity: 1; }
+}

@@ -48,6 +48,7 @@ import { ProductsArea } from '@rawsyst/shared/catalog/ProductsArea';
 import { StockArea } from '@rawsyst/shared/stock/StockArea';
 import { AccountingArea } from '@rawsyst/shared/accounting/AccountingArea';
 import { AssetsArea } from '@rawsyst/shared/assets/AssetsArea';
+import { OrdersArea } from '@rawsyst/shared/orders/OrdersArea';
 import { Icon, type IconName } from '@rawsyst/shared/ui/Icon';
 import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 
@@ -56,6 +57,7 @@ type Section =
   | 'people'
   | 'buying'
   | 'customers'
+  | 'salesorders'
   | 'expenses'
   | 'settlement'
   | 'accounting'
@@ -158,6 +160,7 @@ export function BackOffice() {
   // login as well as from an owner's. What each of them may DO inside it is
   // decided by the routes, not by the nav.
   const maySeeCustomers = may('customers.view');
+  const maySeeOrders = may('order.view');
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
@@ -298,6 +301,16 @@ export function BackOffice() {
       icon: 'customers',
       group: 'trade',
       shown: maySeeCustomers,
+    },
+    // Beside Customers rather than beside Buying. A purchase order and a sales
+    // order are opposite documents, and the person who quotes a customer a
+    // price is the person who looks after that customer.
+    {
+      key: 'salesorders',
+      label: t('nav.salesOrders'),
+      icon: 'salesorders',
+      group: 'trade',
+      shown: maySeeOrders,
     },
     // Beside Buying and Customers, because it is the third thing money does:
     // what the shop bought, what it is owed, and what it spent.
@@ -586,6 +599,8 @@ export function BackOffice() {
         )
       ) : section === 'buying' && mayBuy ? (
         <PurchasingScreen companyId={activeCompany} />
+      ) : section === 'salesorders' && maySeeOrders ? (
+        <OrdersArea companyId={activeCompany} />
       ) : section === 'customers' && maySeeCustomers ? (
         <CustomersScreen companyId={activeCompany} />
       ) : section === 'expenses' && maySeeExpenses ? (
