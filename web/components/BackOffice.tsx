@@ -44,7 +44,7 @@ import { SettlementScreen } from '@rawsyst/shared/settlement/SettlementScreen';
 import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
-import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
+import { ProductsArea } from '@rawsyst/shared/catalog/ProductsArea';
 import { StockArea } from '@rawsyst/shared/stock/StockArea';
 import { AccountingArea } from '@rawsyst/shared/accounting/AccountingArea';
 import { AssetsArea } from '@rawsyst/shared/assets/AssetsArea';
@@ -604,7 +604,7 @@ export function BackOffice() {
           onLogoChanged={() => setReloadKey((n) => n + 1)}
         />
       ) : section === 'inventory' && maySeeInventory ? (
-        <VariantMatrixScreen companyId={activeCompany} />
+        <ProductsArea companyId={activeCompany} />
       ) : section === 'stock' && maySeeInventory ? (
         <StockArea companyId={activeCompany} />
       ) : section === 'accounting' && maySeeAccounting ? (

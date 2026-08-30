@@ -2082,6 +2082,60 @@ export const en = {
   'inv.noneBody': 'Money an owner puts into the business is capital, not income. Recording it here keeps it out of the profit and loss.',
   'inv.noMovementsTitle': 'Nothing recorded yet',
   'inv.noMovementsBody': 'Every contribution and withdrawal appears here, with the account the money moved through.',
+
+  /* Promotions (B9).
+   *
+   * `promo.says.*` are four separate sentences rather than one template with a
+   * kind and a value in it. "10% off" and "3 for 100" are not the same shape of
+   * statement, and a generic rendering would be unreadable in at least one of
+   * the three languages.
+   *
+   * `promo.floorNote` is on the panel because the floor price is the one thing
+   * about this feature that surprises people: a campaign that says twenty per
+   * cent will give fifteen on a product whose floor allows only fifteen, and a
+   * shop should learn that from the screen rather than from a customer. */
+  'promo.title': 'Campaigns',
+  'promo.add': 'Set up a campaign',
+  'promo.campaign': 'Campaign',
+  'promo.offers': 'What it offers',
+  'promo.appliesTo': 'Applies to',
+  'promo.everything': 'Everything',
+  'promo.running': 'Running',
+  'promo.used': 'Times used',
+  'promo.givenAway': 'Given away',
+  'promo.onSalesOf': 'on {amount} of sales',
+  'promo.stop': 'Stop it',
+  'promo.resume': 'Start it again',
+  'promo.showFinished': 'Include finished',
+  'promo.floorNote': 'A campaign never takes a price below the floor set on the product. Where it would, the customer gets as much off as the floor allows and no more.',
+  'promo.state.running': 'Running now',
+  'promo.state.scheduled': 'Starts later',
+  'promo.state.finished': 'Finished',
+  'promo.kind.percentage': 'Percentage off',
+  'promo.kind.amount': 'Amount off',
+  'promo.kind.buy_x_get_y': 'Buy some, get some',
+  'promo.kind.bundle_price': 'Bundle price',
+  'promo.says.percentage': '{value}% off',
+  'promo.says.amount': '{value} off the line',
+  'promo.says.buy_x_get_y': 'Buy {buy}, get {get} free',
+  'promo.says.bundle_price': '{qty} for {price}',
+  'promo.code': 'Short code',
+  'promo.name': 'Name',
+  'promo.percentOff': 'Percentage off',
+  'promo.amountOff': 'Amount off',
+  'promo.amountOffHint': 'Taken off the line once, however many units are on it.',
+  'promo.theyBuy': 'They buy',
+  'promo.theyGet': 'They get free',
+  'promo.howMany': 'How many',
+  'promo.forHowMuch': 'For how much',
+  'promo.from': 'From',
+  'promo.until': 'Until',
+  'promo.minPurchase': 'Minimum spend',
+  'promo.minPurchaseHint': 'Against the whole basket, not one line.',
+  'promo.coupon': 'Coupon code',
+  'promo.couponHint': 'Leave it empty and the campaign applies by itself.',
+  'promo.noneTitle': 'No campaigns yet',
+  'promo.noneBody': 'A percentage off, an amount off, buy-one-get-one, or a bundle price — set up here and applied by every till.',
 } as const;
 
 /** Every string the interface can show. */
@@ -4193,6 +4247,60 @@ export const ar: Record<Key, string> = {
   'inv.noneBody': 'المال الذي يضعه المالك في المنشأة رأس مال وليس دخلاً. تسجيله هنا يُبقيه خارج قائمة الدخل.',
   'inv.noMovementsTitle': 'لم تُسجَّل حركات',
   'inv.noMovementsBody': 'كل مساهمة وسحب يظهر هنا مع الحساب الذي مرّ به المال.',
+
+  /* Promotions (B9).
+   *
+   * `promo.says.*` are four separate sentences rather than one template with a
+   * kind and a value in it. "10% off" and "3 for 100" are not the same shape of
+   * statement, and a generic rendering would be unreadable in at least one of
+   * the three languages.
+   *
+   * `promo.floorNote` is on the panel because the floor price is the one thing
+   * about this feature that surprises people: a campaign that says twenty per
+   * cent will give fifteen on a product whose floor allows only fifteen, and a
+   * shop should learn that from the screen rather than from a customer. */
+  'promo.title': 'الحملات',
+  'promo.add': 'إنشاء حملة',
+  'promo.campaign': 'الحملة',
+  'promo.offers': 'ما تقدمه',
+  'promo.appliesTo': 'ينطبق على',
+  'promo.everything': 'كل شيء',
+  'promo.running': 'الحالة',
+  'promo.used': 'مرات الاستخدام',
+  'promo.givenAway': 'إجمالي الخصم',
+  'promo.onSalesOf': 'على مبيعات {amount}',
+  'promo.stop': 'إيقاف',
+  'promo.resume': 'إعادة تشغيل',
+  'promo.showFinished': 'إظهار المنتهية',
+  'promo.floorNote': 'لا تُنزل أي حملة السعر تحت الحد الأدنى المحدد للمنتج. وعندما يحدث ذلك، يحصل العميل على أقصى خصم يسمح به الحد الأدنى فقط.',
+  'promo.state.running': 'جارية الآن',
+  'promo.state.scheduled': 'تبدأ لاحقاً',
+  'promo.state.finished': 'منتهية',
+  'promo.kind.percentage': 'خصم نسبة',
+  'promo.kind.amount': 'خصم مبلغ',
+  'promo.kind.buy_x_get_y': 'اشترِ واحصل',
+  'promo.kind.bundle_price': 'سعر الحزمة',
+  'promo.says.percentage': 'خصم {value}%',
+  'promo.says.amount': 'خصم {value} على السطر',
+  'promo.says.buy_x_get_y': 'اشترِ {buy} واحصل على {get} مجاناً',
+  'promo.says.bundle_price': '{qty} بسعر {price}',
+  'promo.code': 'الرمز',
+  'promo.name': 'الاسم',
+  'promo.percentOff': 'نسبة الخصم',
+  'promo.amountOff': 'مبلغ الخصم',
+  'promo.amountOffHint': 'يُخصم من السطر مرة واحدة مهما كانت الكمية.',
+  'promo.theyBuy': 'يشتري',
+  'promo.theyGet': 'يحصل مجاناً',
+  'promo.howMany': 'الكمية',
+  'promo.forHowMuch': 'بكم',
+  'promo.from': 'من',
+  'promo.until': 'إلى',
+  'promo.minPurchase': 'الحد الأدنى للشراء',
+  'promo.minPurchaseHint': 'على إجمالي السلة وليس على سطر واحد.',
+  'promo.coupon': 'رمز القسيمة',
+  'promo.couponHint': 'اتركه فارغاً لتُطبَّق الحملة تلقائياً.',
+  'promo.noneTitle': 'لا توجد حملات',
+  'promo.noneBody': 'خصم نسبة أو مبلغ، أو اشترِ واحصل، أو سعر حزمة — تُنشأ هنا وتُطبَّق في كل صندوق.',
 };
 
 /**
@@ -6099,6 +6207,60 @@ export const bn: Partial<Record<Key, string>> = {
   'inv.noneBody': 'মালিক যে টাকা ব্যবসায় দেন তা মূলধন, আয় নয়। এখানে লিখলে তা লাভ-ক্ষতির বাইরে থাকে।',
   'inv.noMovementsTitle': 'এখনো কিছু লেখা হয়নি',
   'inv.noMovementsBody': 'প্রতিটি অর্থ প্রদান ও উত্তোলন এখানে থাকে, কোন হিসাবে গেছে তাসহ।',
+
+  /* Promotions (B9).
+   *
+   * `promo.says.*` are four separate sentences rather than one template with a
+   * kind and a value in it. "10% off" and "3 for 100" are not the same shape of
+   * statement, and a generic rendering would be unreadable in at least one of
+   * the three languages.
+   *
+   * `promo.floorNote` is on the panel because the floor price is the one thing
+   * about this feature that surprises people: a campaign that says twenty per
+   * cent will give fifteen on a product whose floor allows only fifteen, and a
+   * shop should learn that from the screen rather than from a customer. */
+  'promo.title': 'ক্যাম্পেইন',
+  'promo.add': 'ক্যাম্পেইন তৈরি করুন',
+  'promo.campaign': 'ক্যাম্পেইন',
+  'promo.offers': 'কী দিচ্ছে',
+  'promo.appliesTo': 'যার উপর প্রযোজ্য',
+  'promo.everything': 'সবকিছু',
+  'promo.running': 'চলছে',
+  'promo.used': 'কতবার ব্যবহৃত',
+  'promo.givenAway': 'ছাড় দেওয়া হয়েছে',
+  'promo.onSalesOf': '{amount} বিক্রির উপর',
+  'promo.stop': 'বন্ধ করুন',
+  'promo.resume': 'আবার চালু করুন',
+  'promo.showFinished': 'শেষ হওয়াগুলোও দেখান',
+  'promo.floorNote': 'কোনো ক্যাম্পেইন পণ্যের নির্ধারিত সর্বনিম্ন দামের নিচে নামায় না। নামানোর কথা হলে সর্বনিম্ন দাম যতটা দেয় ততটুকুই ছাড় পাওয়া যায়।',
+  'promo.state.running': 'এখন চলছে',
+  'promo.state.scheduled': 'পরে শুরু',
+  'promo.state.finished': 'শেষ',
+  'promo.kind.percentage': 'শতাংশ ছাড়',
+  'promo.kind.amount': 'নির্দিষ্ট ছাড়',
+  'promo.kind.buy_x_get_y': 'কিনলে ফ্রি',
+  'promo.kind.bundle_price': 'প্যাকেজ দাম',
+  'promo.says.percentage': '{value}% ছাড়',
+  'promo.says.amount': 'প্রতি লাইনে {value} ছাড়',
+  'promo.says.buy_x_get_y': '{buy} কিনলে {get} ফ্রি',
+  'promo.says.bundle_price': '{qty}টি {price} টাকায়',
+  'promo.code': 'সংক্ষিপ্ত কোড',
+  'promo.name': 'নাম',
+  'promo.percentOff': 'ছাড়ের শতাংশ',
+  'promo.amountOff': 'ছাড়ের পরিমাণ',
+  'promo.amountOffHint': 'লাইনে একবারই বাদ যায়, যত পিসই থাকুক।',
+  'promo.theyBuy': 'কিনবে',
+  'promo.theyGet': 'ফ্রি পাবে',
+  'promo.howMany': 'কতটি',
+  'promo.forHowMuch': 'কত টাকায়',
+  'promo.from': 'শুরু',
+  'promo.until': 'শেষ',
+  'promo.minPurchase': 'সর্বনিম্ন খরচ',
+  'promo.minPurchaseHint': 'পুরো ঝুড়ির উপর, একটি লাইনে নয়।',
+  'promo.coupon': 'কুপন কোড',
+  'promo.couponHint': 'খালি রাখলে ক্যাম্পেইন নিজে থেকেই প্রযোজ্য হবে।',
+  'promo.noneTitle': 'কোনো ক্যাম্পেইন নেই',
+  'promo.noneBody': 'শতাংশ ছাড়, নির্দিষ্ট ছাড়, একটি কিনলে একটি ফ্রি, বা প্যাকেজ দাম — এখানে তৈরি হয়, প্রতিটি কাউন্টারে চলে।',
 };
 
 /**
