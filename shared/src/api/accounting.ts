@@ -272,6 +272,37 @@ export function reopenPeriod(
   );
 }
 
+/** What closing a year did. */
+export interface YearEnd {
+  fiscal_year: number;
+  closed_on: string;
+  revenue_closed: string;
+  expenses_closed: string;
+  /** Revenue less expenses — what moved to Retained Earnings. Negative for a
+   *  loss, which is a fact rather than a failure. */
+  profit_to_retained_earnings: string;
+  accounts_closed: number;
+  entry_no?: string;
+  currency: string;
+  already_closed?: boolean;
+}
+
+/** Runs C10's year-end routine: empties revenue and expense into Retained
+ *  Earnings and locks every month of the year beyond reopening.
+ *
+ *  Refused unless every month is closed and the books balance. */
+export function closeFiscalYear(
+  client: Client,
+  companyId: string,
+  year: number,
+): Promise<YearEnd> {
+  return client.send<YearEnd>(
+    'POST',
+    scoped('/api/v1/accounting/year-end', companyId),
+    { fiscal_year: year },
+  );
+}
+
 // --- the trail ------------------------------------------------------------
 
 /** The trail is tenant-wide, not company-scoped: `audit_log` carries no company

@@ -28,13 +28,15 @@ import { useAuth } from '../auth/session';
 import { EmptyState } from '../dashboard/DetailScreen';
 import { FormError, TextInput } from '../ui/Form';
 import { useLocale, useT } from '../i18n/locale';
-import { monthName } from '../ui/format';
+import { money, monthName } from '../ui/format';
 import {
+  closeFiscalYear,
   closePeriod,
   openFiscalYear,
   reopenPeriod,
   type FiscalCalendar,
   type Period,
+  type YearEnd,
 } from '../api/accounting';
 import { closablePeriod, nextYearToOpen, reopenable } from './accounting';
 
@@ -52,13 +54,37 @@ export function PeriodsPanel({
   mayClose: boolean;
   onChanged: () => void;
 }) {
-  const { client } = useAuth();
+  const { client, can } = useAuth();
   const t = useT();
   const { locale } = useLocale();
 
+  // The year-end routine takes the more restricted of the two period
+  // permissions: closing a MONTH can be undone with a reason, and closing a
+  // year empties revenue and expense into Retained Earnings and locks every
+  // month in it beyond reopening.
+  const mayReopen = can('accounting.reopen_period');
+
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [closingYear, setClosingYear] = useState<number | null>(null);
+  const [closed, setClosed] = useState<YearEnd | null>(null);
   const closable = closablePeriod(calendar);
+
+  async function closeYear(year: number) {
+    setBusy(true);
+    setFailure(null);
+    try {
+      const done = await closeFiscalYear(client, companyId, year);
+      setClosed(done);
+      setClosingYear(null);
+      onChanged();
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : t('common.didNotWork'));
+      setClosingYear(null);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function openNextYear() {
     setBusy(true);
@@ -111,6 +137,19 @@ export function PeriodsPanel({
 
         <div className="ds-panel__body">
           <FormError message={failure} />
+          {closed && (
+            <div className="acct__yearresult" role="status">
+              <p className="acct__reconciled">
+                {t('acct.yearClosed', {
+                  year: String(closed.fiscal_year),
+                  profit: money(closed.profit_to_retained_earnings, {
+                    currency: closed.currency,
+                  }),
+                })}
+              </p>
+            </div>
+          )}
+
           {calendar.years.map((y) => (
             <YearStrip
               key={y.fiscal_year}
@@ -120,8 +159,26 @@ export function PeriodsPanel({
               closableID={mayClose ? closable : null}
               mayClose={mayClose}
               onChanged={onChanged}
+              // Offered only when every month of the year is closed and none is
+              // locked. A button that is usually refused is a button people
+              // stop believing, and this one is refused for four different
+              // reasons.
+              onCloseYear={
+                mayReopen && readyToClose(y.periods)
+                  ? () => setClosingYear(y.fiscal_year)
+                  : undefined
+              }
             />
           ))}
+
+          {closingYear !== null && (
+            <ConfirmYearEnd
+              year={closingYear}
+              busy={busy}
+              onCancel={() => setClosingYear(null)}
+              onConfirm={() => void closeYear(closingYear)}
+            />
+          )}
         </div>
       </section>
     </>
@@ -135,6 +192,7 @@ function YearStrip({
   closableID,
   mayClose,
   onChanged,
+  onCloseYear,
 }: {
   companyId: string;
   year: number;
@@ -142,11 +200,19 @@ function YearStrip({
   closableID: string | null;
   mayClose: boolean;
   onChanged: () => void;
+  onCloseYear?: () => void;
 }) {
   const t = useT();
   return (
     <section className="acct__year" aria-label={String(year)}>
-      <h3 className="ds-h3 acct__yearname">{year}</h3>
+      <div className="acct__yearhead">
+        <h3 className="ds-h3 acct__yearname">{year}</h3>
+        {onCloseYear && (
+          <button className="ds-btn ds-btn--quiet" onClick={onCloseYear}>
+            {t('acct.closeYear')}
+          </button>
+        )}
+      </div>
       <ol className="acct__months">
         {periods.map((p) => (
           <MonthTile
@@ -303,5 +369,57 @@ function MonthTile({
         </div>
       )}
     </li>
+  );
+}
+
+/** Whether a year is ready for the year-end routine.
+ *
+ *  Every month closed, and none locked — locked means it has already been
+ *  through. The server checks all of this again and refuses with a sentence;
+ *  this is only about whether to offer the button, because a control that is
+ *  usually refused is one people stop pressing. */
+function readyToClose(periods: Period[]): boolean {
+  return (
+    periods.length > 0 &&
+    periods.every((p) => p.state === 'closed')
+  );
+}
+
+/** The confirmation.
+ *
+ *  Closing a year is the one act in this product that cannot be undone by
+ *  anybody: it locks every month beyond reopening. So it is confirmed, and the
+ *  confirmation says what will happen rather than asking "are you sure" — which
+ *  is a question nobody has ever answered no to. */
+function ConfirmYearEnd({
+  year,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  year: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="acct__confirm" role="alertdialog" aria-label={t('acct.closeYear')}>
+      <p className="acct__confirmbody">
+        {t('acct.closeYearWarning', { year: String(year) })}
+      </p>
+      <div className="acct__reopenactions">
+        <button
+          className="ds-btn ds-btn--primary"
+          disabled={busy}
+          onClick={onConfirm}
+        >
+          {t('acct.closeYearConfirm', { year: String(year) })}
+        </button>
+        <button className="ds-btn ds-btn--quiet" onClick={onCancel}>
+          {t('action.cancel')}
+        </button>
+      </div>
+    </div>
   );
 }

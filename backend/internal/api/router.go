@@ -795,6 +795,12 @@ func (s *Server) Routes() []Route {
 			s.handleClosePeriod, ""},
 		{http.MethodPost, "/api/v1/accounting/periods/{periodID}/reopen", AccessPermission, "accounting.reopen_period",
 			s.handleReopenPeriod, ""},
+		{http.MethodPost, "/api/v1/accounting/year-end", AccessPermission, "accounting.reopen_period",
+			s.handleCloseYear,
+			"closing a YEAR empties revenue and expense into retained earnings and " +
+				"locks every month in it beyond reopening, so it takes the more " +
+				"restricted of the two period permissions rather than the one that " +
+				"closes a month"},
 
 		// --- cash and bank (C2), and the reconciliation (C11) ---
 		//

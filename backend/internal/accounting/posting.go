@@ -176,7 +176,7 @@ func Post(ctx context.Context, tx pgx.Tx, e Entry) (Result, error) {
 			"An exchange rate cannot be negative.")
 	}
 
-	periodID, err := resolvePeriod(ctx, tx, e.CompanyID, e.Date)
+	periodID, err := periodFor(ctx, tx, e)
 	if err != nil {
 		return Result{}, err
 	}
@@ -489,6 +489,53 @@ func resolvePeriod(ctx context.Context, tx pgx.Tx, companyID uuid.UUID, on time.
 			"The accounting period covering %s is %s. Reopening it needs an "+
 				"owner and a written reason.",
 			on.Format("2 January 2006"), state)
+	}
+	return id, nil
+}
+
+// resolvePeriodForClose finds the period a YEAR-END entry belongs to.
+//
+// The one entry a closed period accepts, for the reason 0082 sets out: it is
+// dated on the last day of the year, that day is in December, and December has
+// to be closed before the figures the entry draws on are final. It is not a
+// transaction in the period; it is the act of closing it.
+//
+// A LOCKED period is still refused. Locking is the state a year reaches once
+// its closing entry has posted, and there is no second one.
+// periodFor is the period an entry belongs to, by whichever rule applies to
+// it. Every entry but one goes through `resolvePeriod`; the year-end close goes
+// through the exemption 0082 describes.
+func periodFor(
+	ctx context.Context, tx pgx.Tx, e Entry,
+) (uuid.UUID, error) {
+	if e.SourceType == "year_end_close" {
+		return resolvePeriodForClose(ctx, tx, e.CompanyID, e.Date)
+	}
+	return resolvePeriod(ctx, tx, e.CompanyID, e.Date)
+}
+
+func resolvePeriodForClose(
+	ctx context.Context, tx pgx.Tx, companyID uuid.UUID, on time.Time,
+) (uuid.UUID, error) {
+	var id uuid.UUID
+	var state string
+	err := tx.QueryRow(ctx, `
+		SELECT id, state FROM fiscal_period
+		WHERE company_id = $1 AND $2::date BETWEEN starts_on AND ends_on`,
+		companyID, on).Scan(&id, &state)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, errs.Newf(errs.CodeConflict,
+			"No accounting period covers %s, so the year cannot be closed.",
+			on.Format("2 January 2006"))
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if state == "locked" {
+		return uuid.Nil, errs.Newf(errs.CodeConflict,
+			"The period covering %s is already locked, which means the year "+
+				"has been closed.", on.Format("2 January 2006"))
 	}
 	return id, nil
 }

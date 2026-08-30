@@ -113,6 +113,39 @@ func (s *Server) handleReopenPeriod(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, out)
 }
 
+// handleCloseYear runs C10's year-end routine.
+//
+// Behind `accounting.reopen_period` rather than `close_period`, deliberately.
+// Closing a month can be undone by somebody with a reason; closing a YEAR
+// empties the revenue and expense accounts into Retained Earnings and locks
+// every month in it beyond reopening. That is the more consequential act, so it
+// takes the more restricted permission — the one C10 puts at Owner level.
+func (s *Server) handleCloseYear(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		FiscalYear int `json:"fiscal_year"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if req.FiscalYear == 0 {
+		httpx.Error(w, r, errs.Validation("Say which year to close.").
+			WithField("fiscal_year", "The calendar year the fiscal year starts in."))
+		return
+	}
+	scope, err := s.fiscalScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.fiscal.CloseYear(r.Context(), scope, req.FiscalYear)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
 func (s *Server) fiscalScopeAndID(
 	r *http.Request,
 ) (fiscal.Scope, uuid.UUID, error) {

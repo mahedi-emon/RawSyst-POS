@@ -26,6 +26,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 )
 
 // A company that comes out of provisioning can post.
@@ -304,6 +306,18 @@ type calendarFixture struct {
 func seedCalendar(t *testing.T, h *harness) *calendarFixture {
 	t.Helper()
 	f := h.seedShop(t, "owner")
+
+	// The real chart, not the fixture's hand-built one. The year-end routine
+	// posts the result into Retained Earnings, which the seeded chart has at
+	// 3200 and the hand-built one has never had — the 0048 lesson exactly: a
+	// fixture that invents its own accounts proves the routine and steps over
+	// the join between the routine and the chart every real company has.
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		return provisioning.SeedChartOfAccounts(t.Context(), tx, f.tenantID, f.companyID)
+	}); err != nil {
+		t.Fatalf("seed the chart: %v", err)
+	}
+
 	out := &calendarFixture{shopFixture: f, token: f.token}
 
 	// The shop fixture creates exactly one period — August 2026, the month it
