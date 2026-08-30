@@ -29,13 +29,16 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
@@ -120,6 +123,9 @@ type Server struct {
 	integrations *integration.Service
 	portability  *portability.Service
 	ops          *ops.Service
+	labels       *labels.Service
+	insight      *insight.Service
+	platform     *platformops.Service
 	aftersales   *aftersales.Service
 	people       *people.Service
 	audit        *audit.Service
@@ -197,6 +203,9 @@ func NewServer(
 	integrationSvc *integration.Service,
 	portabilitySvc *portability.Service,
 	opsSvc *ops.Service,
+	labelSvc *labels.Service,
+	insightSvc *insight.Service,
+	platformSvc *platformops.Service,
 	aftersalesSvc *aftersales.Service,
 	peopleSvc *people.Service,
 	auditSvc *audit.Service,
@@ -234,6 +243,9 @@ func NewServer(
 		integrations: integrationSvc,
 		portability:  portabilitySvc,
 		ops:          opsSvc,
+		labels:       labelSvc,
+		insight:      insightSvc,
+		platform:     platformSvc,
 		aftersales:   aftersalesSvc,
 		people:       peopleSvc,
 		audit:        auditSvc,
@@ -1449,6 +1461,84 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/support/tickets/{ticketID}/close", AccessPermission, "support.raise",
 			s.handleCloseTicket, ""},
 
+		// --- the barcode engine and label studio (B3) ---
+		//
+		// Printing a label and designing one are different verbs. Putting stock
+		// on a shelf means printing a shelf ticket, daily, by whoever is doing
+		// it; redesigning the tag that carries the shop's price and logo, or
+		// changing the rule that builds every barcode from here on, is not.
+		{http.MethodGet, "/api/v1/labels/scheme", AccessPermission, "label.print",
+			s.handleGetBarcodeScheme,
+			"readable by anybody who prints, because the scheme is what the " +
+				"code on the tag will say"},
+		{http.MethodPut, "/api/v1/labels/scheme", AccessPermission, "label.manage",
+			s.handleSetBarcodeScheme,
+			"changing it does not regenerate existing barcodes: a code printed " +
+				"on nine hundred hang tags does not move because somebody " +
+				"edited a setting"},
+		{http.MethodPost, "/api/v1/labels/barcodes", AccessPermission, "label.manage",
+			s.handleGenerateBarcodes,
+			"B3's bulk generator; a variant that already has a code keeps it " +
+				"unless somebody deliberately says otherwise"},
+		{http.MethodPut, "/api/v1/labels/barcodes/{variantID}", AccessPermission, "label.manage",
+			s.handleSetVariantBarcode,
+			"B3's manual override, for a product that has to carry a code " +
+				"somebody else assigned"},
+
+		{http.MethodGet, "/api/v1/labels/templates", AccessPermission, "label.print",
+			s.handleListLabelTemplates, ""},
+		{http.MethodPost, "/api/v1/labels/templates", AccessPermission, "label.manage",
+			s.handleSaveLabelTemplate, ""},
+		{http.MethodPut, "/api/v1/labels/templates/{templateID}", AccessPermission, "label.manage",
+			s.handleSaveLabelTemplate, ""},
+		{http.MethodDelete, "/api/v1/labels/templates/{templateID}", AccessPermission, "label.manage",
+			s.handleDeleteLabelTemplate, ""},
+		{http.MethodPost, "/api/v1/labels/print", AccessPermission, "label.print",
+			s.handlePrintLabels,
+			"a POST although it writes nothing: a selection can name several " +
+				"hundred variants and a query string that long is one a proxy " +
+				"will truncate"},
+
+		// --- global search (D7) ---
+		//
+		// AccessAuthenticated, with no permission of its own, because it is a
+		// lens over what the caller can already reach rather than a thing to be
+		// granted. Each branch of the query is gated by the permission that
+		// guards what it finds: a cashier searching a name gets the product and
+		// not the employee. A permission here would have to be narrow enough to
+		// find nothing or wide enough to hand a till the staff list.
+		{http.MethodGet, "/api/v1/search", AccessAuthenticated, "",
+			s.handleSearch,
+			"every branch is filtered by the permission guarding the thing it " +
+				"finds, so this widens nothing"},
+
+		// --- analytics and forecasting (D2) ---
+		//
+		// Behind `report.view`, which the dashboard already uses. A second verb
+		// for the same figures grouped differently would be a permission an
+		// administrator has to discover before the screen works.
+		//
+		// Nothing here is stored. Every figure is a question about facts that
+		// already exist, and materialising them would create a second copy of
+		// the shop's numbers free to drift from the ledger.
+		{http.MethodGet, "/api/v1/analytics/kpis", AccessPermission, "report.view",
+			s.handleKPIs,
+			"D2's thirteen figures in one query, because an average order value " +
+				"that does not divide this revenue by these orders is worse " +
+				"than none"},
+		{http.MethodGet, "/api/v1/analytics/movers", AccessPermission, "report.view",
+			s.handleMovers,
+			"fast-moving and dead stock are the same measurement sorted two " +
+				"ways, so they are one query and one definition of velocity"},
+		{http.MethodGet, "/api/v1/analytics/forecast", AccessPermission, "report.view",
+			s.handleForecast,
+			"says out loud that it is last month repeated, because an owner " +
+				"ordering against a number has to know what is behind it"},
+		{http.MethodGet, "/api/v1/analytics/profitability", AccessPermission, "report.view",
+			s.handleProfitability,
+			"credit notes subtracted rather than excluded: a category whose " +
+				"goods mostly come back is not a profitable category"},
+
 		// --- the audit trail (D4) ---
 		//
 		// Read-only, and there is no write route by design: an audit row is
@@ -1476,6 +1566,33 @@ func (s *Server) Routes() []Route {
 			s.handleVATReturn, ""},
 
 		// --- platform control plane ---
+		// H8's dashboard. Metadata about tenants, never anything inside one:
+		// how many, how recent, how many failed. The guard test that walks this
+		// schema looking for tables the platform may read exists to keep that
+		// line where it is, and the only place it is deliberately crossed is a
+		// support ticket — which is text somebody wrote in order to be read.
+		{http.MethodGet, "/api/v1/platform/health", AccessSuperAdmin, "",
+			s.handlePlatformHealth,
+			"counts, not lists: an operator needs the shape of the load, and " +
+				"the names would be an exposure that answers no question"},
+		{http.MethodGet, "/api/v1/platform/tenants", AccessSuperAdmin, "",
+			s.handleListTenants,
+			"active means somebody traded in the last thirty days; counting a " +
+				"signup as active is how a platform tells itself a story"},
+		{http.MethodGet, "/api/v1/platform/jobs/failed", AccessSuperAdmin, "",
+			s.handleFailedJobs, ""},
+		{http.MethodPost, "/api/v1/platform/jobs/{jobID}/retry", AccessSuperAdmin, "",
+			s.handleRetryJob,
+			"a DEAD job is deliberately not retriable: it exhausted its " +
+				"attempts on something retrying cannot fix, and a button that " +
+				"looped it would hide the real problem"},
+		{http.MethodGet, "/api/v1/platform/support", AccessSuperAdmin, "",
+			s.handleSupportQueue,
+			"H10's central queue, urgent first"},
+		{http.MethodPost, "/api/v1/platform/support/{ticketID}/reply", AccessSuperAdmin, "",
+			s.handleAnswerTicket,
+			"the author comes from the token, never the body: a reply that " +
+				"could name its own author is one anybody could sign as support"},
 		{http.MethodPost, "/api/v1/platform/tenants", AccessSuperAdmin, "",
 			s.handleCreateTenant, ""},
 		{http.MethodPost, "/api/v1/platform/users/{userID}/reset-password",

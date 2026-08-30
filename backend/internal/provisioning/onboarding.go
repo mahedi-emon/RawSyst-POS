@@ -473,6 +473,14 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 			return err
 		}
 
+		// And the label studio, for the same reason the chart is seeded here:
+		// a company created after 0095 would otherwise open the studio on an
+		// empty list, and the print button would answer "this company has no
+		// thermal label set up" — a layer that works with no path through it.
+		if err := SeedLabelStudio(ctx, tx, a.TenantID, companyID); err != nil {
+			return err
+		}
+
 		// And the calendar the chart is kept against.
 		//
 		// Every journal entry needs a fiscal period, and everything this
