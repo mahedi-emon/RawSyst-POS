@@ -343,6 +343,17 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		// the actual payload, is deliberately tenant-only (migration 0017).
 		"sync_batch":         true,
 		"device_sync_cursor": true,
+		// Backup status across all tenants, which H8 puts on the Super Admin
+		// health dashboard and H4 makes a platform responsibility: an
+		// unverified backup is the platform owner's problem before it is the
+		// shop's. The row holds a location, a size and a checksum — metadata
+		// ABOUT a tenant's data, never any of it.
+		"backup_record": true,
+		// H10 is a conversation between a tenant and the platform owner. A
+		// support queue only one side can read is not a support queue. The
+		// rows hold what a person chose to write in a ticket, which is why
+		// this is admissible where a sales invoice would not be.
+		"support_ticket": true, "support_message": true,
 	}
 
 	var offenders []string
