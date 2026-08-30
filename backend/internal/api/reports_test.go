@@ -319,15 +319,43 @@ func TestOneTenantCannotDrawAnothersStatements(t *testing.T) {
 	h.tradeOneDay(t, theirs)
 
 	svc := reports.NewService(h.pool)
-
-	// Their company, read in my tenant context: row-level security hides every
-	// line, so the statement is empty rather than forbidden.
 	crossed := reports.Scope{TenantID: mine.tenantID, CompanyID: theirs.companyID}
-	pl, err := svc.ProfitAndLossFor(t.Context(), crossed, day(1), day(31))
-	if err != nil {
-		t.Fatalf("P&L: %v", err)
-	}
-	if pl.RevenueTotal != "0" {
-		t.Fatalf("one tenant read %s of another tenant's revenue", pl.RevenueTotal)
+
+	// Their company, read in my tenant context.
+	//
+	// This used to return an EMPTY statement: row-level security hid every
+	// line, the totals came out at zero, and the test asserted the zero. That
+	// was safe and it was a weaker answer than the one given now.
+	//
+	// Every statement reads the company's base currency first — a statement
+	// that does not say which currency its figures are in is a page of numbers
+	// — and the company row is hidden by the same policy that hides the lines.
+	// So the read fails, with the same "not found" a genuinely missing company
+	// gets, which discloses nothing about whether the id exists.
+	//
+	// All four are checked rather than only the P&L, because the currency read
+	// is what refuses and each statement does its own.
+	for _, c := range []struct {
+		name string
+		draw func() error
+	}{
+		{"profit and loss", func() error {
+			_, e := svc.ProfitAndLossFor(t.Context(), crossed, day(1), day(31))
+			return e
+		}},
+		{"balance sheet", func() error {
+			_, e := svc.BalanceSheetAt(t.Context(), crossed, day(31))
+			return e
+		}},
+		{"trial balance", func() error {
+			_, e := svc.TrialBalanceAt(t.Context(), crossed, day(31))
+			return e
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if err := c.draw(); err == nil {
+				t.Fatalf("one tenant drew another tenant's %s", c.name)
+			}
+		})
 	}
 }

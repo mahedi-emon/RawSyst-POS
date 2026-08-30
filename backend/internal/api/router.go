@@ -37,6 +37,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
@@ -96,6 +97,7 @@ type Server struct {
 	expenses     *expenses.Service
 	stock        *stockops.Service
 	fiscal       *fiscal.Service
+	treasury     *treasury.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -160,6 +162,7 @@ func NewServer(
 	expenseSvc *expenses.Service,
 	stockSvc *stockops.Service,
 	fiscalSvc *fiscal.Service,
+	treasurySvc *treasury.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -184,6 +187,7 @@ func NewServer(
 		expenses:     expenseSvc,
 		stock:        stockSvc,
 		fiscal:       fiscalSvc,
+		treasury:     treasurySvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -791,6 +795,45 @@ func (s *Server) Routes() []Route {
 			s.handleClosePeriod, ""},
 		{http.MethodPost, "/api/v1/accounting/periods/{periodID}/reopen", AccessPermission, "accounting.reopen_period",
 			s.handleReopenPeriod, ""},
+
+		// --- cash and bank (C2), and the reconciliation (C11) ---
+		//
+		// The chart has carried one Cash account and one Bank account since
+		// provisioning was written, and that was all a company could ever have.
+		// Posting rule 9, `transfer.internal`, has been seeded since 0025 and had
+		// never once been called, because nothing knew what the two ends of a
+		// transfer were.
+		//
+		// `accounting.reconcile` is its own verb rather than folded into
+		// `accounting.create`, because reconciling asserts that the books agree
+		// with an outside party -- which is the assertion an auditor relies on,
+		// and a different thing from being allowed to post an entry.
+		{http.MethodGet, "/api/v1/treasury/accounts", AccessPermission, "accounting.view",
+			s.handleListMoneyAccounts, ""},
+		{http.MethodPost, "/api/v1/treasury/accounts", AccessPermission, "accounting.manage_accounts",
+			s.handleCreateMoneyAccount, ""},
+		{http.MethodPost, "/api/v1/treasury/accounts/{accountID}/active", AccessPermission, "accounting.manage_accounts",
+			s.handleSetMoneyAccountActive, ""},
+
+		{http.MethodGet, "/api/v1/treasury/transfers", AccessPermission, "accounting.view",
+			s.handleListMoneyTransfers, ""},
+		{http.MethodPost, "/api/v1/treasury/transfers", AccessPermission, "accounting.create",
+			s.handleMoveMoney,
+			"a transfer between the company's own accounts IS a journal entry, so it " +
+				"is gated with the rest of them"},
+
+		{http.MethodGet, "/api/v1/treasury/statements", AccessPermission, "accounting.reconcile",
+			s.handleListStatements, ""},
+		{http.MethodPost, "/api/v1/treasury/statements", AccessPermission, "accounting.reconcile",
+			s.handleImportStatement, ""},
+		{http.MethodGet, "/api/v1/treasury/statements/{statementID}", AccessPermission, "accounting.reconcile",
+			s.handleGetStatement, ""},
+		{http.MethodPost, "/api/v1/treasury/statements/{statementID}/reconcile", AccessPermission, "accounting.reconcile",
+			s.handleReconcileStatement, ""},
+		{http.MethodPost, "/api/v1/treasury/lines/{lineID}/match", AccessPermission, "accounting.reconcile",
+			s.handleMatchStatementLine,
+			"an empty journal line undoes a match, because pointing a line at an " +
+				"entry and pointing it at nothing are the same edit"},
 
 		// --- the audit trail (D4) ---
 		//
