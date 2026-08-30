@@ -193,6 +193,18 @@ export function longDate(
   return `${parts.d} ${MONTHS[locale][parts.m - 1]} ${parts.y}`;
 }
 
+/** The name of a month, 1-12, in the reader's language.
+ *
+ *  From the same table `longDate` uses rather than from
+ *  `toLocaleDateString`, which reads the BROWSER's locale — a shop that has
+ *  chosen Arabic in this product would still get English month names on a
+ *  machine set to English, on the one screen where the month is the whole of
+ *  the content. */
+export function monthName(month: number, locale: Locale = 'en'): string {
+  const i = Math.min(12, Math.max(1, Math.trunc(month))) - 1;
+  return MONTHS[locale][i] ?? String(month);
+}
+
 /**
  * A record's own name, in the language of whoever is reading it.
  *

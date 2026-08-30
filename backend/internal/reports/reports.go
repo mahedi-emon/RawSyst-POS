@@ -73,8 +73,13 @@ type TrialBalanceRow struct {
 
 // TrialBalance is every account with a balance, plus the proof it balances.
 type TrialBalance struct {
-	AsOf string            `json:"as_of"`
-	Rows []TrialBalanceRow `json:"rows"`
+	AsOf string `json:"as_of"`
+
+	// BaseCurrency is the currency the books are kept in. A statement
+	// without one is a page of numbers -- and this product sells into three
+	// markets, so the reader cannot infer it.
+	BaseCurrency string            `json:"base_currency"`
+	Rows         []TrialBalanceRow `json:"rows"`
 
 	TotalDebit  string `json:"total_debit"`
 	TotalCredit string `json:"total_credit"`
@@ -93,6 +98,9 @@ func (s *Service) TrialBalanceAt(
 	out := TrialBalance{AsOf: asOf.Format("2006-01-02"), Rows: []TrialBalanceRow{}}
 
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		if e := readCurrency(ctx, tx, scope.CompanyID, &out.BaseCurrency); e != nil {
+			return e
+		}
 		rows, e := tx.Query(ctx, `
 			SELECT a.id, a.code, a.name, a.type,
 			       coalesce(sum(l.base_debit), 0),
@@ -162,6 +170,11 @@ type ProfitAndLoss struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 
+	// BaseCurrency is the currency the books are kept in. A statement
+	// without one is a page of numbers -- and this product sells into three
+	// markets, so the reader cannot infer it.
+	BaseCurrency string `json:"base_currency"`
+
 	Revenue      []StatementLine `json:"revenue"`
 	RevenueTotal string          `json:"revenue_total"`
 
@@ -195,6 +208,9 @@ func (s *Service) ProfitAndLossFor(
 	}
 
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		if e := readCurrency(ctx, tx, scope.CompanyID, &out.BaseCurrency); e != nil {
+			return e
+		}
 		// Revenue is credit-normal and expense debit-normal, so each is signed
 		// to read positive when it behaves normally. A negative revenue line is
 		// then visibly odd — a contra entry or a mistake — rather than hidden by
@@ -280,6 +296,11 @@ func isCostOfSales(code, name string) bool {
 type BalanceSheet struct {
 	AsOf string `json:"as_of"`
 
+	// BaseCurrency is the currency the books are kept in. A statement
+	// without one is a page of numbers -- and this product sells into three
+	// markets, so the reader cannot infer it.
+	BaseCurrency string `json:"base_currency"`
+
 	Assets      []StatementLine `json:"assets"`
 	AssetsTotal string          `json:"assets_total"`
 
@@ -312,6 +333,9 @@ func (s *Service) BalanceSheetAt(
 	}
 
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		if e := readCurrency(ctx, tx, scope.CompanyID, &out.BaseCurrency); e != nil {
+			return e
+		}
 		rows, e := tx.Query(ctx, `
 			SELECT a.id, a.code, a.name, a.type,
 			       CASE WHEN a.type = 'asset'
@@ -419,6 +443,11 @@ type CashFlow struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 
+	// BaseCurrency is the currency the books are kept in. A statement
+	// without one is a page of numbers -- and this product sells into three
+	// markets, so the reader cannot infer it.
+	BaseCurrency string `json:"base_currency"`
+
 	Opening string `json:"opening"`
 	Closing string `json:"closing"`
 
@@ -445,6 +474,9 @@ func (s *Service) CashFlowFor(
 	}
 
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		if e := readCurrency(ctx, tx, scope.CompanyID, &out.BaseCurrency); e != nil {
+			return e
+		}
 		cashAccounts, e := cashAccountIDs(ctx, tx, scope.CompanyID)
 		if e != nil {
 			return e

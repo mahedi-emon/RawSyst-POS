@@ -2061,3 +2061,179 @@
   text-align: end;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------------------
+ * Accounting (C9.3, C10, E2.3, D4)
+ * ---------------------------------------------------------------------------
+ *
+ * A financial statement is one of the few screens where the TYPOGRAPHY is the
+ * information: an indented line is a detail, a ruled line is a subtotal, and a
+ * heavy one is a figure somebody will quote. Everything below is that, plus a
+ * calendar drawn as twelve tiles.
+ */
+
+.acct__controls { margin-block-end: var(--space-4); }
+
+.acct__controlrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4);
+  align-items: end;
+}
+
+.acct__settled { padding-block-start: 0; }
+
+/* Two columns: what, and how much. The figures column is sized to the widest
+ * amount a shop is likely to have rather than to its content, so switching
+ * between statements does not shift the numbers sideways. */
+.acct__statement {
+  table-layout: fixed;
+}
+
+.acct__statement td:last-child,
+.acct__statement th:last-child {
+  inline-size: 12rem;
+}
+
+/* A group heading inside a statement — Revenue, Assets. Not a table header
+ * row: it spans the table and introduces the lines under it. */
+.acct__group th {
+  padding-block-start: var(--space-4);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.acct__subtotal th,
+.acct__subtotal td {
+  border-block-start: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.acct__total th,
+.acct__total td {
+  border-block-start: 1px solid var(--border-strong);
+  font-weight: 600;
+}
+
+/* The figure somebody will quote: net profit, the closing cash balance, what
+ * the two sides of a balance sheet come to. A double rule, which is what an
+ * accountant draws under a final total and has since long before screens. */
+.acct__total--strong th,
+.acct__total--strong td {
+  border-block-start: 3px double var(--border-strong);
+  font-size: 1.0625rem;
+}
+
+/* A statement that does not add up, said above the figures rather than as a
+ * red number inside them — a red number in a familiar report is exactly what
+ * a person scanning it does not see. */
+.acct__outofbalance {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.acct__reconciled {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-md);
+  background: var(--success-subtle);
+}
+
+/* What a tax return does not include, in the server's own words. */
+.acct__caveats {
+  margin-block: var(--space-3) 0;
+  padding-inline-start: var(--space-5);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* --- the calendar --------------------------------------------------------- */
+
+.acct__year { margin-block-end: var(--space-6); }
+
+.acct__yearname { margin-block-end: var(--space-3); }
+
+/* Twelve tiles. `auto-fill` with a minimum rather than a fixed twelve columns:
+ * twelve across is unreadable below about 1100px and the year should reflow to
+ * six, four, three and two rather than scroll sideways. */
+.acct__months {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+.acct__month {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+/* Closed and locked months recede. The eye should land on the open ones,
+ * because those are the ones there is something to do about. */
+.acct__month--closed,
+.acct__month--locked {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+/* The month the shop is in. A left border rather than a fill, so it reads as
+ * "you are here" rather than as another state. */
+.acct__month--now {
+  border-inline-start: 3px solid var(--brand);
+}
+
+.acct__monthname {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.acct__reopened {
+  font-style: italic;
+}
+
+.acct__reopenbox {
+  display: grid;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
+
+.acct__reopenactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- the trail ------------------------------------------------------------ */
+
+/* The record as it was recorded. Monospace because it is JSON and wrapped
+ * because a long entity is not worth a horizontal scrollbar on every row. */
+.audit__json {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-inline-size: 28rem;
+  color: var(--text-muted);
+}
+
+/* A UUID, which is evidence and therefore shown, and which nobody reads. */
+.audit__id {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}

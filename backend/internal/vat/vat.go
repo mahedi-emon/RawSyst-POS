@@ -87,6 +87,10 @@ type Return struct {
 	From    string `json:"from"`
 	To      string `json:"to"`
 
+	// BaseCurrency is the currency the figures are in. A return without one is
+	// a page of numbers, and this product prepares returns for three markets.
+	BaseCurrency string `json:"base_currency"`
+
 	// Model is 'vat' or 'sales_tax'. The distinction is not cosmetic: a sales
 	// tax has no input side at all, so a US company's "net payable" is simply
 	// what it collected.
@@ -164,8 +168,8 @@ func (s *Service) Prepare(
 
 	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
 		if e := tx.QueryRow(ctx,
-			`SELECT country FROM company WHERE id = $1`, companyID).
-			Scan(&out.Country); e != nil {
+			`SELECT country, base_currency FROM company WHERE id = $1`, companyID).
+			Scan(&out.Country, &out.BaseCurrency); e != nil {
 			return db.Translate(e, "That company was not found.")
 		}
 
