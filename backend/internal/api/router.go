@@ -29,10 +29,14 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
@@ -46,6 +50,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -110,6 +115,11 @@ type Server struct {
 	orders       *orders.Service
 	loyalty      *loyalty.Service
 	wallet       *wallet.Service
+	workflow     *workflow.Service
+	notify       *notify.Service
+	integrations *integration.Service
+	portability  *portability.Service
+	ops          *ops.Service
 	aftersales   *aftersales.Service
 	people       *people.Service
 	audit        *audit.Service
@@ -182,6 +192,11 @@ func NewServer(
 	orderSvc *orders.Service,
 	loyaltySvc *loyalty.Service,
 	walletSvc *wallet.Service,
+	workflowSvc *workflow.Service,
+	notifySvc *notify.Service,
+	integrationSvc *integration.Service,
+	portabilitySvc *portability.Service,
+	opsSvc *ops.Service,
 	aftersalesSvc *aftersales.Service,
 	peopleSvc *people.Service,
 	auditSvc *audit.Service,
@@ -214,6 +229,11 @@ func NewServer(
 		orders:       orderSvc,
 		loyalty:      loyaltySvc,
 		wallet:       walletSvc,
+		workflow:     workflowSvc,
+		notify:       notifySvc,
+		integrations: integrationSvc,
+		portability:  portabilitySvc,
+		ops:          opsSvc,
 		aftersales:   aftersalesSvc,
 		people:       peopleSvc,
 		audit:        auditSvc,
@@ -1220,6 +1240,214 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/commission-rules", AccessPermission, "payroll.run",
 			s.handleSetCommissionRule,
 			"creates a scheme, flat or tiered, by employee or store"},
+
+		// --- the Approval Centre (D5) and the approval engine (F1) ---
+		//
+		// Watching and deciding are separate verbs. A requester needs to follow
+		// what they asked for without being able to grant it, which is the whole
+		// point of an approval; one permission covering both would make every
+		// Purchase Manager their own signatory.
+		//
+		// There is no route that PERFORMS an approved action. The engine gates,
+		// it does not execute: a module calls Evaluate before it commits and
+		// either proceeds or stops, and a granted request is the module's cue to
+		// be retried by the person who asked. Letting the Centre reach back into
+		// whatever it approved would put the engine inside every module's
+		// transaction and let a rule change break a posting path it knows
+		// nothing about.
+		{http.MethodGet, "/api/v1/approvals", AccessPermission, "approval.view",
+			s.handleListApprovals,
+			"everything waiting for somebody, oldest first"},
+		{http.MethodGet, "/api/v1/approvals/mine", AccessPermission, "approval.view",
+			s.handleMyApprovals,
+			"what the caller themselves asked for; a separate list because " +
+				"\"what happened to my request\" should not be read past " +
+				"everybody else's"},
+		{http.MethodGet, "/api/v1/approvals/{requestID}", AccessPermission, "approval.view",
+			s.handleGetApproval, "one request and every decision taken on it"},
+		{http.MethodPost, "/api/v1/approvals/{requestID}/decide", AccessPermission, "approval.decide",
+			s.handleDecideApproval,
+			"a multi-step rule is granted only at its LAST step, so an Owner's " +
+				"signature never lands on something the Accountant never saw"},
+		{http.MethodPost, "/api/v1/approvals/escalate", AccessPermission, "approval.decide",
+			s.handleEscalateApprovals,
+			"moves what has waited too long; on demand rather than by a timer, " +
+				"so an escalation is always attributable to somebody"},
+
+		{http.MethodGet, "/api/v1/approval-rules", AccessPermission, "approval.manage_rules",
+			s.handleListApprovalRules, ""},
+		{http.MethodPost, "/api/v1/approval-rules", AccessPermission, "approval.manage_rules",
+			s.handleSaveApprovalRule,
+			"F1's argument for a configurable engine: one codebase serves a " +
+				"three-person shop and a three-hundred-person chain"},
+		{http.MethodPost, "/api/v1/approval-rules/{ruleID}/active", AccessPermission, "approval.manage_rules",
+			s.handleSetApprovalRuleActive,
+			"a rule is switched off rather than deleted: the requests it raised " +
+				"name it, and deleting one would leave a decision nobody can explain"},
+
+		{http.MethodGet, "/api/v1/approval-delegations", AccessPermission, "approval.view",
+			s.handleListDelegations, "who is covering for whom"},
+		{http.MethodPost, "/api/v1/approval-delegations", AccessPermission, "approval.decide",
+			s.handleDelegate,
+			"handing your approvals on requires being able to give them: " +
+				"approval.decide, not approval.view"},
+
+		// --- the notification centre (D3) ---
+		//
+		// AccessAuthenticated, with no permission on any of them. Every query here
+		// names the CALLER's own id and there is no parameter that could name
+		// somebody else, so a permission would suggest that reading another
+		// person's inbox is a thing that can be granted. It is not: there is no
+		// code path that would serve it.
+		{http.MethodGet, "/api/v1/notifications", AccessAuthenticated, "",
+			s.handleListNotifications,
+			"the caller's own; the unread count travels with the list so the " +
+				"bell never shows a number a second request has not caught up with"},
+		{http.MethodGet, "/api/v1/notifications/unread", AccessAuthenticated, "",
+			s.handleUnreadCount,
+			"its own query, because the bell is read on every screen and the " +
+				"list is not"},
+		{http.MethodPost, "/api/v1/notifications/read", AccessAuthenticated, "",
+			s.handleMarkAllNotificationsRead,
+			"clears the caller's own bell and nobody else's; the UPDATE names " +
+				"their user id and no parameter could name another"},
+		{http.MethodPost, "/api/v1/notifications/{notificationID}/read", AccessAuthenticated, "",
+			s.handleMarkNotificationRead,
+			"marking your own notification read is about the caller themselves, " +
+				"and a notification that is not theirs is refused by the query"},
+		{http.MethodPost, "/api/v1/notifications/announce", AccessPermission, "notification.manage",
+			s.handleAnnounce,
+			"a notice a manager sends to the whole company; the one write here " +
+				"that reaches somebody else's inbox, which is why it is the one " +
+				"that carries a permission"},
+		{http.MethodGet, "/api/v1/notifications/preferences", AccessAuthenticated, "",
+			s.handleGetNotificationPreferences,
+			"every trigger, not only the ones already stored: a screen showing " +
+				"three settings because three rows exist would hide the eleven " +
+				"somebody most needs to switch on"},
+		{http.MethodPut, "/api/v1/notifications/preferences", AccessAuthenticated, "",
+			s.handleSetNotificationPreference,
+			"in-app cannot be switched off, whatever the request says: the " +
+				"centre is where a shop discovers why a submission failed"},
+
+		// --- webhooks and API keys (H6) ---
+		//
+		// Owner-level. A webhook sends a shop's sales somewhere, and an API key
+		// is a credential that acts on their behalf: both are decisions about
+		// who else gets to see the business, which is not a thing a store
+		// manager decides.
+		//
+		// A key is readable exactly once, in the response to the route that
+		// creates it, and from nowhere else. That is not an omission to fix
+		// later: a product that can show a key a second time is a product where
+		// the key is recoverable from the database.
+		{http.MethodGet, "/api/v1/webhooks", AccessPermission, "integration.view",
+			s.handleListWebhooks,
+			"the event vocabulary travels with the list, so a screen cannot " +
+				"offer an event the server would refuse"},
+		{http.MethodPost, "/api/v1/webhooks", AccessPermission, "integration.manage",
+			s.handleCreateWebhook,
+			"https only, enforced by the database: plain HTTP would put a " +
+				"shop's sales over the wire in clear"},
+		{http.MethodPost, "/api/v1/webhooks/{endpointID}/active", AccessPermission, "integration.manage",
+			s.handleSetWebhookActive,
+			"switched off rather than deleted, so the delivery history that " +
+				"explains a missing week survives"},
+		{http.MethodGet, "/api/v1/webhooks/{endpointID}/deliveries", AccessPermission, "integration.view",
+			s.handleWebhookDeliveries, ""},
+
+		{http.MethodGet, "/api/v1/api-keys", AccessPermission, "integration.view",
+			s.handleListAPIKeys,
+			"never the keys themselves: a prefix, and what each may do"},
+		{http.MethodPost, "/api/v1/api-keys", AccessPermission, "integration.manage",
+			s.handleMintAPIKey,
+			"the only place a key is ever readable; its permissions are " +
+				"intersected with what the caller holds, so a key can never be " +
+				"an escalation"},
+		{http.MethodDelete, "/api/v1/api-keys/{keyID}", AccessPermission, "integration.manage",
+			s.handleRevokeAPIKey,
+			"there is no un-revoke: a key is revoked because somebody believes " +
+				"it leaked, and undoing that would undo the only response available"},
+
+		// --- migration and export (H7) ---
+		//
+		// Three requests to import, not one. H7's flow puts Validation and
+		// Preview between the file and the write, and a single "import this"
+		// route would remove the step where a shop finds out what is about to
+		// happen to their master data.
+		{http.MethodGet, "/api/v1/imports/shapes", AccessPermission, "data.import",
+			s.handleImportShapes,
+			"what each kind of import needs, so a mapping screen can be built " +
+				"from the server's own answer rather than a copy of it"},
+		{http.MethodGet, "/api/v1/imports", AccessPermission, "data.import",
+			s.handleListImports, ""},
+		{http.MethodPost, "/api/v1/imports", AccessPermission, "data.import",
+			s.handleUploadImport,
+			"stages and checks; writes nothing"},
+		{http.MethodGet, "/api/v1/imports/{importID}", AccessPermission, "data.import",
+			s.handleGetImport,
+			"H7's Error Report: refused rows first, each with the reason"},
+		{http.MethodPost, "/api/v1/imports/{importID}/validate", AccessPermission, "data.import",
+			s.handleValidateImport,
+			"re-checkable after a mapping is corrected, without re-uploading"},
+		{http.MethodPost, "/api/v1/imports/{importID}/commit", AccessPermission, "data.import",
+			s.handleCommitImport,
+			"one transaction for the whole batch: every valid row lands or none " +
+				"does, because a half-finished import is worse than none"},
+		{http.MethodPost, "/api/v1/imports/{importID}/cancel", AccessPermission, "data.import",
+			s.handleCancelImport, ""},
+
+		{http.MethodGet, "/api/v1/exports/{kind}", AccessPermission, "data.export",
+			s.handleExport,
+			"streams CSV with a filename, because what happens to it next is " +
+				"that somebody opens it in Excel"},
+
+		// --- backups (H4) ---
+		//
+		// This product records backups; it does not take them. Taking a dump is
+		// the operator's job, and pretending otherwise would be a product that
+		// claims a guarantee it cannot keep.
+		//
+		// What it does own is the distinction H4 insists on: a backup that ran
+		// is not a backup that restores, and the health route answers the second
+		// question rather than the first.
+		{http.MethodGet, "/api/v1/backups/health", AccessPermission, "backup.view",
+			s.handleBackupHealth,
+			"reads the last VERIFIED backup, not the last successful run: the " +
+				"second is a more comforting number and a less true one"},
+		{http.MethodGet, "/api/v1/backups", AccessPermission, "backup.view",
+			s.handleListBackups, ""},
+		{http.MethodPost, "/api/v1/backups", AccessPermission, "backup.run",
+			s.handleStartBackup,
+			"opens the record before the work, so a backup that dies halfway " +
+				"leaves a row somebody can see"},
+		{http.MethodPost, "/api/v1/backups/{backupID}/finish", AccessPermission, "backup.run",
+			s.handleFinishBackup, ""},
+		{http.MethodPost, "/api/v1/backups/{backupID}/verify", AccessPermission, "backup.run",
+			s.handleVerifyBackup,
+			"a failed verification does not stamp verified_at, or the dashboard " +
+				"would read a broken backup as protection"},
+
+		// --- support tickets (H10) ---
+		//
+		// The one conversation that crosses the tenant boundary, which is why
+		// its tables are among the few the platform may read. A ticket carries a
+		// subject and a description, never business records.
+		{http.MethodGet, "/api/v1/support/tickets", AccessPermission, "support.raise",
+			s.handleListTickets,
+			"reading your own tickets and raising one are the same act: there " +
+				"is nothing to see that you did not write"},
+		{http.MethodPost, "/api/v1/support/tickets", AccessPermission, "support.raise",
+			s.handleRaiseTicket, ""},
+		{http.MethodGet, "/api/v1/support/tickets/{ticketID}", AccessPermission, "support.raise",
+			s.handleGetTicket, ""},
+		{http.MethodPost, "/api/v1/support/tickets/{ticketID}/reply", AccessPermission, "support.raise",
+			s.handleReplyToTicket,
+			"the status follows the conversation rather than waiting for " +
+				"somebody to move it, because a hand-maintained status is wrong " +
+				"within a week"},
+		{http.MethodPost, "/api/v1/support/tickets/{ticketID}/close", AccessPermission, "support.raise",
+			s.handleCloseTicket, ""},
 
 		// --- the audit trail (D4) ---
 		//

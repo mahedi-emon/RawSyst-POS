@@ -170,6 +170,56 @@ func seedTheOtherShop(t *testing.T, h *harness) *otherShop {
 		paid.Body.Close()
 	}
 
+	// An approval request, a support ticket, a webhook and a staged import:
+	// the record-naming reads the workflow, support and admin modules added.
+	// Seeded here rather than left uncovered, because a route absent from this
+	// walk is a route whose isolation nothing checks.
+	if rule := h.do(t, http.MethodPost,
+		"/api/v1/approval-rules?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"name": "Every expense", "subject": "expense",
+			"action": "require_approval",
+			"steps":  []map[string]any{{"role": "owner"}},
+		}); rule.StatusCode == http.StatusCreated {
+		rule.Body.Close()
+	} else {
+		rule.Body.Close()
+	}
+
+	if ticket := h.do(t, http.MethodPost,
+		"/api/v1/support/tickets?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"subject": "The other shop needs help",
+			"body":    "Raised so the walk has a ticket to aim at.",
+		}); ticket.StatusCode == http.StatusCreated {
+		o.ids["ticketID"], _ = decodeJSON(t, ticket)["id"].(string)
+	} else {
+		ticket.Body.Close()
+	}
+
+	if hook := h.do(t, http.MethodPost,
+		"/api/v1/webhooks?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"name": "Other shop endpoint", "url": "https://example.invalid/hook",
+			"events": []string{"sale.completed"},
+		}); hook.StatusCode == http.StatusCreated {
+		o.ids["endpointID"], _ = decodeJSON(t, hook)["id"].(string)
+	} else {
+		hook.Body.Close()
+	}
+
+	if batch := h.do(t, http.MethodPost,
+		"/api/v1/imports?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"kind": "customers", "filename": "other.csv",
+			"mapping": map[string]string{"Name": "name"},
+			"csv":     "Name\nOther Shop Import\n",
+		}); batch.StatusCode == http.StatusCreated {
+		o.ids["importID"], _ = decodeJSON(t, batch)["id"].(string)
+	} else {
+		batch.Body.Close()
+	}
+
 	// A catalogue product, for the variant matrix.
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		var productID string
@@ -198,6 +248,10 @@ var crossTenantParams = map[string]bool{
 	"deviceID": true, "invoiceID": true, "paymentID": true, "poID": true,
 	"productID": true, "receiptID": true, "sessionID": true,
 	"supplierID": true, "unitID": true, "userID": true, "variantID": true,
+	// The modules that carry a conversation or a credential rather than a
+	// business record. Isolation matters just as much: a support ticket names
+	// what a shop is struggling with, and a webhook names where their sales go.
+	"endpointID": true, "importID": true, "ticketID": true,
 }
 
 // aimAtTheOtherShop rewrites a route pattern to point at the other tenant's

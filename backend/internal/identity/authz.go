@@ -313,3 +313,21 @@ func (a *Authorizer) Resolve(ctx context.Context, act actor.Actor) (*Grants, err
 
 	return g, nil
 }
+
+// All is every permission held, sorted.
+//
+// The one caller is the API-key screen: a key may carry a subset of what its
+// creator holds, so the form has to offer exactly that set. Sorted rather than
+// map order, because a list of forty permissions that reshuffles on every
+// request is a list nobody can find anything in.
+func (g *Grants) All() []string {
+	if g == nil {
+		return []string{}
+	}
+	out := make([]string, 0, len(g.permissions))
+	for p := range g.permissions {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}

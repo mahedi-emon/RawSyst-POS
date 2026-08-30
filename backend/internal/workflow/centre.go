@@ -19,13 +19,13 @@ import (
 
 // Request is one thing waiting for a decision.
 type Request struct {
-	ID       uuid.UUID `json:"id"`
-	Subject  string    `json:"subject"`
+	ID        uuid.UUID `json:"id"`
+	Subject   string    `json:"subject"`
 	SubjectID uuid.UUID `json:"subject_id"`
-	Summary  string    `json:"summary"`
-	Amount   string    `json:"amount,omitempty"`
-	Status   string    `json:"status"`
-	Step     int       `json:"current_step"`
+	Summary   string    `json:"summary"`
+	Amount    string    `json:"amount,omitempty"`
+	Status    string    `json:"status"`
+	Step      int       `json:"current_step"`
 	// StepsTotal lets a screen say "2 of 3" rather than leaving somebody to
 	// wonder whether their approval was the last one needed.
 	StepsTotal  int    `json:"steps_total"`
@@ -506,4 +506,101 @@ func nullText(s string) any {
 		return nil
 	}
 	return s
+}
+
+// Request reads one request and every decision taken on it.
+//
+// Behind `approval.view`, which a requester holds: somebody who asked for
+// something has to be able to watch it without being able to grant it.
+func (s *Service) Request(
+	ctx context.Context, scope Scope, id uuid.UUID,
+) (Request, error) {
+	var out Request
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		read, e := s.read(ctx, tx, scope.CompanyID, id)
+		out = read
+		return e
+	})
+	return out, db.Translate(err, "")
+}
+
+// Mine is what the caller themselves asked for, decided or is still waiting on.
+//
+// A separate list from Pending rather than a filter on it, because they answer
+// different questions. Pending is "what is waiting for somebody"; this is "what
+// happened to the thing I asked for", and a person checking on their own
+// request should not have to read past everybody else's.
+func (s *Service) Mine(
+	ctx context.Context, scope Scope, includeSettled bool,
+) ([]Request, error) {
+	out := []Request{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, requestSelect+`
+			WHERE r.company_id = $1 AND r.requested_by = $2
+			  AND ($3 OR r.status IN ('pending', 'escalated'))
+			ORDER BY r.requested_at DESC
+			LIMIT 200`, scope.CompanyID, scope.UserID, includeSettled)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			req, e := scanRequest(rows)
+			if e != nil {
+				return e
+			}
+			out = append(out, req)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
+// Delegations lists the cover currently arranged.
+func (s *Service) Delegations(ctx context.Context, scope Scope) ([]Cover, error) {
+	out := []Cover{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT d.id, coalesce(f.full_name, ''), coalesce(t.full_name, ''),
+			       d.from_user_id, d.to_user_id,
+			       to_char(d.starts_on, 'YYYY-MM-DD'),
+			       to_char(d.ends_on, 'YYYY-MM-DD'),
+			       coalesce(d.note, ''),
+			       d.starts_on <= now() AND d.ends_on >= now()
+			FROM approval_delegation d
+			LEFT JOIN app_user f ON f.id = d.from_user_id
+			LEFT JOIN app_user t ON t.id = d.to_user_id
+			WHERE d.company_id = $1 AND d.ends_on >= now() - interval '30 days'
+			ORDER BY d.starts_on DESC
+			LIMIT 200`, scope.CompanyID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c Cover
+			if e := rows.Scan(&c.ID, &c.From, &c.To, &c.FromID, &c.ToID,
+				&c.Starts, &c.Ends, &c.Note, &c.Live); e != nil {
+				return e
+			}
+			out = append(out, c)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
+// Cover is one arrangement of who decides while somebody is away.
+type Cover struct {
+	ID     uuid.UUID `json:"id"`
+	From   string    `json:"from"`
+	To     string    `json:"to"`
+	FromID uuid.UUID `json:"from_user_id"`
+	ToID   uuid.UUID `json:"to_user_id"`
+	Starts string    `json:"starts_on"`
+	Ends   string    `json:"ends_on"`
+	Note   string    `json:"note,omitempty"`
+	// Live says the cover is in force right now, so a screen does not leave
+	// somebody to compare two dates against today in their head.
+	Live bool `json:"is_live"`
 }

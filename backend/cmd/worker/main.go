@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
@@ -83,6 +84,11 @@ func run() error {
 	// and watched on no live tenant — a shop whose books drifted after go-live
 	// would have heard it from its accountant months later.
 	worker.Register(jobs.KindAccountingTieOut, jobs.NewTieOutSweeper(pool))
+	// Outbound webhooks (H6). Sent from here rather than from the API, because
+	// a delivery waits on somebody else's server and the connection an API
+	// handler would hold while waiting is one the tills need.
+	worker.Register(jobs.KindWebhookDispatch,
+		jobs.NewWebhookDispatcher(integration.NewService(pool, cipher)))
 
 	// Sending a message, which for now means password-recovery codes.
 	//

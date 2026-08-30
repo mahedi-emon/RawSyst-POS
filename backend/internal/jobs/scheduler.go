@@ -58,6 +58,10 @@ func (s *Scheduler) Run(ctx context.Context) {
 			// worker that was down at 04:00 still reconciles when it comes
 			// back, which a fire-once-at-04:00 timer would not.
 			s.enqueueTieOut(ctx)
+			// And the outbound webhooks. Same tick, same reasoning: a
+			// receiver that was down when a sale happened gets the delivery
+			// on the next pass rather than never.
+			s.enqueueWebhooks(ctx)
 		}
 	}
 }

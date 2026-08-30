@@ -13,6 +13,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -34,13 +35,18 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
@@ -55,6 +61,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -149,7 +156,7 @@ func newHarness(t *testing.T) *harness {
 	// exactly how the shift module stayed unreachable while its tests passed.
 	shiftSvc := shift.NewService(pool)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), aftersales.NewService(pool), people.NewService(pool, rules), audit.NewService(pool),
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflow.NewService(pool), notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), aftersales.NewService(pool), people.NewService(pool, rules), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
@@ -746,4 +753,23 @@ func TestTheOnboardingRouteRefusesAnyoneButTheOwner(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testCipher is the keyring the integration tests run with.
+//
+// A real one rather than nil: a nil cipher makes SaveEndpoint refuse, and a
+// test suite where every webhook route returns "this installation has no
+// encryption key" proves nothing about the routes.
+func testCipher(t *testing.T) *secrets.Cipher {
+	t.Helper()
+	key, err := secrets.ParseKey(1, base64.StdEncoding.EncodeToString(
+		bytes.Repeat([]byte{0x2a}, 32)))
+	if err != nil {
+		t.Fatalf("build a test key: %v", err)
+	}
+	c, err := secrets.New(key)
+	if err != nil {
+		t.Fatalf("build a test keyring: %v", err)
+	}
+	return c
 }
