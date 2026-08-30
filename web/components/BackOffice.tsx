@@ -45,6 +45,7 @@ import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
 import { useT } from '@rawsyst/shared/i18n/locale';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
 import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
+import { StockArea } from '@rawsyst/shared/stock/StockArea';
 import { Icon, type IconName } from '@rawsyst/shared/ui/Icon';
 import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 
@@ -55,6 +56,7 @@ type Section =
   | 'customers'
   | 'expenses'
   | 'settlement'
+  | 'stock'
   | 'devices'
   | 'einvoicing'
   | 'setup'
@@ -272,6 +274,17 @@ export function BackOffice() {
       key: 'inventory',
       label: t('nav.inventory'),
       icon: 'inventory',
+      group: 'trade',
+      shown: maySeeInventory,
+    },
+    // Beside the catalogue, because they are the two halves of the same
+    // question. Inventory is what the shop SELLS — products, variants, prices.
+    // Stock is how many of them are in the building, where, and what has
+    // happened to them.
+    {
+      key: 'stock',
+      label: t('nav.stock'),
+      icon: 'stock',
       group: 'trade',
       shown: maySeeInventory,
     },
@@ -566,6 +579,8 @@ export function BackOffice() {
         />
       ) : section === 'inventory' && maySeeInventory ? (
         <VariantMatrixScreen companyId={activeCompany} />
+      ) : section === 'stock' && maySeeInventory ? (
+        <StockArea companyId={activeCompany} />
       ) : mayReadFigures ? (
         <DashboardArea
           companyId={activeCompany}

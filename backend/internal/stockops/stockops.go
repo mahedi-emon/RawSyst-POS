@@ -115,11 +115,31 @@ type NewLocation struct {
 	StoreID *uuid.UUID
 }
 
-// Locations lists where stock can be.
+// Branch is a store a location can belong to.
+type Branch struct {
+	ID   uuid.UUID `json:"id"`
+	Code string    `json:"code"`
+	Name string    `json:"name"`
+}
+
+// Places is the locations and the branches together.
+//
+// One reply rather than two requests, because the form that adds a location
+// needs both and neither is useful without the other. It also keeps the branch
+// list behind `inventory.view`: the only other list of stores in the product is
+// on the devices route, and asking a storeman to hold `devices.view` so they
+// can name the room they work in would be a permission granted for a screen it
+// has nothing to do with.
+type Places struct {
+	Data     []Location `json:"data"`
+	Branches []Branch   `json:"branches"`
+}
+
+// Locations lists where stock can be, and the branches one can belong to.
 func (s *Service) Locations(
 	ctx context.Context, scope Scope, includeRetired bool,
-) ([]Location, error) {
-	out := []Location{}
+) (Places, error) {
+	out := Places{Data: []Location{}, Branches: []Branch{}}
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT w.id, w.code, w.name, w.kind,
@@ -147,9 +167,29 @@ func (s *Service) Locations(
 				&l.Store, &l.Active, &l.HoldsStock); err != nil {
 				return err
 			}
-			out = append(out, l)
+			out.Data = append(out.Data, l)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		branches, err := tx.Query(ctx, `
+			SELECT id, code, name FROM store
+			WHERE company_id = $1 AND is_active
+			ORDER BY code`, scope.CompanyID)
+		if err != nil {
+			return err
+		}
+		defer branches.Close()
+
+		for branches.Next() {
+			var b Branch
+			if err := branches.Scan(&b.ID, &b.Code, &b.Name); err != nil {
+				return err
+			}
+			out.Branches = append(out.Branches, b)
+		}
+		return branches.Err()
 	})
 	return out, err
 }

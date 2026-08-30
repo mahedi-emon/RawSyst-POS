@@ -28,6 +28,7 @@ export type IconName =
   | 'dashboard'
   | 'buying'
   | 'inventory'
+  | 'stock'
   | 'customers'
   | 'expenses'
   | 'settlement'
@@ -58,6 +59,10 @@ const PATHS: Record<IconName, string> = {
   buying: 'M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8',
   // Inventory is the same box, stacked — what is held rather than what arrived.
   inventory: 'M4 7h7v6H4zM13 4h7v9h-7zM8 13h8v7H8z',
+  // Stock is boxes on a shelf, with the shelf drawn. The catalogue glyph
+  // beside it is the same boxes WITHOUT one — products the shop sells,
+  // against how many are in the building.
+  stock: 'M3 20h18M6 20v-5h5v5M13 20v-8h5v8M6 11h5M6 7h5M8.5 4h.01',
   customers: 'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 6.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0M17 11l2 2 4-4',
   // Expenses is money leaving: a note with an arrow out of it.
   expenses: 'M3 7h13v8H3zM9.5 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M18 11h4M20 9l2 2-2 2',

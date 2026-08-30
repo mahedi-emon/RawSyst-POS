@@ -1881,3 +1881,183 @@
   border-radius: var(--radius-sm);
   background: var(--rail-hover);
 }
+
+/* ---------------------------------------------------------------------------
+ * Stock (B4)
+ * ---------------------------------------------------------------------------
+ *
+ * Four panels over one design system. Nothing here invents a colour, a radius
+ * or a spacing step: every rule below is layout, plus the three states a
+ * quantity can be in that a bare number cannot express.
+ */
+
+/* The filter bar above the levels table.
+ *
+ * `auto-fit` with a minimum rather than fixed columns, so it is one row on a
+ * desktop, two on a tablet and a stack on a phone without a media query
+ * deciding where those points are. The search field is given twice the minimum
+ * because a product name is longer than a location name. */
+.stock__filters { margin-block-end: var(--space-4); }
+
+.stock__filterrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4);
+  align-items: end;
+}
+
+.stock__filter {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.stock__filter--wide { grid-column: span 2; }
+
+@media (max-width: 40rem) {
+  /* Two columns of one is one column. Without this the search field keeps its
+   * span and the grid grows a second track that nothing else fills. */
+  .stock__filter--wide { grid-column: span 1; }
+}
+
+.stock__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--tap-desk);
+}
+
+@media (pointer: coarse) {
+  .stock__check { min-block-size: var(--tap-mobile); }
+}
+
+/* A quantity, and the three things one can be.
+ *
+ * Below zero is not a small number: C13 lets a shop sell past what it holds
+ * where its policy allows, and the cost of those units is provisional until the
+ * next delivery. Low is a warning about tomorrow. Neither is decoration — they
+ * are the two states somebody scanning a column of figures is looking for.
+ *
+ * Colour is never the only signal: both keep the figure itself, and the low
+ * one is also reported in the `reorder_level` column beside it. */
+.stock__qty { font-variant-numeric: tabular-nums; }
+
+.stock__qty--below {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.stock__qty--low {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* On the movement ledger and the count sheet: which way the stock went.
+ * Deliberately quieter than the two above — a sale taking stock out is the
+ * ordinary business of a shop, not a condition. */
+.stock__qty--out { color: var(--debit); }
+.stock__qty--in { color: var(--credit); }
+
+.stock__qty--short { color: var(--danger); }
+.stock__qty--over { color: var(--info); }
+
+/* Buttons in a panel head, and in a table row. Two rules rather than one
+ * because the row version has to survive a card layout on a phone, where the
+ * cell it sits in is full width. */
+.stock__headactions,
+.stock__rowactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.stock__rowactions { justify-content: flex-end; }
+
+@media (max-width: 40rem) {
+  /* The row's buttons spill off the START edge in RTL when a flex row cannot
+   * fit its children — P60, and the same fix. Wrapping to the start edge is
+   * correct in both directions. */
+  .stock__rowactions { justify-content: flex-start; }
+}
+
+/* A form that opens above the list it will add to. */
+.stock__form { margin-block-end: var(--space-4); }
+
+.stock__startrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: end;
+}
+
+/* Search results while picking products onto a voucher.
+ *
+ * Capped and scrollable rather than pushing the table below it off the screen:
+ * a person typing "shirt" in a clothing shop matches two hundred rows, and the
+ * thing they are working on must stay visible. */
+.stock__picklist {
+  list-style: none;
+  margin: var(--space-2) 0 var(--space-4);
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-block-size: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.stock__pick {
+  inline-size: 100%;
+  justify-content: flex-start;
+  text-align: start;
+  display: grid;
+  gap: 0;
+}
+
+/* Where a transfer has got to.
+ *
+ * A rail of four words rather than a status badge, because "approved" alone
+ * does not say what happens next and this is a document that passes through
+ * four pairs of hands. Steps already taken are filled; the rest are outlines.
+ *
+ * `flex-wrap` because four English words fit on one line and four Arabic ones
+ * at 1.15em do not always. */
+.stock__rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+}
+
+.stock__railstep {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-subtle);
+}
+
+.stock__railstep--done {
+  border-color: var(--brand-border);
+  background: var(--brand-subtle);
+  color: var(--text);
+}
+
+/* A cancelled transfer left the sequence rather than reaching a step in it, so
+ * every step is struck through instead of some being filled. */
+.stock__railstep--stopped {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* A quantity typed into a table cell. Right-aligned like the column it is in,
+ * and narrow enough that four of them fit across a phone. */
+.input--num {
+  inline-size: 6rem;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}

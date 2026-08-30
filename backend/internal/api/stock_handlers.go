@@ -52,7 +52,9 @@ func (s *Server) handleListStockLocations(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+	// Already an envelope: `data` is the locations and `branches` is what a new
+	// one can be attached to.
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 type stockLocationRequest struct {
