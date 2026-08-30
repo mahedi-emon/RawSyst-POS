@@ -253,11 +253,11 @@ func (s *Service) price(
 			"The expense service was built without the regulatory rule registry.")
 	}
 
-	rules, err := catalog.TaxRulesFor(ctx, s.rules, country, in.Date, scope.TenantID)
+	rules, err := catalog.TaxRulesFor(ctx, s.rules, tx, country, in.Date, scope.TenantID)
 	if err != nil {
 		return priced{}, err
 	}
-	standardRate, err := s.rules.VATRate(ctx, country, in.Date, scope.TenantID)
+	standardRate, err := s.rules.VATRate(ctx, tx, country, in.Date, scope.TenantID)
 	if err != nil {
 		return priced{}, err
 	}

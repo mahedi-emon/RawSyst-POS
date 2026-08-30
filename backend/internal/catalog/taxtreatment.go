@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
@@ -64,8 +65,13 @@ func (r TaxRules) RequiresJurisdiction() bool {
 // The date is required for the same reason it is required everywhere in this
 // system: a product's treatment must be validated against the rules that
 // applied when the product was priced, not the rules in force today.
+//
+// tx is the transaction the caller is already inside, or nil when there is
+// none. Passing it keeps the lookup on the connection the caller already holds
+// — see registry.Query.Tx, where a sale that asked the pool for a second
+// connection while holding the first is a deadlock rather than a slow query.
 func TaxRulesFor(
-	ctx context.Context, rules *registry.Service,
+	ctx context.Context, rules *registry.Service, tx pgx.Tx,
 	country string, asOf time.Time, tenantID uuid.UUID,
 ) (TaxRules, error) {
 	country = strings.ToLower(country)
@@ -78,7 +84,7 @@ func TaxRulesFor(
 	}
 
 	err := rules.Into(ctx, registry.Query{
-		Key: key, Country: country, AsOf: asOf, TenantID: tenantID,
+		Key: key, Country: country, AsOf: asOf, TenantID: tenantID, Tx: tx,
 	}, &payload)
 	if err != nil {
 		return TaxRules{}, err

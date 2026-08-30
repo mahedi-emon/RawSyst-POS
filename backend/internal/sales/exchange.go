@@ -505,7 +505,7 @@ func (s *Service) ExchangeGoods(
 		// currency from the registry at the transaction date, stock policy from
 		// the company. A till does not get to be the authority on any of them
 		// merely because the sale arrived inside an exchange.
-		if e := s.applyTaxProfile(ctx, &ex.Replacement, profile, tenantID); e != nil {
+		if e := s.applyTaxProfile(ctx, tx, &ex.Replacement, profile, tenantID); e != nil {
 			return e
 		}
 		out, e = s.ProcessExchange(ctx, tx, term, ex)

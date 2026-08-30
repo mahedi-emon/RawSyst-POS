@@ -73,7 +73,22 @@ type harness struct {
 	// assignment. Grants are resolved once and held for a TTL, so a limit
 	// written after the first request would otherwise not be seen.
 	authz *identity.Authorizer
+
+	// rules lets a test empty the regulatory cache, so a lookup genuinely goes
+	// to the database. A warm cache hides how a rule is fetched, which is
+	// exactly what TestASaleDoesNotHoldTwoConnections is measuring.
+	rules *registry.Service
 }
+
+// harnessPoolConns is how many database connections the test server may hold
+// at once.
+//
+// Named rather than inline because a test asserts against it:
+// TestASaleDoesNotHoldTwoConnections runs exactly this many sales at once, and
+// the number is only meaningful if it is the same number the pool was built
+// with. See that test for what a request holding two connections does to a
+// shop.
+const harnessPoolConns = 8
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
@@ -83,7 +98,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	ctx := context.Background()
 
-	pool, err := db.Open(ctx, config.DB{DSN: dsn, MaxConns: 8, MinConns: 1,
+	pool, err := db.Open(ctx, config.DB{DSN: dsn, MaxConns: harnessPoolConns, MinConns: 1,
 		MaxConnLifetime: time.Hour, MaxConnIdleTime: 30 * time.Minute})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
@@ -140,7 +155,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 
 	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens, authz: authz,
-		shift: shiftSvc}
+		shift: shiftSvc, rules: rules}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role

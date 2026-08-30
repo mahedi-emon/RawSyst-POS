@@ -416,8 +416,19 @@ func TestAnUnchangedLogoIsNotSentTwice(t *testing.T) {
 	resp.Body.Close()
 
 	// A stale validator gets the image, not a 304.
+	//
+	// The stale tag is built by changing the first character to something it is
+	// NOT, rather than to a fixed '0'. A fixed character produces the original
+	// checksum unchanged whenever the real one already begins with it — and
+	// because the test image is deterministic, so is its checksum, so that is
+	// not an occasional flake but a permanent false pass or fail depending on
+	// which digit the hash happens to start with.
+	stale := "0"
+	if strings.HasPrefix(etagSource, "0") {
+		stale = "1"
+	}
 	resp = h.withHeader(t, http.MethodGet, logoPath(f)+"/image", f.token,
-		map[string]string{"If-None-Match": `"0` + etagSource[1:] + `"`}, nil)
+		map[string]string{"If-None-Match": `"` + stale + etagSource[1:] + `"`}, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("re-fetch with a stale ETag: status %d, want 200", resp.StatusCode)
 	}

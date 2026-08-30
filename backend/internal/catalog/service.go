@@ -75,7 +75,7 @@ func (s *Service) CreateProduct(
 			return e
 		}
 
-		if e := s.checkTreatment(ctx, country, tenantID, in); e != nil {
+		if e := s.checkTreatment(ctx, tx, country, tenantID, in); e != nil {
 			return e
 		}
 
@@ -113,9 +113,10 @@ func (s *Service) CreateProduct(
 // invoice missing it is rejected — so the moment to catch it is when the
 // product is set up, not when a customer is waiting at the till.
 func (s *Service) checkTreatment(
-	ctx context.Context, country string, tenantID uuid.UUID, in NewProduct,
+	ctx context.Context, tx pgx.Tx, country string, tenantID uuid.UUID,
+	in NewProduct,
 ) error {
-	rules, err := TaxRulesFor(ctx, s.rules, country, time.Now().UTC(), tenantID)
+	rules, err := TaxRulesFor(ctx, s.rules, tx, country, time.Now().UTC(), tenantID)
 	if err != nil {
 		return err
 	}

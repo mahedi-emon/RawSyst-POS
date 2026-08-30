@@ -95,6 +95,31 @@ type Query struct {
 	Country  string
 	AsOf     time.Time // the TRANSACTION date, never "now"
 	TenantID uuid.UUID // optional: enables a tenant override
+
+	// Tx is the transaction the CALLER is already inside, when there is one.
+	//
+	// This is not an optimisation. A caller holding a transaction holds a
+	// connection, and resolving a rule on a second connection while holding the
+	// first is a pool deadlock waiting for enough concurrency to happen: with
+	// N sales in flight and a pool of N, every connection is held by a sale and
+	// every sale is waiting for a connection that will never be free. Nothing
+	// times out, because acquiring from the pool has no deadline — the till
+	// simply stops, and so does every other till in the shop.
+	//
+	// It is reachable in production, not only under test: the cache makes it
+	// rare rather than impossible, and the moment it is missed is exactly the
+	// moment traffic is highest — a fresh deployment, a cache invalidated by a
+	// registry write, or the first sale of a new month, all of which land on
+	// many tills at once.
+	//
+	// So a caller inside a transaction passes it here and the read joins that
+	// transaction instead of asking the pool for another connection. Callers
+	// with no transaction leave it nil and the pool is used as before.
+	//
+	// Reading registry rows inside the caller's transaction is safe: they are
+	// effective-dated reference data that this transaction never writes, so
+	// there is no lock to take and nothing to deadlock against in the database.
+	Tx pgx.Tx
 }
 
 // Service resolves rules, with a small cache.
@@ -172,9 +197,20 @@ func (s *Service) Resolve(ctx context.Context, q Query) (Rule, error) {
 	}
 
 	var err error
-	if q.TenantID != uuid.Nil {
+	switch {
+	// Inside the caller's transaction: read on the connection they already
+	// hold. See Query.Tx for why asking the pool for a second one deadlocks.
+	//
+	// The tenant GUC is already set on this connection — TxAsTenant set it when
+	// the caller opened the transaction — so the row-level security predicate a
+	// tenant override relies on is in force without setting it again.
+	case q.Tx != nil:
+		err = scan(q.Tx)
+
+	case q.TenantID != uuid.Nil:
 		err = s.pool.TxAsTenant(ctx, q.TenantID, scan)
-	} else {
+
+	default:
 		// Platform-scoped read: registry rows are not tenant-scoped, since the
 		// VAT rate in Saudi Arabia is the same fact for every tenant.
 		err = func() error {
@@ -318,12 +354,17 @@ func (s *Service) Into(ctx context.Context, q Query, dst any) error {
 // VATRate is the single accessor for the standard rate. Every tax computation
 // goes through it, so there is exactly one place where the rate enters the
 // system, and it is always dated.
-func (s *Service) VATRate(ctx context.Context, country string, asOf time.Time, tenantID uuid.UUID) (decimal.Decimal, error) {
+// tx is the transaction the caller already holds, or nil. See Query.Tx.
+func (s *Service) VATRate(
+	ctx context.Context, tx pgx.Tx, country string, asOf time.Time,
+	tenantID uuid.UUID,
+) (decimal.Decimal, error) {
 	return s.Decimal(ctx, Query{
 		Key:      KeyVATStandardRate,
 		Country:  country,
 		AsOf:     asOf,
 		TenantID: tenantID,
+		Tx:       tx,
 	}, "rate")
 }
 

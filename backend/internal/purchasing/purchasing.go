@@ -288,89 +288,110 @@ func (s *Service) CreateOrder(
 
 	var out Order
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
-		var currency string
-		if e := tx.QueryRow(ctx,
-			`SELECT base_currency FROM company WHERE id = $1`,
-			scope.CompanyID).Scan(&currency); e != nil {
-			if errors.Is(e, pgx.ErrNoRows) {
-				return errs.New(errs.CodeNotFound, "That company was not found.")
-			}
-			return e
-		}
-
-		// The supplier and warehouse must belong to this company. Row-level
-		// security only proves they belong to the TENANT, and a group holding
-		// two companies would otherwise let one order against the other's
-		// supplier and receive into the other's warehouse.
-		if e := checkBelongs(ctx, tx, "supplier", in.SupplierID, scope.CompanyID,
-			"That supplier was not found."); e != nil {
-			return e
-		}
-		if e := checkBelongs(ctx, tx, "warehouse", in.WarehouseID, scope.CompanyID,
-			"That warehouse was not found."); e != nil {
-			return e
-		}
-
-		number, e := claimNumber(ctx, tx, scope.CompanyID, "po", "PO")
-		if e != nil {
-			return e
-		}
-
-		var poID uuid.UUID
-		if e := tx.QueryRow(ctx, `
-			INSERT INTO purchase_order
-			  (tenant_id, company_id, supplier_id, warehouse_id, po_number,
-			   expected_on, currency, notes, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-			scope.TenantID, scope.CompanyID, in.SupplierID, in.WarehouseID,
-			number, in.ExpectedOn, currency, nullText(in.Notes), scope.UserID,
-		).Scan(&poID); e != nil {
-			return e
-		}
-
-		subtotal, tax, total := decimal.Zero, decimal.Zero, decimal.Zero
-		for i, line := range in.Lines {
-			net := line.Qty.Mul(line.UnitCost).Round(4)
-			lineTax := net.Mul(line.TaxRate).Round(4)
-			gross := net.Add(lineTax)
-
-			treatment := line.TaxTreatment
-			if treatment == "" {
-				treatment = "standard"
-			}
-
-			if _, e := tx.Exec(ctx, `
-				INSERT INTO po_line
-				  (tenant_id, po_id, line_no, variant_id, description,
-				   qty_ordered, unit_cost, tax_treatment, tax_rate,
-				   net_amount, tax_amount, gross_amount)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-				scope.TenantID, poID, i+1, line.VariantID, line.Description,
-				line.Qty, line.UnitCost, treatment, line.TaxRate,
-				net, lineTax, gross); e != nil {
-				return e
-			}
-
-			subtotal = subtotal.Add(net)
-			tax = tax.Add(lineTax)
-			total = total.Add(gross)
-		}
-
-		if _, e := tx.Exec(ctx, `
-			UPDATE purchase_order
-			SET subtotal_net = $2, tax_total = $3, total_inclusive = $4
-			WHERE id = $1`, poID, subtotal, tax, total); e != nil {
-			return e
-		}
-
-		read, e := s.readOrder(ctx, tx, poID)
-		out = read
+		var e error
+		out, e = s.createOrderInTx(ctx, tx, scope, in, nil, nil, nil)
 		return e
 	})
 	if err != nil {
 		return Order{}, db.Translate(err, "")
 	}
 	return out, nil
+}
+
+// createOrderInTx is the one place a purchase_order row is written.
+//
+// Both callers reach it: a buyer raising an order by hand, and an RFQ award
+// turning the winning quote into an order (B5.1, "Purchase Order generated
+// automatically from the winning quote"). A second implementation for the
+// award path would mean two definitions of what a purchase order is —
+// numbering, company checks, totals computed from lines, and the draft status
+// a buyer must deliberately issue — and receiving, three-way matching and
+// payment all read one shape downstream.
+//
+// rfqID, quoteID and requisitionID record where the order came from, and are
+// nil for an order that came from nowhere but a buyer's judgement.
+func (s *Service) createOrderInTx(
+	ctx context.Context, tx pgx.Tx, scope Scope, in NewOrder,
+	rfqID, quoteID, requisitionID *uuid.UUID,
+) (Order, error) {
+	var currency string
+	if e := tx.QueryRow(ctx,
+		`SELECT base_currency FROM company WHERE id = $1`,
+		scope.CompanyID).Scan(&currency); e != nil {
+		if errors.Is(e, pgx.ErrNoRows) {
+			return Order{}, errs.New(errs.CodeNotFound, "That company was not found.")
+		}
+		return Order{}, e
+	}
+
+	// The supplier and warehouse must belong to this company. Row-level
+	// security only proves they belong to the TENANT, and a group holding
+	// two companies would otherwise let one order against the other's
+	// supplier and receive into the other's warehouse.
+	if e := checkBelongs(ctx, tx, "supplier", in.SupplierID, scope.CompanyID,
+		"That supplier was not found."); e != nil {
+		return Order{}, e
+	}
+	if e := checkBelongs(ctx, tx, "warehouse", in.WarehouseID, scope.CompanyID,
+		"That warehouse was not found."); e != nil {
+		return Order{}, e
+	}
+
+	number, e := claimNumber(ctx, tx, scope.CompanyID, "po", "PO")
+	if e != nil {
+		return Order{}, e
+	}
+
+	var poID uuid.UUID
+	if e := tx.QueryRow(ctx, `
+		INSERT INTO purchase_order
+		  (tenant_id, company_id, supplier_id, warehouse_id, po_number,
+		   expected_on, currency, notes, created_by,
+		   rfq_id, quote_id, requisition_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+		scope.TenantID, scope.CompanyID, in.SupplierID, in.WarehouseID,
+		number, in.ExpectedOn, currency, nullText(in.Notes), scope.UserID,
+		rfqID, quoteID, requisitionID,
+	).Scan(&poID); e != nil {
+		return Order{}, e
+	}
+
+	subtotal, tax, total := decimal.Zero, decimal.Zero, decimal.Zero
+	for i, line := range in.Lines {
+		net := line.Qty.Mul(line.UnitCost).Round(4)
+		lineTax := net.Mul(line.TaxRate).Round(4)
+		gross := net.Add(lineTax)
+
+		treatment := line.TaxTreatment
+		if treatment == "" {
+			treatment = "standard"
+		}
+
+		if _, e := tx.Exec(ctx, `
+			INSERT INTO po_line
+			  (tenant_id, po_id, line_no, variant_id, description,
+			   qty_ordered, unit_cost, tax_treatment, tax_rate,
+			   net_amount, tax_amount, gross_amount)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+			scope.TenantID, poID, i+1, line.VariantID, line.Description,
+			line.Qty, line.UnitCost, treatment, line.TaxRate,
+			net, lineTax, gross); e != nil {
+			return Order{}, e
+		}
+
+		subtotal = subtotal.Add(net)
+		tax = tax.Add(lineTax)
+		total = total.Add(gross)
+	}
+
+	if _, e := tx.Exec(ctx, `
+		UPDATE purchase_order
+		SET subtotal_net = $2, tax_total = $3, total_inclusive = $4
+		WHERE id = $1`, poID, subtotal, tax, total); e != nil {
+		return Order{}, e
+	}
+
+	return s.readOrder(ctx, tx, poID)
 }
 
 // IssueOrder freezes the order and sends it.

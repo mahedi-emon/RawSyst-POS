@@ -235,6 +235,56 @@ func TestConcurrentSalesTakeDistinctChainPositions(t *testing.T) {
 	}
 }
 
+// A request must not hold two database connections at once.
+//
+// This is a deadlock test wearing the clothes of a throughput test. Ringing up
+// a sale opens a transaction, which holds one connection for as long as the
+// sale takes. If anything inside that transaction goes back to the pool for a
+// SECOND connection — resolving the VAT rate from the regulatory registry was
+// the real case — then with the pool exhausted by sales in flight, every one of
+// them waits for a connection that only another of them could release.
+//
+// Nothing recovers from that. Acquiring from the pool has no deadline, so there
+// is no error, no timeout and no log line: every till in the shop stops at
+// once, mid-sale, and stays stopped. The first symptom is a phone call.
+//
+// The shape of the test is the shape of the bug. It fills the pool exactly —
+// one sale per available connection, all starting together, each holding its
+// connection until it commits — so a second acquisition anywhere in the path
+// has nothing left to take. Under the fix it finishes in well under a second;
+// before it, it hung until the suite's own timeout killed it.
+//
+// It is deliberately indifferent to what a sale MEANS. Chain positions, stock
+// and invoice numbers are asserted by the tests around it; this one asserts
+// only that the requests come back at all.
+func TestASaleDoesNotHoldTwoConnections(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	// The registry cache is what usually hides this: a warm cache answers
+	// without touching the database, so the second connection is never asked
+	// for. Cold is the honest state — it is what a fresh deployment, a registry
+	// write, or the first sale of a new month all produce, and each of those
+	// arrives at every till simultaneously.
+	h.rules.Invalidate()
+
+	errs := concurrently(harnessPoolConns, func(i int) error {
+		resp := h.do(t, "POST", "/api/v1/pos/sales", f.token,
+			oneItemSale(f, newUUID(), "1", "115.00", "115.00"))
+		defer resp.Body.Close()
+		if resp.StatusCode != 201 {
+			return errFromStatus(resp.StatusCode)
+		}
+		return nil
+	})
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("till %d: %v", i, err)
+		}
+	}
+}
+
 // The same sale arriving from several retries at once must be rung up once.
 // Sync delivers at least once and a flaky connection retries in parallel.
 func TestTheSameSaleArrivingConcurrentlyIsRungOnce(t *testing.T) {

@@ -504,6 +504,49 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/purchasing/ageing", AccessPermission, "accounting.view",
 			s.handleSupplierAgeing, "what is owed to whom, aged from the due date"},
 
+		// --- Sourcing: requisition, RFQ, quotes, award (B5, B5.1) ---
+		//
+		// Four permissions rather than one, because the control B5.1 describes
+		// depends on separating them. Anybody trusted with stock may ASK for it;
+		// approving somebody else's request is a manager's act; running a
+		// comparison is the buyer's job; and awarding it commits the business to
+		// a supplier. "Who chose this supplier, and why" is the question the
+		// whole module exists to answer, and it is worth less if the person who
+		// ran the comparison also signed it off.
+		{http.MethodGet, "/api/v1/purchasing/requisitions", AccessPermission, "purchasing.view",
+			s.handleListRequisitions, "requests for stock, newest first"},
+		{http.MethodPost, "/api/v1/purchasing/requisitions", AccessPermission, "purchasing.request",
+			s.handleRaiseRequisition,
+			"asks for stock. B5 puts this in reach of any authorised staff, so it carries no cost and needs no buying permission"},
+		{http.MethodGet, "/api/v1/purchasing/requisitions/{requisitionID}", AccessPermission, "purchasing.view",
+			s.handleReadRequisition, "one request and its lines"},
+		{http.MethodPost, "/api/v1/purchasing/requisitions/{requisitionID}/decision", AccessPermission, "purchasing.approve_request",
+			s.handleDecideRequisition,
+			"approves or turns down somebody else's request; a refusal must say why"},
+
+		{http.MethodGet, "/api/v1/purchasing/rfqs", AccessPermission, "purchasing.view",
+			s.handleListRFQs, "requests for quotation"},
+		{http.MethodPost, "/api/v1/purchasing/rfqs", AccessPermission, "purchasing.manage_rfq",
+			s.handleRaiseRFQ, "asks several suppliers to price the same list"},
+		{http.MethodGet, "/api/v1/purchasing/rfqs/{rfqID}/comparison", AccessPermission, "purchasing.view",
+			s.handleCompareRFQ,
+			"B5.1's side-by-side: price, total, VAT, lead time, terms and quality per supplier"},
+		{http.MethodPost, "/api/v1/purchasing/rfqs/{rfqID}/quotes", AccessPermission, "purchasing.manage_rfq",
+			s.handleRecordQuote,
+			"files a supplier's reply; a second reply is a revision that supersedes the first, never an overwrite"},
+		{http.MethodPost, "/api/v1/purchasing/rfqs/{rfqID}/declines", AccessPermission, "purchasing.manage_rfq",
+			s.handleDeclineToQuote,
+			"records that a supplier was asked and said no, which a missing quote cannot tell you"},
+		{http.MethodPost, "/api/v1/purchasing/rfqs/{rfqID}/award", AccessPermission, "purchasing.award_rfq",
+			s.handleAwardRFQ,
+			"picks the winner, with a mandatory reason, and raises the purchase order from that quote"},
+		{http.MethodPost, "/api/v1/purchasing/rfqs/{rfqID}/cancel", AccessPermission, "purchasing.manage_rfq",
+			s.handleCancelRFQ, "abandons a request without awarding it"},
+
+		{http.MethodGet, "/api/v1/purchasing/suppliers/{supplierID}/quotes", AccessPermission, "purchasing.view",
+			s.handleSupplierQuoteHistory,
+			"B5.1's archive: what this supplier has quoted before, won or lost"},
+
 		// --- Customers and receivables (B16, C9.3) ---
 		//
 		// customers.view is deliberately held by a Cashier: a till has to be able

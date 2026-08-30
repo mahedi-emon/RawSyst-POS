@@ -87,7 +87,7 @@ func (s *Service) FinalizeInTx(
 	if err != nil {
 		return Finalized{}, err
 	}
-	if err := s.applyTaxProfile(ctx, &sale, profile, tenantID); err != nil {
+	if err := s.applyTaxProfile(ctx, tx, &sale, profile, tenantID); err != nil {
 		return Finalized{}, err
 	}
 	return s.Finalize(ctx, tx, term, sale)
@@ -108,19 +108,26 @@ type companyProfile struct {
 }
 
 // applyTaxProfile fills in the values the till is not allowed to choose.
+//
+// tx is the sale's own transaction, and the rule lookups below run inside it.
+// They must: this function is called with a connection already held, and a
+// registry read that asked the pool for a second one would deadlock every till
+// in the shop as soon as concurrent sales reached the pool size. See
+// registry.Query.Tx.
 func (s *Service) applyTaxProfile(
-	ctx context.Context, sale *Sale, profile companyProfile, tenantID uuid.UUID,
+	ctx context.Context, tx pgx.Tx, sale *Sale, profile companyProfile,
+	tenantID uuid.UUID,
 ) error {
 	if s.rules == nil {
 		return errs.New(errs.CodeInternal,
 			"The sales service was built without the regulatory rule registry.")
 	}
 
-	rules, err := catalog.TaxRulesFor(ctx, s.rules, profile.country, sale.IssuedAt, tenantID)
+	rules, err := catalog.TaxRulesFor(ctx, s.rules, tx, profile.country, sale.IssuedAt, tenantID)
 	if err != nil {
 		return err
 	}
-	rate, err := s.rules.VATRate(ctx, profile.country, sale.IssuedAt, tenantID)
+	rate, err := s.rules.VATRate(ctx, tx, profile.country, sale.IssuedAt, tenantID)
 	if err != nil {
 		return err
 	}
