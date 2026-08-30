@@ -3,6 +3,7 @@ package sales
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,10 +13,12 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -131,6 +134,11 @@ type Finalized struct {
 	// report has something to show. Under allow_warn the sale still completed.
 	Shortfalls []Shortfall
 
+	// PointsEarned is what the loyalty scheme awarded, so the receipt can say
+	// so. Zero when the shop runs no scheme, the sale was anonymous, or it was
+	// too small to earn a whole point.
+	PointsEarned int
+
 	// AlreadyRung is true when this InvoiceUUID had been finalised before and
 	// nothing new was written. The caller treats it as success: the books
 	// already say what it wanted them to say.
@@ -236,6 +244,13 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 
+	// Stored value is drawn down BEFORE the chain, for the same reason credit
+	// is checked before it: a customer who does not have the store credit they
+	// are trying to spend must not cost the shop an ICV it can never hand back.
+	if err := s.settleStoredValue(ctx, tx, term, sale, invoiceID); err != nil {
+		return Finalized{}, err
+	}
+
 	// The chain last among the writes, so nothing after it can fail and strand
 	// a consumed counter.
 	//
@@ -265,6 +280,15 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 
+	// Points are earned in the same transaction as the sale, so a sale that
+	// posted and points that did not is not a state this product can reach.
+	earned, err := loyalty.Accrue(ctx, tx, term.TenantID, term.CompanyID,
+		sale.CustomerID, invoiceID, earnable(computed.TotalInclusive, sale.Tenders),
+		term.Country, sale.CashierID)
+	if err != nil {
+		return Finalized{}, err
+	}
+
 	// The obligation to report is written in the SAME transaction as the
 	// invoice. A crash between the two would leave an invoice nobody knew to
 	// submit — an unreported document that no queue, no alert and no dashboard
@@ -280,7 +304,83 @@ func (s *Service) Finalize(
 	return Finalized{
 		InvoiceID: invoiceID, Link: link, Computed: computed,
 		Revenue: revenue, COGS: cogs, Shortfalls: costed.Shortfalls,
+		PointsEarned: earned,
 	}, nil
+}
+
+// settleStoredValue draws down the store credit, gift cards and points a sale
+// was paid with.
+//
+// Until this existed, `store_credit` and `loyalty_points` were accepted tenders
+// with nothing behind them: a cashier could settle a sale with credit a customer
+// had never been given, the sale would post, and the liability would go negative
+// with nobody told. The journal has always been right about the ACCOUNT; what it
+// could not know is whether that particular customer had a balance.
+//
+// A gift card is named by the tender's reference — the number printed on the
+// card. Without one, store credit is the customer's own wallet, which means the
+// sale has to say who the customer is.
+func (s *Service) settleStoredValue(
+	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale, invoiceID uuid.UUID,
+) error {
+	for _, t := range sale.Tenders {
+		switch t.Method {
+		case "store_credit":
+			if code := strings.TrimSpace(t.Reference); code != "" {
+				cardID, err := wallet.FindCard(ctx, tx, term.CompanyID, code)
+				if err != nil {
+					return err
+				}
+				if err := wallet.DrawCard(ctx, tx, term.TenantID, term.CompanyID,
+					cardID, t.Amount, sale.Currency, &invoiceID,
+					sale.CashierID); err != nil {
+					return err
+				}
+				continue
+			}
+			if sale.CustomerID == nil {
+				return errs.New(errs.CodeInvalidInput,
+					"Store credit belongs to somebody. Choose the customer, or "+
+						"scan the gift card.")
+			}
+			if err := wallet.Draw(ctx, tx, term.TenantID, term.CompanyID,
+				*sale.CustomerID, t.Amount, sale.Currency, &invoiceID,
+				sale.CashierID); err != nil {
+				return err
+			}
+
+		case "loyalty_points":
+			if sale.CustomerID == nil {
+				return errs.New(errs.CodeInvalidInput,
+					"Points belong to a member. Choose the customer first.")
+			}
+			if err := loyalty.Spend(ctx, tx, term.TenantID, term.CompanyID,
+				*sale.CustomerID, t.Amount, &invoiceID,
+				sale.CashierID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// earnable is what a sale earns points ON.
+//
+// The total, less anything settled with points. Earning points on money that
+// was itself points is a scheme that pays interest on its own liability: spend
+// a hundred points, earn some back, spend those. Small per sale and unbounded
+// over a year.
+func earnable(total decimal.Decimal, tenders []Tender) decimal.Decimal {
+	out := total
+	for _, t := range tenders {
+		if t.Method == "loyalty_points" {
+			out = out.Sub(t.Amount)
+		}
+	}
+	if out.IsNegative() {
+		return decimal.Zero
+	}
+	return out
 }
 
 // alreadyRung recognises a sale the device has sent before.

@@ -28,6 +28,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
@@ -42,6 +43,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -104,6 +106,8 @@ type Server struct {
 	assets       *assets.Service
 	promotions   *promotions.Service
 	orders       *orders.Service
+	loyalty      *loyalty.Service
+	wallet       *wallet.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -172,6 +176,8 @@ func NewServer(
 	assetSvc *assets.Service,
 	promotionSvc *promotions.Service,
 	orderSvc *orders.Service,
+	loyaltySvc *loyalty.Service,
+	walletSvc *wallet.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -200,6 +206,8 @@ func NewServer(
 		assets:       assetSvc,
 		promotions:   promotionSvc,
 		orders:       orderSvc,
+		loyalty:      loyaltySvc,
+		wallet:       walletSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -938,6 +946,72 @@ func (s *Server) Routes() []Route {
 			s.handleOrderDocument,
 			"B11's delivery note is itemised WITHOUT pricing, and the type it is " +
 				"built from has no price fields at all so no screen can put them back"},
+
+		// --- loyalty, store credit and gift cards (B16) ---
+		//
+		// `store_credit` and `loyalty_points` have been accepted TENDERS since
+		// 0018 with no balance anywhere behind them: a till could settle a sale
+		// with credit a customer had never been given, and the liability would go
+		// negative with nobody told. 0086 gives that money somewhere to live and
+		// the sale path now draws it down.
+		//
+		// The reading verbs sit with a cashier, who has to be able to say what is
+		// on a card before taking it in payment. The managing verbs create money
+		// out of nothing from the shop's point of view, which is why they sit
+		// with the people who can also set a credit limit.
+		{http.MethodGet, "/api/v1/loyalty/program", AccessPermission, "loyalty.view",
+			s.handleGetLoyaltyProgram, ""},
+		{http.MethodPut, "/api/v1/loyalty/program", AccessPermission, "loyalty.manage",
+			s.handleSetLoyaltyProgram,
+			"changing the rate does not revalue points already earned: those were " +
+				"posted at the value in force when they were earned, and repricing " +
+				"them would move a liability a closed month has already reported"},
+		{http.MethodGet, "/api/v1/loyalty/members", AccessPermission, "loyalty.view",
+			s.handleListLoyaltyMembers, ""},
+		{http.MethodGet, "/api/v1/loyalty/members/{customerID}", AccessPermission, "loyalty.view",
+			s.handleGetLoyaltyCard, ""},
+		{http.MethodPost, "/api/v1/loyalty/members/{customerID}/adjust", AccessPermission, "loyalty.manage",
+			s.handleAdjustPoints, ""},
+		{http.MethodPost, "/api/v1/loyalty/expire", AccessPermission, "loyalty.manage",
+			s.handleExpirePoints,
+			"run on demand rather than by a timer: a background job that quietly " +
+				"changed a liability on a Saturday would be a change nobody could " +
+				"attribute"},
+
+		{http.MethodGet, "/api/v1/wallets/{customerID}", AccessPermission, "wallet.view",
+			s.handleGetWallet, ""},
+		{http.MethodPost, "/api/v1/wallets/{customerID}/credit", AccessPermission, "wallet.manage",
+			s.handleGiveStoreCredit, ""},
+		{http.MethodGet, "/api/v1/gift-cards", AccessPermission, "wallet.view",
+			s.handleListGiftCards, ""},
+		{http.MethodPost, "/api/v1/gift-cards", AccessPermission, "wallet.manage",
+			s.handleIssueGiftCard,
+			"selling a gift card is not a sale: no revenue and no VAT until it is " +
+				"spent, or the month it was sold in is overstated and the tax is " +
+				"charged twice"},
+		{http.MethodGet, "/api/v1/gift-cards/{cardID}", AccessPermission, "wallet.view",
+			s.handleGetGiftCard, ""},
+		{http.MethodPost, "/api/v1/gift-cards/{cardID}/void", AccessPermission, "wallet.manage",
+			s.handleVoidGiftCard, ""},
+		{http.MethodGet, "/api/v1/gift-cards/by-code/{code}", AccessPermission, "wallet.view",
+			s.handleLookUpGiftCard,
+			"what a till calls when a cashier types a card number; a GET because " +
+				"checking a balance changes nothing"},
+		{http.MethodPost, "/api/v1/store-credit/expire", AccessPermission, "wallet.manage",
+			s.handleExpireStoreCredit, ""},
+
+		// Fitting history is behind the CUSTOMER permissions rather than a pair
+		// of its own: a size is part of the customer record, and inventing
+		// `size.view` would be a permission an administrator has to grant before
+		// the feature works at all.
+		{http.MethodGet, "/api/v1/customers/{customerID}/sizes", AccessPermission, "customers.view",
+			s.handleListCustomerSizes, ""},
+		{http.MethodPut, "/api/v1/customers/{customerID}/sizes", AccessPermission, "customers.manage",
+			s.handleRecordCustomerSize,
+			"an upsert on the garment, so a customer who has gone up a size has a " +
+				"corrected row rather than two rows leaving staff to guess"},
+		{http.MethodDelete, "/api/v1/customers/{customerID}/sizes/{sizeID}", AccessPermission, "customers.manage",
+			s.handleForgetCustomerSize, ""},
 
 		// --- the audit trail (D4) ---
 		//

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
@@ -85,6 +86,10 @@ type Refunded struct {
 
 	Reversal accounting.Result
 	COGS     accounting.Result
+
+	// PointsReversed is what the customer lost by handing the goods back, so a
+	// till can say so rather than leaving them to find out next time.
+	PointsReversed int
 
 	// Effects records which of C14's nine this return carried out. Loyalty and
 	// commission stay false until those modules exist, and Outstanding names
@@ -211,6 +216,23 @@ func (s *Service) ProcessReturn(
 		}
 	}
 
+	// 5, continued. A refund the customer took as store credit has to land on
+	// their wallet, not only in account 2300: the control account and the
+	// subsidiary ledger behind it are one figure, and crediting one without the
+	// other is how a customer is told they have nothing.
+	if err := s.creditRefunds(ctx, tx, term, ret, original, creditNoteID); err != nil {
+		return Refunded{}, err
+	}
+
+	// 6. Loyalty reversed. C14 calls this one of the two that get forgotten,
+	//    and until the scheme existed it genuinely was: a customer could buy,
+	//    earn, return, and keep the points. Points come off in proportion to
+	//    what was handed back.
+	pointsReversed, err := s.reverseLoyalty(ctx, tx, term, ret, original, computed)
+	if err != nil {
+		return Refunded{}, err
+	}
+
 	// 2, 3, 4 and 9. The journal.
 	reversal, cogs, err := s.postReturn(ctx, tx, term, ret, computed, creditNoteID)
 	if err != nil {
@@ -225,17 +247,112 @@ func (s *Service) ProcessReturn(
 		RefundSettled:     true,
 		CreditNoteIssued:  true,
 		JournalPosted:     true,
-		// Loyalty and commission are Phase 2. Left false deliberately, and
-		// named in Outstanding, so a return never claims to be complete when it
-		// is not.
+		LoyaltyReversed:   true,
+		// Commission is still to come. Left false deliberately, and named in
+		// Outstanding, so a return never claims to be complete when it is not.
 	}
 
 	return Refunded{
 		CreditNoteID: creditNoteID, CreditNoteNumber: creditNoteNumber,
 		Link: link, Computed: computed,
 		Reversal: reversal, COGS: cogs,
-		Effects: effects, Outstanding: effects.Missing(),
+		PointsReversed: pointsReversed,
+		Effects:        effects, Outstanding: effects.Missing(),
 	}, nil
+}
+
+// creditRefunds puts a store-credit refund on the customer's wallet.
+//
+// Only the wallet: a refund is not put back on a gift card, because the card is
+// in the customer's pocket and the shop has no way to know it is the same one.
+// A refund to store credit against a sale with no customer is refused earlier
+// than this — there is nowhere for it to go.
+func (s *Service) creditRefunds(
+	ctx context.Context, tx pgx.Tx, term Terminal, ret Return,
+	original originalInvoice, creditNoteID uuid.UUID,
+) error {
+	for _, r := range ret.Refunds {
+		if r.Method != "store_credit" || !r.Amount.IsPositive() {
+			continue
+		}
+		if original.customerID == nil {
+			return errs.New(errs.CodeInvalidInput,
+				"Store credit belongs to somebody. That sale was anonymous, so "+
+					"refund it the way it was paid.")
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO store_credit_entry
+			  (tenant_id, company_id, customer_id, amount, currency, reason,
+			   invoice_id, note, created_by)
+			VALUES ($1,$2,$3,$4,$5,'refunded',$6,$7,$8)`,
+			term.TenantID, term.CompanyID, *original.customerID, r.Amount,
+			original.currency, creditNoteID, nullText(ret.Reason),
+			ret.CashierID); err != nil {
+			return db.Translate(err, "That refund could not be credited.")
+		}
+	}
+	return nil
+}
+
+// reverseLoyalty takes back the points a returned sale earned.
+//
+// In proportion to what came back, rounded UP: a customer who returns half a
+// purchase loses half the points, and the half-point goes to the shop rather
+// than to the customer. Never more than the points that sale actually earned,
+// and never more than the customer still holds — a customer who has already
+// spent them is not put into debt by handing goods back.
+func (s *Service) reverseLoyalty(
+	ctx context.Context, tx pgx.Tx, term Terminal, ret Return,
+	original originalInvoice, computed ComputedReturn,
+) (int, error) {
+	if original.customerID == nil || !computed.TotalInclusive.IsPositive() {
+		return 0, nil
+	}
+
+	var earned int
+	var spend decimal.Decimal
+	err := tx.QueryRow(ctx, `
+		SELECT coalesce(sum(points), 0)::int, coalesce(sum(spend), 0)
+		FROM loyalty_entry
+		WHERE invoice_id = $1 AND reason = 'earned'`, original.id).
+		Scan(&earned, &spend)
+	if err != nil {
+		return 0, err
+	}
+	if earned <= 0 || !spend.IsPositive() {
+		return 0, nil
+	}
+
+	share := computed.TotalInclusive.Div(spend)
+	if share.GreaterThan(decimal.NewFromInt(1)) {
+		share = decimal.NewFromInt(1)
+	}
+	take := share.Mul(decimal.NewFromInt(int64(earned))).Ceil().IntPart()
+	if take <= 0 {
+		return 0, nil
+	}
+
+	held, err := loyalty.Balance(ctx, tx, *original.customerID)
+	if err != nil {
+		return 0, err
+	}
+	if int64(held) < take {
+		take = int64(held)
+	}
+	if take <= 0 {
+		return 0, nil
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO loyalty_entry
+		  (tenant_id, company_id, customer_id, points, reason, invoice_id,
+		   created_by)
+		VALUES ($1,$2,$3,$4,'reversed',$5,$6)`,
+		term.TenantID, term.CompanyID, *original.customerID, -take,
+		original.id, ret.CashierID); err != nil {
+		return 0, db.Translate(err, "Those points could not be taken back.")
+	}
+	return int(take), nil
 }
 
 // alreadyRefunded recognises a return the device has sent before.

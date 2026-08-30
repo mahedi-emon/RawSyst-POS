@@ -36,6 +36,7 @@ func TestANewCompanyGetsAChartItCanPostTo(t *testing.T) {
 		"cash", "bank", "card_clearing", "accounts_receivable", "inventory",
 		"output_vat", "store_credit_liability", "exchange_clearing",
 		"sales_revenue", "cogs", "cost_variance",
+		"loyalty_liability", "loyalty_expense",
 	}
 
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {

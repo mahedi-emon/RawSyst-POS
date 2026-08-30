@@ -146,8 +146,11 @@ func TestFullReturnUnwindsTheSaleCompletely(t *testing.T) {
 	}
 }
 
-// C14 names nine effects. A return that carries out seven must say which two it
+// C14 names nine effects. A return that carries out eight must say which one it
 // did not, rather than reporting success.
+//
+// It was two until B16 was built: loyalty is now reversed on the way out, which
+// is the point of that module. Commission is still to come.
 func TestAReturnSaysWhichEffectsItHasNotCarriedOut(t *testing.T) {
 	s := newShop(t)
 	ctx := context.Background()
@@ -168,17 +171,22 @@ func TestAReturnSaysWhichEffectsItHasNotCarriedOut(t *testing.T) {
 	}
 
 	if got.Effects.Complete() {
-		t.Error("the return claimed all nine effects while loyalty and " +
-			"commission are not built")
+		t.Error("the return claimed all nine effects while commission is not built")
 	}
-	if len(got.Outstanding) != 2 {
-		t.Fatalf("%d effects outstanding, want 2: %v", len(got.Outstanding),
+	if len(got.Outstanding) != 1 {
+		t.Fatalf("%d effects outstanding, want 1: %v", len(got.Outstanding),
 			got.Outstanding)
 	}
 	joined := strings.Join(got.Outstanding, "; ")
-	if !strings.Contains(joined, "loyalty") || !strings.Contains(joined, "commission") {
-		t.Errorf("the outstanding effects are not the two C14 calls easily "+
+	if !strings.Contains(joined, "commission") {
+		t.Errorf("the outstanding effect is not the one C14 calls easily "+
 			"forgotten: %v", got.Outstanding)
+	}
+	// The other one is no longer outstanding, and saying so out loud is what
+	// stops this test being quietly weakened back.
+	if strings.Contains(joined, "loyalty") {
+		t.Error("loyalty is reversed on a return now; it should not be listed " +
+			"as outstanding")
 	}
 }
 

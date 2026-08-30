@@ -144,6 +144,11 @@ var defaultChart = []seedAccount{
 	// as a shortfall, and sending an overage to Other Income would flatter the
 	// month it happened in.
 	{"5500", "Cash Over/Short", "زيادة/عجز النقد", "expense", "cash_over_short", ""},
+	// What the loyalty scheme costs. Points a customer has earned are money the
+	// shop will hand over later, so they are a liability the moment they are
+	// earned and an expense of the sale that earned them. 2400 has existed since
+	// the first chart and had nothing to post against it until 0086.
+	{"5800", "Loyalty Points Cost", "تكلفة نقاط الولاء", "expense", "loyalty_expense", ""},
 	{"5900", "Rounding Differences", "فروق التقريب", "expense", "rounding", ""},
 }
 
