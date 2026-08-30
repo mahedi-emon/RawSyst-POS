@@ -33,6 +33,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/settlement"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sync"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
@@ -91,6 +92,7 @@ type Server struct {
 	shift        *shift.Service
 	settlement   *settlement.Service
 	expenses     *expenses.Service
+	stock        *stockops.Service
 	health       func() error
 	version      string
 
@@ -152,6 +154,7 @@ func NewServer(
 	shiftSvc *shift.Service,
 	settlementSvc *settlement.Service,
 	expenseSvc *expenses.Service,
+	stockSvc *stockops.Service,
 	health func() error,
 	version string,
 ) *Server {
@@ -173,6 +176,7 @@ func NewServer(
 		shift:        shiftSvc,
 		settlement:   settlementSvc,
 		expenses:     expenseSvc,
+		stock:        stockSvc,
 		health:       health,
 		version:      version,
 
@@ -679,6 +683,80 @@ func (s *Server) Routes() []Route {
 			s.handleListExpenseAccounts,
 			"the chart accounts a category may post to; only useful to whoever " +
 				"may point one at an account"},
+		// --- stock operations (B4) ---
+		//
+		// Two verbs seeded in 0005 and unreachable ever since, plus one added by
+		// 0079. The split is by what the act can hide:
+		//
+		//   inventory.view              — reading levels and the movement
+		//                                 ledger. Every role that touches stock
+		//                                 has it.
+		//   inventory.adjust_stock      — writing stock off, and counting.
+		//                                 Whoever holds this can make a theft
+		//                                 disappear, which is why the reason and
+		//                                 the note are mandatory and the voucher
+		//                                 is frozen once posted.
+		//   inventory.transfer_stock    — asking for stock, sending it, and
+		//                                 confirming it arrived.
+		//   inventory.approve_transfer  — letting it go. Deliberately NOT held
+		//                                 by the Inventory Keeper, because a
+		//                                 control the doer can sign off is not a
+		//                                 control.
+		//
+		// Stock locations are managed under adjust_stock rather than a verb of
+		// their own: the two acts a location supports — retiring one and adding
+		// one — are the same kind of decision as correcting a shelf, and a
+		// fifth verb for two routes would be a permission nobody can explain.
+		{http.MethodGet, "/api/v1/stock/locations", AccessPermission, "inventory.view",
+			s.handleListStockLocations,
+			"every stock screen needs somewhere to point at, and a till's " +
+				"branch resolves through this list"},
+		{http.MethodPost, "/api/v1/stock/locations", AccessPermission, "inventory.adjust_stock",
+			s.handleCreateStockLocation, ""},
+		{http.MethodPut, "/api/v1/stock/locations/{locationID}", AccessPermission, "inventory.adjust_stock",
+			s.handleRenameStockLocation, ""},
+		{http.MethodPost, "/api/v1/stock/locations/{locationID}/active", AccessPermission, "inventory.adjust_stock",
+			s.handleSetStockLocationActive, ""},
+
+		{http.MethodGet, "/api/v1/stock/on-hand", AccessPermission, "inventory.view",
+			s.handleStockOnHand, ""},
+		{http.MethodGet, "/api/v1/stock/movements", AccessPermission, "inventory.view",
+			s.handleStockMovements, ""},
+
+		{http.MethodGet, "/api/v1/stock/adjustments", AccessPermission, "inventory.view",
+			s.handleListStockAdjustments,
+			"reading what was written off is how a manager notices somebody " +
+				"writing too much off; gating it behind the verb that DOES the " +
+				"writing would hide it from exactly the person checking"},
+		{http.MethodPost, "/api/v1/stock/adjustments", AccessPermission, "inventory.adjust_stock",
+			s.handleRecordStockAdjustment, ""},
+		{http.MethodGet, "/api/v1/stock/adjustments/{adjustmentID}", AccessPermission, "inventory.view",
+			s.handleGetStockAdjustment, ""},
+
+		{http.MethodPost, "/api/v1/stock/counts", AccessPermission, "inventory.adjust_stock",
+			s.handleOpenStockCount, ""},
+		{http.MethodPut, "/api/v1/stock/counts/{adjustmentID}", AccessPermission, "inventory.adjust_stock",
+			s.handleSaveStockCount, ""},
+		{http.MethodPost, "/api/v1/stock/counts/{adjustmentID}/post", AccessPermission, "inventory.adjust_stock",
+			s.handlePostStockCount, ""},
+		{http.MethodPost, "/api/v1/stock/counts/{adjustmentID}/cancel", AccessPermission, "inventory.adjust_stock",
+			s.handleCancelStockCount, ""},
+
+		{http.MethodGet, "/api/v1/stock/transfers", AccessPermission, "inventory.view",
+			s.handleListStockTransfers, ""},
+		{http.MethodPost, "/api/v1/stock/transfers", AccessPermission, "inventory.transfer_stock",
+			s.handleRequestStockTransfer, ""},
+		{http.MethodGet, "/api/v1/stock/transfers/{transferID}", AccessPermission, "inventory.view",
+			s.handleGetStockTransfer, ""},
+		{http.MethodPost, "/api/v1/stock/transfers/{transferID}/approve", AccessPermission, "inventory.approve_transfer",
+			s.handleApproveStockTransfer, ""},
+		{http.MethodPost, "/api/v1/stock/transfers/{transferID}/dispatch", AccessPermission, "inventory.transfer_stock",
+			s.handleDispatchStockTransfer, ""},
+		{http.MethodPost, "/api/v1/stock/transfers/{transferID}/receive", AccessPermission, "inventory.transfer_stock",
+			s.handleReceiveStockTransfer, ""},
+		{http.MethodPost, "/api/v1/stock/transfers/{transferID}/cancel", AccessPermission, "inventory.transfer_stock",
+			s.handleCancelStockTransfer, ""},
+
 		{http.MethodGet, "/api/v1/dashboard/stock", AccessPermission, "inventory.view",
 			s.handleStockDetail,
 			"variants low or out of stock, summed across the company's warehouses"},

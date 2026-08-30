@@ -434,3 +434,98 @@ func containsText(haystack, needle string) bool {
 	}
 	return false
 }
+
+// The blocker 0078 closed, asserted end to end.
+//
+// Before it, a tenant could complete every step of this wizard — business,
+// branches, tax, staff, hardware, opening balances — and then be refused on the
+// first sale with:
+//
+//	"This branch has no stock location set up, so there is nothing to sell
+//	 from. An owner can add one under Settings > Stock locations."
+//
+// There was no Settings > Stock locations screen, no route behind one, and
+// nothing in the entire product had ever inserted a `warehouse` row. The only
+// INSERTs against that table lived in test fixtures, which is exactly why every
+// test passed while no real shop could trade.
+//
+// So the assertion is not "the wizard wrote a row". It is `resolveWarehouse`'s
+// own question, asked the way the sales path asks it: is there somewhere active
+// this branch can sell from.
+func TestAShopCanSellTheDayItsBranchIsCreated(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedSetup(t, "owner")
+
+	for _, s := range []struct {
+		step    string
+		answers any
+	}{
+		{"business_info", businessAnswers()},
+		{"stores", map[string]any{
+			"stores": []map[string]any{{
+				"code": "RYD", "name": "Olaya branch",
+				"street": "Prince Sultan Road", "building_number": "2322",
+				"district": "Al-Murabba", "city": "Riyadh",
+				"postal_code": "23333", "country_code": "SA",
+			}},
+		}},
+		{"tax", map[string]any{}},
+		{"employees", map[string]any{}},
+		{"hardware", map[string]any{}},
+		{"opening_balances", map[string]any{}},
+	} {
+		save := h.saveStep(t, f, s.step, s.answers)
+		if save.StatusCode != http.StatusNoContent && save.StatusCode != http.StatusOK {
+			t.Fatalf("save %s: status %d — %s", s.step, save.StatusCode, readBody(t, save))
+		}
+		save.Body.Close()
+		done := h.completeStep(t, f, s.step)
+		if done.StatusCode != http.StatusOK {
+			t.Fatalf("complete %s: status %d — %s", s.step, done.StatusCode, readBody(t, done))
+		}
+		done.Body.Close()
+	}
+
+	commit := h.do(t, http.MethodPost, "/api/v1/onboarding/company", f.token, nil)
+	if commit.StatusCode != http.StatusCreated {
+		t.Fatalf("commit: status %d — %s", commit.StatusCode, readBody(t, commit))
+	}
+	companyID, _ := decodeJSON(t, commit)["company_id"].(string)
+
+	// The branches, which are a separate call the wizard makes once the company
+	// exists — the answers collected at the `stores` step are only stored until
+	// there is a company to hang them on.
+	stores := h.do(t, http.MethodPost, "/api/v1/onboarding/stores", f.token,
+		map[string]any{"company_id": companyID})
+	if stores.StatusCode != http.StatusCreated && stores.StatusCode != http.StatusOK {
+		t.Fatalf("create branches: status %d — %s",
+			stores.StatusCode, readBody(t, stores))
+	}
+	stores.Body.Close()
+
+	var sellableFrom int
+	var locationName string
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), `
+			SELECT count(*), coalesce(min(w.name), '')
+			FROM store s
+			JOIN warehouse w
+			  ON w.company_id = s.company_id
+			 AND w.is_active
+			 AND w.kind <> 'transit'
+			 AND (w.store_id = s.id OR w.store_id IS NULL)
+			WHERE s.company_id = $1`, companyID).Scan(&sellableFrom, &locationName)
+	}); err != nil {
+		t.Fatalf("look for somewhere to sell from: %v", err)
+	}
+
+	if sellableFrom == 0 {
+		t.Fatal("the branch has nowhere to sell from, so the first sale would " +
+			"be refused — which is the state every tenant was left in before " +
+			"0078, after completing the whole wizard")
+	}
+	if locationName != "Olaya branch" {
+		t.Errorf("the stock location should be named after its branch, not %q",
+			locationName)
+	}
+}

@@ -643,6 +643,29 @@ func (s *Service) CommitStores(ctx context.Context, companyID uuid.UUID) ([]uuid
 				country).Scan(&id); err != nil {
 				return err
 			}
+
+			// The room the shop is standing in.
+			//
+			// Stock has to be SOMEWHERE, and until 0078 nothing in the product
+			// ever created a place for it: a tenant finished the whole wizard
+			// and then had every sale refused with "this branch has no stock
+			// location set up". The store insert above and this one are the
+			// same act — a branch that exists but cannot hold stock is not a
+			// branch anybody can trade from.
+			//
+			// DO NOTHING rather than an update, because the store step is
+			// re-runnable and a shop that has since renamed its stock location
+			// or added a store room should not have that undone by somebody
+			// stepping back through setup.
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO warehouse (tenant_id, company_id, store_id, code, name, kind)
+				VALUES ($1,$2,$3,upper($4),$5,'shop_floor')
+				ON CONFLICT (company_id, code) DO NOTHING`,
+				a.TenantID, companyID, id,
+				strings.TrimSpace(st.Code), strings.TrimSpace(st.Name)); err != nil {
+				return err
+			}
+
 			created = append(created, id)
 		}
 		return nil

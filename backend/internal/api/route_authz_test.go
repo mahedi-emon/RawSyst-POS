@@ -285,8 +285,10 @@ func TestSeededPermissionsWithNoRoute(t *testing.T) {
 		"sales.discount":   "local — a discount is a field on the sale the till submits, priced and floor-checked server-side by sales.create",
 
 		// awaited
-		"inventory.adjust_stock":      "awaited — Phase 2, stock adjustments and counts",
-		"inventory.transfer_stock":    "awaited — Phase 2, inter-warehouse transfers",
+		//
+		// `inventory.adjust_stock` and `inventory.transfer_stock` used to head
+		// this list. 0079 built the module they were waiting for, so they have
+		// routes now and this test says so by refusing the entries.
 		"catalog.edit":                "awaited — Phase 2, product editing; Phase 1 creates and retires",
 		"accounting.approve":          "awaited — Phase 2, journal approval workflow",
 		"accounting.close_period":     "awaited — Phase 2; the period lock itself is enforced in the database from 0015",
