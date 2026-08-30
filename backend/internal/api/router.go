@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
@@ -108,6 +109,7 @@ type Server struct {
 	orders       *orders.Service
 	loyalty      *loyalty.Service
 	wallet       *wallet.Service
+	aftersales   *aftersales.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -178,6 +180,7 @@ func NewServer(
 	orderSvc *orders.Service,
 	loyaltySvc *loyalty.Service,
 	walletSvc *wallet.Service,
+	aftersalesSvc *aftersales.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -208,6 +211,7 @@ func NewServer(
 		orders:       orderSvc,
 		loyalty:      loyaltySvc,
 		wallet:       walletSvc,
+		aftersales:   aftersalesSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -1055,6 +1059,82 @@ func (s *Server) Routes() []Route {
 				"corrected row rather than two rows leaving staff to guess"},
 		{http.MethodDelete, "/api/v1/customers/{customerID}/sizes/{sizeID}", AccessPermission, "customers.manage",
 			s.handleForgetCustomerSize, ""},
+
+		// --- Delivery and stock reservation (B13) ---
+		//
+		// The list and read routes are gated on delivery.view, which a driver
+		// holds — and both narrow to the caller's OWN runs unless they also
+		// hold delivery.manage. A6.1 gives Delivery Staff "assigned delivery
+		// orders only", and an unnarrowed list would hand a driver the
+		// company's customer address book.
+		{http.MethodGet, "/api/v1/deliveries", AccessPermission, "delivery.view",
+			s.handleListDeliveries,
+			"consignments; a driver sees only their own"},
+		{http.MethodPost, "/api/v1/deliveries", AccessPermission, "delivery.manage",
+			s.handleBookDelivery, "books a consignment against a confirmed order"},
+		{http.MethodGet, "/api/v1/deliveries/{deliveryID}", AccessPermission, "delivery.view",
+			s.handleReadDelivery, "one consignment and every step it has been through"},
+		{http.MethodPost, "/api/v1/deliveries/{deliveryID}/advance", AccessPermission, "delivery.deliver",
+			s.handleAdvanceDelivery,
+			"moves a consignment along B13's pipeline; the transition is checked, so a delivery cannot be marked arrived without having left"},
+
+		{http.MethodPost, "/api/v1/stock/reservations", AccessPermission, "order.manage",
+			s.handleReserveStock,
+			"holds stock against an order so a second channel cannot sell the same unit"},
+		{http.MethodDelete, "/api/v1/stock/reservations/{orderID}", AccessPermission, "order.manage",
+			s.handleReleaseReservation, "lets go of what an order was holding"},
+		{http.MethodGet, "/api/v1/stock/availability", AccessPermission, "inventory.view",
+			s.handleStockAvailability,
+			"on hand, reserved, and what is actually free to sell"},
+
+		// --- Serial numbers and warranty (B15) ---
+		{http.MethodGet, "/api/v1/serials", AccessPermission, "serial.view",
+			s.handleListSerials, "tracked units"},
+		{http.MethodPost, "/api/v1/serials", AccessPermission, "serial.manage",
+			s.handleReceiveSerials, "records serial numbers arriving with a delivery"},
+		{http.MethodGet, "/api/v1/serials/{serialNo}", AccessPermission, "serial.view",
+			s.handleLookupSerial,
+			"the warranty desk's question: what is this, whose is it, is it still covered"},
+
+		// --- Service and repair (B15) ---
+		{http.MethodGet, "/api/v1/service-jobs", AccessPermission, "service.view",
+			s.handleListRepairs, "repairs in progress"},
+		{http.MethodPost, "/api/v1/service-jobs", AccessPermission, "service.view",
+			s.handleBookInRepair,
+			"takes something in for repair; a counter that can see jobs can book one in, because that is the same conversation with the customer"},
+		{http.MethodGet, "/api/v1/service-jobs/{jobID}", AccessPermission, "service.view",
+			s.handleReadRepair, "one job, its diagnosis and the parts fitted"},
+		{http.MethodPost, "/api/v1/service-jobs/{jobID}", AccessPermission, "service.manage",
+			s.handleUpdateRepair,
+			"records progress, and the replacement serial when a unit was swapped rather than fixed"},
+		{http.MethodPost, "/api/v1/service-jobs/{jobID}/parts", AccessPermission, "service.manage",
+			s.handleIssueServicePart,
+			"fits a part: stock leaves, and on a warranty job the shop absorbs the cost"},
+
+		// --- Instalments (B14) ---
+		//
+		// Quoting is separate from opening, and deliberately reachable by a
+		// cashier holding installment.view: a customer at the counter asking
+		// what twelve months would cost must get an answer without anybody
+		// being committed to a plan.
+		{http.MethodPost, "/api/v1/installments/quote", AccessPermission, "installment.view",
+			s.handleQuoteInstalments,
+			"previews a schedule without creating one"},
+		{http.MethodGet, "/api/v1/installments", AccessPermission, "installment.view",
+			s.handleListPlans, "instalment agreements"},
+		{http.MethodPost, "/api/v1/installments", AccessPermission, "installment.manage",
+			s.handleOpenPlan,
+			"turns a credit invoice into a schedule; the sale already posted, so only the finance charge does here"},
+		{http.MethodGet, "/api/v1/installments/{planID}", AccessPermission, "installment.view",
+			s.handleReadPlan, "one agreement and every instalment on it"},
+		{http.MethodPost, "/api/v1/installments/{planID}/collect", AccessPermission, "installment.manage",
+			s.handleCollectInstalment,
+			"marks a customer receipt against the schedule, oldest instalment first"},
+		{http.MethodPost, "/api/v1/installments/{planID}/cancel", AccessPermission, "installment.manage",
+			s.handleCancelPlan, "unwinds an agreement, with a reason"},
+		{http.MethodPost, "/api/v1/installments/accrue", AccessPermission, "installment.manage",
+			s.handleAccrueFinanceIncome,
+			"earns the finance income on instalments now due and charges late fees"},
 
 		// --- the audit trail (D4) ---
 		//

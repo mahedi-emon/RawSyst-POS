@@ -90,12 +90,25 @@ func seedPre0032Clone(t *testing.T, pool *Pool, tenantID uuid.UUID, roleKey stri
 		// 0032's grants, gone. 0033's too, but only for the Purchase Manager:
 		// 0005 already gave the Store Manager catalog.view, so removing it here
 		// would invent a state no tenant was ever in.
+		//
+		// The list is 0032's verbs by NAME rather than `purchasing.%`. A
+		// pattern also strips the sourcing verbs 0087 introduced, which 0051
+		// does not restore and was never meant to — 0051 says so itself: "a
+		// later verb belongs to the migration that introduces it". Removing
+		// them here would invent a tenant that never existed (one that predates
+		// 0032 yet somehow cloned a 0087 template) and then fail the migration
+		// for not repairing it.
 		_, err := tx.Exec(ctx, `
 			DELETE FROM role_permission
 			WHERE role_id = $1
-			  AND (permission LIKE 'purchasing.%'
+			  AND (permission = ANY($3::text[])
 			       OR (permission = 'catalog.view' AND $2 = 'purchase_manager'))`,
-			roleID, roleKey)
+			roleID, roleKey, []string{
+				"purchasing.view", "purchasing.manage_suppliers",
+				"purchasing.create_order", "purchasing.issue_order",
+				"purchasing.receive_goods", "purchasing.record_bill",
+				"purchasing.approve_bill", "purchasing.pay_supplier",
+			})
 		return err
 	})
 	if err != nil {

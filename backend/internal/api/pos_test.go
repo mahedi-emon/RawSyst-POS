@@ -149,6 +149,11 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 			// close a shift at all — which is the same hand-built-chart gap that
 			// hid the cost_variance mapping bug until 0048.
 			{"5500", "Cash Over/Short", "expense", "cash_over_short"},
+			// What honouring a warranty costs (B15). Here for the same reason
+			// Cash Over/Short is: fitting a part free of charge posts, so a
+			// fixture without it cannot complete a warranty repair — the
+			// hand-built-chart gap this list keeps re-learning.
+			{"5450", "Warranty & Service Cost", "expense", "warranty_cost"},
 		}
 		for _, a := range accounts {
 			var id uuid.UUID

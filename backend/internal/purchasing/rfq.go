@@ -792,6 +792,16 @@ func (s *Service) QuotesFromSupplier(
 ) ([]Quote, error) {
 	out := []Quote{}
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		// The supplier must belong to THIS company. Without the check a caller
+		// naming another shop's supplier gets an empty list and a 200, which
+		// reads as "that supplier has never quoted" rather than "that supplier
+		// is none of your business" — and an empty answer is a worse disclosure
+		// than a refusal, because it invites the caller to believe it.
+		if e := checkBelongs(ctx, tx, "supplier", supplierID, scope.CompanyID,
+			"That supplier was not found."); e != nil {
+			return e
+		}
+
 		rows, e := tx.Query(ctx, `
 			SELECT id FROM supplier_quote
 			WHERE supplier_id = $1 AND company_id = $2

@@ -150,6 +150,24 @@ var defaultChart = []seedAccount{
 	// the first chart and had nothing to post against it until 0086.
 	{"5800", "Loyalty Points Cost", "تكلفة نقاط الولاء", "expense", "loyalty_expense", ""},
 	{"5900", "Rounding Differences", "فروق التقريب", "expense", "rounding", ""},
+
+	// B14's finance charge. A markup on an instalment plan is earned over the
+	// term the shop waits for its money, not on the day the goods go out — so
+	// it is parked as income received in advance and released as each
+	// instalment falls due. Booking it all at the sale would report profit the
+	// business has not made yet, compounded every month for a shop that sells
+	// heavily on credit.
+	{"2500", "Deferred Finance Income", "إيرادات تمويل مؤجلة", "liability", "deferred_finance_income", ""},
+	{"4300", "Finance Income", "إيرادات التمويل", "revenue", "finance_income", ""},
+	// B13's delivery charge. Its own revenue line rather than part of Sales,
+	// because what a shop earns carrying goods and what it earns selling them
+	// are different businesses with different margins.
+	{"4400", "Delivery Income", "إيرادات التوصيل", "revenue", "delivery_income", ""},
+	// B15's cost of honouring a warranty: parts fitted free, absorbed by the
+	// shop. Separate from Cost of Goods Sold on purpose — a rising warranty
+	// cost is a quality problem, and folding it into COGS hides it inside the
+	// margin on everything else.
+	{"5450", "Warranty & Service Cost", "تكلفة الضمان والصيانة", "expense", "warranty_cost", ""},
 }
 
 // SeedChartOfAccounts gives a new company the accounts its modules post to.
