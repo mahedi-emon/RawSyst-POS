@@ -28,6 +28,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
@@ -102,6 +103,7 @@ type Server struct {
 	treasury     *treasury.Service
 	assets       *assets.Service
 	promotions   *promotions.Service
+	orders       *orders.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -169,6 +171,7 @@ func NewServer(
 	treasurySvc *treasury.Service,
 	assetSvc *assets.Service,
 	promotionSvc *promotions.Service,
+	orderSvc *orders.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -196,6 +199,7 @@ func NewServer(
 		treasury:     treasurySvc,
 		assets:       assetSvc,
 		promotions:   promotionSvc,
+		orders:       orderSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -900,6 +904,40 @@ func (s *Server) Routes() []Route {
 			s.handleQuotePromotions,
 			"a till prices a cart many times while it is built, so this is the " +
 				"reading verb; nothing is redeemed until the sale is finalised"},
+
+		// --- quotations, orders and delivery documents (B11, B12) ---
+		//
+		// `order.view` reaches the list, one order and the three printable
+		// documents: a picker and a driver both need those, and neither should be
+		// able to change a price. `order.manage` raises, advances, cancels and
+		// records what was picked and delivered.
+		//
+		// 0005 describes the Sales Executive as handling "quotations, orders and
+		// their own customer list" and gave that role no permission that could
+		// reach one. 0085 gives it these, plus the catalogue and customer reads an
+		// order is built from -- the same widow 0033 found for the Purchase
+		// Manager.
+		{http.MethodGet, "/api/v1/orders", AccessPermission, "order.view",
+			s.handleListSalesOrders, ""},
+		{http.MethodPost, "/api/v1/orders", AccessPermission, "order.manage",
+			s.handleRaiseOrder,
+			"always raised as a quotation: confirming is the customer's decision, " +
+				"and a route that could skip it would put \"the customer agreed\" " +
+				"in the hands of whoever typed the order"},
+		{http.MethodGet, "/api/v1/orders/{orderID}", AccessPermission, "order.view",
+			s.handleGetOrder, ""},
+		{http.MethodPost, "/api/v1/orders/{orderID}/advance", AccessPermission, "order.manage",
+			s.handleAdvanceOrder, ""},
+		{http.MethodPost, "/api/v1/orders/{orderID}/cancel", AccessPermission, "order.manage",
+			s.handleCancelOrder, ""},
+		{http.MethodPost, "/api/v1/orders/{orderID}/pick", AccessPermission, "order.manage",
+			s.handlePickOrder, ""},
+		{http.MethodPost, "/api/v1/orders/{orderID}/deliver", AccessPermission, "order.manage",
+			s.handleDeliverOrder, ""},
+		{http.MethodGet, "/api/v1/orders/{orderID}/documents/{kind}", AccessPermission, "order.view",
+			s.handleOrderDocument,
+			"B11's delivery note is itemised WITHOUT pricing, and the type it is " +
+				"built from has no price fields at all so no screen can put them back"},
 
 		// --- the audit trail (D4) ---
 		//
