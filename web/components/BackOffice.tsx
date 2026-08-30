@@ -46,6 +46,8 @@ import { useT } from '@rawsyst/shared/i18n/locale';
 import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
 import { VariantMatrixScreen } from '@rawsyst/shared/inventory/VariantMatrixScreen';
 import { StockArea } from '@rawsyst/shared/stock/StockArea';
+import { AccountingArea } from '@rawsyst/shared/accounting/AccountingArea';
+import { AssetsArea } from '@rawsyst/shared/assets/AssetsArea';
 import { Icon, type IconName } from '@rawsyst/shared/ui/Icon';
 import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 
@@ -56,6 +58,8 @@ type Section =
   | 'customers'
   | 'expenses'
   | 'settlement'
+  | 'accounting'
+  | 'assets'
   | 'stock'
   | 'devices'
   | 'einvoicing'
@@ -310,6 +314,28 @@ export function BackOffice() {
       key: 'settlement',
       label: t('nav.settlement'),
       icon: 'settlement',
+      group: 'trade',
+      shown: maySeeAccounting,
+    },
+    // Last but one in Trade, because it is where the others end up: what was
+    // bought, sold, owed and spent, added together. It also carries the
+    // accounting calendar, which decides whether any of those figures can
+    // still move.
+    {
+      key: 'accounting',
+      label: t('nav.accounting'),
+      icon: 'accounting',
+      group: 'trade',
+      shown: maySeeAccounting,
+    },
+    // PART K puts Assets at the top level, and the two registers under it are
+    // read at different moments from the accounts: an asset register when
+    // something goes missing, an investor register when somebody asks what
+    // they own.
+    {
+      key: 'assets',
+      label: t('nav.assets'),
+      icon: 'assets',
       group: 'trade',
       shown: maySeeAccounting,
     },
@@ -581,6 +607,10 @@ export function BackOffice() {
         <VariantMatrixScreen companyId={activeCompany} />
       ) : section === 'stock' && maySeeInventory ? (
         <StockArea companyId={activeCompany} />
+      ) : section === 'accounting' && maySeeAccounting ? (
+        <AccountingArea companyId={activeCompany} />
+      ) : section === 'assets' && maySeeAccounting ? (
+        <AssetsArea companyId={activeCompany} />
       ) : mayReadFigures ? (
         <DashboardArea
           companyId={activeCompany}

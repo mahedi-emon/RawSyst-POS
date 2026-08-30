@@ -2339,3 +2339,45 @@
   margin: 0;
   max-inline-size: 60ch;
 }
+
+/* ---------------------------------------------------------------------------
+ * Assets and investors (C7, C3.2)
+ * ---------------------------------------------------------------------------
+ */
+
+.assets__form { margin-block-end: var(--space-4); }
+
+.assets__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.assets__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--tap-desk);
+  font-size: 0.875rem;
+}
+
+@media (pointer: coarse) {
+  .assets__check { min-block-size: var(--tap-mobile); }
+}
+
+/* What a depreciation run just did. A status line rather than a toast: the
+ * figure is one a person may want to read twice, and it stays until the next
+ * run replaces it. */
+.assets__charged {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-md);
+  background: var(--success-subtle);
+}
+
+/* Money into the business and money out of it, on an investor's statement.
+ * Colour is not the only signal — the row also says which in words. */
+.inv__in { color: var(--credit); }
+.inv__out { color: var(--debit); }

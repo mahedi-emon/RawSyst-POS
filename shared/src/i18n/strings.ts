@@ -1995,6 +1995,93 @@ export const en = {
   'recon.csvProblem.amount': 'Row {row}: that is not an amount.',
   'recon.csvProblem.columns': 'Row {row}: needs at least a date, a description and an amount.',
   'recon.csvProblem.empty': 'There are no statement lines to read.',
+
+  /* Fixed assets (C7) and investors (C3.2).
+   *
+   * Two of these carry a decision.
+   *
+   * `assets.depreciateMonth` names the month the button will charge rather
+   * than saying "run depreciation". Each month's charge belongs in that
+   * month's profit and loss, so a company four months behind presses it four
+   * times — and a button that said "run depreciation" would invite the
+   * assumption that it brings everything up to date in one entry, which is
+   * exactly the thing the routine must not do.
+   *
+   * `inv.shareMeans` labels the percentage as a share of CAPITAL. Who owns a
+   * business is a legal fact that lives in a shareholders' agreement, and a
+   * percentage printed beside somebody's name with no label invites the wrong
+   * reading of it. */
+
+  'nav.assets': 'Assets',
+  'assets.title': 'Assets and investors',
+  'assets.intro': 'What the business owns and is writing down, and who has money in it.',
+  'assets.register': 'Asset register',
+  'assets.investors': 'Investors',
+  'assets.asset': 'Asset',
+  'assets.where': 'Where and who',
+  'assets.cost': 'Cost',
+  'assets.depreciated': 'Depreciated',
+  'assets.bookValue': 'Book value',
+  'assets.monthsDue': 'Months owed',
+  'assets.perMonth': '{amount} a month',
+  'assets.add': 'Add an asset',
+  'assets.name': 'What it is',
+  'assets.category': 'Category',
+  'assets.categoryHint': 'Vehicle, computer, furniture, equipment.',
+  'assets.residual': 'Worth at the end',
+  'assets.residualHint': 'What it will sell for when the business is finished with it. Nothing, if it will be scrapped.',
+  'assets.life': 'How long it will last',
+  'assets.lifeHint': 'In months. Sixty for a vehicle and thirty-six for a computer are usual.',
+  'assets.acquired': 'Bought on',
+  'assets.serial': 'Serial number',
+  'assets.showDisposed': 'Include disposed',
+  'assets.depreciateMonth': 'Charge {month}',
+  'assets.chargedFor': '{month}: {count} assets charged, {total} in all.',
+  'assets.nothingDue': 'Nothing was due for that month.',
+  'assets.dispose': 'Dispose of it',
+  'assets.disposeOf': 'Disposing of {asset}',
+  'assets.disposedOn': 'Gone {date}',
+  'assets.disposedOnLabel': 'Gone on',
+  'assets.bookValueNow': 'The books say it is worth {amount} today. Whatever you enter below decides the gain or loss, and the figure that posts is worked out from what has actually been depreciated.',
+  'assets.proceeds': 'What was received',
+  'assets.proceedsHint': 'Nothing, if it was scrapped.',
+  'assets.moneyInto': 'Money into',
+  'assets.scrapped': 'Scrapped — no money',
+  'assets.note': 'Note',
+  'assets.noneTitle': 'Nothing in the register yet',
+  'assets.noneBody': 'Vehicles, computers, furniture, equipment — anything the business will still own next year belongs here rather than in expenses.',
+  'inv.investor': 'Investor',
+  'inv.add': 'Add an investor',
+  'inv.name': 'Name',
+  'inv.kindLabel': 'Owner or investor',
+  'inv.kind.owner': 'Owner',
+  'inv.kind.investor': 'Investor',
+  'inv.email': 'Email',
+  'inv.phone': 'Phone',
+  'inv.contributed': 'Put in',
+  'inv.withdrawn': 'Taken out',
+  'inv.net': 'Currently in',
+  'inv.share': 'Share of capital',
+  'inv.shareMeans': 'The share below is of capital contributed, not of ownership — who owns the business is set out in its own agreements.',
+  'inv.record': 'Record money',
+  'inv.recordFor': 'Money for {name}',
+  'inv.putIn': 'Put money in',
+  'inv.tookOut': 'Took money out',
+  'inv.amount': 'Amount',
+  'inv.into': 'Money into',
+  'inv.outOf': 'Money out of',
+  'inv.chooseAccount': 'Choose an account',
+  'inv.when': 'When',
+  'inv.what': 'What happened',
+  'inv.account': 'Account',
+  'inv.reference': 'Reference',
+  'inv.note': 'Note',
+  'inv.statement': 'Statement',
+  'inv.holds': 'Currently has {amount} in the business',
+  'inv.noneTitle': 'No investors recorded',
+  'inv.noneBody': 'Money an owner puts into the business is capital, not income. Recording it here keeps it out of the profit and loss.',
+  'inv.noMovementsTitle': 'Nothing recorded yet',
+  'inv.noMovementsBody': 'Every contribution and withdrawal appears here, with the account the money moved through.',
 } as const;
 
 /** Every string the interface can show. */
@@ -4019,6 +4106,93 @@ export const ar: Record<Key, string> = {
   'recon.csvProblem.amount': 'السطر {row}: هذا ليس مبلغاً.',
   'recon.csvProblem.columns': 'السطر {row}: يحتاج على الأقل تاريخاً ووصفاً ومبلغاً.',
   'recon.csvProblem.empty': 'لا توجد سطور لقراءتها.',
+
+  /* Fixed assets (C7) and investors (C3.2).
+   *
+   * Two of these carry a decision.
+   *
+   * `assets.depreciateMonth` names the month the button will charge rather
+   * than saying "run depreciation". Each month's charge belongs in that
+   * month's profit and loss, so a company four months behind presses it four
+   * times — and a button that said "run depreciation" would invite the
+   * assumption that it brings everything up to date in one entry, which is
+   * exactly the thing the routine must not do.
+   *
+   * `inv.shareMeans` labels the percentage as a share of CAPITAL. Who owns a
+   * business is a legal fact that lives in a shareholders' agreement, and a
+   * percentage printed beside somebody's name with no label invites the wrong
+   * reading of it. */
+
+  'nav.assets': 'الأصول',
+  'assets.title': 'الأصول والمستثمرون',
+  'assets.intro': 'ما تملكه المنشأة وتُهلكه، ومن له أموال فيها.',
+  'assets.register': 'سجل الأصول',
+  'assets.investors': 'المستثمرون',
+  'assets.asset': 'الأصل',
+  'assets.where': 'الموقع والمسؤول',
+  'assets.cost': 'التكلفة',
+  'assets.depreciated': 'المُهلك',
+  'assets.bookValue': 'القيمة الدفترية',
+  'assets.monthsDue': 'أشهر مستحقة',
+  'assets.perMonth': '{amount} شهرياً',
+  'assets.add': 'إضافة أصل',
+  'assets.name': 'ما هو',
+  'assets.category': 'الفئة',
+  'assets.categoryHint': 'مركبة، حاسوب، أثاث، معدات.',
+  'assets.residual': 'القيمة عند النهاية',
+  'assets.residualHint': 'بكم سيُباع عند انتهاء استخدامه. لا شيء إذا كان سيُعدم.',
+  'assets.life': 'مدة الاستخدام',
+  'assets.lifeHint': 'بالأشهر. ستون للمركبة وستة وثلاثون للحاسوب هو المعتاد.',
+  'assets.acquired': 'تاريخ الشراء',
+  'assets.serial': 'الرقم التسلسلي',
+  'assets.showDisposed': 'إظهار المستبعدة',
+  'assets.depreciateMonth': 'إهلاك {month}',
+  'assets.chargedFor': '{month}: تم إهلاك {count} أصل بإجمالي {total}.',
+  'assets.nothingDue': 'لا شيء مستحق عن ذلك الشهر.',
+  'assets.dispose': 'استبعاد',
+  'assets.disposeOf': 'استبعاد {asset}',
+  'assets.disposedOn': 'استُبعد في {date}',
+  'assets.disposedOnLabel': 'تاريخ الاستبعاد',
+  'assets.bookValueNow': 'تقول الدفاتر إن قيمته اليوم {amount}. ما تُدخله أدناه يحدد الربح أو الخسارة، والمبلغ المُرحّل يُحسب من الإهلاك الفعلي.',
+  'assets.proceeds': 'المبلغ المستلم',
+  'assets.proceedsHint': 'لا شيء إذا تم إعدامه.',
+  'assets.moneyInto': 'المال إلى',
+  'assets.scrapped': 'أُعدم — بلا مقابل',
+  'assets.note': 'ملاحظة',
+  'assets.noneTitle': 'السجل فارغ',
+  'assets.noneBody': 'المركبات والحواسيب والأثاث والمعدات — كل ما ستظل المنشأة تملكه العام المقبل يُدرج هنا لا في المصروفات.',
+  'inv.investor': 'المستثمر',
+  'inv.add': 'إضافة مستثمر',
+  'inv.name': 'الاسم',
+  'inv.kindLabel': 'مالك أم مستثمر',
+  'inv.kind.owner': 'مالك',
+  'inv.kind.investor': 'مستثمر',
+  'inv.email': 'البريد الإلكتروني',
+  'inv.phone': 'الهاتف',
+  'inv.contributed': 'المُساهم به',
+  'inv.withdrawn': 'المسحوب',
+  'inv.net': 'الرصيد الحالي',
+  'inv.share': 'حصة رأس المال',
+  'inv.shareMeans': 'الحصة أدناه من رأس المال المُساهم به وليست حصة ملكية — ملكية المنشأة تحددها اتفاقياتها.',
+  'inv.record': 'تسجيل حركة',
+  'inv.recordFor': 'حركة لـ {name}',
+  'inv.putIn': 'إيداع رأس مال',
+  'inv.tookOut': 'سحب رأس مال',
+  'inv.amount': 'المبلغ',
+  'inv.into': 'المال إلى',
+  'inv.outOf': 'المال من',
+  'inv.chooseAccount': 'اختر حساباً',
+  'inv.when': 'التاريخ',
+  'inv.what': 'ما الذي حدث',
+  'inv.account': 'الحساب',
+  'inv.reference': 'المرجع',
+  'inv.note': 'ملاحظة',
+  'inv.statement': 'كشف الحساب',
+  'inv.holds': 'له حالياً {amount} في المنشأة',
+  'inv.noneTitle': 'لا يوجد مستثمرون',
+  'inv.noneBody': 'المال الذي يضعه المالك في المنشأة رأس مال وليس دخلاً. تسجيله هنا يُبقيه خارج قائمة الدخل.',
+  'inv.noMovementsTitle': 'لم تُسجَّل حركات',
+  'inv.noMovementsBody': 'كل مساهمة وسحب يظهر هنا مع الحساب الذي مرّ به المال.',
 };
 
 /**
@@ -5838,6 +6012,93 @@ export const bn: Partial<Record<Key, string>> = {
   'recon.csvProblem.amount': 'সারি {row}: এটি কোনো পরিমাণ নয়।',
   'recon.csvProblem.columns': 'সারি {row}: অন্তত তারিখ, বিবরণ ও পরিমাণ লাগবে।',
   'recon.csvProblem.empty': 'পড়ার মতো কোনো সারি নেই।',
+
+  /* Fixed assets (C7) and investors (C3.2).
+   *
+   * Two of these carry a decision.
+   *
+   * `assets.depreciateMonth` names the month the button will charge rather
+   * than saying "run depreciation". Each month's charge belongs in that
+   * month's profit and loss, so a company four months behind presses it four
+   * times — and a button that said "run depreciation" would invite the
+   * assumption that it brings everything up to date in one entry, which is
+   * exactly the thing the routine must not do.
+   *
+   * `inv.shareMeans` labels the percentage as a share of CAPITAL. Who owns a
+   * business is a legal fact that lives in a shareholders' agreement, and a
+   * percentage printed beside somebody's name with no label invites the wrong
+   * reading of it. */
+
+  'nav.assets': 'সম্পদ',
+  'assets.title': 'সম্পদ ও বিনিয়োগকারী',
+  'assets.intro': 'ব্যবসা যা মালিকানায় রাখে ও অবচয় করছে, আর কার টাকা এতে আছে।',
+  'assets.register': 'সম্পদের রেজিস্টার',
+  'assets.investors': 'বিনিয়োগকারী',
+  'assets.asset': 'সম্পদ',
+  'assets.where': 'কোথায় ও কে',
+  'assets.cost': 'খরচ',
+  'assets.depreciated': 'অবচয়কৃত',
+  'assets.bookValue': 'বহি মূল্য',
+  'assets.monthsDue': 'বকেয়া মাস',
+  'assets.perMonth': 'মাসে {amount}',
+  'assets.add': 'সম্পদ যোগ করুন',
+  'assets.name': 'এটি কী',
+  'assets.category': 'শ্রেণি',
+  'assets.categoryHint': 'যানবাহন, কম্পিউটার, আসবাব, সরঞ্জাম।',
+  'assets.residual': 'শেষে যা থাকবে',
+  'assets.residualHint': 'ব্যবহার শেষে কত দামে বিক্রি হবে। ফেলে দিলে কিছুই না।',
+  'assets.life': 'কতদিন চলবে',
+  'assets.lifeHint': 'মাসে। যানবাহনে ষাট, কম্পিউটারে ছত্রিশ সাধারণ।',
+  'assets.acquired': 'কেনার তারিখ',
+  'assets.serial': 'সিরিয়াল নম্বর',
+  'assets.showDisposed': 'অপসারিতও দেখান',
+  'assets.depreciateMonth': '{month} চার্জ করুন',
+  'assets.chargedFor': '{month}: {count}টি সম্পদে চার্জ, মোট {total}।',
+  'assets.nothingDue': 'সেই মাসে কিছু বকেয়া ছিল না।',
+  'assets.dispose': 'অপসারণ করুন',
+  'assets.disposeOf': '{asset} অপসারণ',
+  'assets.disposedOn': '{date} গেছে',
+  'assets.disposedOnLabel': 'কবে গেছে',
+  'assets.bookValueNow': 'খাতা বলছে আজ এর মূল্য {amount}। নিচে যা লিখবেন তাতেই লাভ বা ক্ষতি ঠিক হবে, আর পোস্ট হওয়া অঙ্ক প্রকৃত অবচয় থেকে হিসাব হয়।',
+  'assets.proceeds': 'যা পাওয়া গেল',
+  'assets.proceedsHint': 'ফেলে দিলে কিছুই না।',
+  'assets.moneyInto': 'টাকা কোথায়',
+  'assets.scrapped': 'ফেলে দেওয়া — কোনো টাকা নয়',
+  'assets.note': 'নোট',
+  'assets.noneTitle': 'রেজিস্টারে এখনো কিছু নেই',
+  'assets.noneBody': 'যানবাহন, কম্পিউটার, আসবাব, সরঞ্জাম — আগামী বছরও যা ব্যবসার থাকবে তা ব্যয় নয়, এখানে।',
+  'inv.investor': 'বিনিয়োগকারী',
+  'inv.add': 'বিনিয়োগকারী যোগ করুন',
+  'inv.name': 'নাম',
+  'inv.kindLabel': 'মালিক নাকি বিনিয়োগকারী',
+  'inv.kind.owner': 'মালিক',
+  'inv.kind.investor': 'বিনিয়োগকারী',
+  'inv.email': 'ইমেইল',
+  'inv.phone': 'ফোন',
+  'inv.contributed': 'দিয়েছেন',
+  'inv.withdrawn': 'নিয়েছেন',
+  'inv.net': 'এখন আছে',
+  'inv.share': 'মূলধনের অংশ',
+  'inv.shareMeans': 'নিচের অংশটি প্রদত্ত মূলধনের, মালিকানার নয় — মালিকানা ব্যবসার নিজস্ব চুক্তিতে নির্ধারিত।',
+  'inv.record': 'টাকা লিখুন',
+  'inv.recordFor': '{name}-এর টাকা',
+  'inv.putIn': 'টাকা দিয়েছেন',
+  'inv.tookOut': 'টাকা নিয়েছেন',
+  'inv.amount': 'পরিমাণ',
+  'inv.into': 'টাকা কোথায়',
+  'inv.outOf': 'টাকা কোথা থেকে',
+  'inv.chooseAccount': 'একটি হিসাব বাছুন',
+  'inv.when': 'কখন',
+  'inv.what': 'কী হয়েছে',
+  'inv.account': 'হিসাব',
+  'inv.reference': 'রেফারেন্স',
+  'inv.note': 'নোট',
+  'inv.statement': 'বিবরণী',
+  'inv.holds': 'বর্তমানে ব্যবসায় {amount} আছে',
+  'inv.noneTitle': 'কোনো বিনিয়োগকারী নেই',
+  'inv.noneBody': 'মালিক যে টাকা ব্যবসায় দেন তা মূলধন, আয় নয়। এখানে লিখলে তা লাভ-ক্ষতির বাইরে থাকে।',
+  'inv.noMovementsTitle': 'এখনো কিছু লেখা হয়নি',
+  'inv.noMovementsBody': 'প্রতিটি অর্থ প্রদান ও উত্তোলন এখানে থাকে, কোন হিসাবে গেছে তাসহ।',
 };
 
 /**

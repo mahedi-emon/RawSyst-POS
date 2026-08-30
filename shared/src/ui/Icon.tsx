@@ -30,6 +30,7 @@ export type IconName =
   | 'inventory'
   | 'stock'
   | 'accounting'
+  | 'assets'
   | 'customers'
   | 'expenses'
   | 'settlement'
@@ -67,6 +68,9 @@ const PATHS: Record<IconName, string> = {
   // A ledger: a bound book with a rule down the middle, which is what
   // double entry looks like on paper and has for six hundred years.
   accounting: 'M5 4h14v16H5zM12 4v16M8 9h1M8 13h1M15 9h1M15 13h1',
+  // A van: the asset every shop in this product's market owns and the
+  // one everybody pictures when the word is used.
+  assets: 'M3 17V8h11v9M14 11h4l3 3v3h-7M7.5 17a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0M19 17a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0',
   customers: 'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 6.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0M17 11l2 2 4-4',
   // Expenses is money leaving: a note with an arrow out of it.
   expenses: 'M3 7h13v8H3zM9.5 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M18 11h4M20 9l2 2-2 2',
