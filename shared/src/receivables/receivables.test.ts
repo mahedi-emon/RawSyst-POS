@@ -21,6 +21,7 @@ const customer = (over: Partial<Customer> = {}): Customer => ({
   payment_terms_days: 30,
   is_active: true,
   balance: '0.00',
+  currency: 'SAR',
   ...over,
 });
 

@@ -276,7 +276,7 @@ func TestSeededPermissionsWithNoRoute(t *testing.T) {
 	//     dropped its cleanup.
 	explained := map[string]string{
 		// structural
-		"catalog.view_cost_price": "structural — SellableVariant carries no cost field, so no till can receive one",
+		"catalog.view_cost_price":    "structural — SellableVariant carries no cost field, so no till can receive one",
 		"catalog.view_profit_margin": "structural — margin is derived from cost and is absent for the same reason",
 
 		// local to the terminal

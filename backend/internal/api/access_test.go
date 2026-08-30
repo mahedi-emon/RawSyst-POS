@@ -289,7 +289,6 @@ func (h *harness) roleID(t *testing.T, key string) string {
 	return id
 }
 
-
 func (h *harness) login(t *testing.T, email string) string {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"email": email, "password": testPassword})

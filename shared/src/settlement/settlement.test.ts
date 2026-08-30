@@ -9,7 +9,12 @@ import {
 } from './settlement';
 import type { PendingTender } from '../api/settlement';
 
-function tender(id: string, amount: string, method = 'mada'): PendingTender {
+function tender(
+  id: string,
+  amount: string,
+  method = 'mada',
+  currency = 'SAR',
+): PendingTender {
   return {
     tender_id: id,
     invoice_id: 'i-' + id,
@@ -17,6 +22,7 @@ function tender(id: string, amount: string, method = 'mada'): PendingTender {
     issued_at: '2026-08-15T10:00:00Z',
     method,
     amount,
+    currency,
   };
 }
 
