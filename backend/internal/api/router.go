@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
@@ -98,6 +99,7 @@ type Server struct {
 	stock        *stockops.Service
 	fiscal       *fiscal.Service
 	treasury     *treasury.Service
+	assets       *assets.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -163,6 +165,7 @@ func NewServer(
 	stockSvc *stockops.Service,
 	fiscalSvc *fiscal.Service,
 	treasurySvc *treasury.Service,
+	assetSvc *assets.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -188,6 +191,7 @@ func NewServer(
 		stock:        stockSvc,
 		fiscal:       fiscalSvc,
 		treasury:     treasurySvc,
+		assets:       assetSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -840,6 +844,37 @@ func (s *Server) Routes() []Route {
 			s.handleMatchStatementLine,
 			"an empty journal line undoes a match, because pointing a line at an " +
 				"entry and pointing it at nothing are the same edit"},
+
+		// --- fixed assets (C7) and investors (C3.2) ---
+		//
+		// Four verbs. Reading a register and changing it are different acts, and
+		// depreciation is behind `asset.manage` because running it posts to the
+		// ledger -- it is not a report.
+		//
+		// Neither register reaches the Store Manager. 0005 describes that role as
+		// unable to see "bank ledgers or true net profit", and an investor
+		// register is a statement of who owns the business.
+		{http.MethodGet, "/api/v1/assets", AccessPermission, "asset.view",
+			s.handleAssetRegister, ""},
+		{http.MethodPost, "/api/v1/assets", AccessPermission, "asset.manage",
+			s.handleAddAsset, ""},
+		{http.MethodPost, "/api/v1/assets/depreciate", AccessPermission, "asset.manage",
+			s.handleDepreciate,
+			"a depreciation run posts to the ledger, so it takes the verb that " +
+				"changes the register rather than the one that reads it"},
+		{http.MethodPost, "/api/v1/assets/{assetID}/dispose", AccessPermission, "asset.manage",
+			s.handleDisposeAsset, ""},
+
+		{http.MethodGet, "/api/v1/investors", AccessPermission, "investor.view",
+			s.handleListInvestors, ""},
+		{http.MethodPost, "/api/v1/investors", AccessPermission, "investor.manage",
+			s.handleAddInvestor, ""},
+		{http.MethodPost, "/api/v1/investors/movements", AccessPermission, "investor.manage",
+			s.handleRecordInvestment, ""},
+		{http.MethodGet, "/api/v1/investors/{investorID}/statement", AccessPermission, "investor.view",
+			s.handleInvestorStatement,
+			"C3.2 lets an investor read their OWN history, so the permission is the " +
+				"reading one and the service checks whose statement it is"},
 
 		// --- the audit trail (D4) ---
 		//

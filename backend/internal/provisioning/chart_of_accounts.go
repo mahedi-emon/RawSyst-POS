@@ -90,8 +90,19 @@ var defaultChart = []seedAccount{
 	{"3100", "Owner Capital", "رأس مال المالك", "equity", "owner_capital", ""},
 	{"3200", "Retained Earnings", "الأرباح المبقاة", "equity", "retained_earnings", ""},
 
+	// C7's asset accounts. Cost and accumulated depreciation are kept apart
+	// rather than netted: a balance sheet showing both says what the shop paid
+	// AND how much life is left in the thing, and one figure throws the first
+	// away.
+	{"1500", "Fixed Assets", "الأصول الثابتة", "asset", "fixed_assets", ""},
+	{"1590", "Accumulated Depreciation", "مجمع الإهلاك", "asset", "accumulated_depreciation", ""},
+
 	{"4100", "Sales Revenue", "إيرادات المبيعات", "revenue", "sales_revenue", ""},
 	{"4200", "Sales Discounts", "خصومات المبيعات", "revenue", "sales_discounts", ""},
+	// An asset sold for more than the books said it was worth. Revenue, and
+	// deliberately not Sales Revenue: selling a van is not trading, and folding
+	// it into turnover would overstate what the business actually does.
+	{"4900", "Gain on Disposal", "ربح استبعاد أصل", "revenue", "disposal_gain", ""},
 
 	{"5100", "Cost of Goods Sold", "تكلفة البضاعة المباعة", "expense", "cogs", ""},
 	// Where a standard-costing difference lands, and where an allow_warn
@@ -108,6 +119,8 @@ var defaultChart = []seedAccount{
 	// 5200 is Rent. This was seeded at 5200 until 0071, which relabelled it —
 	// the account keeps its id, so nothing moved and no journal line changed.
 	{"5400", "Stock Write-off", "إعدام المخزون", "expense", "stock_writeoff", ""},
+	{"5600", "Depreciation", "الإهلاك", "expense", "depreciation", ""},
+	{"5700", "Loss on Disposal", "خسارة استبعاد أصل", "expense", "disposal_loss", ""},
 
 	// The four heads design 12 §1 names, so a shop can record rent on the day
 	// it installs the product rather than building a chart first. 0071 seeds an
