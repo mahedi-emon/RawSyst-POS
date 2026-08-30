@@ -29,6 +29,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
@@ -100,6 +101,7 @@ type Server struct {
 	fiscal       *fiscal.Service
 	treasury     *treasury.Service
 	assets       *assets.Service
+	promotions   *promotions.Service
 	audit        *audit.Service
 	health       func() error
 	version      string
@@ -166,6 +168,7 @@ func NewServer(
 	fiscalSvc *fiscal.Service,
 	treasurySvc *treasury.Service,
 	assetSvc *assets.Service,
+	promotionSvc *promotions.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -192,6 +195,7 @@ func NewServer(
 		fiscal:       fiscalSvc,
 		treasury:     treasurySvc,
 		assets:       assetSvc,
+		promotions:   promotionSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -875,6 +879,27 @@ func (s *Server) Routes() []Route {
 			s.handleInvestorStatement,
 			"C3.2 lets an investor read their OWN history, so the permission is the " +
 				"reading one and the service checks whose statement it is"},
+
+		// --- promotions and the pricing engine (B9) ---
+		//
+		// A cashier holds `promotion.view`, which reaches the quote route: a cart
+		// being built has to be priced repeatedly while items are scanned.
+		// Setting a campaign UP needs `promotion.manage`, which decides what
+		// every till in every branch will charge -- and B9 puts manager
+		// authorisation around discounts far smaller than that.
+		{http.MethodGet, "/api/v1/promotions", AccessPermission, "promotion.view",
+			s.handleListPromotions, ""},
+		{http.MethodPost, "/api/v1/promotions", AccessPermission, "promotion.manage",
+			s.handleCreatePromotion, ""},
+		{http.MethodPost, "/api/v1/promotions/{promotionID}/active", AccessPermission, "promotion.manage",
+			s.handleSetPromotionActive,
+			"a campaign is stopped rather than deleted: its redemptions are what the " +
+				"campaign figures are drawn from, and deleting one would take a " +
+				"month of discount history with it"},
+		{http.MethodPost, "/api/v1/promotions/quote", AccessPermission, "promotion.view",
+			s.handleQuotePromotions,
+			"a till prices a cart many times while it is built, so this is the " +
+				"reading verb; nothing is redeemed until the sale is finalised"},
 
 		// --- the audit trail (D4) ---
 		//
