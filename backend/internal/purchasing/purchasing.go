@@ -39,11 +39,23 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 )
 
 // Service owns the purchasing chain.
 type Service struct {
 	pool *db.Pool
+
+	// approvals is F1's engine. Optional, for the reason given on the same
+	// field in the expenses service: an installation without it issues orders
+	// exactly as it always did.
+	approvals *workflow.Service
+}
+
+// WithApprovals wires F1's approval engine.
+func (s *Service) WithApprovals(w *workflow.Service) *Service {
+	s.approvals = w
+	return s
 }
 
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
@@ -404,6 +416,14 @@ func (s *Service) IssueOrder(
 ) (Order, error) {
 	var out Order
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		// F1's engine, on the commit path: "IF Purchase Order > SAR 50,000 →
+		// Owner Approval". Issuing is the right gate rather than creating —
+		// a draft order commits the shop to nothing, and an approval that
+		// stopped a buyer writing one down would stop them doing their job.
+		if e := s.gateIssue(ctx, tx, scope, poID); e != nil {
+			return e
+		}
+
 		tag, e := tx.Exec(ctx, `
 			UPDATE purchase_order
 			SET status = 'issued', issued_at = now(), issued_by = $3
@@ -803,4 +823,64 @@ func conflictMessage(err error, message string) error {
 		return errs.New(errs.CodeConflict, message)
 	}
 	return err
+}
+
+// gateIssue asks the approval engine whether this order may be issued.
+//
+// The amount is the order's own total, read here rather than taken from the
+// caller: a gate that trusted a number the caller supplied would be a gate a
+// caller could walk past.
+func (s *Service) gateIssue(
+	ctx context.Context, tx pgx.Tx, scope Scope, poID uuid.UUID,
+) error {
+	if s.approvals == nil {
+		return nil
+	}
+
+	var total decimal.Decimal
+	var orderNo, supplier string
+	e := tx.QueryRow(ctx, `
+		SELECT coalesce(sum(l.gross_amount), 0),
+		       o.po_number, coalesce(s.legal_name, '')
+		FROM purchase_order o
+		LEFT JOIN po_line l ON l.po_id = o.id
+		LEFT JOIN supplier s ON s.id = o.supplier_id
+		WHERE o.id = $1 AND o.company_id = $2
+		GROUP BY o.po_number, s.legal_name`,
+		poID, scope.CompanyID).Scan(&total, &orderNo, &supplier)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return errs.New(errs.CodeNotFound, "That purchase order was not found.")
+	}
+	if e != nil {
+		return e
+	}
+
+	summary := "Purchase order " + orderNo
+	if supplier != "" {
+		summary += " to " + supplier
+	}
+
+	out, err := s.approvals.Evaluate(ctx, tx, workflow.Scope{
+		TenantID: scope.TenantID, CompanyID: scope.CompanyID,
+		UserID: scope.UserID,
+	}, "purchase_order", poID, summary, workflow.Facts{
+		// No store: a purchase order names a WAREHOUSE, not a shop floor, and
+		// offering the warehouse id as a store would make a store-scoped rule
+		// match something it was not written for.
+		Amount: &total, At: time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case out.Blocked:
+		return errs.Newf(errs.CodeForbidden,
+			"%s does not allow this order to be issued.", out.RuleName)
+	case out.NeedsApproval, out.NeedsPIN:
+		return errs.Newf(errs.CodeComplianceBlocked,
+			"%s needs sign-off before this order goes to the supplier. It is "+
+				"waiting in the approval centre.", out.RuleName)
+	}
+	return nil
 }

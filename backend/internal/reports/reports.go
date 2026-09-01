@@ -253,7 +253,7 @@ func (s *Service) ProfitAndLossFor(
 			case kind == "revenue":
 				out.Revenue = append(out.Revenue, l)
 				revenue = revenue.Add(amount)
-			case isCostOfSales(l.Code, l.Name):
+			case IsCostOfSales(l.Code, l.Name):
 				out.CostOfSales = append(out.CostOfSales, l)
 				cogs = cogs.Add(amount)
 			default:
@@ -275,15 +275,20 @@ func (s *Service) ProfitAndLossFor(
 	return out, err
 }
 
-// isCostOfSales decides whether an expense account belongs above the gross
+// IsCostOfSales decides whether an expense account belongs above the gross
 // profit line.
+//
+// Exported because the consolidated group statement has to draw the line in
+// exactly the same place: a group P&L whose gross profit does not reconcile to
+// the sum of its companies' gross profits is a bug nobody can find, and two
+// copies of this rule is how that happens.
 //
 // Recognised by the account ROLE mapping in a mature chart of accounts; until
 // the posting-rule engine reads roles for reporting too, this falls back to the
 // conventional 5xxx range that the seeded chart uses. It is a presentation
 // choice and cannot change any total: revenue less cost of sales less expenses
 // equals net profit whichever side of the line an account is shown on.
-func isCostOfSales(code, name string) bool {
+func IsCostOfSales(code, name string) bool {
 	if len(code) > 0 && code[0] == '5' {
 		return true
 	}

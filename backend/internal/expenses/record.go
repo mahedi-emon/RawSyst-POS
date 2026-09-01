@@ -14,6 +14,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 )
 
 // NewExpense is a payment being recorded.
@@ -160,6 +161,19 @@ func (s *Service) Record(
 
 		priced, e := s.price(ctx, tx, scope, country, in)
 		if e != nil {
+			return e
+		}
+
+		// F1's engine, on the commit path and inside this transaction.
+		//
+		// The subject id is the caller's OWN uuid rather than the expense's,
+		// because the expense does not exist yet and the point of the gate is
+		// that it may not. That uuid is already the idempotency key, so the
+		// person who gets their approval and presses save again arrives with
+		// the same id, the engine finds the approved request, and the expense
+		// goes through — which is the only way an approval could ever be
+		// granted for something that has not been recorded.
+		if e := s.gate(ctx, tx, scope, in, priced); e != nil {
 			return e
 		}
 
@@ -415,4 +429,59 @@ func claimNumber(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) (string, e
 	var n string
 	err := tx.QueryRow(ctx, `SELECT claim_expense_no($1)`, companyID).Scan(&n)
 	return n, err
+}
+
+// gate asks the approval engine whether this expense may proceed.
+//
+// Blueprint F1's worked example is exactly this: "IF Expense > SAR 5,000 →
+// Manager Approval → Accountant Approval → Owner Approval". A shop that has
+// configured no rule is unaffected — the engine allows by default, which is
+// what lets a three-person shop trade on day one.
+func (s *Service) gate(
+	ctx context.Context, tx pgx.Tx, scope Scope, in NewExpense, p priced,
+) error {
+	if s.approvals == nil {
+		return nil
+	}
+
+	// The gross, because that is the number an owner means by "expense over
+	// five thousand" — it is what left the bank.
+	gross := p.total
+	facts := workflow.Facts{Amount: &gross, At: in.Date}
+	if in.StoreID != nil {
+		facts.StoreID = in.StoreID
+	}
+
+	summary := strings.TrimSpace(in.Description)
+	if summary == "" {
+		summary = "Expense of " + gross.StringFixed(moneyScale)
+	}
+
+	out, err := s.approvals.Evaluate(ctx, tx, workflow.Scope{
+		TenantID: scope.TenantID, CompanyID: scope.CompanyID,
+		UserID: scope.UserID,
+	}, "expense", in.UUID, summary, facts)
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case out.Blocked:
+		return errs.Newf(errs.CodeForbidden,
+			"%s does not allow this expense.", out.RuleName)
+	case out.NeedsApproval:
+		return errs.Newf(errs.CodeComplianceBlocked,
+			"%s needs sign-off before this expense can be recorded. It is "+
+				"waiting in the approval centre.", out.RuleName)
+	case out.NeedsPIN:
+		// F1 offers a second-person PIN as an alternative to an asynchronous
+		// approval, and it is a till gesture: somebody is standing at the
+		// counter to key it. A back-office expense form has nobody to ask, so
+		// the honest answer is the same refusal, naming the rule.
+		return errs.Newf(errs.CodeForbidden,
+			"%s needs a second person to authorise this. Ask a manager to "+
+				"record it, or change the rule to require approval instead.",
+			out.RuleName)
+	}
+	return nil
 }

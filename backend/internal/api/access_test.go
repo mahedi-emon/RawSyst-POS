@@ -28,6 +28,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/compliance"
@@ -36,6 +37,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/group"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
@@ -162,7 +164,13 @@ func newHarness(t *testing.T) *harness {
 	// exactly how the shift module stayed unreachable while its tests passed.
 	shiftSvc := shift.NewService(pool)
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasing.NewService(pool), receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflow.NewService(pool), notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
+	// F1's approval engine, built first because the two commit paths it gates
+	// hold a reference to it. One instance: the engine reads and writes one
+	// set of tables and a second would be a second queue.
+	workflowSvc := workflow.NewService(pool)
+	purchasingSvc := purchasing.NewService(pool).WithApprovals(workflowSvc)
+
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 

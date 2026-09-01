@@ -57,6 +57,9 @@ import { AnalyticsArea } from '@rawsyst/shared/analytics/AnalyticsArea';
 import { LabelStudioArea } from '@rawsyst/shared/studio/LabelStudioArea';
 import { AdminArea } from '@rawsyst/shared/admin/AdminArea';
 import { PlatformArea } from '@rawsyst/shared/admin/PlatformArea';
+import { GovernanceArea } from '@rawsyst/shared/governance/GovernanceArea';
+import { GroupsArea } from '@rawsyst/shared/groups/GroupsArea';
+import { SubscriptionPanel } from '@rawsyst/shared/billing/SubscriptionPanel';
 import { NotificationBell } from '@rawsyst/shared/workflow/NotificationBell';
 import {
   CommandPalette,
@@ -78,6 +81,9 @@ type Section =
   | 'approvals'
   | 'staff'
   | 'system'
+  | 'governance'
+  | 'groups'
+  | 'subscription'
   | 'platform'
   | 'expenses'
   | 'settlement'
@@ -217,6 +223,13 @@ export function BackOffice() {
     may('data.export') ||
     may('backup.view') ||
     may('support.raise');
+  // Any one of the five governance tabs is enough to open the section, for
+  // the same reason after-sales works that way: an auditor holds privacy.view
+  // and nothing else, and gets the tabs that are theirs.
+  const maySeeGovernance =
+    may('compliance.view') || may('privacy.view') || may('document.view');
+  const maySeeGroups = may('group.view');
+  const maySeeSubscription = may('subscription.view');
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
@@ -497,6 +510,30 @@ export function BackOffice() {
       group: 'admin',
       shown: maySeeSystem,
     },
+    // Beside the system settings rather than beside the reports: what a shop
+    // is legally obliged to do is an administrative act, and the people who
+    // answer for it are the ones who already live in this group.
+    {
+      key: 'governance',
+      label: t('nav.governance'),
+      icon: 'check',
+      group: 'admin',
+      shown: maySeeGovernance,
+    },
+    {
+      key: 'groups',
+      label: t('nav.groups'),
+      icon: 'globe',
+      group: 'admin',
+      shown: maySeeGroups,
+    },
+    {
+      key: 'subscription',
+      label: t('nav.subscription'),
+      icon: 'setup',
+      group: 'admin',
+      shown: maySeeSubscription,
+    },
     // Only for the platform's own staff, and it reads counts about tenants
     // rather than anything inside one.
     {
@@ -769,6 +806,12 @@ export function BackOffice() {
         <HRArea companyId={activeCompany} />
       ) : section === 'system' && maySeeSystem ? (
         <AdminArea companyId={activeCompany} />
+      ) : section === 'governance' && maySeeGovernance ? (
+        <GovernanceArea companyId={activeCompany} />
+      ) : section === 'groups' && maySeeGroups ? (
+        <GroupsArea companyId={activeCompany} />
+      ) : section === 'subscription' && maySeeSubscription ? (
+        <SubscriptionPanel />
       ) : section === 'platform' && me?.is_super_admin ? (
         <PlatformArea />
       ) : section === 'customers' && maySeeCustomers ? (

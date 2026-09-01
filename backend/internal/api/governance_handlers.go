@@ -432,7 +432,7 @@ func (s *Server) handleExtendDSR(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	id, uerr := uuid.Parse(chi.URLParam(r, "requestID"))
+	id, uerr := uuid.Parse(chi.URLParam(r, "dsrID"))
 	if uerr != nil {
 		httpx.Error(w, r, errs.New(errs.CodeNotFound,
 			"That request was not found."))
@@ -457,7 +457,7 @@ func (s *Server) handleCloseDSR(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	id, uerr := uuid.Parse(chi.URLParam(r, "requestID"))
+	id, uerr := uuid.Parse(chi.URLParam(r, "dsrID"))
 	if uerr != nil {
 		httpx.Error(w, r, errs.New(errs.CodeNotFound,
 			"That request was not found."))

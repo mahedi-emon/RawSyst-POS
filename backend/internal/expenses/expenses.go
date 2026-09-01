@@ -40,6 +40,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 )
 
 // moneyScale is two decimals, the scale a posted amount carries.
@@ -54,11 +55,28 @@ const lineScale = 4
 type Service struct {
 	pool  *db.Pool
 	rules *registry.Service
+
+	// approvals is F1's engine, consulted on the commit path. Optional: an
+	// installation without it records expenses exactly as it always did, which
+	// is what every existing test asserts and what a shop that has configured
+	// no rules experiences either way.
+	approvals *workflow.Service
 }
 
 // NewService builds the service.
 func NewService(pool *db.Pool, rules *registry.Service) *Service {
 	return &Service{pool: pool, rules: rules}
+}
+
+// WithApprovals wires F1's approval engine.
+//
+// A setter rather than a constructor argument because the engine and this
+// service are built in the same breath and one of them has to come first;
+// making it optional also keeps every existing call site and test compiling
+// and behaving identically.
+func (s *Service) WithApprovals(w *workflow.Service) *Service {
+	s.approvals = w
+	return s
 }
 
 // Scope is who is asking and on behalf of which legal entity.

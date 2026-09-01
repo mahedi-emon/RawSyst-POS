@@ -3571,3 +3571,332 @@
   .palette__kind { inline-size: 4rem; }
   .palette__detail { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+ * Compliance readings (E7)
+ *
+ * A grid of small cards rather than a table. Each reading is a different SHAPE
+ * of fact — a countdown, a ratio, a list of missing fields — and a table would
+ * force nine unlike things into the same three columns.
+ *
+ * The tone is a leading rule, never a filled card. A wall of red and amber
+ * panels reads as an emergency; a shop needs to see which of the nine wants
+ * attention, not to be alarmed by all of them at once.
+ * ------------------------------------------------------------------------ */
+
+.cmp {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.cmp__card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cmp__card--ok { border-inline-start-color: var(--success); }
+.cmp__card--watch { border-inline-start-color: var(--warning); }
+.cmp__card--late { border-inline-start-color: var(--danger); }
+/* Quiet is not a state to fix: a shop that has not begun electronic invoicing
+ * because it is not yet required to has nothing wrong with it. */
+.cmp__card--quiet { border-inline-start-color: var(--border); }
+
+.cmp__title {
+  font-size: 0.733rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin: 0;
+}
+
+.cmp__headline {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.cmp__rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cmp__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+}
+
+.cmp__row dt { margin: 0; }
+.cmp__row dd { margin: 0; color: var(--text); }
+
+/* ---------------------------------------------------------------------------
+ * The privacy and register forms
+ *
+ * One column. Every form on these screens asks short, unrelated questions — a
+ * lawful basis, a channel, a sentence of proof — and putting two of them side
+ * by side would suggest a relationship between them that does not exist.
+ * ------------------------------------------------------------------------ */
+
+.pri__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-block-end: var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  max-inline-size: 34rem;
+}
+
+.doc__search { max-inline-size: 24rem; }
+
+/* ---------------------------------------------------------------------------
+ * Storefront disclosures (E5)
+ * ------------------------------------------------------------------------ */
+
+.sto__missing {
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-2);
+  padding: var(--space-3) var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.sto__list {
+  margin: var(--space-2) 0 0;
+  padding-inline-start: var(--space-5);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sto__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--border);
+}
+
+.sto__fact dt {
+  font-size: 0.733rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin: 0;
+}
+
+.sto__fact dd {
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------------------
+ * The subscription (H5)
+ *
+ * A meter per limit, because "4 of 5 users" is the number an owner acts on and
+ * "5 users" is one they read past.
+ * ------------------------------------------------------------------------ */
+
+.sub__warning {
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-2);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+}
+
+.sub__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+}
+
+.sub__fact dt {
+  font-size: 0.733rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin: 0;
+}
+
+.sub__fact dd {
+  margin: var(--space-1) 0 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.sub__limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-4);
+  margin-block-start: var(--space-3);
+}
+
+.sub__meter {
+  display: flex;
+  flex-direction: column;
+}
+
+.sub__meterHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+  margin-block-end: var(--space-1);
+}
+
+.sub__meterTrack {
+  block-size: 0.375rem;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sub__meterFill {
+  block-size: 100%;
+  background: var(--brand);
+}
+
+/* A limit reached is not an error — it is the plan working — but it is the
+ * answer to "why can I not add another", so it stops being brand blue. */
+.sub__meterFill--full { background: var(--warning); }
+
+.sub__features {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sub__feature {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+}
+
+/* Switched off is shown, not hidden. A client who cannot see what their plan
+ * leaves out cannot ask for it. */
+.sub__feature--off {
+  opacity: 0.55;
+  background: var(--surface-sunken);
+}
+
+.sub__featureName { flex: 1 1 auto; }
+
+/* ---------------------------------------------------------------------------
+ * Groups and consolidation (F4)
+ * ------------------------------------------------------------------------ */
+
+.grp__card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  padding: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.grp__cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-block-end: var(--space-3);
+}
+
+.grp__cardActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.grp__statement {
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border);
+}
+
+.grp__controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-end: var(--space-4);
+}
+
+/* A caveat, not a warning. Both cases it carries — a member on another
+ * currency, and a balance sheet that does not balance at partial ownership —
+ * are correct behaviour a reader would otherwise mistake for a fault. */
+.grp__caveat {
+  background: var(--surface-sunken);
+  border-inline-start: 3px solid var(--warning);
+  border-radius: var(--radius-1);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.grp__totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.grp__total dt {
+  font-size: 0.733rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin: 0;
+}
+
+.grp__total dd {
+  margin: var(--space-1) 0 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.grp__total--strong dd {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+@media (max-width: 40rem) {
+  .cmp { grid-template-columns: 1fr; }
+  .sub__features { grid-template-columns: 1fr; }
+}

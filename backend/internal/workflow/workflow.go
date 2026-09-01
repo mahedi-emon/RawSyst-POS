@@ -23,6 +23,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -112,6 +113,31 @@ func (s *Service) Evaluate(
 	ctx context.Context, tx pgx.Tx, scope Scope, subject string,
 	subjectID uuid.UUID, summary string, facts Facts,
 ) (Outcome, error) {
+	// Already decided?
+	//
+	// Without this the engine could raise a request and never let anything
+	// through it: the person gets their approval, presses save again, and the
+	// same rule stops them a second time. An approved request is the answer to
+	// "may this proceed", and it is checked before the rules are read at all.
+	//
+	// A REFUSED request is deliberately not checked here. Refusal is not
+	// permanent — an owner who says no to a five-thousand-riyal expense has
+	// refused that expense, not forbidden the category — and the person
+	// re-submitting raises a fresh request, which is what the pending upsert
+	// in raise() already assumes.
+	var decided string
+	switch e := tx.QueryRow(ctx, `
+		SELECT status FROM approval_request
+		 WHERE company_id = $1 AND subject = $2 AND subject_id = $3
+		   AND status = 'approved'
+		 LIMIT 1`, scope.CompanyID, subject, subjectID).Scan(&decided); {
+	case e == nil:
+		return Outcome{Allowed: true}, nil
+	case errors.Is(e, pgx.ErrNoRows):
+	default:
+		return Outcome{}, e
+	}
+
 	rules, err := activeRules(ctx, tx, scope.CompanyID, subject)
 	if err != nil {
 		return Outcome{}, err

@@ -22,6 +22,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/compliance"
@@ -30,6 +31,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/group"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
@@ -131,6 +133,8 @@ type Server struct {
 	platform     *platformops.Service
 	aftersales   *aftersales.Service
 	docs         *docs.Service
+	billing      *billing.Service
+	groups       *group.Service
 	privacy      *privacy.Service
 	compliance   *compliance.Service
 	people       *people.Service
@@ -214,6 +218,8 @@ func NewServer(
 	platformSvc *platformops.Service,
 	aftersalesSvc *aftersales.Service,
 	docSvc *docs.Service,
+	billingSvc *billing.Service,
+	groupSvc *group.Service,
 	privacySvc *privacy.Service,
 	complianceSvc *compliance.Service,
 	peopleSvc *people.Service,
@@ -257,6 +263,8 @@ func NewServer(
 		platform:     platformSvc,
 		aftersales:   aftersalesSvc,
 		docs:         docSvc,
+		billing:      billingSvc,
+		groups:       groupSvc,
 		privacy:      privacySvc,
 		compliance:   complianceSvc,
 		people:       peopleSvc,
@@ -1511,6 +1519,54 @@ func (s *Server) Routes() []Route {
 				"hundred variants and a query string that long is one a proxy " +
 				"will truncate"},
 
+		// --- subscription and entitlements (H5) ---
+		//
+		// A client reads; only the platform writes. See the note in
+		// billing_handlers.go.
+		{http.MethodGet, "/api/v1/subscription", AccessPermission, "subscription.view",
+			s.handleGetSubscription, ""},
+		{http.MethodGet, "/api/v1/subscription/invoices", AccessPermission, "subscription.view",
+			s.handleListSubscriptionInvoices, ""},
+
+		// What this client may reach, after their plan and their exceptions.
+		// AccessAuthenticated because every screen in the product asks it to
+		// decide what to render, including screens a cashier opens, and a
+		// permission would mean a till could not tell whether Wholesale exists.
+		{http.MethodGet, "/api/v1/subscription/entitlements", AccessAuthenticated, "",
+			s.handleGetEntitlements,
+			"every screen reads it to decide what to show, a till included, " +
+				"and it says what the shop has paid for rather than anything " +
+				"about the shop"},
+		{http.MethodGet, "/api/v1/plans", AccessAuthenticated, "",
+			s.handlePlans,
+			"the same price list for every client, which is to say a public " +
+				"one"},
+
+		// --- multi-company groups and consolidation (F4) ---
+		{http.MethodGet, "/api/v1/groups", AccessPermission, "group.view",
+			s.handleListGroups, ""},
+		{http.MethodPost, "/api/v1/groups", AccessPermission, "group.manage",
+			s.handleSaveGroup, ""},
+		{http.MethodGet, "/api/v1/groups/{groupID}", AccessPermission, "group.view",
+			s.handleGetGroup, ""},
+		{http.MethodPut, "/api/v1/groups/{groupID}", AccessPermission, "group.manage",
+			s.handleSaveGroup, ""},
+		{http.MethodDelete, "/api/v1/groups/{groupID}", AccessPermission, "group.manage",
+			s.handleRemoveGroup,
+			""},
+		{http.MethodPost, "/api/v1/groups/{groupID}/members", AccessPermission, "group.manage",
+			s.handleSaveGroupMember, ""},
+		{http.MethodDelete, "/api/v1/groups/{groupID}/members/{memberID}", AccessPermission, "group.manage",
+			s.handleRemoveGroupMember, ""},
+		{http.MethodGet, "/api/v1/groups/{groupID}/statement", AccessPermission, "group.view",
+			s.handleGroupStatement,
+			""},
+		{http.MethodGet, "/api/v1/groups/{groupID}/intercompany", AccessPermission, "group.view",
+			s.handleListIntercompany, ""},
+		{http.MethodPost, "/api/v1/groups/intercompany", AccessPermission, "group.manage",
+			s.handleMarkIntercompany,
+			""},
+
 		// --- documents (D6) ---
 		//
 		// One route lists them three ways — attached to a record, matching a
@@ -1542,9 +1598,9 @@ func (s *Server) Routes() []Route {
 			s.handleListDSR, ""},
 		{http.MethodPost, "/api/v1/privacy/requests", AccessPermission, "privacy.manage",
 			s.handleOpenDSR, ""},
-		{http.MethodPost, "/api/v1/privacy/requests/{requestID}/extend", AccessPermission, "privacy.manage",
+		{http.MethodPost, "/api/v1/privacy/requests/{dsrID}/extend", AccessPermission, "privacy.manage",
 			s.handleExtendDSR, ""},
-		{http.MethodPost, "/api/v1/privacy/requests/{requestID}/close", AccessPermission, "privacy.manage",
+		{http.MethodPost, "/api/v1/privacy/requests/{dsrID}/close", AccessPermission, "privacy.manage",
 			s.handleCloseDSR, ""},
 
 		// --- PDPL: incidents (E4.1) ---
@@ -1675,6 +1731,32 @@ func (s *Server) Routes() []Route {
 		// schema looking for tables the platform may read exists to keep that
 		// line where it is, and the only place it is deliberately crossed is a
 		// support ticket — which is text somebody wrote in order to be read.
+		// --- H5, the platform's side ---
+		{http.MethodGet, "/api/v1/platform/tenants/{tenantID}/subscription", AccessSuperAdmin, "",
+			s.handlePlatformSubscription,
+			"the client's plan, what they owe, and every bill they have been " +
+				"sent"},
+		{http.MethodPut, "/api/v1/platform/tenants/{tenantID}/subscription", AccessSuperAdmin, "",
+			s.handleSetPlan,
+			"a tenant who could edit their own plan would be a tenant on the " +
+				"Enterprise plan"},
+		{http.MethodPut, "/api/v1/platform/tenants/{tenantID}/features", AccessSuperAdmin, "",
+			s.handleSetFeature,
+			"H5's commercial flexibility: a module granted to one client " +
+				"independent of their tier, with the reason recorded"},
+		{http.MethodPost, "/api/v1/platform/tenants/{tenantID}/invoices", AccessSuperAdmin, "",
+			s.handleIssueSubscriptionInvoice,
+			"the platform billing a client for the software, which is not " +
+				"the client's own sales ledger and never touches it"},
+		{http.MethodPost, "/api/v1/platform/invoices/{subInvoiceID}/settle", AccessSuperAdmin, "",
+			s.handleSettleSubscriptionInvoice,
+			"marking a subscription invoice paid or void; paying the last " +
+				"outstanding one lifts a suspension it caused"},
+		{http.MethodPost, "/api/v1/platform/dunning", AccessSuperAdmin, "",
+			s.handleRunDunning,
+			"suspends clients past their grace period; idempotent, so " +
+				"pressing it twice is safe"},
+
 		// E4.1's last bullet: the platform operator is a processor for every
 		// tenant and keeps the sub-processor record. Only they can write it.
 		{http.MethodPut, "/api/v1/platform/subprocessors", AccessSuperAdmin, "",

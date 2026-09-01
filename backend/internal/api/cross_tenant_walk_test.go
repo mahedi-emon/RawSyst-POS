@@ -182,6 +182,62 @@ func seedTheOtherShop(t *testing.T, h *harness) *otherShop {
 			"steps":  []map[string]any{{"role": "owner"}},
 		}); rule.StatusCode == http.StatusCreated {
 		rule.Body.Close()
+
+		// And an expense to trip it, so there is a REQUEST in the queue and
+		// not only a rule that would have caught one. Without this the
+		// approvals read has no record to aim at, and a route the walk cannot
+		// aim at is a route whose isolation nothing checks.
+		// The shop fixture builds its chart account by account rather than
+		// through provisioning, so it has no expense categories. One is
+		// inserted here against an expense account the fixture does seed.
+		var headID string
+		if e := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `
+				INSERT INTO expense_head
+				  (tenant_id, company_id, code, name, account_id,
+				   input_vat_recoverable)
+				SELECT $1, $2, 'WALK', 'Walk fixture', a.id, true
+				FROM account a
+				WHERE a.company_id = $2 AND a.type = 'expense'
+				  AND a.is_postable
+				ORDER BY a.code
+				LIMIT 1
+				RETURNING id::text`,
+				f.tenantID, f.companyID).Scan(&headID)
+		}); e != nil {
+			t.Logf("no expense head for the walk fixture: %v", e)
+		}
+		if headID != "" {
+			exp := h.do(t, http.MethodPost,
+				"/api/v1/expenses?company_id="+f.companyID.String(), f.token,
+				map[string]any{
+					"uuid": newUUID(), "expense_date": "2026-08-15",
+					"paid_from": "cash", "description": "Needs sign-off",
+					"lines": []map[string]any{{
+						"head_id": headID, "net_amount": "100.00",
+						"tax_treatment": "standard",
+					}},
+				})
+			if exp.StatusCode != http.StatusCreated {
+				t.Logf("walk expense: %d %s", exp.StatusCode, readBody(t, exp))
+			} else {
+				exp.Body.Close()
+			}
+
+			pending := h.do(t, http.MethodGet,
+				"/api/v1/approvals?company_id="+f.companyID.String(),
+				f.token, nil)
+			if pending.StatusCode == http.StatusOK {
+				if list, ok := decodeJSON(t, pending)["data"].([]any); ok &&
+					len(list) > 0 {
+					if first, ok := list[0].(map[string]any); ok {
+						o.ids["requestID"], _ = first["id"].(string)
+					}
+				}
+			} else {
+				pending.Body.Close()
+			}
+		}
 	} else {
 		rule.Body.Close()
 	}
@@ -220,6 +276,111 @@ func seedTheOtherShop(t *testing.T, h *harness) *otherShop {
 		batch.Body.Close()
 	}
 
+	// D6's document store, and the four PDPL registers. Each of these names a
+	// person or a file about a person, which is precisely the class of record
+	// the walk exists to prove cannot be reached across a tenant boundary.
+	//
+	// The document is a one-pixel PNG, base64. Any allowed type would do; a
+	// picture is the shortest thing that survives content sniffing.
+	if doc := h.do(t, http.MethodPost,
+		"/api/v1/documents?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"entity_type": "customer", "entity_id": o.ids["customerID"],
+			"file_name": "other-shop-id.png",
+			"data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD0lEQVR4" +
+				"nGP4//8/AwAI/AL+hc2rNAAAAABJRU5ErkJggg==",
+		}); doc.StatusCode == http.StatusCreated {
+		o.ids["documentID"], _ = decodeJSON(t, doc)["document"].(map[string]any)["id"].(string)
+	} else {
+		doc.Body.Close()
+	}
+
+	if consent := h.do(t, http.MethodPost,
+		"/api/v1/privacy/consents?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"subject_type": "customer", "subject_id": o.ids["customerID"],
+			"lawful_basis": "consent", "purpose": "marketing",
+			"channel": "sms", "proof": "Signed at the counter.",
+		}); consent.StatusCode == http.StatusCreated {
+		o.ids["consentID"], _ = decodeJSON(t, consent)["consent"].(map[string]any)["id"].(string)
+	} else {
+		consent.Body.Close()
+	}
+
+	if dsr := h.do(t, http.MethodPost,
+		"/api/v1/privacy/requests?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"kind": "access", "subject_type": "customer",
+			"subject_id":      o.ids["customerID"],
+			"subject_name":    "Other Shop Customer",
+			"subject_contact": "0500000000",
+		}); dsr.StatusCode == http.StatusCreated {
+		o.ids["dsrID"], _ = decodeJSON(t, dsr)["request"].(map[string]any)["id"].(string)
+	} else {
+		dsr.Body.Close()
+	}
+
+	if inc := h.do(t, http.MethodPost,
+		"/api/v1/privacy/incidents?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"title":           "A laptop went missing",
+			"what_happened":   "Raised so the walk has an incident to aim at.",
+			"data_categories": "Customer names and phone numbers",
+			"severity":        "low",
+		}); inc.StatusCode == http.StatusCreated {
+		o.ids["incidentID"], _ = decodeJSON(t, inc)["incident"].(map[string]any)["id"].(string)
+	} else {
+		inc.Body.Close()
+	}
+
+	if act := h.do(t, http.MethodPut,
+		"/api/v1/privacy/activities?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"name": "Other shop marketing", "purpose": "Sending offers",
+			"lawful_basis":       "consent",
+			"data_categories":    "Name, phone number",
+			"subject_categories": "Customers",
+		}); act.StatusCode == http.StatusOK {
+		o.ids["activityID"], _ = decodeJSON(t, act)["activity"].(map[string]any)["id"].(string)
+	} else {
+		act.Body.Close()
+	}
+
+	if hold := h.do(t, http.MethodPost,
+		"/api/v1/privacy/holds?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"name": "Other shop dispute", "reason": "A live dispute.",
+			"data_category": "Sales invoices",
+		}); hold.StatusCode == http.StatusCreated {
+		o.ids["holdID"], _ = decodeJSON(t, hold)["hold"].(map[string]any)["id"].(string)
+	} else {
+		hold.Body.Close()
+	}
+
+	// F4's group. It names which companies a client owns, which is a fact
+	// about their business nobody else is entitled to.
+	if grp := h.do(t, http.MethodPost,
+		"/api/v1/groups?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"name": "Other Shop Group", "presentation_currency": "SAR",
+		}); grp.StatusCode == http.StatusOK {
+		o.ids["groupID"], _ = decodeJSON(t, grp)["group"].(map[string]any)["id"].(string)
+		if o.ids["groupID"] != "" {
+			if m := h.do(t, http.MethodPost,
+				"/api/v1/groups/"+o.ids["groupID"]+"/members?company_id="+
+					f.companyID.String(), f.token,
+				map[string]any{
+					"company_id": f.companyID.String(), "is_parent": true,
+				}); m.StatusCode == http.StatusOK {
+				o.ids["memberID"] = f.companyID.String()
+			} else {
+				m.Body.Close()
+			}
+		}
+	} else {
+		grp.Body.Close()
+	}
+
 	// A catalogue product, for the variant matrix.
 	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		var productID string
@@ -252,6 +413,17 @@ var crossTenantParams = map[string]bool{
 	// business record. Isolation matters just as much: a support ticket names
 	// what a shop is struggling with, and a webhook names where their sales go.
 	"endpointID": true, "importID": true, "ticketID": true,
+	// The privacy register and the document store. A data-subject request
+	// names a person and says what they asked to have deleted; a document is
+	// a scan of somebody's identity card. Nothing in the product is more
+	// obviously another tenant's business.
+	"documentID": true, "consentID": true, "dsrID": true,
+	// The approval queue, now that the fixture below actually raises a
+	// request rather than only seeding the rule that would catch one.
+	"requestID":  true,
+	"incidentID": true, "activityID": true, "holdID": true,
+	// F4's group, and the company inside it.
+	"groupID": true, "memberID": true,
 }
 
 // aimAtTheOtherShop rewrites a route pattern to point at the other tenant's

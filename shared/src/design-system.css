@@ -875,6 +875,36 @@ select.input {
   vertical-align: baseline;
 }
 
+/* The column of verbs at the end of a row.
+ *
+ * Two or three quiet buttons that have to sit on one line and end at the row's
+ * edge, so the eye finds them in the same place on every row rather than
+ * wherever the widest cell before them happened to push them.
+ *
+ * `flex-wrap` rather than `nowrap`: a row with three verbs on a phone is a row
+ * that wraps, and a horizontal scrollbar to reach a Remove button is worse
+ * than a second line. */
+.ds-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* A link inside a table or a panel body.
+ *
+ * The product has almost no hypertext — it is an application, and its verbs are
+ * buttons — but a stored document is genuinely a link: the browser follows it
+ * and downloads a file, and dressing that as a button would promise something
+ * happens on this page. */
+.ds-link {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.ds-link:hover { text-decoration-thickness: 2px; }
+
 /* The first and last columns line up with the panel's own edge rather than
  * sitting a cell's padding inside it, so a table in a flush body reads as part
  * of the panel instead of as a box within a box. */

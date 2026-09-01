@@ -762,7 +762,10 @@ func postStockEntry(
 
 	var periodID, entryID, inventoryID, otherID uuid.UUID
 	if e := tx.QueryRow(ctx,
-		`SELECT id FROM fiscal_period WHERE company_id = $1`, f.companyID).
+		`SELECT id FROM fiscal_period
+		  WHERE company_id = $1
+		    AND '2026-08-01'::date BETWEEN starts_on AND ends_on`,
+		f.companyID).
 		Scan(&periodID); e != nil {
 		return e
 	}
