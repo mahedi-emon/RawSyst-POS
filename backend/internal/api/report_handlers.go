@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
@@ -379,4 +380,87 @@ func (s *Server) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+// --- saved and scheduled reports (D1), and Saudization (E6) ----------------
+//
+// A saved report is a saved SHAPE of a report the product already computes —
+// which one, over what relative window, filtered to which branch. See the note
+// in reports/saved.go for why it is not a free-form query builder.
+
+func (s *Server) handleListSavedReports(
+	w http.ResponseWriter, r *http.Request,
+) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.reports.SavedReports(r.Context(), scope)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+func (s *Server) handleSaveReport(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req reports.Saved
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	a := actor.From(r.Context())
+	out, err := s.reports.SaveReport(r.Context(), scope, a.UserID, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"report": out})
+}
+
+func (s *Server) handleRemoveSavedReport(
+	w http.ResponseWriter, r *http.Request,
+) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	id, uerr := uuid.Parse(chi.URLParam(r, "savedID"))
+	if uerr != nil {
+		httpx.Error(w, r, errs.New(errs.CodeNotFound,
+			"That report was not found."))
+		return
+	}
+	if err := s.reports.RemoveSavedReport(r.Context(), scope, id); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleWorkforce is E6's Saudization reading.
+//
+// A count and a ratio, never a Nitaqat band: the band depends on the
+// establishment's activity and size bracket against a schedule the ministry
+// publishes, and asserting one from a head count would be inventing a
+// regulatory classification.
+func (s *Server) handleWorkforce(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.reports.Workforce(r.Context(), scope)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"workforce": out})
 }

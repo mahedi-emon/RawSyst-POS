@@ -44,6 +44,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/privacy"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
@@ -135,6 +136,7 @@ type Server struct {
 	docs         *docs.Service
 	billing      *billing.Service
 	groups       *group.Service
+	portal       *portal.Service
 	privacy      *privacy.Service
 	compliance   *compliance.Service
 	people       *people.Service
@@ -220,6 +222,7 @@ func NewServer(
 	docSvc *docs.Service,
 	billingSvc *billing.Service,
 	groupSvc *group.Service,
+	portalSvc *portal.Service,
 	privacySvc *privacy.Service,
 	complianceSvc *compliance.Service,
 	peopleSvc *people.Service,
@@ -265,6 +268,7 @@ func NewServer(
 		docs:         docSvc,
 		billing:      billingSvc,
 		groups:       groupSvc,
+		portal:       portalSvc,
 		privacy:      privacySvc,
 		compliance:   complianceSvc,
 		people:       peopleSvc,
@@ -1519,6 +1523,103 @@ func (s *Server) Routes() []Route {
 				"hundred variants and a query string that long is one a proxy " +
 				"will truncate"},
 
+		// --- the customer and supplier portals (F2, F3) ---
+		//
+		// AccessPublic here means "carries no STAFF token". Every one of these
+		// but the three sign-in routes resolves a PORTAL session in the
+		// handler and refuses without one — see the note at the top of
+		// portal_handlers.go, which explains why the route registry has no
+		// fourth access level for them.
+		{http.MethodPost, "/api/v1/portal/code", AccessPublic, "",
+			s.handlePortalRequestCode,
+			"a customer asking for a sign-in code; answers the same way " +
+				"whether or not the number is on file, so the portal cannot " +
+				"be used to ask a shop who its customers are"},
+		{http.MethodPost, "/api/v1/portal/session", AccessPublic, "",
+			s.handlePortalExchange,
+			"exchanges a phone and a code for a portal session, which is not " +
+				"a staff session and cannot become one"},
+		{http.MethodPost, "/api/v1/portal/supplier/session", AccessPublic, "",
+			s.handleSupplierSignIn,
+			"a supplier contact signing in; a password rather than a code, " +
+				"because accepting an order commits their business"},
+		{http.MethodDelete, "/api/v1/portal/session", AccessPublic, "",
+			s.handlePortalSignOut,
+			"ends the caller's own portal session; the token in the header " +
+				"is the only thing it can end"},
+
+		{http.MethodGet, "/api/v1/portal/me", AccessPublic, "",
+			s.handlePortalMe,
+			"the signed-in customer's own summary; the portal session is the " +
+				"authorization and there is no parameter that could name " +
+				"anybody else"},
+		{http.MethodGet, "/api/v1/portal/invoices", AccessPublic, "",
+			s.handlePortalInvoices,
+			"the caller's own receipts, filtered on the customer id in their " +
+				"session"},
+		{http.MethodGet, "/api/v1/portal/orders", AccessPublic, "",
+			s.handlePortalOrders,
+			"the caller's own orders and where they have got to"},
+		{http.MethodGet, "/api/v1/portal/warranty", AccessPublic, "",
+			s.handlePortalWarranty,
+			"answers only for a serial the shop sold to this caller, so the " +
+				"route cannot be used to enumerate what a shop has sold"},
+		{http.MethodGet, "/api/v1/portal/addresses", AccessPublic, "",
+			s.handlePortalAddresses,
+			"the caller's own saved addresses"},
+		{http.MethodPut, "/api/v1/portal/addresses", AccessPublic, "",
+			s.handlePortalAddresses,
+			"saves one of the caller's own addresses"},
+		{http.MethodDelete, "/api/v1/portal/addresses/{addressID}", AccessPublic, "",
+			s.handlePortalRemoveAddress,
+			"deletes one of the caller's own addresses; the query names the " +
+				"customer, so another customer's id finds nothing"},
+		{http.MethodGet, "/api/v1/portal/returns", AccessPublic, "",
+			s.handlePortalReturns,
+			"the caller's own return requests"},
+		{http.MethodPost, "/api/v1/portal/returns", AccessPublic, "",
+			s.handlePortalReturns,
+			"asks the shop to take something back; the receipt named has to " +
+				"be one of the caller's own"},
+
+		{http.MethodGet, "/api/v1/portal/supplier/home", AccessPublic, "",
+			s.handlePortalSupplierHome,
+			"the signed-in supplier's own summary"},
+		{http.MethodGet, "/api/v1/portal/supplier/orders", AccessPublic, "",
+			s.handlePortalSupplierOrders,
+			"the orders this shop has placed with THIS supplier, and no " +
+				"other, which on a procurement portal is a commercial " +
+				"boundary as much as a privacy one"},
+		{http.MethodGet, "/api/v1/portal/supplier/orders/{orderID}", AccessPublic, "",
+			s.handlePortalSupplierOrder,
+			"one of their own orders, with what has actually been received"},
+		{http.MethodPost, "/api/v1/portal/supplier/orders/{orderID}/respond", AccessPublic, "",
+			s.handlePortalRespondToOrder,
+			"F3's accept or reject; records the supplier's answer and does " +
+				"not move the order's own status, which is the shop's"},
+		{http.MethodGet, "/api/v1/portal/supplier/bills", AccessPublic, "",
+			s.handlePortalSupplierBills,
+			"what the shop owes this supplier and what has been paid"},
+		{http.MethodGet, "/api/v1/portal/supplier/rfqs", AccessPublic, "",
+			s.handlePortalSupplierRFQs,
+			"the quotations this supplier has been invited to give"},
+
+		// --- the staff side of the two portals ---
+		{http.MethodGet, "/api/v1/portal/contacts", AccessPermission, "portal.view",
+			s.handleListSupplierContacts, ""},
+		{http.MethodPost, "/api/v1/portal/contacts", AccessPermission, "portal.manage",
+			s.handleInviteSupplier, ""},
+		{http.MethodDelete, "/api/v1/portal/contacts/{contactID}", AccessPermission, "portal.manage",
+			s.handleRevokeSupplierContact,
+			"turns the login off AND ends its sessions: leaving a session " +
+				"alive would keep a revoked contact working until it expired"},
+		{http.MethodGet, "/api/v1/portal/return-requests", AccessPermission, "portal.view",
+			s.handleStaffReturnRequests, ""},
+		{http.MethodPost, "/api/v1/portal/return-requests/{returnID}/decide", AccessPermission, "portal.manage",
+			s.handleDecideReturnRequest,
+			"answers a customer; it does NOT post the return, which goes " +
+				"through the returns path where the accounting belongs"},
+
 		// --- subscription and entitlements (H5) ---
 		//
 		// A client reads; only the platform writes. See the note in
@@ -1566,6 +1667,23 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/groups/intercompany", AccessPermission, "group.manage",
 			s.handleMarkIntercompany,
 			""},
+
+		// --- saved and scheduled reports (D1), and Saudization (E6) ---
+		//
+		// `report.save` rather than `report.view`: keeping a report and giving
+		// it a schedule sends figures out of the building by email, which is a
+		// narrower thing to grant than reading them on a screen.
+		{http.MethodGet, "/api/v1/reports/saved", AccessPermission, "report.view",
+			s.handleListSavedReports, ""},
+		{http.MethodPut, "/api/v1/reports/saved", AccessPermission, "report.save",
+			s.handleSaveReport, ""},
+		{http.MethodDelete, "/api/v1/reports/saved/{savedID}", AccessPermission, "report.save",
+			s.handleRemoveSavedReport, ""},
+		{http.MethodGet, "/api/v1/reports/workforce", AccessPermission, "report.view",
+			s.handleWorkforce,
+			"a count and a ratio; the ministry's own portal is where a Nitaqat " +
+				"band comes from, and asserting one from a head count would " +
+				"be inventing a classification"},
 
 		// --- documents (D6) ---
 		//

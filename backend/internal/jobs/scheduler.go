@@ -62,6 +62,10 @@ func (s *Scheduler) Run(ctx context.Context) {
 			// receiver that was down when a sale happened gets the delivery
 			// on the next pass rather than never.
 			s.enqueueWebhooks(ctx)
+			// And the scheduled reports. Its dedupe key holds the hour
+			// rather than the minute, so this costs one query per tenant per
+			// hour rather than sixty.
+			s.enqueueReports(ctx)
 		}
 	}
 }

@@ -37,9 +37,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 )
 
 // Mailer delivers one message.
@@ -85,6 +90,16 @@ func (RefusingMailer) Send(context.Context, string, string, string) error {
 type NotifyHandler struct {
 	Mailer Mailer
 	Log    *slog.Logger
+
+	// Texter delivers a portal sign-in code to a phone. Optional: a
+	// deployment without one refuses those jobs rather than discarding them,
+	// which is how an operator learns portal sign-in is not working.
+	Texter Texter
+
+	// Reports computes a scheduled report at the moment it is sent, which is
+	// what keeps a schedule from being a snapshot. Optional for the same
+	// reason and with the same behaviour.
+	Reports *reports.Service
 }
 
 // Run delivers one queued notification.
@@ -101,9 +116,71 @@ func (h NotifyHandler) Run(ctx context.Context, j Job) error {
 	case identity.NotifyKindPasswordReset:
 		subject, body := passwordResetMessage(p)
 		return h.Mailer.Send(ctx, p.Email, subject, body)
+
+	case portal.NotifyKindPortalCode:
+		// `Email` carries the PHONE for this kind — see the comment on the
+		// constant in the portal package for why the shared payload is bent
+		// here rather than grown a second address field.
+		if h.Texter == nil {
+			return RefusingTexter{}.Send(ctx, p.Email, "")
+		}
+		return h.Texter.Send(ctx, p.Email, portalCodeMessage(p))
+
+	case "scheduled_report":
+		return h.sendScheduledReport(ctx, j)
+
 	default:
 		return Permanent{Err: fmt.Errorf("unknown notification kind %q", p.Kind)}
 	}
+}
+
+// sendScheduledReport computes the report and mails the figures.
+func (h NotifyHandler) sendScheduledReport(ctx context.Context, j Job) error {
+	if h.Reports == nil {
+		return Permanent{errs.New(errs.CodeUnavailable,
+			"This worker cannot compute reports, so a scheduled report "+
+				"cannot be sent.")}
+	}
+	if j.TenantID == nil {
+		return Permanent{errs.New(errs.CodeInternal,
+			"This scheduled report names no tenant.")}
+	}
+
+	var p scheduledReport
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return Permanent{Err: fmt.Errorf(
+			"scheduled report payload could not be read: %w", err)}
+	}
+
+	id, err := uuid.Parse(p.Report.ID)
+	if err != nil {
+		return Permanent{errs.New(errs.CodeInternal,
+			"This scheduled report names no report.")}
+	}
+
+	saved, err := h.Reports.SavedReportByID(ctx, *j.TenantID, id)
+	if err != nil {
+		return err
+	}
+
+	from, to := reports.ResolvePeriod(saved.Period, time.Now().UTC())
+	scope := reportScopeFor(*j.TenantID, saved.CompanyID)
+	scope.StoreID = saved.StoreID
+
+	body, err := renderReport(ctx, h.Reports, scope, saved.Kind, from, to)
+	if err != nil {
+		return err
+	}
+
+	subject := saved.Name + " — " +
+		from.Format("2 January 2006") + " to " + to.Format("2 January 2006")
+	// A backtick string, so the two blank lines that separate the heading from
+	// the figures are visible in the source rather than spelled out.
+	body = subject + "\n\n" + body + `
+
+Sent by RawSyst on a schedule you set.
+`
+	return h.Mailer.Send(ctx, p.Email, subject, body)
 }
 
 // passwordResetMessage is the mail somebody gets when they ask for a code.

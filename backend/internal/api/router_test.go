@@ -104,6 +104,47 @@ func TestPublicRoutesAreOnlyTheExpectedOnes(t *testing.T) {
 		// recovery_test.go holds each of those.
 		"POST /api/v1/auth/forgot-password": true,
 		"POST /api/v1/auth/reset-password":  true,
+
+		// The two portals, F2 and F3.
+		//
+		// AccessPublic here means "carries no STAFF token", which is exactly
+		// what a customer and a supplier are: they do not work for the shop,
+		// they hold no role, and their session lives in its own table with its
+		// own lifetime. There is no fourth access level because there is no
+		// fourth kind of STAFF access.
+		//
+		// What makes the list acceptable is that every route but the three
+		// sign-in ones resolves a portal session in its handler and refuses
+		// without one — `portalCaller` is the authorization, it is not
+		// skippable, and portal_test.go holds three properties over it: a
+		// portal token opens no back-office route, a portal token for one shop
+		// reads nothing from another, and asking for a code answers the same
+		// way whether or not the number is on file.
+		//
+		// The three sign-in routes are unauthenticated because the caller has
+		// no credential yet — that is the problem being solved — and they are
+		// bounded by the same per-caller limiter the recovery routes use.
+		"POST /api/v1/portal/code":             true,
+		"POST /api/v1/portal/session":          true,
+		"DELETE /api/v1/portal/session":        true,
+		"POST /api/v1/portal/supplier/session": true,
+
+		"GET /api/v1/portal/me":                       true,
+		"GET /api/v1/portal/invoices":                 true,
+		"GET /api/v1/portal/orders":                   true,
+		"GET /api/v1/portal/warranty":                 true,
+		"GET /api/v1/portal/addresses":                true,
+		"PUT /api/v1/portal/addresses":                true,
+		"DELETE /api/v1/portal/addresses/{addressID}": true,
+		"GET /api/v1/portal/returns":                  true,
+		"POST /api/v1/portal/returns":                 true,
+
+		"GET /api/v1/portal/supplier/home":                      true,
+		"GET /api/v1/portal/supplier/orders":                    true,
+		"GET /api/v1/portal/supplier/orders/{orderID}":          true,
+		"POST /api/v1/portal/supplier/orders/{orderID}/respond": true,
+		"GET /api/v1/portal/supplier/bills":                     true,
+		"GET /api/v1/portal/supplier/rfqs":                      true,
 	}
 
 	s := &Server{}

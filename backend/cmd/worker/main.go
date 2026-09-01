@@ -22,6 +22,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -84,6 +85,10 @@ func run() error {
 	// and watched on no live tenant — a shop whose books drifted after go-live
 	// would have heard it from its accountant months later.
 	worker.Register(jobs.KindAccountingTieOut, jobs.NewTieOutSweeper(pool))
+	// D1's scheduled reports. The sweep finds the schedules whose turn it is
+	// and queues the sends; the figures are computed when each is rendered.
+	worker.Register(jobs.KindReportSweep,
+		jobs.NewReportSweeper(pool, reports.NewService(pool)))
 	// Outbound webhooks (H6). Sent from here rather than from the API, because
 	// a delivery waits on somebody else's server and the connection an API
 	// handler would hold while waiting is one the tills need.
@@ -107,7 +112,22 @@ func run() error {
 	if cfg.Env == config.EnvDevelopment {
 		mailer = jobs.LogMailer{Log: log}
 	}
-	worker.Register("notify.send", jobs.NotifyHandler{Mailer: mailer, Log: log})
+	// And the SMS side, on exactly the same terms: a portal sign-in code goes
+	// to a phone, and a deployment with no provider must FAIL those jobs
+	// rather than discard them — an operator finding out that customers
+	// cannot sign in before a customer does.
+	var texter jobs.Texter = jobs.RefusingTexter{}
+	if cfg.Env == config.EnvDevelopment {
+		texter = jobs.LogTexter{Log: log}
+	}
+
+	// The reports service is handed to the notifier as well as the sweep: a
+	// scheduled report is COMPUTED when it is sent, which is what keeps a
+	// schedule from being a snapshot of the day it was set up.
+	worker.Register("notify.send", jobs.NotifyHandler{
+		Mailer: mailer, Texter: texter, Log: log,
+		Reports: reports.NewService(pool),
+	})
 
 	// Registering the submitter even when it cannot submit is deliberate:
 	// invoices queue up, the staleness sweep escalates, and an Owner sees a

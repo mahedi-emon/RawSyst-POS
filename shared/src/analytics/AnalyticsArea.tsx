@@ -28,10 +28,11 @@ import { useAuth } from '../auth/session';
 import { EmptyState, RemoteBody } from '../dashboard/DetailScreen';
 import { useRemote } from '../dashboard/useRemote';
 import { useT } from '../i18n/locale';
+import { SavedReportsPanel } from './SavedReportsPanel';
 import type { Key } from '../i18n/strings';
 import { money } from '../ui/format';
 
-type Tab = 'kpis' | 'movers' | 'dead' | 'forecast' | 'profit';
+type Tab = 'kpis' | 'movers' | 'dead' | 'forecast' | 'profit' | 'saved';
 
 export function AnalyticsArea({ companyId }: { companyId: string }) {
   const t = useT();
@@ -43,6 +44,9 @@ export function AnalyticsArea({ companyId }: { companyId: string }) {
     { key: 'dead', label: 'anl.deadStock' },
     { key: 'forecast', label: 'anl.forecast' },
     { key: 'profit', label: 'anl.profitability' },
+    // Last, because it is where somebody goes once they know which of the
+    // figures above they want again next month.
+    { key: 'saved', label: 'anl.saved' },
   ];
 
   return (
@@ -79,6 +83,7 @@ export function AnalyticsArea({ companyId }: { companyId: string }) {
       )}
       {tab === 'forecast' && <ForecastPanel companyId={companyId} />}
       {tab === 'profit' && <ProfitPanel companyId={companyId} />}
+      {tab === 'saved' && <SavedReportsPanel companyId={companyId} />}
     </main>
   );
 }

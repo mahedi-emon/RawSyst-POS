@@ -3595,7 +3595,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-inline-start: 3px solid var(--border);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
@@ -3660,7 +3660,7 @@
   margin-block-end: var(--space-4);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   max-inline-size: 34rem;
 }
 
@@ -3673,7 +3673,7 @@
 .sto__missing {
   background: var(--warning-subtle);
   border: 1px solid var(--warning-border);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-block-end: var(--space-4);
 }
@@ -3720,7 +3720,7 @@
 .sub__warning {
   background: var(--danger-subtle);
   border: 1px solid var(--danger-border);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin: 0 0 var(--space-4);
   color: var(--text);
@@ -3802,7 +3802,7 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
@@ -3821,7 +3821,7 @@
 
 .grp__card {
   border: 1px solid var(--border);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-md);
   background: var(--surface);
   padding: var(--space-4);
   margin-block-end: var(--space-4);
@@ -3862,7 +3862,7 @@
 .grp__caveat {
   background: var(--surface-sunken);
   border-inline-start: 3px solid var(--warning);
-  border-radius: var(--radius-1);
+  border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-4);
   margin: 0 0 var(--space-4);
   color: var(--text);
@@ -3899,4 +3899,187 @@
 @media (max-width: 40rem) {
   .cmp { grid-template-columns: 1fr; }
   .sub__features { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------------------
+ * The customer and supplier portals (F2, F3)
+ *
+ * A different room from the back office, on purpose. The person reading this is
+ * not at work: they are a customer on a phone checking whether their order has
+ * left, or a supplier deciding whether to accept an order. So the page is one
+ * column, centred, generously spaced, and has no navigation rail — there is
+ * nowhere else for them to go.
+ *
+ * It uses the same tokens as everything else. A portal that looked like a
+ * different product would make a customer wonder whether they were on the
+ * shop's own site, which is exactly the doubt a phishing page relies on.
+ * ------------------------------------------------------------------------ */
+
+.ptl {
+  min-block-size: 100dvh;
+  background: var(--surface-sunken);
+}
+
+.ptl__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border-block-end: 1px solid var(--border);
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+}
+
+.ptl__who {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ptl__body {
+  max-inline-size: 44rem;
+  margin-inline: auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* --- the sign-in door ---------------------------------------------------- */
+
+.ptl__signin {
+  min-block-size: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+}
+
+.ptl__card {
+  inline-size: 100%;
+  max-inline-size: 26rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* --- the three or four figures at the top -------------------------------- */
+
+.ptl__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.ptl__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ptl__figureLabel {
+  font-size: 0.733rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.ptl__figureValue {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* --- the lists ----------------------------------------------------------- */
+
+.ptl__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ptl__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A row, not a table row. A customer on a phone reads a receipt as a block —
+ * what it was, when, how much — and a four-column table on a 360px screen is
+ * either a horizontal scrollbar or four unreadable columns. */
+.ptl__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.ptl__rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  flex: 1 1 12rem;
+}
+
+.ptl__rowTitle {
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ptl__rowSide {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ptl__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.ptl__answer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--brand);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.ptl__empty {
+  color: var(--text-subtle);
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
 }

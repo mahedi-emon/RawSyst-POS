@@ -41,6 +41,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
@@ -54,6 +55,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/privacy"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
@@ -169,8 +171,12 @@ func newHarness(t *testing.T) *harness {
 	// set of tables and a second would be a second queue.
 	workflowSvc := workflow.NewService(pool)
 	purchasingSvc := purchasing.NewService(pool).WithApprovals(workflowSvc)
+	// The portal hands a one-time code to the same queue the staff recovery
+	// codes go through, so a code that exists and a message that will be sent
+	// commit together.
+	portalSvc := portal.NewService(pool).WithQueue(jobs.NewQueue(pool))
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, "test")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 

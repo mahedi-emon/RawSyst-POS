@@ -70,6 +70,14 @@ const NO_PROSE = new Set([
   // avoid.
   'client.ts',
 
+  // The portal's transport, for the same reason and with less to explain.
+  //
+  // What it holds is `Content-Type`, a header name, and `PortalFailed`, a class
+  // name. Its one English sentence was removed rather than exempted: a failed
+  // call now carries the server's own sentence or nothing, and each portal
+  // screen falls back to its own translated words when the message is empty.
+  'portal.ts',
+
   // A record, not a screen.
   //
   // `queue.ts` writes "The server refused this sale." into the local database

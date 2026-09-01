@@ -59,6 +59,7 @@ import { AdminArea } from '@rawsyst/shared/admin/AdminArea';
 import { PlatformArea } from '@rawsyst/shared/admin/PlatformArea';
 import { GovernanceArea } from '@rawsyst/shared/governance/GovernanceArea';
 import { GroupsArea } from '@rawsyst/shared/groups/GroupsArea';
+import { PortalsArea } from '@rawsyst/shared/portals/PortalsArea';
 import { SubscriptionPanel } from '@rawsyst/shared/billing/SubscriptionPanel';
 import { NotificationBell } from '@rawsyst/shared/workflow/NotificationBell';
 import {
@@ -84,6 +85,7 @@ type Section =
   | 'governance'
   | 'groups'
   | 'subscription'
+  | 'portals'
   | 'platform'
   | 'expenses'
   | 'settlement'
@@ -230,6 +232,7 @@ export function BackOffice() {
     may('compliance.view') || may('privacy.view') || may('document.view');
   const maySeeGroups = may('group.view');
   const maySeeSubscription = may('subscription.view');
+  const maySeePortals = may('portal.view');
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
@@ -534,6 +537,15 @@ export function BackOffice() {
       group: 'admin',
       shown: maySeeSubscription,
     },
+    // Beside the two portals it administers rather than beside customers or
+    // suppliers: what a shop does here is answer people who are outside it.
+    {
+      key: 'portals',
+      label: t('nav.portals'),
+      icon: 'people',
+      group: 'admin',
+      shown: maySeePortals,
+    },
     // Only for the platform's own staff, and it reads counts about tenants
     // rather than anything inside one.
     {
@@ -812,6 +824,8 @@ export function BackOffice() {
         <GroupsArea companyId={activeCompany} />
       ) : section === 'subscription' && maySeeSubscription ? (
         <SubscriptionPanel />
+      ) : section === 'portals' && maySeePortals ? (
+        <PortalsArea companyId={activeCompany} />
       ) : section === 'platform' && me?.is_super_admin ? (
         <PlatformArea />
       ) : section === 'customers' && maySeeCustomers ? (
