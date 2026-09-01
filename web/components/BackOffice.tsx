@@ -49,6 +49,19 @@ import { StockArea } from '@rawsyst/shared/stock/StockArea';
 import { AccountingArea } from '@rawsyst/shared/accounting/AccountingArea';
 import { AssetsArea } from '@rawsyst/shared/assets/AssetsArea';
 import { OrdersArea } from '@rawsyst/shared/orders/OrdersArea';
+import { CRMArea } from '@rawsyst/shared/crm/CRMArea';
+import { HRArea } from '@rawsyst/shared/hr/HRArea';
+import { AftersalesArea } from '@rawsyst/shared/aftersales/AftersalesArea';
+import { ApprovalsArea } from '@rawsyst/shared/workflow/ApprovalsArea';
+import { AnalyticsArea } from '@rawsyst/shared/analytics/AnalyticsArea';
+import { LabelStudioArea } from '@rawsyst/shared/studio/LabelStudioArea';
+import { AdminArea } from '@rawsyst/shared/admin/AdminArea';
+import { PlatformArea } from '@rawsyst/shared/admin/PlatformArea';
+import { NotificationBell } from '@rawsyst/shared/workflow/NotificationBell';
+import {
+  CommandPalette,
+  type Command,
+} from '@rawsyst/shared/studio/CommandPalette';
 import { Icon, type IconName } from '@rawsyst/shared/ui/Icon';
 import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
 
@@ -58,6 +71,14 @@ type Section =
   | 'buying'
   | 'customers'
   | 'salesorders'
+  | 'loyalty'
+  | 'aftersales'
+  | 'labels'
+  | 'analytics'
+  | 'approvals'
+  | 'staff'
+  | 'system'
+  | 'platform'
   | 'expenses'
   | 'settlement'
   | 'accounting'
@@ -75,6 +96,9 @@ export function BackOffice() {
 
   const [section, setSection] = useState<Section>('dashboard');
   const [drill, setDrill] = useState<DrillTarget | null>(null);
+  // D7's command menu. Opened with the key every other product uses for it,
+  // so a cashier who has met one has already met this.
+  const [finding, setFinding] = useState(false);
   // Bumped on every press of a navigation item, and part of the mounted
   // screen's key. Its whole job is to make pressing the CURRENT section mean
   // something: see the click handler below.
@@ -111,6 +135,20 @@ export function BackOffice() {
    *
    * A click is the only thing that changes this preference, so a click is
    * where it is saved. There is no ordering left to get wrong. */
+  // Ctrl-K, or Cmd-K on a Mac. Registered on the document rather than on an
+  // input, because the point of the shortcut is that it works wherever the
+  // person happens to be looking.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setFinding(true);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   const togglePin = useCallback(() => {
     setRailOpen((open) => {
       const next = !open;
@@ -161,6 +199,24 @@ export function BackOffice() {
   // decided by the routes, not by the nav.
   const maySeeCustomers = may('customers.view');
   const maySeeOrders = may('order.view');
+  const maySeeLoyalty = may('loyalty.view');
+  // Any one of the four after-sales tabs is enough to open the section: a
+  // driver holds delivery.view and nothing else, and gets the one tab that
+  // is theirs rather than a section that refuses them.
+  const maySeeAftersales =
+    may('delivery.view') ||
+    may('serial.view') ||
+    may('service.view') ||
+    may('installment.view');
+  const maySeeLabels = may('label.print');
+  const maySeeAnalytics = may('report.view');
+  const maySeeApprovals = may('approval.view');
+  const maySeeStaff = may('hr.view');
+  const maySeeSystem =
+    may('integration.view') ||
+    may('data.export') ||
+    may('backup.view') ||
+    may('support.raise');
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
@@ -314,6 +370,25 @@ export function BackOffice() {
     },
     // Beside Buying and Customers, because it is the third thing money does:
     // what the shop bought, what it is owed, and what it spent.
+    // Beside the customer list, because loyalty is a fact about a customer
+    // and the person answering "how many points do I have" is standing at the
+    // counter with them.
+    {
+      key: 'loyalty',
+      label: t('nav.loyalty'),
+      icon: 'customers',
+      group: 'trade',
+      shown: maySeeLoyalty,
+    },
+    // After the counter: where it is, whose it is, whether it is covered, and
+    // how it is being paid for.
+    {
+      key: 'aftersales',
+      label: t('nav.aftersales'),
+      icon: 'returns',
+      group: 'trade',
+      shown: maySeeAftersales,
+    },
     {
       key: 'expenses',
       label: t('nav.expenses'),
@@ -352,6 +427,24 @@ export function BackOffice() {
       group: 'trade',
       shown: maySeeAccounting,
     },
+    // Analytics sits last in Trade, after the modules whose figures it reads.
+    {
+      key: 'analytics',
+      label: t('nav.analytics'),
+      icon: 'dashboard',
+      group: 'trade',
+      shown: maySeeAnalytics,
+    },
+    // Labels are beside the catalogue in spirit and in Administration in fact:
+    // designing the tag is a setup act, and printing one is reached from here
+    // by whoever is putting stock out.
+    {
+      key: 'labels',
+      label: t('nav.labels'),
+      icon: 'inventory',
+      group: 'admin',
+      shown: maySeeLabels,
+    },
     // First in Administration, because it is the first thing a newly
     // onboarded shop needs: A5 hands the Owner a business and A6 is how they
     // staff it.
@@ -383,6 +476,36 @@ export function BackOffice() {
       group: 'admin',
       shown: maySeeSetup,
     },
+    {
+      key: 'staff',
+      label: t('nav.staff'),
+      icon: 'people',
+      group: 'admin',
+      shown: maySeeStaff,
+    },
+    {
+      key: 'approvals',
+      label: t('nav.approvals'),
+      icon: 'check',
+      group: 'admin',
+      shown: maySeeApprovals,
+    },
+    {
+      key: 'system',
+      label: t('nav.system'),
+      icon: 'setup',
+      group: 'admin',
+      shown: maySeeSystem,
+    },
+    // Only for the platform's own staff, and it reads counts about tenants
+    // rather than anything inside one.
+    {
+      key: 'platform',
+      label: t('nav.platform'),
+      icon: 'globe',
+      group: 'admin',
+      shown: Boolean(me?.is_super_admin),
+    },
     // I2. Reads with identity.view and writes with identity.edit, the same
     // pair the rest of company settings carries.
     {
@@ -394,6 +517,15 @@ export function BackOffice() {
     },
   ];
   const visible = sections.filter((s) => s.shown);
+  // What the palette can jump to: the sections this person can actually open.
+  // Built from the same list the rail is built from, so a section added to one
+  // cannot go missing from the other.
+  const jumps: Command[] = visible.map((x) => ({
+    section: x.key,
+    label: x.label,
+    permission: '',
+  }));
+
   const groups: Array<{ key: 'overview' | 'trade' | 'admin'; label: string }> = [
     { key: 'overview', label: t('nav.overview') },
     { key: 'trade', label: t('nav.trade') },
@@ -439,6 +571,15 @@ export function BackOffice() {
           className="bo__scrim"
           aria-label={t('nav.closeMenu')}
           onClick={() => setDrawer(false)}
+        />
+      )}
+
+      {finding && activeCompany && (
+        <CommandPalette
+          companyId={activeCompany}
+          commands={jumps}
+          onGo={(next) => go(next as Section)}
+          onClose={() => setFinding(false)}
         />
       )}
 
@@ -573,6 +714,19 @@ export function BackOffice() {
               </label>
             )}
 
+            {/* D7's one box. Opened by pressing it or by the shortcut, and
+                it searches only what this person could already open. */}
+            <button
+              type="button"
+              className="bo__iconbtn"
+              aria-label={t('find.title')}
+              onClick={() => setFinding(true)}
+            >
+              <Icon name="search" size={20} />
+            </button>
+
+            {activeCompany && <NotificationBell companyId={activeCompany} />}
+
             <ThemeSwitch />
             <LanguageSwitch />
           </div>
@@ -601,6 +755,22 @@ export function BackOffice() {
         <PurchasingScreen companyId={activeCompany} />
       ) : section === 'salesorders' && maySeeOrders ? (
         <OrdersArea companyId={activeCompany} />
+      ) : section === 'loyalty' && maySeeLoyalty ? (
+        <CRMArea companyId={activeCompany} />
+      ) : section === 'aftersales' && maySeeAftersales ? (
+        <AftersalesArea companyId={activeCompany} />
+      ) : section === 'labels' && maySeeLabels ? (
+        <LabelStudioArea companyId={activeCompany} />
+      ) : section === 'analytics' && maySeeAnalytics ? (
+        <AnalyticsArea companyId={activeCompany} />
+      ) : section === 'approvals' && maySeeApprovals ? (
+        <ApprovalsArea companyId={activeCompany} />
+      ) : section === 'staff' && maySeeStaff ? (
+        <HRArea companyId={activeCompany} />
+      ) : section === 'system' && maySeeSystem ? (
+        <AdminArea companyId={activeCompany} />
+      ) : section === 'platform' && me?.is_super_admin ? (
+        <PlatformArea />
       ) : section === 'customers' && maySeeCustomers ? (
         <CustomersScreen companyId={activeCompany} />
       ) : section === 'expenses' && maySeeExpenses ? (

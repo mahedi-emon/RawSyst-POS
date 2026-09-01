@@ -66,9 +66,14 @@ type Delivery struct {
 	FailureReason string `json:"failure_reason,omitempty"`
 	Attempts      int    `json:"attempt_count"`
 
-	Note      string          `json:"note,omitempty"`
-	CreatedAt string          `json:"created_at"`
-	Events    []DeliveryEvent `json:"events,omitempty"`
+	Note      string `json:"note,omitempty"`
+	CreatedAt string `json:"created_at"`
+
+	// The currency the fee and the cash-on-delivery figure are in. A
+	// consignment is always priced in its company's base currency, but the
+	// screen that shows a driver "180.00 to collect" has to say 180 of what.
+	Currency string          `json:"currency"`
+	Events   []DeliveryEvent `json:"events,omitempty"`
 }
 
 // DeliveryEvent is one step in the consignment's history.
@@ -561,8 +566,9 @@ const deliverySelect = `
 	       d.fee, d.is_cod, d.cod_amount, d.cod_collected_at,
 	       d.assigned_at, d.picked_up_at, d.delivered_at,
 	       coalesce(d.failure_reason, ''), d.attempt_count,
-	       coalesce(d.note, ''), d.created_at
+	       coalesce(d.note, ''), d.created_at, co.base_currency
 	FROM delivery d
+	JOIN company co         ON co.id = d.company_id
 	LEFT JOIN sales_order o ON o.id = d.order_id
 	LEFT JOIN customer c    ON c.id = o.customer_id
 	LEFT JOIN app_user u    ON u.id = d.driver_id`
@@ -613,7 +619,8 @@ func scanDelivery(row scanner) (Delivery, error) {
 	if err := row.Scan(&d.ID, &d.Number, &d.OrderID, &d.OrderNo, &d.Status,
 		&d.Customer, &d.DriverID, &d.DriverName, &d.Address, &d.Phone,
 		&fee, &d.IsCOD, &cod, &codAt, &assigned, &picked, &delivered,
-		&d.FailureReason, &d.Attempts, &d.Note, &created); err != nil {
+		&d.FailureReason, &d.Attempts, &d.Note, &created,
+		&d.Currency); err != nil {
 		return Delivery{}, err
 	}
 	d.Fee = fee.StringFixed(2)

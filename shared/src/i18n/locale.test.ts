@@ -42,6 +42,9 @@ const SAME_IN_BOTH = new Set<string>([
   'tender.tamara',
   'tender.bkash',
   'tender.nagad',
+  // A symbology's name is the same string in both, which the
+  // still-in-English check cannot tell from a key nobody translated.
+  'lbl.sym.datamatrix',
 ]);
 
 /**
@@ -61,6 +64,23 @@ const SAME_IN_BOTH = new Set<string>([
  */
 const PROPER_NOUNS =
   /RawSyst|ZATCA|Fatoora|JPEG|JPG|PNG|SVG|YYYY|MM|DD|Wave|Manufacturer|Model|Serial|Acme|Textiles|ACME|Noor|NOOR|Trading|LLC/g;
+
+/**
+ * Technical names that are written in Latin letters in every language.
+ *
+ * A barcode symbology has one name worldwide: a scanner manual in Riyadh says
+ * Code 128 and EAN-13, and a transliteration would be a worse instruction
+ * rather than a better one. The same is true of IMEI, of the two protocol
+ * names, and of the keys on the keyboard a shortcut hint names — a Bangla
+ * sentence telling somebody to press "প্রবেশ" is telling them to press a key
+ * that is not on their keyboard.
+ *
+ * Phrases rather than single words where the single word is ordinary English:
+ * stripping "Code" or "Data" on its own would let a genuinely untranslated
+ * sentence containing either hide behind this list forever.
+ */
+const TECHNICAL_NAMES =
+  /Code 128|Data Matrix|EAN-13|EAN-8|EAN|UPC-A|UPC|IMEI|HTTPS|https|HTTP|Enter|Esc|GOSI|IBAN/g;
 
 describe('the string catalogue', () => {
   it('says everything in both languages', () => {
@@ -111,7 +131,14 @@ describe('the string catalogue', () => {
     // is written — Mada becomes مدى because that is its Arabic name, and
     // RawSyst has none.
     const strip = (text: string) =>
-      text.replace(/\{\w+\}/g, '').replace(/RawSyst/g, '');
+      text
+        .replace(/\{\w+\}/g, '')
+        .replace(/RawSyst/g, '')
+        // See TECHNICAL_NAMES: a symbology, a protocol and a keyboard key are
+        // written in Latin in Arabic too, and the alternative to stripping the
+        // WORD is allow-listing the whole SENTENCE, which is where a real
+        // untranslated string would hide.
+        .replace(TECHNICAL_NAMES, '');
     const suspicious = (Object.keys(ar) as Key[]).filter(
       (k) =>
         !allowed.has(k) &&
@@ -155,7 +182,10 @@ describe('the string catalogue', () => {
     // sentence to a Bangladeshi shop. Brands and placeholders are the honest
     // exceptions, for the same reason they are in Arabic.
     const strip = (text: string) =>
-      text.replace(/\{\w+\}/g, '').replace(PROPER_NOUNS, '');
+      text
+        .replace(/\{\w+\}/g, '')
+        .replace(PROPER_NOUNS, '')
+        .replace(TECHNICAL_NAMES, '');
     const english = (Object.keys(en) as Key[]).filter((k) => {
       const t = bn[k];
       if (t === undefined) return false;

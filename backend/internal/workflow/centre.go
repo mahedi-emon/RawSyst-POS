@@ -24,8 +24,12 @@ type Request struct {
 	SubjectID uuid.UUID `json:"subject_id"`
 	Summary   string    `json:"summary"`
 	Amount    string    `json:"amount,omitempty"`
-	Status    string    `json:"status"`
-	Step      int       `json:"current_step"`
+	// The currency Amount is in. A request is raised in its company's base
+	// currency, and the approver deciding on "12,000.00" is entitled to know
+	// whether that is riyals or taka before they say yes.
+	Currency string `json:"currency,omitempty"`
+	Status   string `json:"status"`
+	Step     int    `json:"current_step"`
 	// StepsTotal lets a screen say "2 of 3" rather than leaving somebody to
 	// wonder whether their approval was the last one needed.
 	StepsTotal  int    `json:"steps_total"`
@@ -412,8 +416,9 @@ const requestSelect = `
 	       r.current_step,
 	       coalesce(greatest(jsonb_array_length(ar.steps), 1), 1),
 	       coalesce(ar.name, ''), coalesce(u.full_name, ''),
-	       r.requested_at, r.escalate_at
+	       r.requested_at, r.escalate_at, co.base_currency
 	FROM approval_request r
+	JOIN company co ON co.id = r.company_id
 	LEFT JOIN approval_rule ar ON ar.id = r.rule_id
 	LEFT JOIN app_user u ON u.id = r.requested_by`
 
@@ -463,7 +468,7 @@ func scanRequest(row scanner) (Request, error) {
 	var escalate *time.Time
 	if err := row.Scan(&r.ID, &r.Subject, &r.SubjectID, &r.Summary, &amount,
 		&r.Status, &r.Step, &r.StepsTotal, &r.RuleName, &r.RequestedBy,
-		&requested, &escalate); err != nil {
+		&requested, &escalate, &r.Currency); err != nil {
 		return Request{}, err
 	}
 	if amount != nil {

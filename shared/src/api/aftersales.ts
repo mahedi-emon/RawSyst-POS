@@ -45,6 +45,8 @@ export interface Delivery {
 
   is_cod: boolean;
   cod_amount: string;
+  /** The currency the fee and the collection figure are in. */
+  currency: string;
   cod_collected_at?: string;
 
   assigned_at?: string;
@@ -132,6 +134,8 @@ export interface ServiceJob {
   parts_cost: string;
   labour_cost: string;
   charged: string;
+  /** The currency the three cost figures are in. */
+  currency: string;
 
   promised_on?: string;
   received_at: string;

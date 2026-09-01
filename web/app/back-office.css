@@ -2639,3 +2639,935 @@
   .ds-table th,
   .ds-table td { border-color: currentColor; opacity: 1; }
 }
+
+/* The newer sections: staff and payroll (C5, C6), loyalty and gift cards
+ * (B16), after the sale (B13–B15), sourcing (B5.1), approvals (D5), the
+ * notification centre (D3), labels (B3), analytics (D2), the system tabs
+ * (H4/H6/H7/H10), the control plane (H8) and the one search box (D7).
+ *
+ * Nothing here invents a colour, a radius or a spacing step. Every value is a
+ * token, so a section added tonight looks like one that shipped a year ago —
+ * which is the whole reason the tokens exist.
+ * ------------------------------------------------------------------------ */
+
+/* A row of controls in a panel heading: a search box, a checkbox, a button.
+ * The same shape in six sections, so it is one rule rather than six.
+ */
+.hr__actions,
+.crm__actions,
+.after__actions,
+.anl__actions,
+.adm__rowactions,
+.src__rowactions,
+.hr__rowactions,
+.appr__rowactions,
+.lbl__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.hr__rowactions,
+.src__rowactions,
+.appr__rowactions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 40rem) {
+  .hr__rowactions,
+  .src__rowactions,
+  .appr__rowactions { justify-content: flex-start; }
+}
+
+/* A checkbox with its label beside it. Tall enough to hit with a thumb on a
+ * tablet, which is what a stockroom uses.
+ */
+.hr__check,
+.crm__check,
+.after__check,
+.adm__check,
+.lbl__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--tap-desk);
+  font-size: 0.875rem;
+}
+
+@media (pointer: coarse) {
+  .hr__check,
+  .crm__check,
+  .after__check,
+  .adm__check,
+  .lbl__check { min-block-size: var(--tap-mobile); }
+}
+
+.hr__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block: var(--space-3);
+}
+
+/* Every form that opens above the list it edits. */
+.hr__form,
+.crm__form,
+.after__form,
+.appr__form,
+.adm__form,
+.lbl__form,
+.after__quote,
+.crm__lookup,
+.after__lookup {
+  margin-block-end: var(--space-4);
+}
+
+/* A definition list of facts about one record. */
+.crm__facts,
+.after__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.crm__facts dt,
+.after__facts dt {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.crm__facts dd,
+.after__facts dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+/* --- staff --------------------------------------------------------------- */
+
+/* The expiring-papers banner. Warning by default and danger once something has
+ * actually run out, because an expired permit is a legal fact rather than a
+ * reminder.
+ */
+.hr__alert {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 var(--space-6) var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+}
+
+.hr__alert--stopped {
+  border-color: var(--danger-border);
+  background: var(--danger-subtle);
+}
+
+.hr__alerttitle {
+  margin: 0;
+  font-weight: 600;
+}
+
+.hr__alertsay { display: grid; gap: var(--space-1); }
+
+.hr__alertlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-2);
+}
+
+.hr__alertlist li { display: grid; gap: 0; }
+
+@media (max-width: 40rem) {
+  .hr__alert { margin-inline: var(--space-4); }
+}
+
+.hr__totals {
+  display: grid;
+  gap: var(--space-1);
+  justify-content: end;
+  margin: var(--space-4) 0 0;
+}
+
+.hr__totals > div {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, auto);
+  gap: var(--space-4);
+}
+
+.hr__totals dt { color: var(--text-muted); }
+
+.hr__totals dd {
+  margin: 0;
+  text-align: end;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.hr__totals-final {
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--border-strong);
+  font-weight: 600;
+  font-size: 1.0625rem;
+}
+
+.hr__warning {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+}
+
+.hr__wagefile { margin-block-end: var(--space-4); }
+
+/* The wage file itself. Monospace, because it is a fixed-width record the bank
+ * parses by column and a proportional font hides a misaligned one.
+ */
+.hr__wagetext {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* --- loyalty and gift cards ---------------------------------------------- */
+
+.crm__lookuprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.crm__found {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* A card number is read aloud and typed in. Monospace and spaced out, so a
+ * person reading it to somebody else does not lose their place.
+ */
+.crm__code,
+.after__serial {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+}
+
+.crm__minted { margin-block-end: var(--space-4); }
+
+.crm__mintedcode {
+  margin: var(--space-3) 0;
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* --- after the sale ------------------------------------------------------ */
+
+.after__lookuprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.after__answer {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-md);
+  background: var(--brand-subtle);
+}
+
+.after__answertitle {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+/* The delivery pipeline, drawn. Flex in document order, so it reads right to
+ * left in Arabic without a second rule.
+ */
+.after__track {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  font-size: 0.8125rem;
+}
+
+.after__step {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-subtle);
+}
+
+.after__step--done {
+  border-color: var(--brand-border);
+  background: var(--brand-subtle);
+  color: var(--text);
+}
+
+.after__step--now {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+.after__stopped {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.after__advance {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+  max-inline-size: 32rem;
+}
+
+.after__quoteout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-4) 0 0;
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border);
+}
+
+.after__quoteout dt {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.after__quoteout dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.after__quotetotal dd { color: var(--brand); }
+
+/* An overdue instalment is the row somebody is chasing. */
+.after__row--late td { background: var(--danger-subtle); }
+
+/* --- sourcing ------------------------------------------------------------ */
+
+.src__award {
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: 32rem;
+}
+
+.src__awardreason {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--brand);
+  background: var(--surface-sunken);
+}
+
+.src__row--won td { background: var(--success-subtle); }
+
+/* --- approvals ----------------------------------------------------------- */
+
+.appr__row--late td { background: var(--warning-subtle); }
+
+.appr__decline {
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: 32rem;
+}
+
+/* A rule's condition and steps are jsonb the engine reads. Shown as what they
+ * are rather than pretended into prose.
+ */
+.appr__json {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  word-break: break-word;
+  max-inline-size: 22rem;
+}
+
+/* --- the notification bell ----------------------------------------------- */
+
+.bell { position: relative; }
+
+.bell__button { position: relative; }
+
+/* The number on the bell. Small, and it never pushes the icon around. */
+.bell__count {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  min-inline-size: 16px;
+  padding-inline: 3px;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.bell__panel {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-2));
+  inset-inline-end: 0;
+  inline-size: min(24rem, calc(100vw - var(--space-6)));
+  max-block-size: 70vh;
+  overflow-y: auto;
+  z-index: 40;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+}
+
+.bell__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--border);
+}
+
+.bell__empty {
+  margin: 0;
+  padding: var(--space-5) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.bell__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bell__item { border-block-end: 1px solid var(--border); }
+.bell__item:last-child { border-block-end: none; }
+
+.bell__itembtn {
+  display: grid;
+  gap: 2px;
+  inline-size: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.bell__itembtn:hover { background: var(--surface-sunken); }
+
+.bell__itemtitle { font-weight: 500; }
+
+/* Unread is a bar down the leading edge rather than a bold row: a list where
+ * half the rows are bold is a list with no emphasis left.
+ */
+.bell__item--unread { box-shadow: inset 3px 0 0 var(--brand); }
+[dir='rtl'] .bell__item--unread { box-shadow: inset -3px 0 0 var(--brand); }
+
+.bell__item--warning.bell__item--unread { box-shadow: inset 3px 0 0 var(--warning); }
+[dir='rtl'] .bell__item--warning.bell__item--unread {
+  box-shadow: inset -3px 0 0 var(--warning);
+}
+
+.bell__item--critical.bell__item--unread { box-shadow: inset 3px 0 0 var(--danger); }
+[dir='rtl'] .bell__item--critical.bell__item--unread {
+  box-shadow: inset -3px 0 0 var(--danger);
+}
+
+/* --- the label studio ----------------------------------------------------- */
+
+.lbl__example {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+}
+
+.lbl__parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: none;
+}
+
+.lbl__parts legend { padding: 0; }
+
+.lbl__sheetpanel { margin-block-start: var(--space-4); }
+
+.lbl__sheetbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* The sheet itself. White, because that is what the paper is, and it is the
+ * one place in this product that deliberately ignores the dark theme: a label
+ * previewed on a dark ground would be judged against a background it will
+ * never be printed on.
+ */
+.lbl__sheet {
+  padding: var(--space-4);
+  background: #fff;
+  color: #000;
+  overflow-x: auto;
+}
+
+.lbl__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1mm;
+  overflow: hidden;
+  /* The cut line. Black at a quarter strength rather than a grey token: the
+     sheet is deliberately outside the theme, and a themed border would be
+     invisible on the white it is drawn on. */
+  border: 1px dashed rgb(0 0 0 / 25%);
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.lbl__line {
+  inline-size: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lbl__price { font-feature-settings: 'tnum'; }
+
+.lbl__logo {
+  font-size: 7pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgb(0 0 0 / 55%);
+}
+
+.lbl__barcode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5mm;
+}
+
+/* The bars. A truthful preview of the layout at the right size; the printer's
+ * own driver renders the scannable code from the same value.
+ */
+.lbl__bars {
+  display: flex;
+  align-items: stretch;
+}
+
+.lbl__bar {
+  display: block;
+  background: #000;
+}
+
+.lbl__barcodetext {
+  font-family: var(--font-mono);
+  font-size: 5.5pt;
+  letter-spacing: 0.04em;
+}
+
+/* Printing a sheet hides everything that is not the sheet. */
+@media print {
+  .lbl__sheetpanel {
+    position: absolute;
+    inset: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .lbl__sheetbar { display: none; }
+  .lbl__sheet { padding: 0; }
+  .lbl__label { border: none; }
+}
+
+/* --- analytics and the control plane -------------------------------------- */
+
+.anl__tiles,
+.plat__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+
+.anl__tile,
+.plat__tile {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.anl__tile--big { grid-column: span 2; }
+
+@media (max-width: 30rem) {
+  .anl__tile--big { grid-column: span 1; }
+}
+
+.anl__tilelabel,
+.plat__tilelabel {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.anl__tilevalue,
+.plat__tilevalue {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.anl__tile--big .anl__tilevalue { font-size: 2rem; }
+
+/* A figure somebody has to act on. Not red text — a red edge, so the number
+ * itself stays as readable as every other number on the screen.
+ */
+.plat__tile--bad {
+  border-color: var(--danger-border);
+  background: var(--danger-subtle);
+}
+
+.anl__row--short td { background: var(--warning-subtle); }
+
+.plat__banner {
+  margin-block-end: var(--space-4);
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+}
+
+.plat__banner--down {
+  border-color: var(--danger-border);
+  background: var(--danger-subtle);
+}
+
+.plat__bannertitle {
+  margin: 0 0 var(--space-1);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.plat__error,
+.adm__error {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  word-break: break-word;
+  max-inline-size: 28rem;
+  color: var(--text-muted);
+}
+
+.plat__tickets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.plat__ticket {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.plat__tickethead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plat__reply {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+  border-inline-start: 2px solid var(--border);
+  color: var(--text-muted);
+}
+
+.plat__answer {
+  display: grid;
+  gap: var(--space-2);
+  max-inline-size: 36rem;
+}
+
+/* --- the system tabs ------------------------------------------------------ */
+
+.adm__exports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.adm__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: none;
+  max-block-size: 18rem;
+  overflow-y: auto;
+}
+
+.adm__events legend { padding: 0; }
+
+.adm__url,
+.adm__prefix,
+.adm__raw {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  word-break: break-all;
+  max-inline-size: 22rem;
+}
+
+.adm__errorcount { color: var(--danger); font-weight: 600; }
+
+.adm__row--bad td { background: var(--danger-subtle); }
+
+/* The minted key. Loud, because it is readable exactly once and a person who
+ * scrolls past it has lost it.
+ */
+.adm__minted {
+  margin-block-end: var(--space-4);
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+
+.adm__mintedwhy {
+  margin: 0 0 var(--space-3);
+  font-weight: 600;
+}
+
+.adm__secret {
+  display: block;
+  margin-block-end: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  word-break: break-all;
+  user-select: all;
+}
+
+.adm__health {
+  margin-block-end: var(--space-4);
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+}
+
+.adm__health--risk {
+  border-color: var(--danger-border);
+  background: var(--danger-subtle);
+}
+
+.adm__healthtitle {
+  margin: 0 0 var(--space-1);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.adm__verify {
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: 32rem;
+  margin-block: var(--space-3);
+}
+
+/* A ticket thread. The platform's replies are indented and tinted, so a tenant
+ * can tell an answer from their own question at a glance.
+ */
+.adm__thread {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.adm__message {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.adm__message p { margin: var(--space-1) 0; }
+
+.adm__message--support {
+  margin-inline-start: var(--space-5);
+  border-inline-start: 3px solid var(--brand);
+  background: var(--brand-subtle);
+}
+
+.adm__author { font-weight: 600; }
+
+.adm__replybox {
+  display: grid;
+  gap: var(--space-2);
+  max-inline-size: 36rem;
+}
+
+/* --- the command palette -------------------------------------------------- */
+
+.palette__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-block-start: 12vh;
+  background: rgb(8 11 18 / 45%);
+}
+
+.palette {
+  inline-size: min(38rem, calc(100vw - var(--space-6)));
+  max-block-size: 70vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+.palette__box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-block-end: 1px solid var(--border);
+}
+
+.palette__input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.0625rem;
+}
+
+.palette__input:focus { outline: none; }
+
+.palette__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.palette__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  inline-size: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.palette__row--on { background: var(--brand-subtle); }
+
+/* The kind, in a fixed column, so the eye can skim down one edge rather than
+ * reading every row to find out what each result is.
+ */
+.palette__kind {
+  flex: 0 0 auto;
+  inline-size: 5.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-subtle);
+}
+
+.palette__label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.palette__detail {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.palette__amount {
+  flex: 0 0 auto;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.palette__empty,
+.palette__hint {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.palette__hint {
+  border-block-start: 1px solid var(--border);
+  text-align: center;
+}
+
+@media (max-width: 40rem) {
+  .palette__kind { inline-size: 4rem; }
+  .palette__detail { display: none; }
+}

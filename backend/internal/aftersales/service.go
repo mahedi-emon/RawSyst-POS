@@ -296,6 +296,11 @@ type ServiceOrder struct {
 	ReceivedAt string `json:"received_at"`
 	ClosedAt   string `json:"closed_at,omitempty"`
 
+	// The currency the three cost figures are in. A job is costed in its
+	// company's base currency; the counter still has to be told which one,
+	// because "80.00 to pay" is a different sentence in Riyadh and Dhaka.
+	Currency string `json:"currency"`
+
 	Parts []ServicePart `json:"parts,omitempty"`
 }
 
@@ -710,8 +715,9 @@ const jobSelect = `
 	       j.variant_id, coalesce(p.name, ''), j.fault_reported,
 	       coalesce(j.diagnosis, ''), coalesce(j.work_done, ''),
 	       j.parts_cost, j.labour_cost, j.charged,
-	       j.promised_on, j.received_at, j.closed_at
+	       j.promised_on, j.received_at, j.closed_at, co.base_currency
 	FROM service_order j
+	JOIN company co          ON co.id = j.company_id
 	LEFT JOIN customer c     ON c.id = j.customer_id
 	LEFT JOIN stock_serial s ON s.id = j.serial_id
 	LEFT JOIN variant v      ON v.id = j.variant_id
@@ -765,7 +771,8 @@ func scanJob(row scanner) (ServiceOrder, error) {
 	if err := row.Scan(&j.ID, &j.JobNo, &j.Kind, &j.Status, &j.CustomerID,
 		&j.Customer, &j.SerialID, &j.SerialNo, &j.VariantID, &j.Product,
 		&j.FaultReported, &j.Diagnosis, &j.WorkDone, &parts, &labour,
-		&charged, &promised, &received, &closed); err != nil {
+		&charged, &promised, &received, &closed,
+		&j.Currency); err != nil {
 		return ServiceOrder{}, err
 	}
 	j.PartsCost = parts.StringFixed(2)
