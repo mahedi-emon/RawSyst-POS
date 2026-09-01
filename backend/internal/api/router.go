@@ -24,7 +24,9 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/compliance"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/docs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
@@ -40,6 +42,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/privacy"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
@@ -127,6 +130,9 @@ type Server struct {
 	insight      *insight.Service
 	platform     *platformops.Service
 	aftersales   *aftersales.Service
+	docs         *docs.Service
+	privacy      *privacy.Service
+	compliance   *compliance.Service
 	people       *people.Service
 	audit        *audit.Service
 	health       func() error
@@ -207,6 +213,9 @@ func NewServer(
 	insightSvc *insight.Service,
 	platformSvc *platformops.Service,
 	aftersalesSvc *aftersales.Service,
+	docSvc *docs.Service,
+	privacySvc *privacy.Service,
+	complianceSvc *compliance.Service,
 	peopleSvc *people.Service,
 	auditSvc *audit.Service,
 	health func() error,
@@ -247,6 +256,9 @@ func NewServer(
 		insight:      insightSvc,
 		platform:     platformSvc,
 		aftersales:   aftersalesSvc,
+		docs:         docSvc,
+		privacy:      privacySvc,
+		compliance:   complianceSvc,
 		people:       peopleSvc,
 		audit:        auditSvc,
 		health:       health,
@@ -1499,6 +1511,98 @@ func (s *Server) Routes() []Route {
 				"hundred variants and a query string that long is one a proxy " +
 				"will truncate"},
 
+		// --- documents (D6) ---
+		//
+		// One route lists them three ways — attached to a record, matching a
+		// search term, or expiring — because D6's screen is one list with a
+		// filter above it, and three routes would be three ways to ask the
+		// same question.
+		{http.MethodGet, "/api/v1/documents", AccessPermission, "document.view",
+			s.handleListDocuments, ""},
+		{http.MethodPost, "/api/v1/documents", AccessPermission, "document.manage",
+			s.handleUploadDocument, ""},
+		{http.MethodGet, "/api/v1/documents/{documentID}/file", AccessPermission, "document.view",
+			s.handleDownloadDocument,
+			""},
+		{http.MethodDelete, "/api/v1/documents/{documentID}", AccessPermission, "document.manage",
+			s.handleRemoveDocument,
+			""},
+
+		// --- PDPL: consent (E4.1) ---
+		{http.MethodGet, "/api/v1/privacy/consents", AccessPermission, "privacy.view",
+			s.handleListConsents, ""},
+		{http.MethodPost, "/api/v1/privacy/consents", AccessPermission, "privacy.manage",
+			s.handleRecordConsent, ""},
+		{http.MethodPost, "/api/v1/privacy/consents/{consentID}/withdraw", AccessPermission, "privacy.manage",
+			s.handleWithdrawConsent,
+			""},
+
+		// --- PDPL: data subject requests (E4.1) ---
+		{http.MethodGet, "/api/v1/privacy/requests", AccessPermission, "privacy.view",
+			s.handleListDSR, ""},
+		{http.MethodPost, "/api/v1/privacy/requests", AccessPermission, "privacy.manage",
+			s.handleOpenDSR, ""},
+		{http.MethodPost, "/api/v1/privacy/requests/{requestID}/extend", AccessPermission, "privacy.manage",
+			s.handleExtendDSR, ""},
+		{http.MethodPost, "/api/v1/privacy/requests/{requestID}/close", AccessPermission, "privacy.manage",
+			s.handleCloseDSR, ""},
+
+		// --- PDPL: incidents (E4.1) ---
+		{http.MethodGet, "/api/v1/privacy/incidents", AccessPermission, "privacy.view",
+			s.handleListIncidents, ""},
+		{http.MethodPost, "/api/v1/privacy/incidents", AccessPermission, "privacy.manage",
+			s.handleLogIncident, ""},
+		{http.MethodPost, "/api/v1/privacy/incidents/{incidentID}/notify", AccessPermission, "privacy.manage",
+			s.handleNotifyIncident, ""},
+		{http.MethodPost, "/api/v1/privacy/incidents/{incidentID}/close", AccessPermission, "privacy.manage",
+			s.handleCloseIncident, ""},
+
+		// --- PDPL: the register (E4.1) ---
+		{http.MethodGet, "/api/v1/privacy/activities", AccessPermission, "privacy.view",
+			s.handleListActivities, ""},
+		{http.MethodPut, "/api/v1/privacy/activities", AccessPermission, "privacy.manage",
+			s.handleSaveActivity,
+			""},
+		{http.MethodDelete, "/api/v1/privacy/activities/{activityID}", AccessPermission, "privacy.manage",
+			s.handleRemoveActivity, ""},
+		{http.MethodGet, "/api/v1/privacy/retention", AccessPermission, "privacy.view",
+			s.handleListRetentions, ""},
+		{http.MethodPut, "/api/v1/privacy/retention", AccessPermission, "privacy.manage",
+			s.handleSaveRetention, ""},
+		{http.MethodGet, "/api/v1/privacy/holds", AccessPermission, "privacy.view",
+			s.handleListHolds, ""},
+		{http.MethodPost, "/api/v1/privacy/holds", AccessPermission, "privacy.manage",
+			s.handlePlaceHold, ""},
+		{http.MethodPost, "/api/v1/privacy/holds/{holdID}/release", AccessPermission, "privacy.manage",
+			s.handleReleaseHold, ""},
+		{http.MethodGet, "/api/v1/privacy/destructions", AccessPermission, "privacy.view",
+			s.handleListDestructions, ""},
+
+		{http.MethodGet, "/api/v1/privacy/settings", AccessPermission, "privacy.view",
+			s.handleGetPrivacySettings, ""},
+		{http.MethodPut, "/api/v1/privacy/settings", AccessPermission, "privacy.manage",
+			s.handleSavePrivacySettings, ""},
+
+		// The platform's own sub-processor list. Authenticated with no
+		// permission: it is the same list for every tenant, it is the platform
+		// disclosing something about itself rather than reading anything of
+		// the tenant's, and a tenant's own RoPA cannot be written without it.
+		{http.MethodGet, "/api/v1/privacy/subprocessors", AccessAuthenticated, "",
+			s.handleListSubprocessors,
+			"the platform's disclosure about itself, identical for every " +
+				"tenant, and a tenant cannot complete their own processing " +
+				"register without it"},
+
+		// --- E5: storefront disclosures ---
+		{http.MethodGet, "/api/v1/privacy/disclosure", AccessPermission, "privacy.view",
+			s.handleGetDisclosure, ""},
+		{http.MethodPut, "/api/v1/privacy/disclosure", AccessPermission, "privacy.manage",
+			s.handleSaveDisclosure, ""},
+
+		// --- E7: the compliance dashboard ---
+		{http.MethodGet, "/api/v1/compliance", AccessPermission, "compliance.view",
+			s.handleComplianceReport, ""},
+
 		// --- global search (D7) ---
 		//
 		// AccessAuthenticated, with no permission of its own, because it is a
@@ -1571,6 +1675,13 @@ func (s *Server) Routes() []Route {
 		// schema looking for tables the platform may read exists to keep that
 		// line where it is, and the only place it is deliberately crossed is a
 		// support ticket — which is text somebody wrote in order to be read.
+		// E4.1's last bullet: the platform operator is a processor for every
+		// tenant and keeps the sub-processor record. Only they can write it.
+		{http.MethodPut, "/api/v1/platform/subprocessors", AccessSuperAdmin, "",
+			s.handleSaveSubprocessor,
+			"the platform's own PDPL posture, which is the platform owner's " +
+				"to keep and every tenant's to read"},
+
 		{http.MethodGet, "/api/v1/platform/health", AccessSuperAdmin, "",
 			s.handlePlatformHealth,
 			"counts, not lists: an operator needs the shape of the load, and " +

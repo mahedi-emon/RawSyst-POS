@@ -41,10 +41,26 @@ func provisionedCompany(t *testing.T, h *harness, f *shopFixture, name string) u
 		// An open period, or nothing can post: closed-period protection refuses
 		// a date no period covers, which is the correct refusal and not what
 		// these tests are about.
+		// Both the month the fixtures name and the month containing today.
+		// See the note in pos_test.go: they used to be the same month.
 		if _, e := tx.Exec(ctx, `
 			INSERT INTO fiscal_period
 			  (tenant_id, company_id, fiscal_year, period_no, starts_on, ends_on)
-			VALUES ($1,$2,2026,8,'2026-08-01','2026-08-31')`,
+			VALUES ($1,$2,2026,8,'2026-08-01','2026-08-31')
+			ON CONFLICT DO NOTHING`,
+			f.tenantID, companyID); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx, `
+			INSERT INTO fiscal_period
+			  (tenant_id, company_id, fiscal_year, period_no, starts_on, ends_on)
+			SELECT $1, $2,
+			       extract(year  FROM current_date)::int,
+			       extract(month FROM current_date)::int,
+			       date_trunc('month', current_date)::date,
+			       (date_trunc('month', current_date)
+			         + interval '1 month - 1 day')::date
+			ON CONFLICT DO NOTHING`,
 			f.tenantID, companyID); e != nil {
 			return e
 		}

@@ -73,3 +73,6 @@ zatca-docs/
 # Screenshots the visual pass writes. Output of a check, not source.
 /.shots/
 /shots/
+
+# Throwaway SQL validation harness; not part of the product.
+backend/sqlcheck/

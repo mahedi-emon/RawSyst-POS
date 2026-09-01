@@ -124,10 +124,30 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 			return e
 		}
 
+		// August 2026 is the month every date-pinned fixture in this package
+		// posts into, and the month containing TODAY is the one anything
+		// posted at `now()` lands in. They were the same month when these
+		// tests were written and they are not any more, so both are opened —
+		// otherwise the suite starts failing on the first of a month for
+		// reasons that have nothing to do with the code under test.
 		if _, e := tx.Exec(ctx, `
 			INSERT INTO fiscal_period
 			  (tenant_id, company_id, fiscal_year, period_no, starts_on, ends_on)
-			VALUES ($1,$2,2026,8,'2026-08-01','2026-08-31')`,
+			VALUES ($1,$2,2026,8,'2026-08-01','2026-08-31')
+			ON CONFLICT DO NOTHING`,
+			f.tenantID, f.companyID); e != nil {
+			return e
+		}
+		if _, e := tx.Exec(ctx, `
+			INSERT INTO fiscal_period
+			  (tenant_id, company_id, fiscal_year, period_no, starts_on, ends_on)
+			SELECT $1, $2,
+			       extract(year  FROM current_date)::int,
+			       extract(month FROM current_date)::int,
+			       date_trunc('month', current_date)::date,
+			       (date_trunc('month', current_date)
+			         + interval '1 month - 1 day')::date
+			ON CONFLICT DO NOTHING`,
 			f.tenantID, f.companyID); e != nil {
 			return e
 		}
