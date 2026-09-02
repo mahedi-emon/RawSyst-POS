@@ -76,3 +76,8 @@ zatca-docs/
 
 # Throwaway SQL validation harness; not part of the product.
 backend/sqlcheck/
+
+# 21st.dev CLI install record. Pins the same skills that ARE committed under
+# .claude/skills/, but writes absolute machine paths and install timestamps
+# into it, so committing it produces a diff on every machine that reinstalls.
+/.21st/

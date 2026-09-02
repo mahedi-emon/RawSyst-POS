@@ -11,5 +11,8 @@
   },
   "scripts": {
     "e2e": "node e2e/audit.mjs"
+  },
+  "registries": {
+    "@magicui": "https://magicui.design/r/{name}.json"
   }
 }

@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-30 |
-| **Branch** | `main` @ `aa16f46` |
+| **Last updated** | 2026-09-02 |
+| **Branch** | `main` @ `32bc9d5` |
 | **Backend** | 190 Go files, ~58,000 lines, 1,285 integration tests + 425 unit tests, 70 migrations |
 | **HTTP routes live** | 109 — auth, e-invoicing onboarding (status, compliance CSID, production CSID, renewal), invoice reprint (logged), branding (company logo upload/replace/remove/serve), onboarding, platform, card settlement (pending / record deposit / read batch), POS (incl. signed-document upload), sync, shifts (open, current, peek, X-report, cash drop, Z-report close), statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, payment reversal, ageing, supplier edit/retire), customers and receivables (accounts, credit limits, ledger, open invoices, receipts, receipt reversal, ageing, till snapshot), terminals (register, enrol, identity, branches, rename/reassign, pause, revoke), companies, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
@@ -266,3 +266,54 @@ outside.
   rule.
 - **No document, UI string or comment may claim certification.** Enforced by
   `make lint-wording`, which fails the build.
+
+---
+
+## 6. Frontend/UI toolbox
+
+**Status: complete.** Set up 2026-09-02. The full record — every tool, its
+current implementation, what was verified and what was deliberately not
+installed — is in [`FRONTEND_TOOLBOX.md`](../FRONTEND_TOOLBOX.md). Only the
+things that change how work is done here are repeated below.
+
+| | |
+|---|---|
+| **Claude Code plugins** | 10 enabled, 7 declared at project scope: UI UX Pro Max, taste-skill, GSAP (8 skills), motion-framer, and Stitch design/build/utilities |
+| **Agent skills** | 15 under `.claude/skills/`: 5 Vercel, 7 first-party 21st, plus `shadcn`, `emil-design-eng` and the `convex` router. The eight non-21st ones are pinned in `skills-lock.json` |
+| **MCP servers** | `.mcp.json` — official shadcn (verified, 7 tools) and 21st HTTP (configured, needs `API_KEY_21ST`). Serena stays at user scope and was not touched |
+| **Slash commands** | `/ds:interview` → `/ds:port`, the Vercel design-system-to-skills pipeline |
+| **21st.dev** | CLI 1.17.0 global, signed in, free tier — component-code retrievals capped at 2/day |
+
+### Three decisions that constrain future UI work
+
+- **shadcn/ui was NOT initialized, and must not be without a deliberate
+  decision.** There is no Tailwind anywhere in this repository and
+  `shared/src/design-system.css` is the design system. `shadcn init` would
+  install Tailwind and produce a second visual language; `shadcn add` would
+  write components this product cannot render. Reading the registry —
+  `npx shadcn@latest view @shadcn/data-table` — needs neither and is the
+  intended use.
+- **`package.json` gained one key, `registries`, and no dependency.** It
+  declares `@magicui` so the shadcn MCP can reach Magic UI. `@skiper-ui` is
+  deliberately absent: declaring it overrides the CLI's working built-in with a
+  URL that cannot answer a search, which was tested and does break it.
+- **There is no task-to-tool mapping and none should be written.** A tool being
+  installed is not a reason to use it. RawSyst screens are read in columns of
+  currency by someone with a queue; several of these tools are built for
+  marketing sites.
+
+### Blockers
+
+- `API_KEY_21ST` is unset, so the 21st **MCP** is configured but unverified. The
+  authenticated CLI plus its seven skills cover the same ground and need no key.
+- Google Stitch's remote MCP needs a per-account URL from
+  https://stitch.withgoogle.com/docs/mcp/setup/. The Stitch *skills* are
+  installed and need nothing.
+
+### Next frontend task
+
+Run the `/ds:*` pipeline over `shared/src/design-system.css` and
+`shared/src/ui/` to turn RawSyst's own design system into an agent skill. It is
+the one tool here that makes the *existing* system easier to extend rather than
+offering a different one, and 2,290 lines of tokens is exactly the kind of thing
+an agent otherwise guesses at.
