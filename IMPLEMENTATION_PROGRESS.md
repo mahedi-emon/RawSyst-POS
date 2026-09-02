@@ -93,9 +93,48 @@ not re-run it. The per-use `gate()` still refuses, and the next restart blocks.
 Closing it properly means refusing to provision a tenant into a market with
 unverified release-blockers — a provisioning-time check, and a separate task.
 
+### ✅ CLOSED — provisioning-time market gate
+
+The boot gate's companion. `provisioning.CreateTenant` now refuses to create a
+business in a market whose release-blocking legal values are unverified, before
+anything is written, wherever the deployment requires verification
+(`registry.RequiresVerification()` — the same flag `gate()` uses). A development
+machine still creates tenants in any market; a production one may not take on a
+Saudi client while GOSI, EOSB and WPS are placeholders. There is deliberately no
+override flag: one would be used.
+
+Closes the window this file recorded last pass — a Bangladesh deployment being
+handed a Saudi client at 10:00 and serving it on placeholders until somebody
+restarted.
+
+### ✅ PARTLY CLOSED — tax is resolved per treatment, not per country
+
+**The `reduced`-rate defect is fixed.** `SaleInput.TaxRate` (one decimal) became
+`SaleInput.TaxRates` (a rate per treatment). `taxable()` accepted `reduced`
+while only one rate existed, so a reduced-rate line was charged the **standard**
+rate — silently overcharging the customer and overstating the return.
+`resolveRates` now resolves a rate for each treatment the sale actually uses,
+and a taxable treatment with no rate on file **refuses the sale** rather than
+defaulting. Non-taxable treatments need no rate and are answered from the
+treatment list.
+
+**Jurisdiction architecture exists (0106), with no rates.** `tax_jurisdiction`
+(country → state → county → city → district, `parent_id` chain) and
+`tax_jurisdiction_rate` (per treatment, dated, `source_authority` /
+`source_document` / `verified_on` / `verified_by`, GiST exclusion against
+overlapping ranges). `registry.JurisdictionRate` walks a jurisdiction to its
+root and sums the shares in force on the date, returning the parts as well as
+the total because remittance is per authority.
+
+**Not one rate is seeded, and a test enforces that.** Every rate is a legal
+value that must arrive with evidence.
+
 ### 🔴 BLOCKED — highest priority
 
-**US / International cannot sell.** There is no `US.VAT.STANDARD_RATE`, and
+**US / International cannot sell.** The architecture is now in place and the
+DATA is not: no US jurisdiction or rate has been verified against any state or
+city authority, and none may be invented. What is still missing in CODE is the
+link from a sale to a jurisdiction — see §3. There is no `US.VAT.STANDARD_RATE`, and
 there should not be one: US sales tax is set per state, county and city, so
 resolution needs a jurisdiction rather than a country. `US.SALESTAX.TAX_TREATMENTS`
 is seeded; the rate is not. A US company provisions, sets up, and then fails at
@@ -125,6 +164,41 @@ the counter.
 
 ## 3. The single highest-priority next backend task
 
+**Wire a sale to its tax jurisdiction.**
+
+The jurisdiction model and its resolution exist (0106,
+`registry.JurisdictionRate`, 5 tests). What does not exist is the link from a
+sale to a jurisdiction, so nothing calls it yet:
+
+1. **`store.tax_jurisdiction_id`** — nullable, referencing `tax_jurisdiction`.
+   Deliberately not added in 0106 because nothing read it, and a column nothing
+   reads drifts. Required only where the market taxes by jurisdiction.
+2. **`resolveRates` gains the jurisdiction branch** — where
+   `rateKeyFor(country, treatment)` returns false (today: the US `taxable`
+   treatment), resolve through `JurisdictionRate` using the store's jurisdiction
+   at the transaction date instead of refusing.
+3. **Sourcing is a real decision, not a default.** Origin- vs
+   destination-based changes WHICH jurisdiction applies — the shop's or the
+   customer's. `tax_jurisdiction.is_origin_based` records the fact and nothing
+   reads it. Do not pick one silently.
+4. **A CRUD surface for jurisdictions and rates**, Super-Admin scoped, so a
+   verified rate can be entered with its source. Without it the tables can only
+   be filled by SQL.
+5. **Store the shares on the invoice line.** `sales_invoice_line.tax_rate` holds
+   the combined rate today; a US filing needs the per-authority breakdown, and
+   reconstructing it later from rates that have since changed is not possible.
+
+**External information still required:** every US rate, per jurisdiction, from
+the relevant state/county/city authority — plus nexus rules (whether the seller
+must collect at all) and exemption-certificate handling. None of it may be
+inferred.
+
+Then: the `reduced`-rate registry keys (`{CC}.VAT.REDUCED_RATE`) for any market
+that charges one — Bangladesh does, and the value is unknown; a reduced-rate
+line is refused until the NBR figure is recorded.
+
+<details><summary>Superseded plan (kept for context)</summary>
+
 **US / International tax resolution — make it jurisdiction-based.**
 
 This is now the only thing keeping a market from trading. `US.SALESTAX.TAX_TREATMENTS`
@@ -152,6 +226,8 @@ reduced-rate line is silently overcharged at the standard rate.
 
 After that: the provisioning-time market gate noted above, then the web POS
 front end.
+
+</details>
 
 ---
 
