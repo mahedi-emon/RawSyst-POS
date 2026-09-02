@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -355,12 +356,31 @@ func (s *Service) Into(ctx context.Context, q Query, dst any) error {
 // goes through it, so there is exactly one place where the rate enters the
 // system, and it is always dated.
 // tx is the transaction the caller already holds, or nil. See Query.Tx.
+// vatRateKeyFor names the standard-rate rule for a country.
+//
+// It used to be the constant KeyVATStandardRate — "SA.VAT.STANDARD_RATE" — for
+// every caller, while the COUNTRY filter beside it was passed faithfully. So a
+// Bangladeshi sale asked for Saudi Arabia's rate rule filtered to Bangladesh,
+// matched nothing, and the till refused the sale with a registry miss. The
+// country was plumbed all the way through and the key was not.
+//
+// Same shape as catalog.treatmentKeyFor, and named for the same reason: the key
+// says which tax REGIME the value belongs to, so a country whose regime is not
+// a VAT does not get a VAT key by default. The US is deliberately absent — its
+// sales tax is set per state, county and city, so a national rate is not a
+// thing that exists and returning one would be inventing it. A US sale
+// therefore still misses the registry, which is the honest answer until
+// jurisdiction-based resolution is built.
+func vatRateKeyFor(country string) string {
+	return strings.ToUpper(strings.TrimSpace(country)) + ".VAT.STANDARD_RATE"
+}
+
 func (s *Service) VATRate(
 	ctx context.Context, tx pgx.Tx, country string, asOf time.Time,
 	tenantID uuid.UUID,
 ) (decimal.Decimal, error) {
 	return s.Decimal(ctx, Query{
-		Key:      KeyVATStandardRate,
+		Key:      vatRateKeyFor(country),
 		Country:  country,
 		AsOf:     asOf,
 		TenantID: tenantID,
@@ -373,15 +393,46 @@ func (s *Service) VATRate(
 // mechanism that keeps the platform legally current instead of quietly
 // drifting" — a passive flag nobody looks at achieves nothing.
 type HealthReport struct {
-	Verified        int      `json:"verified"`
-	NeverVerified   int      `json:"never_verified"`
-	StaleTaxPayroll int      `json:"stale_tax_payroll"` // > 6 months
-	StaleOther      int      `json:"stale_other"`       // > 12 months
-	BlockingRelease []string `json:"blocking_release"`  // release_blocker AND unverified
+	Verified        int `json:"verified"`
+	NeverVerified   int `json:"never_verified"`
+	StaleTaxPayroll int `json:"stale_tax_payroll"` // > 6 months
+	StaleOther      int `json:"stale_other"`       // > 12 months
+
+	// BlockingRelease is the unverified release-blockers that belong to a market
+	// this deployment actually serves. This is the set that refuses a
+	// production start.
+	BlockingRelease []string `json:"blocking_release"`
+
+	// ServedMarkets is the countries this deployment's tenants trade in, read
+	// from `tenant.market` (0103). Empty on a deployment with no tenants yet.
+	ServedMarkets []string `json:"served_markets"`
+
+	// DeferredBlockers is the unverified release-blockers for markets nobody
+	// here trades in — reported, never blocking.
+	//
+	// Named "deferred" rather than "ignored" on purpose: nothing about them has
+	// been resolved, and the moment a tenant is created in one of their markets
+	// they become blocking. Kept in the report so the operator can see what
+	// verification the platform still owes before selling into that market.
+	DeferredBlockers []string `json:"deferred_blockers"`
 }
 
-// Health computes the registry health report.
+// Health computes the registry health report for this deployment.
 func (s *Service) Health(ctx context.Context) (HealthReport, error) {
+	served, err := s.servedMarkets(ctx)
+	if err != nil {
+		return HealthReport{}, err
+	}
+	return s.healthFor(ctx, served)
+}
+
+// healthFor is Health with the served markets supplied rather than read.
+//
+// Split out so the classification can be tested against the REAL registry for a
+// named set of markets. The alternative — asserting on whatever tenants happen
+// to exist in a shared test database — would be a test whose meaning changed
+// every time another test provisioned a tenant.
+func (s *Service) healthFor(ctx context.Context, served []string) (HealthReport, error) {
 	var rep HealthReport
 	tx, err := s.pool.Raw().Begin(ctx)
 	if err != nil {
@@ -407,23 +458,100 @@ func (s *Service) Health(ctx context.Context) (HealthReport, error) {
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT rule_key FROM regulatory_rule
+		SELECT rule_key, country FROM regulatory_rule
 		WHERE release_blocker AND verified_on IS NULL AND effective_to IS NULL
 		ORDER BY rule_key`)
 	if err != nil {
 		return rep, db.Translate(err, "")
 	}
+	type blocker struct{ key, country string }
+	var blockers []blocker
 	for rows.Next() {
-		var k string
-		if err := rows.Scan(&k); err != nil {
+		var b blocker
+		if err := rows.Scan(&b.key, &b.country); err != nil {
 			rows.Close()
 			return rep, db.Translate(err, "")
 		}
-		rep.BlockingRelease = append(rep.BlockingRelease, k)
+		blockers = append(blockers, b)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return rep, db.Translate(err, "")
 	}
-	return rep, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return rep, db.Translate(err, "")
+	}
+
+	rep.ServedMarkets = served
+
+	inService := make(map[string]bool, len(served))
+	for _, m := range served {
+		inService[m] = true
+	}
+	for _, b := range blockers {
+		if inService[strings.ToLower(strings.TrimSpace(b.country))] {
+			rep.BlockingRelease = append(rep.BlockingRelease, b.key)
+		} else {
+			rep.DeferredBlockers = append(rep.DeferredBlockers, b.key)
+		}
+	}
+	return rep, nil
+}
+
+// servedMarkets is the set of countries this deployment's tenants trade in.
+//
+// # Why this is read from data rather than configured
+//
+// A deployment's markets are a FACT about the tenants it holds, not a policy
+// somebody sets. A config flag would be a second copy of that fact, maintained
+// by hand, and the failure mode is silent in the worst direction: an operator
+// onboards a Saudi client, forgets the flag, and the process keeps booting
+// while Saudi legal values are still placeholders. `tenant.market` (0103) is
+// written by the platform operator at provisioning and cannot drift from the
+// tenants that exist.
+//
+// # Why the platform plane
+//
+// `tenant` is ENABLE + FORCE row-level security, so an unscoped connection sees
+// zero rows — silently, which would read here as "this deployment serves no
+// markets" and quietly disable the gate entirely. That is exactly the failure
+// this project has hit before (a chain verifier that used an unscoped
+// connection reported every chain intact because RLS hid every row). Migration
+// 0006 grants the platform plane a predicate on `tenant`, and this is a
+// platform-level question about the deployment rather than about any one
+// tenant, so it is asked there.
+//
+// # An empty result is honest, not a bypass
+//
+// A deployment with no tenants serves no markets and has no legal figure to
+// compute, so nothing blocks. The real protection against a placeholder is not
+// this gate but `gate()`, which refuses EVERY unverified rule at the point of
+// use whenever requireVerified is set — so a Saudi payroll run on a deployment
+// that booted refuses on `SA.GOSI.RATES` regardless of what happened at start.
+// This check is an early, loud warning; it is not the thing standing between a
+// placeholder and a tax return.
+func (s *Service) servedMarkets(ctx context.Context) ([]string, error) {
+	var out []string
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT DISTINCT lower(market) FROM tenant
+			WHERE status <> 'deactivated'
+			ORDER BY 1`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m string
+			if err := rows.Scan(&m); err != nil {
+				return err
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, db.Translate(err, "")
+	}
+	return out, nil
 }

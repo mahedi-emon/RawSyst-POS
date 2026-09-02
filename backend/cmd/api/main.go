@@ -402,21 +402,52 @@ func reportRegistryHealth(
 		slog.Int("never_verified", rep.NeverVerified),
 		slog.Int("stale_tax_payroll", rep.StaleTaxPayroll),
 		slog.Int("stale_other", rep.StaleOther),
-		slog.Int("blocking_release", len(rep.BlockingRelease)))
+		slog.String("served_markets", marketList(rep.ServedMarkets)),
+		slog.Int("blocking_release", len(rep.BlockingRelease)),
+		slog.Int("deferred_blockers", len(rep.DeferredBlockers)))
+
+	// Named, not merely counted.
+	//
+	// A rule that is not blocking this deployment is still unverified, and the
+	// platform still owes that verification before it sells into that market.
+	// Logging only the count would make "3 deferred" indistinguishable from
+	// nothing to do.
+	if len(rep.DeferredBlockers) > 0 {
+		log.Info("unverified release-blocking rules for markets not served here",
+			slog.String("rules", strings.Join(rep.DeferredBlockers, ", ")),
+			slog.String("served_markets", marketList(rep.ServedMarkets)),
+			slog.String("note", "not blocking startup; they become blocking as "+
+				"soon as a tenant is provisioned in one of their markets, and "+
+				"any use of them is refused meanwhile"))
+	}
 
 	if len(rep.BlockingRelease) > 0 {
 		if strict {
 			return fmt.Errorf(
 				"refusing to start: these legal values have never been verified "+
-					"against their official source: %s. "+
+					"against their official source: %s. They apply to markets "+
+					"this deployment serves (%s). "+
 					"Verify them in Super Admin > Regulatory Registry first",
-				strings.Join(rep.BlockingRelease, ", "))
+				strings.Join(rep.BlockingRelease, ", "),
+				marketList(rep.ServedMarkets))
 		}
 		log.Warn("unverified release-blocking regulatory rules",
 			slog.String("rules", strings.Join(rep.BlockingRelease, ", ")),
 			slog.String("note", "this would refuse to start in production"))
 	}
 	return nil
+}
+
+// marketList renders the served markets for a log line or a refusal.
+//
+// "none yet" rather than an empty string, because the empty case is the one a
+// reader most needs named: a deployment with no tenants blocks on nothing, and
+// a blank field there reads like a bug rather than like the answer.
+func marketList(markets []string) string {
+	if len(markets) == 0 {
+		return "none yet"
+	}
+	return strings.Join(markets, ", ")
 }
 
 // tauriOrigins are the origins the POS presents from inside its own window.
