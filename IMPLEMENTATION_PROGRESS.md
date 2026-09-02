@@ -109,7 +109,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | D2 | Analytics & forecasting | **PARTIAL** | `insight` 5 svc · 4 routes. **Thin test coverage** (touched only by `studio_test`) |
 | D3 | Notifications | **COMPLETE** | `notify` 8 svc · 7 routes; 3 functional tests (preferences, in-app cannot be silenced, announcement reaches inbox) |
 | D4 | Audit trail | **COMPLETE** | append-only, `TestAuditLogIsAppendOnly`, `audit.Write` with `actor_label` |
-| D5 | Approval centre | **PARTIAL** | `workflow` 11 svc · 10 routes, **and it is genuinely wired** — `Evaluate` is called by `expenses/record.go` and `purchasing/purchasing.go`. **Only rule CRUD is tested**; `Decide`, `Escalate`, `Delegate` and the `Evaluate` gate have no tests |
+| D5 | Approval centre | **COMPLETE (core)** | `workflow` 12 svc · 10 routes, wired into `expenses.Record` and `purchasing.IssueOrder`. **A P0 defect that made the whole module unusable was found and fixed 2026-09-03** — see below. 6 end-to-end tests. `Escalate` and `Delegate` still untested |
 | D6 | Document management | **PARTIAL** | `docs` 7 svc · 4 routes. **Isolation-only test coverage** (`cross_tenant_walk`) |
 | D7 | Global search | **PARTIAL** | 1 route, `insight/search.go`. Touched by `studio_test` only |
 | E1 | ZATCA | **DEFERRED** | as instructed |
@@ -158,7 +158,43 @@ things wrong in opposite directions. Re-verified against the code:
 nothing connects them. A customer marked `wholesale` can place a `store`-channel
 order and skip the minimums.
 
-### 🔴 B9 defect found during the B12 re-verification — promotions never redeem
+### 🔴🔴 F1 defect found while writing the approval tests — FIXED 2026-09-03
+
+**The approval workflow was completely unusable, and looked like it worked.**
+
+`workflow.Evaluate` inserted the approval request using the CALLER'S
+transaction. Every caller then returned an error to refuse the work — which
+rolled the insert back with it. So an expense over the threshold was refused
+with *"it is waiting in the approval centre"*, the approval centre returned
+`{"data":[]}`, and **no request existed in any status**. The person was told to
+wait for something that had never been written and could never arrive. Same for
+a purchase order over its limit.
+
+Nothing caught it because only rule CRUD had tests; the decision path had none.
+
+**Fix:** the refusal and the request are two facts with two lifetimes — the work
+must NOT commit, the request MUST. `Evaluate` now assesses inside the caller's
+transaction and returns a `workflow.Pending`; the caller raises it through
+`workflow.Raise` **after** its transaction has rolled back. Applied at both wired
+call sites, `expenses.Record` and `purchasing.IssueOrder`.
+
+6 tests: threshold held / not held, approve then refuse-to-decide-twice
+(`FOR UPDATE` under concurrency), refusal needs a reason, deciding needs more
+than the permission to look, and no cross-company decisions.
+
+### ~~🔴 B9 defect — promotions never redeem~~ FIXED 2026-09-03
+
+`sales.Finalize` now records redemptions in the sale's own transaction. A line
+carries `promotion_id`; the offline queue carries it too, so a replayed sale
+spends a campaign's budget against its limit like an online one. 4 tests,
+including **a one-per-customer coupon that stops after the first sale** — the
+assertion the whole change exists for.
+
+Note `0084` constrains usage caps to coupon promotions: "an automatic promotion
+is not redeemed, it just applies". Redemptions are still recorded for automatic
+campaigns, because campaign COST is a separate question from usage limits.
+
+### The original finding, for context — promotions never redeem
 
 `promotions.Redeem` writes `promotion_redemption` and its own comment says it is
 "called inside the transaction that finalises the sale". **Nothing calls it.**
@@ -336,13 +372,11 @@ out of scope.
    nothing. The work is a middleware or route-level check mapping each H5
    feature to the routes it covers, plus a refusal that names the plan. Deleting
    `TestEntitlementIsResolvedButNotYetEnforced` is part of the task.
-3. **Call `promotions.Redeem` from `sales.Finalize`** — in the sale's own
-   transaction, as its comment already specifies. Until then a limited coupon is
-   unlimited and every campaign reports zero cost. Add an end-to-end test that a
-   promotion applied at the till writes a redemption and that the second use of
-   a one-use coupon is refused.
-4. **Tests for the approval decision path** — `Decide`, `Escalate`, `Delegate`,
-   and the `Evaluate` gate in expenses and purchasing.
+3. ~~**Call `promotions.Redeem` from `sales.Finalize`**~~ **DONE 2026-09-03**, 4
+   tests, online and offline paths.
+4. ~~**Tests for the approval decision path**~~ **DONE 2026-09-03**, 6 tests —
+   and they found F1 was unusable end to end. Fixed. `Escalate` and `Delegate`
+   remain untested.
 
 **P1 — core business functionality**
 4. **Wire a sale to its tax jurisdiction** (see §3 — still the top single task).

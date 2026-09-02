@@ -16,6 +16,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
@@ -184,6 +185,20 @@ type Service struct {
 	// uploading a signed document deserves a truthful answer about whether
 	// anything can be sent.
 	submitter zatca.Submitter
+
+	// promos records what a campaign actually gave away, in the sale's own
+	// transaction. Optional, like the rest: a caller driving Finalize directly
+	// may not have it, and a sale carrying no promotion never asks for it.
+	promos *promotions.Service
+}
+
+// WithPromotions lets a finalised sale record the campaigns it redeemed.
+//
+// Without this the redemption table stays empty, and every usage limit — which
+// is enforced by counting that table — counts zero for ever.
+func (s *Service) WithPromotions(p *promotions.Service) *Service {
+	s.promos = p
+	return s
 }
 
 func NewService(chain *zatca.Chain) *Service {
@@ -299,6 +314,15 @@ func (s *Service) Finalize(
 		return Finalized{}, err
 	}
 
+	// What the campaigns gave away, recorded in the SAME transaction as the
+	// sale — for the reason the audit writer is. A redemption that commits
+	// without its invoice, or an invoice whose redemptions rolled back, both
+	// make the campaign figures wrong in a way nobody would notice until
+	// somebody asked what a campaign cost.
+	if err := s.recordRedemptions(ctx, tx, term, sale, computed, invoiceID); err != nil {
+		return Finalized{}, err
+	}
+
 	// Points are earned in the same transaction as the sale, so a sale that
 	// posted and points that did not is not a state this product can reach.
 	earned, err := loyalty.Accrue(ctx, tx, term.TenantID, term.CompanyID,
@@ -330,6 +354,68 @@ func (s *Service) Finalize(
 		Revenue: revenue, COGS: cogs, Shortfalls: costed.Shortfalls,
 		PointsEarned: earned,
 	}, nil
+}
+
+// recordRedemptions writes what each campaign gave away on this sale.
+//
+// # Why the line carries the promotion rather than the server recomputing it
+//
+// The till quotes a basket against the live campaigns while the cart is built,
+// shows the customer a price, and takes the money. Recomputing here could
+// disagree with what the customer was shown — a campaign that expired between
+// the quote and the tender, a limit another till reached first — and the
+// customer is already holding the receipt. So the sale reports which campaign
+// it applied, in the same way it reports the discount itself, and the price
+// floor remains the backstop against a till asserting a discount it should not.
+//
+// # A sale with no promotion costs nothing here
+//
+// The common case is no campaign at all, and it does no work and needs no
+// promotions service. Only a sale that actually names one requires the service
+// to be wired, which keeps a caller driving Finalize directly — the sync
+// replay, the tests — from having to supply a dependency it will never use.
+func (s *Service) recordRedemptions(
+	ctx context.Context, tx pgx.Tx, term Terminal, sale Sale,
+	computed ComputedSale, invoiceID uuid.UUID,
+) error {
+	var given []promotions.Redemption
+	for i, l := range computed.Lines {
+		id := sale.Input.Lines[i].PromotionID
+		if id == nil {
+			continue
+		}
+		// The discount the campaign gave is the line discount, not the invoice
+		// discount allocated across the sale: the latter is the shop's own
+		// reduction and belongs to no campaign.
+		discount := l.LineDiscount
+		if !discount.IsPositive() {
+			continue
+		}
+		given = append(given, promotions.Redemption{
+			PromotionID: *id,
+			InvoiceID:   &invoiceID,
+			CustomerID:  sale.CustomerID,
+			Discount:    discount,
+			LineTotal:   l.GrossAmount,
+		})
+	}
+	if len(given) == 0 {
+		return nil
+	}
+
+	if s.promos == nil {
+		// Refused rather than skipped. A sale claiming a campaign on a service
+		// that cannot record one would leave the limit uncounted and the cost
+		// unreported — exactly the silent hole this method exists to close.
+		return errs.New(errs.CodeInternal,
+			"This sale names a promotion, but the sales service was built "+
+				"without the promotions service, so the redemption could not "+
+				"be recorded.")
+	}
+
+	return s.promos.Redeem(ctx, tx, promotions.Scope{
+		TenantID: term.TenantID, CompanyID: term.CompanyID,
+	}, given)
 }
 
 // settleStoredValue draws down the store credit, gift cards and points a sale

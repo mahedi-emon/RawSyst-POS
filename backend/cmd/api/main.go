@@ -190,7 +190,11 @@ func run() error {
 	credentials := zatca.NewCredentialStore(pool, cipher)
 	submitter := zatca.SubmitterFrom(credentials,
 		zatca.Environment(cfg.ZATCAEnvironment))
-	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules).WithSubmitter(submitter)
+	// One promotions service, shared: the sale records redemptions through the
+	// same instance the routes quote from.
+	promotionsSvc := promotions.NewService(pool)
+	salesSvc := sales.NewService(chain).WithPool(pool).WithRegistry(rules).
+		WithSubmitter(submitter).WithPromotions(promotionsSvc)
 
 	// The sync engine replays a terminal's offline queue through the SAME sale
 	// path an online sale takes. Registering the applier here rather than
@@ -276,7 +280,7 @@ func run() error {
 			func() float64 { return float64(pool.Raw().Stat().EmptyAcquireCount()) })
 	}
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool).WithPush(live.Notifications(hub)), integration.NewService(pool, cipher), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotionsSvc, orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool).WithPush(live.Notifications(hub)), integration.NewService(pool, cipher), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, version).
 		// Onboarding is only wired when this installation can hold the
 		// credential ZATCA issues; without a key the routes say so rather than

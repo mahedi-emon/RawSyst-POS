@@ -414,13 +414,18 @@ func (s *Service) createOrderInTx(
 func (s *Service) IssueOrder(
 	ctx context.Context, scope Scope, poID uuid.UUID,
 ) (Order, error) {
+	// Set inside the transaction when a rule requires sign-off, acted on after
+	// it has rolled back: the request must survive the refusal, the issue must
+	// not.
+	var pending workflow.Outcome
+
 	var out Order
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		// F1's engine, on the commit path: "IF Purchase Order > SAR 50,000 →
 		// Owner Approval". Issuing is the right gate rather than creating —
 		// a draft order commits the shop to nothing, and an approval that
 		// stopped a buyer writing one down would stop them doing their job.
-		if e := s.gateIssue(ctx, tx, scope, poID); e != nil {
+		if e := s.gateIssue(ctx, tx, scope, poID, &pending); e != nil {
 			return e
 		}
 
@@ -452,6 +457,22 @@ func (s *Service) IssueOrder(
 		out = read
 		return e
 	})
+
+	// The transaction has ended. If a rule asked for sign-off, the issue has
+	// rolled back and the REQUEST is written now, in its own transaction, so it
+	// survives the refusal the buyer is about to receive.
+	if errors.Is(err, errNeedsApproval) && pending.Pending != nil {
+		if _, e := s.approvals.Raise(ctx, workflow.Scope{
+			TenantID: scope.TenantID, CompanyID: scope.CompanyID,
+			UserID: scope.UserID,
+		}, *pending.Pending); e != nil {
+			return Order{}, e
+		}
+		return Order{}, errs.Newf(errs.CodeComplianceBlocked,
+			"%s needs sign-off before this order goes to the supplier. It is "+
+				"waiting in the approval centre.", pending.RuleName)
+	}
+
 	return out, err
 }
 
@@ -832,6 +853,7 @@ func conflictMessage(err error, message string) error {
 // caller could walk past.
 func (s *Service) gateIssue(
 	ctx context.Context, tx pgx.Tx, scope Scope, poID uuid.UUID,
+	pending *workflow.Outcome,
 ) error {
 	if s.approvals == nil {
 		return nil
@@ -877,10 +899,21 @@ func (s *Service) gateIssue(
 	case out.Blocked:
 		return errs.Newf(errs.CodeForbidden,
 			"%s does not allow this order to be issued.", out.RuleName)
-	case out.NeedsApproval, out.NeedsPIN:
+	case out.NeedsApproval:
+		// Handed back so IssueOrder can write the request AFTER this
+		// transaction rolls back. Written inside it, the request would roll
+		// back with the refusal and the approval centre would stay empty --
+		// see workflow.Pending.
+		*pending = out
+		return errNeedsApproval
+	case out.NeedsPIN:
 		return errs.Newf(errs.CodeComplianceBlocked,
-			"%s needs sign-off before this order goes to the supplier. It is "+
-				"waiting in the approval centre.", out.RuleName)
+			"%s needs a second person to authorise this before the order goes "+
+				"to the supplier.", out.RuleName)
 	}
 	return nil
 }
+
+// errNeedsApproval unwinds the issuing transaction without committing it, while
+// IssueOrder raises the request afterwards.
+var errNeedsApproval = errors.New("purchase order needs approval")

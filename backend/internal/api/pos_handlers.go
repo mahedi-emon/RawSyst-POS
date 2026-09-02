@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -40,7 +41,11 @@ type posLineRequest struct {
 	Qty           string `json:"qty"`
 	UnitPrice     string `json:"unit_price"`
 	LineDiscount  string `json:"line_discount"`
-	TaxTreatment  string `json:"tax_treatment"`
+	// Which campaign the line discount came from, if any. The till gets it from
+	// `POST /promotions/quote`; sending it back is what records the redemption
+	// and makes a usage limit count.
+	PromotionID  string `json:"promotion_id"`
+	TaxTreatment string `json:"tax_treatment"`
 }
 
 type posTenderRequest struct {
@@ -186,6 +191,15 @@ func (s *Server) buildSale(
 		if err != nil {
 			return sales.Sale{}, err
 		}
+		var promotionID *uuid.UUID
+		if raw := strings.TrimSpace(l.PromotionID); raw != "" {
+			id, e := parseUUID(raw, "lines[].promotion_id")
+			if e != nil {
+				return sales.Sale{}, e
+			}
+			promotionID = &id
+		}
+
 		lineDiscount, err := parseOptionalAmount(l.LineDiscount, "lines[].line_discount", i)
 		if err != nil {
 			return sales.Sale{}, err
@@ -198,6 +212,7 @@ func (s *Server) buildSale(
 			Qty:           qty,
 			UnitPrice:     unitPrice,
 			LineDiscount:  lineDiscount,
+			PromotionID:   promotionID,
 			TaxTreatment:  l.TaxTreatment,
 		})
 		refs = append(refs, sales.SaleLineRef{VariantID: variantID})

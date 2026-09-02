@@ -139,6 +139,11 @@ func (s *Service) Record(
 		}
 	}
 
+	// Set inside the transaction when a rule requires sign-off, and acted on
+	// after it has rolled back. The request must survive the refusal; the
+	// expense must not.
+	var pending workflow.Outcome
+
 	var out Expense
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		if existing, found, e := s.alreadyRecorded(ctx, tx, scope, in.UUID); e != nil {
@@ -173,7 +178,7 @@ func (s *Service) Record(
 		// the same id, the engine finds the approved request, and the expense
 		// goes through — which is the only way an approval could ever be
 		// granted for something that has not been recorded.
-		if e := s.gate(ctx, tx, scope, in, priced); e != nil {
+		if e := s.gate(ctx, tx, scope, in, priced, &pending); e != nil {
 			return e
 		}
 
@@ -225,8 +230,34 @@ func (s *Service) Record(
 		out = read
 		return nil
 	})
+
+	// The transaction has ended. If a rule asked for sign-off, the expense has
+	// rolled back and the REQUEST is written now, in its own transaction, so
+	// that it survives the refusal the caller is about to receive.
+	//
+	// This is the whole point of the split. Writing it inside the transaction
+	// above meant the request rolled back with the expense: the person was told
+	// their expense was "waiting in the approval centre", the centre was empty,
+	// and no approval could ever arrive.
+	if errors.Is(err, errNeedsApproval) && pending.Pending != nil {
+		if _, e := s.approvals.Raise(ctx, workflow.Scope{
+			TenantID: scope.TenantID, CompanyID: scope.CompanyID,
+			UserID: scope.UserID,
+		}, *pending.Pending); e != nil {
+			return Expense{}, e
+		}
+		return Expense{}, errs.Newf(errs.CodeComplianceBlocked,
+			"%s needs sign-off before this expense can be recorded. It is "+
+				"waiting in the approval centre.", pending.RuleName)
+	}
+
 	return out, err
 }
+
+// errNeedsApproval unwinds the recording transaction without committing it,
+// while Record raises the request afterwards. A sentinel rather than a domain
+// error because it never reaches a caller: Record replaces it above.
+var errNeedsApproval = errors.New("expense needs approval")
 
 // pricedLine is one line after the tax and the recoverability split.
 type pricedLine struct {
@@ -439,6 +470,7 @@ func claimNumber(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) (string, e
 // what lets a three-person shop trade on day one.
 func (s *Service) gate(
 	ctx context.Context, tx pgx.Tx, scope Scope, in NewExpense, p priced,
+	pending *workflow.Outcome,
 ) error {
 	if s.approvals == nil {
 		return nil
@@ -470,9 +502,10 @@ func (s *Service) gate(
 		return errs.Newf(errs.CodeForbidden,
 			"%s does not allow this expense.", out.RuleName)
 	case out.NeedsApproval:
-		return errs.Newf(errs.CodeComplianceBlocked,
-			"%s needs sign-off before this expense can be recorded. It is "+
-				"waiting in the approval centre.", out.RuleName)
+		// Handed back to Record rather than refused here. The request has to be
+		// written AFTER this transaction rolls back -- see workflow.Pending.
+		*pending = out
+		return errNeedsApproval
 	case out.NeedsPIN:
 		// F1 offers a second-person PIN as an alternative to an asynchronous
 		// approval, and it is a till gesture: somebody is standing at the

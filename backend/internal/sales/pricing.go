@@ -19,6 +19,7 @@
 package sales
 
 import (
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
@@ -44,6 +45,20 @@ type LineInput struct {
 
 	// Discount on this line specifically, as an absolute amount.
 	LineDiscount decimal.Decimal
+
+	// PromotionID names the campaign the line discount came from, where it came
+	// from one at all.
+	//
+	// The till asks `POST /promotions/quote` while the cart is built and applies
+	// what it is told; this carries that answer back so the sale can record the
+	// redemption. Without it `promotion_redemption` was never written, and
+	// because `Quote` enforces `max_uses` and `max_uses_per_customer` by
+	// COUNTING that table, every limit counted zero forever: a coupon good for
+	// one use per customer could be used without limit, and every campaign
+	// reported as having cost nothing.
+	//
+	// Nil for an ordinary manual discount, which is most of them.
+	PromotionID *uuid.UUID
 
 	TaxTreatment string
 }

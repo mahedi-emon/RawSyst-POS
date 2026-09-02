@@ -101,6 +101,38 @@ type Outcome struct {
 	RuleID   *uuid.UUID `json:"rule_id,omitempty"`
 	RuleName string     `json:"rule_name,omitempty"`
 	Warning  string     `json:"warning,omitempty"`
+
+	// Pending carries what Raise needs, when NeedsApproval is set.
+	//
+	// Never serialised: it is a handover between Evaluate and Raise inside one
+	// service call, not something a client is told.
+	Pending *Pending `json:"-"`
+}
+
+// Pending is an approval request that has been decided upon and not yet
+// written.
+//
+// # Why the request is not written where it is decided
+//
+// It used to be. `Evaluate` inserted the request using the CALLER'S
+// transaction, and every caller then returned an error to refuse the work —
+// which rolled the insert back with it. So an expense over the threshold was
+// refused with "it is waiting in the approval centre", the approval centre was
+// empty, and no request existed in any status. The person was told to wait for
+// something that had never been written and could never arrive, and the whole
+// of F1 was unreachable in practice.
+//
+// The refusal and the request are two different facts with two different
+// lifetimes: the work must NOT be committed, and the request MUST be. So the
+// decision is made inside the caller's transaction, where the rules and the
+// facts are already loaded, and the write happens after that transaction has
+// ended.
+type Pending struct {
+	Rule      Rule
+	Subject   string
+	SubjectID uuid.UUID
+	Summary   string
+	Facts     Facts
 }
 
 // Evaluate decides what must happen before a subject may proceed.
@@ -178,15 +210,15 @@ func (s *Service) Evaluate(
 			}, nil
 
 		case "require_approval":
-			reqID, err := s.raise(ctx, tx, scope, r, subject, subjectID,
-				summary, facts)
-			if err != nil {
-				return Outcome{}, err
-			}
+			// Assessed here, RAISED by the caller after its transaction has
+			// ended. See Pending and Raise for why.
 			id := r.ID
 			return Outcome{
-				NeedsApproval: true, RequestID: &reqID,
-				RuleID: &id, RuleName: r.Name,
+				NeedsApproval: true, RuleID: &id, RuleName: r.Name,
+				Pending: &Pending{
+					Rule: r, Subject: subject, SubjectID: subjectID,
+					Summary: summary, Facts: facts,
+				},
 			}, nil
 		}
 	}
@@ -195,6 +227,28 @@ func (s *Service) Evaluate(
 	// everything proceeds, which is the right default: an engine that blocked
 	// by default would stop a three-person shop from trading on day one.
 	return Outcome{Allowed: true}, nil
+}
+
+// Raise writes the approval request, in a transaction of its own.
+//
+// Called by the caller of Evaluate AFTER its own transaction has ended, and
+// deliberately not before: the work is being refused, so the caller's
+// transaction is rolling back, and a request written inside it would roll back
+// with the refusal — which is exactly the defect this pair exists to fix.
+//
+// Idempotent through the same conflict clause `raise` has always carried, so a
+// person who presses save twice gets one request rather than two.
+func (s *Service) Raise(
+	ctx context.Context, scope Scope, p Pending,
+) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		var e error
+		id, e = s.raise(ctx, tx, scope, p.Rule, p.Subject, p.SubjectID,
+			p.Summary, p.Facts)
+		return e
+	})
+	return id, err
 }
 
 // raise records a request and returns its id.

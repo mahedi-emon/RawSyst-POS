@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,7 +94,12 @@ type offlineLine struct {
 	Qty           string `json:"qty"`
 	UnitPrice     string `json:"unit_price"`
 	LineDiscount  string `json:"line_discount"`
-	TaxTreatment  string `json:"tax_treatment"`
+	// The campaign the discount came from, carried through the queue for the
+	// same reason CustomerID is: the redemption is recorded when the sale
+	// finalises, and an offline sale that arrived without it would spend a
+	// campaign's budget without counting against its limit.
+	PromotionID  string `json:"promotion_id"`
+	TaxTreatment string `json:"tax_treatment"`
 }
 
 type offlineTender struct {
@@ -224,6 +230,16 @@ func (a *SaleApplier) build(p offlineSale, item sync.Item) (Sale, uuid.UUID, err
 		if err != nil {
 			return Sale{}, uuid.Nil, err
 		}
+		var promotionID *uuid.UUID
+		if raw := strings.TrimSpace(l.PromotionID); raw != "" {
+			id, e := uuid.Parse(raw)
+			if e != nil {
+				return Sale{}, uuid.Nil, errs.New(errs.CodeInvalidInput,
+					"A queued sale names a promotion that is not a valid id.")
+			}
+			promotionID = &id
+		}
+
 		lineDiscount, err := optionalAmount(l.LineDiscount, "line discount")
 		if err != nil {
 			return Sale{}, uuid.Nil, err
@@ -233,6 +249,7 @@ func (a *SaleApplier) build(p offlineSale, item sync.Item) (Sale, uuid.UUID, err
 			VariantID: l.VariantID, Description: l.Description,
 			DescriptionAr: l.DescriptionAr,
 			Qty:           qty, UnitPrice: unitPrice, LineDiscount: lineDiscount,
+			PromotionID:  promotionID,
 			TaxTreatment: l.TaxTreatment,
 		})
 		sale.Lines = append(sale.Lines, SaleLineRef{VariantID: variantID})
