@@ -110,8 +110,125 @@ func TestAConfiguredKeyIsAcceptedInProduction(t *testing.T) {
 	withEnv(t, map[string]string{
 		"RAWSYST_ENV":                  "production",
 		"RAWSYST_DATA_ENCRYPTION_KEYS": "1:" + encodedKey(0xAA),
+		"RAWSYST_METRICS_TOKEN":        "a-scrape-token",
 	})
 	if _, err := Load(); err != nil {
 		t.Errorf("a correctly configured production stack was refused: %v", err)
 	}
+}
+
+// The scrape endpoint carries a description of how much business every shop on
+// a stack is doing. It is not personal data and it is not something to publish
+// on a port anybody can reach, so serving it unguarded outside development is
+// refused rather than warned about.
+func TestTheScrapeTokenIsRequiredOutsideDevelopment(t *testing.T) {
+	base := map[string]string{
+		"RAWSYST_DATA_ENCRYPTION_KEYS": "1:" + encodedKey(0xAA),
+	}
+
+	// Development is exempt: there is nothing there, and demanding a token to
+	// run the stack locally gets a throwaway one committed within a week.
+	withEnv(t, merged(base, map[string]string{"RAWSYST_ENV": "development"}))
+	if _, err := Load(); err != nil {
+		t.Errorf("development should not require a scrape token: %v", err)
+	}
+
+	for _, env := range []string{"staging", "production"} {
+		// Set explicitly rather than left to the default: `withEnv` adds to
+		// the environment and does not clear it, so the previous iteration's
+		// "false" would still be set and this case would pass for the wrong
+		// reason.
+		withEnv(t, merged(base, map[string]string{
+			"RAWSYST_ENV":             env,
+			"RAWSYST_METRICS_ENABLED": "true",
+		}))
+		_, err := Load()
+		if err == nil {
+			t.Errorf("%s served metrics with no token", env)
+			continue
+		}
+		if !strings.Contains(err.Error(), "RAWSYST_METRICS_TOKEN") {
+			t.Errorf("%s: the error does not name the variable: %v", env, err)
+		}
+
+		// And turning metrics off is the other way out, which the message
+		// says. A deployment that does not want a token must not be stuck.
+		withEnv(t, merged(base, map[string]string{
+			"RAWSYST_ENV":             env,
+			"RAWSYST_METRICS_ENABLED": "false",
+		}))
+		if _, err := Load(); err != nil {
+			t.Errorf("%s refused to start with metrics switched off: %v", env, err)
+		}
+	}
+}
+
+// TestTheSampleRateHasToBeAFraction: a rate above one is somebody meaning
+// "100%" and getting a client that behaves unpredictably instead.
+func TestTheSampleRateHasToBeAFraction(t *testing.T) {
+	withEnv(t, map[string]string{
+		"RAWSYST_ENV":                  "production",
+		"RAWSYST_DATA_ENCRYPTION_KEYS": "1:" + encodedKey(0xAA),
+		"RAWSYST_METRICS_TOKEN":        "a-scrape-token",
+		"RAWSYST_SENTRY_SAMPLE_RATE":   "100",
+	})
+	if _, err := Load(); err == nil {
+		t.Error("a sample rate of 100 was accepted")
+	}
+}
+
+// TestHalfAnObjectStoreIsRefused: a deployment with an endpoint and no key
+// fails on the first upload rather than at start-up, which is the wrong place
+// to find out.
+func TestHalfAnObjectStoreIsRefused(t *testing.T) {
+	withEnv(t, map[string]string{
+		"RAWSYST_ENV":         "development",
+		"RAWSYST_S3_ENDPOINT": "https://s3.example.com",
+		"RAWSYST_S3_BUCKET":   "rawsyst",
+	})
+	_, err := Load()
+	if err == nil {
+		t.Fatal("an object store with no credentials was accepted")
+	}
+	if !strings.Contains(err.Error(), "RAWSYST_S3_ACCESS_KEY_ID") {
+		t.Errorf("the error does not name what is missing: %v", err)
+	}
+}
+
+// TestObjectStorageMustBeEncryptedOutsideDevelopment: documents and signed
+// invoices go over that link, and plain HTTP to a store outside the machine is
+// a copy of a shop's records on the wire.
+func TestObjectStorageMustBeEncryptedOutsideDevelopment(t *testing.T) {
+	env := map[string]string{
+		"RAWSYST_ENV":                  "production",
+		"RAWSYST_DATA_ENCRYPTION_KEYS": "1:" + encodedKey(0xAA),
+		"RAWSYST_METRICS_TOKEN":        "a-scrape-token",
+		"RAWSYST_S3_ENDPOINT":          "http://minio:9000",
+		"RAWSYST_S3_BUCKET":            "rawsyst",
+		"RAWSYST_S3_ACCESS_KEY_ID":     "key",
+		"RAWSYST_S3_SECRET_ACCESS_KEY": "secret",
+	}
+	withEnv(t, env)
+	if _, err := Load(); err == nil {
+		t.Error("plain HTTP object storage was accepted in production")
+	}
+
+	env["RAWSYST_S3_ENDPOINT"] = "https://minio:9000"
+	withEnv(t, env)
+	if _, err := Load(); err != nil {
+		t.Errorf("https object storage was refused: %v", err)
+	}
+}
+
+// merged is one map over another, so a table of cases can share a base without
+// mutating it.
+func merged(base, over map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
 }

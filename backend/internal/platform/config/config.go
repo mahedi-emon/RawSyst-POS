@@ -26,6 +26,13 @@ type Config struct {
 	DataRegion  string // sa | eu | asia | other — the region THIS stack serves
 	ServiceName string
 
+	// Redis, object storage and observability are all OPTIONAL, and every
+	// one of them is a deliberate decision rather than an oversight.
+
+	Redis         Redis
+	Storage       Storage
+	Observability Observability
+
 	// ZATCAEnvironment is which ZATCA stack this deployment talks to:
 	// sandbox, simulation or production.
 	//
@@ -94,6 +101,92 @@ type Auth struct {
 	DataEncryptionKeys []secrets.Key
 }
 
+// Redis is the shared cache, rate-limit store and invalidation bus.
+//
+// # Optional, and the product is honest about what it costs to omit
+//
+// One API process needs none of this: an in-memory cache is faster and a
+// per-process rate limit is the same limit. The moment there are TWO — a
+// second replica behind the load balancer, or a rolling deploy with both
+// versions up — in-memory stops being correct. A permission revoked on one
+// replica stays live on the other until its own cache expires, and a rate
+// limit of ten becomes a rate limit of twenty.
+//
+// So the fallback is real and supported for a single-process deployment,
+// which is what most shops run, and Redis is what makes more than one
+// process behave like one system. See internal/platform/cache.
+//
+// # NOT the job queue
+//
+// Jobs stay in Postgres (design 08): enqueuing in the same transaction as
+// the thing that triggered them is worth more than a faster broker, and a
+// queue a shop's accountant can query in SQL is worth more still.
+type Redis struct {
+	Addr     string
+	Password string
+	DB       int
+	// TLS is for a managed Redis reached across a network somebody else runs.
+	TLS bool
+}
+
+// Configured reports whether a Redis was named.
+func (r Redis) Configured() bool { return strings.TrimSpace(r.Addr) != "" }
+
+// Storage is an S3-compatible object store.
+//
+// # S3-compatible, not S3
+//
+// The endpoint is configuration, so this works against Amazon, MinIO on the
+// shop's own server, Cloudflare R2, Wasabi, DigitalOcean Spaces or anything
+// else that speaks the same API. That is not a nicety: a Saudi deployment
+// under PDPL may be required to keep records inside the Kingdom, and tying
+// the product to one vendor's regions would make that somebody else's
+// decision. See internal/platform/blob.
+//
+// # Optional, with the database as the fallback
+//
+// Without it, a logo and a stored document live in Postgres as bytes, which
+// is correct and does not scale — a million receipt PDFs in a table is a
+// backup nobody can restore in an afternoon. With it, the database holds the
+// reference and the bytes live where bytes belong.
+type Storage struct {
+	Endpoint        string
+	Region          string
+	Bucket          string
+	AccessKeyID     string
+	SecretAccessKey string
+	// PathStyle puts the bucket in the path rather than the hostname.
+	//
+	// Required by MinIO and by anything reached on an IP address, because
+	// `bucket.192.168.1.10` is not a name that resolves. Amazon prefers the
+	// hostname form and still accepts this one.
+	PathStyle bool
+}
+
+// Configured reports whether an object store was named.
+func (s Storage) Configured() bool {
+	return strings.TrimSpace(s.Endpoint) != "" && strings.TrimSpace(s.Bucket) != ""
+}
+
+// Observability is metrics and error reporting.
+type Observability struct {
+	// MetricsEnabled serves Prometheus text at /metrics.
+	MetricsEnabled bool
+	// MetricsToken guards it with a bearer token.
+	//
+	// Required outside development when metrics are on. The endpoint carries
+	// tenant counts, request rates and error rates: not personal data, but a
+	// precise description of how much business a shop is doing, which is not
+	// something to publish on a port anybody can reach.
+	MetricsToken string
+
+	// SentryDSN turns on error reporting. Absent means off.
+	SentryDSN string
+	// SentrySampleRate is the fraction of TRACES sent, 0 to 1. Errors are
+	// always sent; it is the performance sampling this thins out.
+	SentrySampleRate float64
+}
+
 // Load reads configuration from the environment, applies defaults, and
 // validates the result. It returns every problem it finds at once rather than
 // failing on the first, so a misconfigured deployment can be fixed in one pass.
@@ -133,6 +226,29 @@ func Load() (Config, error) {
 			AccessTokenTTL:  getDuration("RAWSYST_ACCESS_TOKEN_TTL", 15*time.Minute),
 			RefreshTokenTTL: getDuration("RAWSYST_REFRESH_TOKEN_TTL", 720*time.Hour),
 			Issuer:          getString("RAWSYST_JWT_ISSUER", "rawsyst-pos"),
+		},
+		Redis: Redis{
+			Addr:     strings.TrimSpace(os.Getenv("RAWSYST_REDIS_ADDR")),
+			Password: os.Getenv("RAWSYST_REDIS_PASSWORD"),
+			DB:       getInt("RAWSYST_REDIS_DB", 0),
+			TLS:      getBool("RAWSYST_REDIS_TLS", false),
+		},
+		Storage: Storage{
+			Endpoint:        strings.TrimSpace(os.Getenv("RAWSYST_S3_ENDPOINT")),
+			Region:          getString("RAWSYST_S3_REGION", "us-east-1"),
+			Bucket:          strings.TrimSpace(os.Getenv("RAWSYST_S3_BUCKET")),
+			AccessKeyID:     os.Getenv("RAWSYST_S3_ACCESS_KEY_ID"),
+			SecretAccessKey: os.Getenv("RAWSYST_S3_SECRET_ACCESS_KEY"),
+			// On by default: it works everywhere, and the deployments that
+			// need it (MinIO, an IP address) are the ones where the other
+			// form fails with a DNS error nobody reads as a bucket problem.
+			PathStyle: getBool("RAWSYST_S3_PATH_STYLE", true),
+		},
+		Observability: Observability{
+			MetricsEnabled:   getBool("RAWSYST_METRICS_ENABLED", true),
+			MetricsToken:     strings.TrimSpace(os.Getenv("RAWSYST_METRICS_TOKEN")),
+			SentryDSN:        strings.TrimSpace(os.Getenv("RAWSYST_SENTRY_DSN")),
+			SentrySampleRate: getFloat("RAWSYST_SENTRY_SAMPLE_RATE", 0.1),
 		},
 	}
 
@@ -234,6 +350,49 @@ func Load() (Config, error) {
 		problems = append(problems, "RAWSYST_DB_MIN_CONNS cannot exceed RAWSYST_DB_MAX_CONNS")
 	}
 
+	// Half a set of object-storage credentials is a deployment that will
+	// fail on the first upload rather than at start-up. Either all of it or
+	// none of it.
+	if cfg.Storage.Configured() {
+		if strings.TrimSpace(cfg.Storage.AccessKeyID) == "" ||
+			strings.TrimSpace(cfg.Storage.SecretAccessKey) == "" {
+			problems = append(problems,
+				"RAWSYST_S3_ENDPOINT and RAWSYST_S3_BUCKET are set, so "+
+					"RAWSYST_S3_ACCESS_KEY_ID and RAWSYST_S3_SECRET_ACCESS_KEY "+
+					"are required too")
+		}
+		if !strings.HasPrefix(cfg.Storage.Endpoint, "http://") &&
+			!strings.HasPrefix(cfg.Storage.Endpoint, "https://") {
+			problems = append(problems,
+				"RAWSYST_S3_ENDPOINT must start with http:// or https://")
+		}
+		// Documents and signed invoices go over this link. Plain HTTP to an
+		// object store outside the machine is a copy of a shop's records on
+		// the wire, so it is refused where it would be real.
+		if (env == EnvStaging || env == EnvProduction) &&
+			strings.HasPrefix(cfg.Storage.Endpoint, "http://") {
+			problems = append(problems,
+				"RAWSYST_S3_ENDPOINT must be https outside development")
+		}
+	}
+
+	// An unguarded /metrics on a public port publishes how much business
+	// every shop on the stack is doing. Development is exempt because there
+	// is nothing there and a token would only be pasted into a script.
+	if cfg.Observability.MetricsEnabled &&
+		cfg.Observability.MetricsToken == "" &&
+		(env == EnvStaging || env == EnvProduction) {
+		problems = append(problems,
+			"RAWSYST_METRICS_TOKEN is required when metrics are served "+
+				"outside development; set it, or turn metrics off with "+
+				"RAWSYST_METRICS_ENABLED=false")
+	}
+
+	if r := cfg.Observability.SentrySampleRate; r < 0 || r > 1 {
+		problems = append(problems, fmt.Sprintf(
+			"RAWSYST_SENTRY_SAMPLE_RATE must be between 0 and 1 (got %v)", r))
+	}
+
 	if len(problems) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n  - %s",
 			strings.Join(problems, "\n  - "))
@@ -258,6 +417,31 @@ func getInt(key string, def int) int {
 		return def
 	}
 	return n
+}
+
+func getBool(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch v {
+	case "":
+		return def
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return def
+}
+
+func getFloat(key string, def float64) float64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return def
+	}
+	return f
 }
 
 func getDuration(key string, def time.Duration) time.Duration {

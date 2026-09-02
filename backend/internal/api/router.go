@@ -40,8 +40,13 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/payments"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/cache"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/live"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/metrics"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/observe"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
@@ -141,8 +146,37 @@ type Server struct {
 	compliance   *compliance.Service
 	people       *people.Service
 	audit        *audit.Service
-	health       func() error
-	version      string
+
+	// cache is the shared cache and rate-limit store. Optional; see
+	// internal/platform/cache for what a deployment gives up without one.
+	cache cache.Cache
+
+	// live pushes changes to whoever is watching: a stock delta to the
+	// tills, a notification to a back office. Optional, and nothing depends
+	// on it — see internal/platform/live for why a push is never a source
+	// of truth.
+	live *live.Hub
+
+	// metrics records every request by route pattern. Optional; without it
+	// the routes are wired without the middleware and /metrics is not served.
+	metrics *metrics.Registry
+	// metricsToken guards the scrape endpoint. See config.Observability.
+	metricsToken string
+
+	// reporter sends 5xx and panics to an error tracker, scrubbed. Optional.
+	reporter *observe.Reporter
+
+	// payments configures card providers and drives them.
+	//
+	// Optional, and for the same reason ZATCA onboarding is: a gateway key has
+	// to be sealed, sealing needs a data encryption key, and an installation
+	// without one should still start and serve every other route. The payment
+	// routes report that they cannot hold a credential rather than storing a
+	// live acquirer key in the clear.
+	payments *payments.Service
+
+	health  func() error
+	version string
 
 	// queue is how a recovery code reaches a mailbox: the send is a
 	// `notify.send` job rather than I/O inside the request, so a mail provider
@@ -175,6 +209,47 @@ type Server struct {
 // served over TLS, which is every deployment except a developer's laptop.
 func (s *Server) WithSecureCookies(secure bool) *Server {
 	s.secureCookies = secure
+	return s
+}
+
+// WithCache supplies the shared cache, so the rate limits hold across
+// replicas rather than per process.
+//
+// Optional. Without it the limits are counted in this process, which is
+// correct for the single-process deployment most shops run and is the exact
+// thing that stops being correct at two.
+func (s *Server) WithCache(c cache.Cache) *Server {
+	s.cache = c
+	s.recoveryLimit = newRecoveryLimiter(c, 10, 15*time.Minute)
+	return s
+}
+
+// WithLive enables the live socket.
+func (s *Server) WithLive(h *live.Hub) *Server {
+	s.live = h
+	return s
+}
+
+// WithMetrics records requests and serves the scrape endpoint.
+//
+// The token is passed with the registry rather than read from config here,
+// because the router does not otherwise know what a deployment is: it is
+// handed its dependencies and serves them.
+func (s *Server) WithMetrics(r *metrics.Registry, token string) *Server {
+	s.metrics = r
+	s.metricsToken = token
+	return s
+}
+
+// WithReporter sends failures to an error tracker.
+func (s *Server) WithReporter(r *observe.Reporter) *Server {
+	s.reporter = r
+	return s
+}
+
+// WithPayments enables the card provider routes.
+func (s *Server) WithPayments(p *payments.Service) *Server {
+	s.payments = p
 	return s
 }
 
@@ -278,7 +353,11 @@ func NewServer(
 
 		// Ten attempts a quarter hour from one caller. Generous for somebody
 		// mistyping a code off a screen, useless for walking an address list.
-		recoveryLimit: newRecoveryLimiter(10, 15*time.Minute),
+		//
+		// Counted in memory until WithCache supplies a shared one; see the note
+		// on recoveryLimiter for why that distinction matters the moment a
+		// deployment has two replicas.
+		recoveryLimit: newRecoveryLimiter(nil, 10, 15*time.Minute),
 	}
 }
 
@@ -301,6 +380,16 @@ func (s *Server) Routes() []Route {
 			"liveness probe; must answer before any dependency is reachable"},
 		{http.MethodGet, "/readyz", AccessPublic, "", s.handleReady,
 			"readiness probe for the load balancer"},
+		// The scrape endpoint. Public in the route table and guarded by a
+		// bearer token in the handler, because a scraper is not a person and
+		// has no session: it cannot hold one of this product's tokens. Config
+		// refuses to start without the token outside development.
+		{http.MethodGet, "/metrics", AccessPublic, "",
+			s.handleMetrics,
+			"a scraper has no session; guarded by RAWSYST_METRICS_TOKEN, which " +
+				"config requires outside development. Carries request rates and " +
+				"latencies by route pattern -- no tenant, no user, no record ids"},
+
 		{http.MethodGet, "/api/v1/meta/version", AccessPublic, "", s.handleVersion,
 			"build version, so a support call can establish what the client is running"},
 
@@ -1620,6 +1709,116 @@ func (s *Server) Routes() []Route {
 			"answers a customer; it does NOT post the return, which goes " +
 				"through the returns path where the accounting belongs"},
 
+		// --- the second factor, and the caller's own sessions (H1) ---
+		//
+		// AccessAuthenticated with no permission: every one of these is about
+		// the CALLER, scoped to the user id in their own token, and no route
+		// here takes a parameter naming anybody else. See the note at the top
+		// of security_handlers.go.
+		{http.MethodGet, "/api/v1/auth/mfa", AccessAuthenticated, "",
+			s.handleMFAStatus,
+			"whether the caller has a second factor and how many recovery " +
+				"codes they have left"},
+		{http.MethodPost, "/api/v1/auth/mfa/begin", AccessAuthenticated, "",
+			s.handleBeginMFA,
+			"generates a secret and returns the QR payload; switches nothing " +
+				"on until a code proves the phone has it"},
+		{http.MethodPost, "/api/v1/auth/mfa/complete", AccessAuthenticated, "",
+			s.handleCompleteMFA,
+			"switches it on and returns the recovery codes, which are shown " +
+				"here and nowhere else"},
+		{http.MethodPost, "/api/v1/auth/mfa/disable", AccessAuthenticated, "",
+			s.handleDisableMFA,
+			"needs a current code: somebody holding a stolen session must not " +
+				"be able to remove the factor they cannot satisfy"},
+		{http.MethodPost, "/api/v1/auth/mfa/recovery-codes", AccessAuthenticated, "",
+			s.handleRegenerateRecoveryCodes,
+			"issues a fresh set and spends the old ones"},
+
+		{http.MethodGet, "/api/v1/auth/sessions", AccessAuthenticated, "",
+			s.handleMySessions,
+			"where the caller is signed in; the user id comes from the token " +
+				"and there is no parameter that could name somebody else"},
+		{http.MethodDelete, "/api/v1/auth/sessions/{sessionID}", AccessAuthenticated, "",
+			s.handleRevokeMySession,
+			"signs the caller out of one of their own sessions and ends its " +
+				"refresh chain with it"},
+
+		// --- the role builder (A6.2) ---
+		//
+		// `identity.manage_roles` is the most powerful permission the product
+		// has: anybody holding it can put into a role anything they hold
+		// themselves. The subset rule in SaveRole is what stops it being
+		// anything MORE than that.
+		{http.MethodGet, "/api/v1/permissions", AccessPermission, "identity.manage_roles",
+			s.handleListPermissions,
+			"every permission the route registry enforces, described, with " +
+				"the ones the caller cannot grant marked rather than hidden"},
+		{http.MethodPost, "/api/v1/roles", AccessPermission, "identity.manage_roles",
+			s.handleSaveRole, ""},
+		{http.MethodGet, "/api/v1/roles/{roleID}", AccessPermission, "identity.manage_roles",
+			s.handleReadRole, ""},
+		{http.MethodPut, "/api/v1/roles/{roleID}", AccessPermission, "identity.manage_roles",
+			s.handleSaveRole,
+			"a built-in role is refused here: copy it and edit the copy, so " +
+				"it keeps working when the product adds a module"},
+		{http.MethodDelete, "/api/v1/roles/{roleID}", AccessPermission, "identity.manage_roles",
+			s.handleRemoveRole,
+			"refused while anybody holds it; cascading the assignment away " +
+				"would strip somebody of everything they can do"},
+
+		// --- live updates (design 03) ---
+		//
+		// Authenticated and no permission: the socket is bound to the
+		// caller's own tenant, taken from their token, and carries nudges
+		// rather than records. See live_handlers.go.
+		{http.MethodGet, "/api/v1/live", AccessAuthenticated, "",
+			s.handleLiveSocket,
+			"a socket bound to the caller's own tenant; every message is a " +
+				"nudge to re-read an endpoint where the permission check " +
+				"still applies, so nothing here can widen what anybody sees"},
+
+		// --- card providers (E3.3) and the machine on the counter (E3.4) ---
+		//
+		// The catalogue is AccessAuthenticated rather than permissioned: it is
+		// a list of which acquirers exist and which boxes each one needs, the
+		// same list for every tenant, and it holds nobody's anything.
+		{http.MethodGet, "/api/v1/payment-providers", AccessAuthenticated, "",
+			s.handleListPaymentProviders,
+			"the acquirers this product can talk to and the fields each one " +
+				"needs, so the settings screen renders a box per field from " +
+				"data rather than a hard-coded form"},
+		{http.MethodGet, "/api/v1/payment-gateways", AccessPermission, "gateway.view",
+			s.handleListGateways,
+			"never returns a stored key: the type has no field for one"},
+		{http.MethodPost, "/api/v1/payment-gateways", AccessPermission, "gateway.manage",
+			s.handleSaveGateway, ""},
+		{http.MethodGet, "/api/v1/payment-gateways/{gatewayID}", AccessPermission, "gateway.view",
+			s.handleReadGateway, ""},
+		{http.MethodPut, "/api/v1/payment-gateways/{gatewayID}", AccessPermission, "gateway.manage",
+			s.handleSaveGateway,
+			"an empty secret means leave the stored one alone, because a " +
+				"screen that cannot read a key back cannot send it again"},
+		{http.MethodDelete, "/api/v1/payment-gateways/{gatewayID}", AccessPermission, "gateway.manage",
+			s.handleRemoveGateway,
+			"refused once money has gone through it; the attempts are the " +
+				"record of what the acquirer said and must survive"},
+		{http.MethodPost, "/api/v1/payment-gateways/{gatewayID}/check", AccessPermission, "gateway.manage",
+			s.handleCheckGateway,
+			"the Test button: talks to the acquirer with the stored " +
+				"credentials and writes down what came back, and never moves " +
+				"money"},
+		{http.MethodPost, "/api/v1/payment-gateways/{gatewayID}/charge", AccessPermission, "sales.receive_payment",
+			s.handleCharge,
+			"idempotent on the caller's own key, so a till that retries after " +
+				"a timeout does not charge the customer twice"},
+		{http.MethodGet, "/api/v1/payment-attempts", AccessPermission, "gateway.view",
+			s.handleListAttempts,
+			"what the acquirer said, failures included -- a declined card has " +
+				"no tender row, which is why it needs a home of its own"},
+		{http.MethodPost, "/api/v1/payment-attempts/{attemptID}/refund", AccessPermission, "sales.refund",
+			s.handleRefundAttempt, ""},
+
 		// --- subscription and entitlements (H5) ---
 		//
 		// A client reads; only the platform writes. See the note in
@@ -1919,20 +2118,30 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 	}
 
 	for _, rt := range s.Routes() {
+		// Wrapped per route, so the metric is labelled with the PATTERN the
+		// router matched rather than the URL the client sent. That is what
+		// keeps the series count fixed at the size of this table instead of
+		// growing by one per invoice — see internal/platform/metrics.
+		//
+		// Outside the authentication middleware on purpose: a 401 is a
+		// request that happened, and a spike of them is the first sign of
+		// something worth looking at.
+		handler := s.measured(rt)
+
 		switch rt.Access {
 		case AccessPublic:
-			r.Method(rt.Method, rt.Pattern, rt.Handler)
+			r.Method(rt.Method, rt.Pattern, handler)
 
 		case AccessAuthenticated:
-			r.With(s.mw.Authenticate).Method(rt.Method, rt.Pattern, rt.Handler)
+			r.With(s.mw.Authenticate).Method(rt.Method, rt.Pattern, handler)
 
 		case AccessPermission:
 			r.With(s.mw.Authenticate, s.mw.Require(rt.Permission)).
-				Method(rt.Method, rt.Pattern, rt.Handler)
+				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessSuperAdmin:
 			r.With(s.mw.Authenticate, s.mw.RequireSuperAdmin).
-				Method(rt.Method, rt.Pattern, rt.Handler)
+				Method(rt.Method, rt.Pattern, handler)
 		}
 	}
 
@@ -1944,4 +2153,21 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 	})
 
 	return r
+}
+
+// measured wraps a route handler with the metrics middleware.
+//
+// Returns the handler unchanged when no registry is wired, so an
+// installation with metrics off pays nothing at all rather than paying for
+// a middleware that discards its work.
+func (s *Server) measured(rt Route) http.Handler {
+	if s.metrics == nil {
+		return rt.Handler
+	}
+	// The scrape endpoint does not measure itself. It would be the busiest
+	// route on the graph and would say nothing about the product.
+	if rt.Pattern == "/metrics" {
+		return rt.Handler
+	}
+	return s.metrics.Middleware(rt.Pattern, rt.Handler)
 }

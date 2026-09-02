@@ -53,6 +53,11 @@ type loginRequest struct {
 	// only ever a filter on the account lookup — naming a business the caller
 	// has no account in is refused exactly like a wrong password.
 	TenantID string `json:"tenant_id,omitempty"`
+
+	// MFACode answers the second-factor challenge. A code from the
+	// authenticator, or one of the recovery codes. Empty on the first attempt:
+	// the caller does not know one is wanted until the challenge comes back.
+	MFACode string `json:"mfa_code,omitempty"`
 }
 
 type loginResponse struct {
@@ -69,6 +74,12 @@ type loginResponse struct {
 	// finds no access token and cannot proceed regardless.
 	TenantChoiceRequired bool                    `json:"tenant_choice_required,omitempty"`
 	Tenants              []identity.TenantChoice `json:"tenants,omitempty"`
+
+	// MFARequired means the password was right and the account has a second
+	// factor. Same shape as the challenge above, and for the same reason: a
+	// 200 with no access token, which a client that ignores the flag cannot
+	// proceed past regardless.
+	MFARequired bool `json:"mfa_required,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +101,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		IP:        clientIP(r),
 		UserAgent: r.UserAgent(),
 		Device:    req.Device,
+		MFACode:   req.MFACode,
 	}
 
 	// Signing in ON a paired terminal binds the session to it, so every sale
@@ -131,6 +143,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			TenantChoiceRequired: true,
 			Tenants:              session.Choices,
 		})
+		return
+	}
+
+	// The second-factor challenge. After the business choice, because a person
+	// with accounts in two shops has to say which one before there is an
+	// account whose factor could be asked for.
+	if session.MFARequired {
+		httpx.JSON(w, http.StatusOK, loginResponse{MFARequired: true})
 		return
 	}
 

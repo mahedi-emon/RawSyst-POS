@@ -21,68 +21,64 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/cache"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
 )
 
 // recoveryLimiter caps how often one caller may use the public recovery routes.
 //
-// In memory, deliberately, for the same reason the enrolment limiter is: it is
-// a nuisance filter and not an accounting record. Losing the counters on
-// restart costs one more window of attempts against codes that expire in ten
-// minutes, and the alternative — a write on every request to a PUBLIC endpoint
-// — is its own denial of service.
+// # Counted in the cache, which is what makes it hold across replicas
 //
-// A deployment behind more than one replica gets a limit per replica, which is
-// a real weakening and the honest place to note it: the account-level ceiling
-// in `identity.RequestReset` is the one that holds regardless, and it is the
-// one that stops a mailbox being flooded.
+// It used to be a map in this process, and that was defensible while there
+// was one process: losing the counters on restart costs one more window of
+// attempts against codes that expire in ten minutes, and a database write on
+// every request to a PUBLIC endpoint is its own denial of service.
+//
+// It stopped being defensible the moment a deployment could have two. A limit
+// of ten per replica is a limit of twenty behind two, thirty behind three, and
+// it rises every time somebody scales up to cope with the traffic the attack
+// is generating. So the counter lives in `cache.Cache`: Redis where one is
+// configured, and an in-memory store with the same behaviour where none is —
+// which is correct, because a deployment without Redis has one process.
+//
+// The account-level ceiling in `identity.RequestReset` still holds regardless,
+// and it is the one that stops a mailbox being flooded. This one is what stops
+// somebody walking an address list.
 type recoveryLimiter struct {
-	mu     sync.Mutex
-	limit  int
+	cache  cache.Cache
+	limit  int64
 	window time.Duration
-	seen   map[string]*recoveryWindow
 }
 
-type recoveryWindow struct {
-	count   int
-	resetAt time.Time
-}
-
-func newRecoveryLimiter(limit int, window time.Duration) *recoveryLimiter {
-	return &recoveryLimiter{
-		limit: limit, window: window, seen: map[string]*recoveryWindow{},
+func newRecoveryLimiter(
+	c cache.Cache, limit int64, window time.Duration,
+) *recoveryLimiter {
+	if c == nil {
+		c = cache.NewMemory()
 	}
+	return &recoveryLimiter{cache: c, limit: limit, window: window}
 }
 
-func (l *recoveryLimiter) allow(key string) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	now := time.Now()
-	for k, w := range l.seen {
-		if now.After(w.resetAt) {
-			delete(l.seen, k)
-		}
-	}
-
-	w, ok := l.seen[key]
-	if !ok {
-		l.seen[key] = &recoveryWindow{count: 1, resetAt: now.Add(l.window)}
+func (l *recoveryLimiter) allow(ctx context.Context, key string) error {
+	n, err := l.cache.Incr(ctx, "recovery:"+key, l.window)
+	if err != nil {
+		// The cache is unreachable. Allowed rather than refused: this is a
+		// nuisance filter, and a Redis outage must not lock every shop out of
+		// its own password recovery. The account-level ceiling still applies.
 		return nil
 	}
-	if w.count >= l.limit {
+	if n > l.limit {
 		return errs.New(errs.CodeRateLimited,
 			"Too many attempts from here. Wait a few minutes and try again.")
 	}
-	w.count++
 	return nil
 }
 
@@ -113,7 +109,7 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.recoveryLimit.allow(r.RemoteAddr); err != nil {
+	if err := s.recoveryLimit.allow(r.Context(), r.RemoteAddr); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
@@ -161,7 +157,7 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.recoveryLimit.allow(r.RemoteAddr); err != nil {
+	if err := s.recoveryLimit.allow(r.Context(), r.RemoteAddr); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}

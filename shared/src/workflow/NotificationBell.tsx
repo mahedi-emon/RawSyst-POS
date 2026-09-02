@@ -27,6 +27,7 @@ import {
 import { useAuth } from '../auth/session';
 import { useRemote } from '../dashboard/useRemote';
 import { useLocale, useT } from '../i18n/locale';
+import { useLiveReload } from '../live/useLive';
 import type { Key } from '../i18n/strings';
 import { Icon } from '../ui/Icon';
 import { shortDate } from '../ui/format';
@@ -44,6 +45,12 @@ export function NotificationBell({ companyId }: { companyId: string }) {
     [client, companyId],
   );
   const { remote, reload } = useRemote(load);
+
+  // The bell refreshes when the server says something arrived, rather than
+  // asking every ten seconds. A missed message costs nothing: the next read of
+  // this list is correct regardless, which is why the socket is allowed to be
+  // best-effort. See useLive.
+  useLiveReload(client, ['notification.new'], reload, { companyId });
 
   const unread = remote.state === 'ready' ? remote.data.unread : 0;
   const notes: Notification[] = remote.state === 'ready' ? remote.data.data : [];

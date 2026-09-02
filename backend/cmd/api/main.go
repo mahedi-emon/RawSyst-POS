@@ -35,12 +35,18 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/payments"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/blob"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/cache"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/live"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/metrics"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/observe"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
@@ -176,6 +182,11 @@ func run() error {
 		}
 	}
 
+	// The same keyring seals the second factor. An installation without one
+	// refuses MFA enrolment and says so, rather than storing a TOTP secret
+	// that a database copy would hand over in the clear.
+	authSvc.WithCipher(cipher)
+
 	credentials := zatca.NewCredentialStore(pool, cipher)
 	submitter := zatca.SubmitterFrom(credentials,
 		zatca.Environment(cfg.ZATCAEnvironment))
@@ -203,7 +214,69 @@ func run() error {
 	// commit together.
 	portalSvc := portal.NewService(pool).WithQueue(jobs.NewQueue(pool))
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, cipher), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
+	// --- the shared infrastructure -------------------------------------
+	//
+	// Every one of these is optional and every one of them says so at
+	// start-up, because a deployment that quietly lost its cache or its
+	// object store behaves correctly right up until it does not.
+
+	// Errors first, so a failure setting up anything below is reported.
+	reporter := observe.Start(cfg.Observability, string(cfg.Env), version, log)
+	// Registered once, here. Every 5xx the API writes goes to the tracker with
+	// the request id, the route pattern and the tenant -- and nothing else.
+	httpx.OnServerError(reporter.Capture)
+	defer reporter.Flush(ctx)
+
+	shared := cache.Open(cfg.Redis)
+	defer shared.Close()
+	if shared.Shared() {
+		if err := shared.Ping(ctx); err != nil {
+			// Not fatal. A cache is not a source of truth, and refusing to
+			// start because Redis is down would turn a latency problem into
+			// a shop that cannot trade.
+			log.Warn("the shared cache did not answer; carrying on",
+				slog.Any("error", err))
+		} else {
+			log.Info("shared cache connected", slog.String("addr", cfg.Redis.Addr))
+		}
+	} else {
+		// Said plainly rather than left to be discovered. A deployment
+		// running two replicas against this has a rate limit of twice what
+		// it configured and a permission cache that disagrees with itself.
+		log.Info("no shared cache configured: rate limits and cached grants " +
+			"are per process, which is correct for ONE process only")
+	}
+
+	objects := blob.Open(cfg.Storage)
+	if objects.Configured() {
+		if err := objects.Ping(ctx); err != nil {
+			log.Warn("object storage did not answer; files will stay in the "+
+				"database", slog.Any("error", err))
+		} else {
+			log.Info("object storage connected",
+				slog.String("bucket", objects.Bucket()))
+		}
+	}
+
+	hub := live.NewHub(ctx, shared, log)
+	defer hub.Close()
+
+	var registry *metrics.Registry
+	if cfg.Observability.MetricsEnabled {
+		registry = metrics.New()
+		// Read at scrape time rather than pushed, so the numbers are the
+		// ones true when somebody looked.
+		registry.Gauge("rawsyst_live_sockets_open",
+			func() float64 { return float64(hub.Open()) })
+		registry.Gauge("rawsyst_db_connections_open",
+			func() float64 { return float64(pool.Raw().Stat().TotalConns()) })
+		registry.Gauge("rawsyst_db_connections_idle",
+			func() float64 { return float64(pool.Raw().Stat().IdleConns()) })
+		registry.Gauge("rawsyst_db_connections_waiting",
+			func() float64 { return float64(pool.Raw().Stat().EmptyAcquireCount()) })
+	}
+
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool).WithPush(live.Notifications(hub)), integration.NewService(pool, cipher), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, version).
 		// Onboarding is only wired when this installation can hold the
 		// credential ZATCA issues; without a key the routes say so rather than
@@ -216,7 +289,20 @@ func run() error {
 		// The queue, which is how a password-recovery code reaches a mailbox.
 		// Sending inside the request would make the reset endpoint exactly as
 		// available as the mail provider.
-		WithQueue(jobs.NewQueue(pool))
+		WithQueue(jobs.NewQueue(pool)).
+		// Card providers. Wired on the same condition as onboarding: a gateway
+		// key has to be sealed, and an installation with no keyring should say
+		// so rather than hold a live acquirer credential in the clear.
+		WithPayments(payments.NewService(pool, cipher)).
+		// The shared cache, which is what makes a rate limit of ten still be
+		// ten behind two replicas.
+		WithCache(shared).
+		// The live socket: a stock delta reaching the tills in seconds
+		// rather than at the next sync. Design 03 is explicit that this
+		// PREVENTS rather than guarantees, and nothing depends on it.
+		WithLive(hub).
+		WithMetrics(registry, cfg.Observability.MetricsToken).
+		WithReporter(reporter)
 
 	handler := srv.Handler(
 		httpx.RequestID,

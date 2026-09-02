@@ -48,6 +48,7 @@ export type IconName =
   | 'chevron'
   | 'search'
   | 'globe'
+  | 'card'
   | 'signout'
   | 'sun'
   | 'moon'
@@ -77,6 +78,11 @@ const PATHS: Record<IconName, string> = {
   expenses: 'M3 7h13v8H3zM9.5 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M18 11h4M20 9l2 2-2 2',
   // Settlement is two halves being matched.
   settlement: 'M4 8h10l-3-3M20 16H10l3 3M4 8v3M20 16v-3',
+  // A payment card: the rectangle with the stripe across it, which is the one
+  // shape everybody recognises the moment they see it. Deliberately not the
+  // `settlement` glyph — what a card provider can take and what the bank
+  // actually deposited are different questions on different screens.
+  card: 'M3 6h18v12H3zM3 10h18M6 14h4',
   // Staff: two figures, the second half behind the first. Deliberately not the
   // `customers` glyph — a shop's own people and the people it sells to are
   // different lists and must not look like the same one.

@@ -1,0 +1,27 @@
+# What Prometheus scrapes.
+#
+# One target: the API, over the internal compose network, with the bearer token
+# the API's config requires outside development. Nothing here reaches the
+# endpoint from outside — nginx answers /metrics with 404 on purpose.
+#
+# There is no rule file and no alerting configuration in this repository. Alert
+# thresholds belong to whoever operates a deployment: what counts as too slow
+# for a shop with three tills is not what counts for one with three hundred,
+# and a threshold shipped in a product is a threshold nobody tunes.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    # Which deployment this is, so two shops' figures cannot be confused when
+    # they end up in the same Grafana.
+    deployment: ${DEPLOYMENT_NAME}
+
+scrape_configs:
+  - job_name: rawsyst-api
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/token
+    static_configs:
+      - targets: ['api:8080']

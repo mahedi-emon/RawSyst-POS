@@ -1,8 +1,31 @@
 # RawSyst POS, as it runs.
 #
-# Four services: a database, the API, the worker, and the back office. The till
-# is a desktop application and is not here — it is installed on the counter and
-# talks to the API over the network, which is the whole offline-first design.
+# Four services always: a database, the API, the worker, and the back office.
+# The till is a desktop application and is not here — it is installed on the
+# counter and talks to the API over the network, which is the whole
+# offline-first design.
+#
+# # And four more, behind profiles, that a small shop does not need
+#
+#   docker compose up --build                        one server, no extras
+#   docker compose --profile scale up --build        redis + nginx
+#   docker compose --profile files up --build        + object storage
+#   docker compose --profile watch up --build        + prometheus
+#
+# Profiles rather than "always on" because every one of them is genuinely
+# optional and the product says so at start-up. A shop with one server, one API
+# and a hundred sales a day needs none of them: an in-memory cache is faster
+# than Redis, files in Postgres are simpler than a bucket, and the logs are
+# easier to read than a dashboard.
+#
+# What they are for is the deployment where that stops being true:
+#
+#   - `redis` is what makes a rate limit of ten still be ten behind TWO API
+#     replicas, and what makes a revoked permission take effect on both.
+#   - `nginx` terminates TLS and puts the API and the back office on one
+#     hostname.
+#   - `minio` moves a million receipt PDFs out of a database backup.
+#   - `prometheus` is what answers "when did it get slow" a week later.
 #
 #   docker compose up --build
 #
@@ -100,6 +123,24 @@ services:
       RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-rawsyst-pos}
       RAWSYST_DATA_ENCRYPTION_KEYS: ${RAWSYST_DATA_ENCRYPTION_KEYS:?set RAWSYST_DATA_ENCRYPTION_KEYS in .env}
       RAWSYST_CORS_ORIGINS: ${RAWSYST_CORS_ORIGINS:-}
+      # Empty unless the `scale` profile is up. Empty means an in-memory cache,
+      # which is correct for one API process and only for one.
+      RAWSYST_REDIS_ADDR: ${RAWSYST_REDIS_ADDR:-}
+      RAWSYST_REDIS_PASSWORD: ${RAWSYST_REDIS_PASSWORD:-}
+      # Empty unless the `files` profile is up. Empty means documents and logos
+      # stay in Postgres, which is correct and does not scale.
+      RAWSYST_S3_ENDPOINT: ${RAWSYST_S3_ENDPOINT:-}
+      RAWSYST_S3_BUCKET: ${RAWSYST_S3_BUCKET:-}
+      RAWSYST_S3_REGION: ${RAWSYST_S3_REGION:-us-east-1}
+      RAWSYST_S3_ACCESS_KEY_ID: ${RAWSYST_S3_ACCESS_KEY_ID:-}
+      RAWSYST_S3_SECRET_ACCESS_KEY: ${RAWSYST_S3_SECRET_ACCESS_KEY:-}
+      # The scrape endpoint. Config REFUSES to start outside development with
+      # metrics on and no token, so this is required rather than optional.
+      RAWSYST_METRICS_ENABLED: ${RAWSYST_METRICS_ENABLED:-true}
+      RAWSYST_METRICS_TOKEN: ${RAWSYST_METRICS_TOKEN:?set RAWSYST_METRICS_TOKEN in .env, or set RAWSYST_METRICS_ENABLED=false}
+      # Error reporting. Absent means off, which is the default.
+      RAWSYST_SENTRY_DSN: ${RAWSYST_SENTRY_DSN:-}
+      RAWSYST_SENTRY_SAMPLE_RATE: ${RAWSYST_SENTRY_SAMPLE_RATE:-0.1}
       TZ: ${TZ:-Asia/Riyadh}
     depends_on:
       db:
@@ -123,6 +164,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      # `required: false` so the API starts on its own when the `scale` profile
+      # is down. Without it, compose would refuse to bring up a stack that is
+      # deliberately not running Redis.
+      redis:
+        condition: service_healthy
+        required: false
     healthcheck:
       # The image has no shell and no curl, so the check is the binary asking
       # itself. `/readyz` and not `/healthz`: the first says the database
@@ -181,5 +228,134 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
 
+  # --- optional: the `scale` profile ---------------------------------------
+
+  redis:
+    profiles: ["scale"]
+    image: redis:8-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${RAWSYST_REDIS_PASSWORD:?set RAWSYST_REDIS_PASSWORD in .env}
+      # No persistence. Everything in here can be recomputed from Postgres by
+      # design — see internal/platform/cache — so an AOF would be a backup of
+      # something that is already backed up, and a restore would hand the
+      # product a stale permission set.
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      # A cache with a ceiling and a policy, not a memory leak with a port.
+      # Without these, Redis grows until the kernel kills it, and the thing it
+      # takes down is the machine the database is on.
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$RAWSYST_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      RAWSYST_REDIS_PASSWORD: ${RAWSYST_REDIS_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+    # Not published. Only the API and the worker reach it.
+    expose:
+      - "6379"
+
+  nginx:
+    profiles: ["scale"]
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/proxy.conf:/etc/nginx/proxy.conf:ro
+      - ./deploy/nginx/proxy-ws.conf:/etc/nginx/proxy-ws.conf:ro
+      # The certificate, from wherever it is renewed. A self-signed pair is
+      # enough to bring the stack up; a real deployment points this at what its
+      # ACME client writes.
+      - ${TLS_CERT_DIR:-./deploy/nginx/certs}:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+
+  # --- optional: the `files` profile ----------------------------------------
+
+  minio:
+    profiles: ["files"]
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${RAWSYST_S3_ACCESS_KEY_ID:?set RAWSYST_S3_ACCESS_KEY_ID in .env}
+      MINIO_ROOT_PASSWORD: ${RAWSYST_S3_SECRET_ACCESS_KEY:?set RAWSYST_S3_SECRET_ACCESS_KEY in .env}
+      TZ: ${TZ:-Asia/Riyadh}
+    volumes:
+      - object-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # The console is published; the API reaches the data port over the compose
+    # network. Publishing 9000 as well would put an object store holding a
+    # shop's documents on a public interface.
+    expose:
+      - "9000"
+    ports:
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+
+  # --- optional: the `watch` profile ----------------------------------------
+
+  prometheus:
+    profiles: ["watch"]
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Thirty days. Long enough to answer "when did this start" and short
+      # enough that the disk on a shop's server survives it.
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - metrics-data:/prometheus
+    environment:
+      DEPLOYMENT_NAME: ${DEPLOYMENT_NAME:-rawsyst}
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # Not published either. A metrics store is read through a dashboard on a
+    # private network, not from the internet.
+    expose:
+      - "9090"
+
 volumes:
   db-data:
+  object-data:
+  metrics-data:
+  certbot-webroot:

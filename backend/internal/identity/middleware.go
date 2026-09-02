@@ -211,5 +211,39 @@ func bearerToken(r *http.Request) string {
 	if len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
 		return strings.TrimSpace(h[len(prefix):])
 	}
+	return websocketToken(r)
+}
+
+// websocketToken reads the token a browser had no other way to send.
+//
+// The WebSocket API in a browser cannot set request headers. There is no
+// `Authorization` on `new WebSocket(...)`, and there never will be. That
+// leaves three ways to authenticate one, and the choice matters:
+//
+//   - a query string, which is written into every access log, every proxy log
+//     and the browser's own history. An access token in a log file is a
+//     credential somebody will find;
+//   - a cookie, which reintroduces cross-site request forgery on the one
+//     endpoint where the browser sends credentials without being asked; or
+//   - a SUBPROTOCOL, which is a request header the browser does set, is not
+//     logged by anything as a matter of course, and is not sent automatically
+//     on a cross-site connection.
+//
+// So it is the subprotocol: the client offers two, the literal marker
+// `rawsyst.auth` and the token itself. Same token, same verification, same
+// expiry — only the way it arrives is different.
+func websocketToken(r *http.Request) string {
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return ""
+	}
+	offered := strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",")
+	for i, p := range offered {
+		if strings.TrimSpace(p) != "rawsyst.auth" {
+			continue
+		}
+		if i+1 < len(offered) {
+			return strings.TrimSpace(offered[i+1])
+		}
+	}
 	return ""
 }

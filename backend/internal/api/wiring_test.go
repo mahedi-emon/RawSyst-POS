@@ -116,6 +116,11 @@ var notServedByARoute = map[string]string{
 	"authz": "the authorizer the middleware resolves permissions through; " +
 		"reached via mw, not from a handler",
 	"version": "a build string, not a service",
+	"cache": "the shared cache; reached through recoveryLimit, which the public " +
+		"recovery and portal routes call. A route of its own would be a way to " +
+		"read and write a cache from outside",
+	"reporter": "error reporting; registered once with httpx.OnServerError and " +
+		"called on the way OUT of a failed request rather than by a handler",
 }
 
 func plural(s []string) string {

@@ -1,0 +1,8 @@
+# The certificate lives here at run time and never in the repository.
+#
+# A real deployment points TLS_CERT_DIR at whatever its ACME client writes. For
+# a local test, a throwaway pair is one command:
+#
+#   openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+#     -keyout privkey.pem -out fullchain.pem -subj "/CN=localhost"
+*.pem

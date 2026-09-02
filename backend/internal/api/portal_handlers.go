@@ -110,7 +110,7 @@ func (s *Server) handlePortalRequestCode(
 	// The rate limiter that guards the staff recovery routes guards this one
 	// too: it is the same shape of endpoint, sending the same shape of secret
 	// to a phone somebody typed.
-	if err := s.recoveryLimit.allow(clientIP(r)); err != nil {
+	if err := s.recoveryLimit.allow(r.Context(), clientIP(r)); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
@@ -136,7 +136,7 @@ func (s *Server) handlePortalExchange(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	if err := s.recoveryLimit.allow(clientIP(r)); err != nil {
+	if err := s.recoveryLimit.allow(r.Context(), clientIP(r)); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
@@ -163,7 +163,7 @@ func (s *Server) handleSupplierSignIn(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	if err := s.recoveryLimit.allow(clientIP(r)); err != nil {
+	if err := s.recoveryLimit.allow(r.Context(), clientIP(r)); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}

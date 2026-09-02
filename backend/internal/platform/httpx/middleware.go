@@ -137,9 +137,21 @@ func SecurityHeaders(next http.Handler) http.Handler {
 // Reports are explicitly excluded from this: blueprint A2 #8 requires heavy
 // reports to run as background jobs, so any request reaching this timeout is a
 // bug rather than a slow-but-valid operation.
+//
+// # A WebSocket is not a request that finishes
+//
+// An upgraded connection is meant to stay open for a shift, and this deadline
+// would close every one of them thirty seconds in. So an upgrade is exempt —
+// keyed on the protocol rather than on a path, because the reason is that it
+// is a long-lived connection and not that it is one particular route. What
+// notices a dead peer there is the socket's own ping.
 func Timeout(d time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				next.ServeHTTP(w, r)
+				return
+			}
 			ctx, cancel := context.WithTimeout(r.Context(), d)
 			defer cancel()
 			next.ServeHTTP(w, r.WithContext(ctx))

@@ -4083,3 +4083,205 @@
   text-align: center;
   padding: var(--space-5) var(--space-4);
 }
+
+/* ---------------------------------------------------------------------------
+ * The second factor, sessions and the role builder (H1, A6.2)
+ * ------------------------------------------------------------------------ */
+
+.sec__warning {
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+}
+
+.sec__enrol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+  max-inline-size: 34rem;
+}
+
+/* Black on white, always, and never the theme's colours.
+ *
+ * A phone camera reading a QR wants maximum contrast and expects dark on
+ * light. A code drawn in a dark theme's foreground over its background scans
+ * slowly or not at all, so the white ground is painted into the SVG itself and
+ * this only sizes it. */
+.sec__qr {
+  inline-size: 12rem;
+  block-size: 12rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* The typed secret, beside the picture.
+ *
+ * Not a fallback for a broken QR so much as the path for somebody whose phone
+ * cannot scan, and it is the reason a wrong QR would be noticed rather than
+ * fatal. Wrapped and spaced, because it is read off a screen and typed. */
+.sec__secret {
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  word-break: break-all;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  max-inline-size: 24rem;
+}
+
+.sec__codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  max-inline-size: 34rem;
+}
+
+/* A recovery code is read off a screen and copied onto paper, so it is set
+ * large and spaced. The alphabet already omits the characters that get
+ * confused; the typography does the rest. */
+.sec__code {
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding: var(--space-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* --- the role builder ----------------------------------------------------- */
+
+.sec__group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.sec__groupName {
+  font-size: 0.733rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  padding-inline: var(--space-2);
+}
+
+.sec__perms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sec__perm {
+  display: block;
+}
+
+.sec__permLabel {
+  display: block;
+  color: var(--text);
+}
+
+/* The caution and the withheld note sit UNDER the label rather than beside it,
+ * because the sentence they carry is the reason somebody should hesitate and a
+ * reason on the same line reads as part of the name. */
+.sec__caution {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+  margin-block-start: var(--space-1);
+}
+
+/* Shown, disabled, explained. Hiding a permission the author cannot grant
+ * would leave them thinking the product had lost it. */
+.sec__perm--withheld {
+  opacity: 0.55;
+}
+
+@media (max-width: 40rem) {
+  .sec__perms { grid-template-columns: 1fr; }
+  .sec__codes { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Card providers (E3.3, E3.4)
+ * ------------------------------------------------------------------------ */
+
+/* The connection form sits above the list while it is open, so the boxes a
+ * provider asked for are the thing in front of the reader. Bounded, because a
+ * form whose fields run the width of a desktop is a form nobody can scan. */
+.pay__form {
+  margin: 0 0 var(--space-5);
+}
+
+.pay__methods {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) 0 0;
+  max-inline-size: 34rem;
+}
+
+.pay__methodList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
+
+.pay__method {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+}
+
+/* A documentation address is read and typed rather than clicked -- the back
+ * office does not open the acquirer's site for somebody -- so it is set to be
+ * copied accurately rather than to look like a link. */
+.pay__docs {
+  word-break: break-all;
+  color: var(--text-subtle);
+}
+
+.pay__name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The reason a test failed, and the acquirer's own reference. Both sit UNDER
+ * the row's main text: they are a sentence somebody reads once when something
+ * is wrong, and beside the name they would compete with it every other time. */
+.pay__note {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+  margin-block-start: var(--space-1);
+  word-break: break-word;
+}
+
+/* A decline code is quoted to a bank verbatim, so it is set apart from the
+ * message rather than blended into it. */
+.pay__code {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+@media (max-width: 40rem) {
+  .pay__methodList {
+    grid-template-columns: 1fr;
+  }
+}

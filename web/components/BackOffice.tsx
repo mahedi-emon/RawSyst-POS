@@ -60,6 +60,8 @@ import { PlatformArea } from '@rawsyst/shared/admin/PlatformArea';
 import { GovernanceArea } from '@rawsyst/shared/governance/GovernanceArea';
 import { GroupsArea } from '@rawsyst/shared/groups/GroupsArea';
 import { PortalsArea } from '@rawsyst/shared/portals/PortalsArea';
+import { PaymentsArea } from '@rawsyst/shared/payments/PaymentsArea';
+import { SecurityArea } from '@rawsyst/shared/security/SecurityArea';
 import { SubscriptionPanel } from '@rawsyst/shared/billing/SubscriptionPanel';
 import { NotificationBell } from '@rawsyst/shared/workflow/NotificationBell';
 import {
@@ -86,6 +88,8 @@ type Section =
   | 'groups'
   | 'subscription'
   | 'portals'
+  | 'payments'
+  | 'security'
   | 'platform'
   | 'expenses'
   | 'settlement'
@@ -233,6 +237,14 @@ export function BackOffice() {
   const maySeeGroups = may('group.view');
   const maySeeSubscription = may('subscription.view');
   const maySeePortals = may('portal.view');
+  // Seeing that a card provider is connected is not the same as holding
+  // the key that takes money through it: the write sits behind
+  // `gateway.manage` and the screen offers it only to whoever has it.
+  const maySeePayments = may('gateway.view');
+  // No permission: the second factor and the session list are about the
+  // person looking at them, and every signed-in person has both. The role
+  // builder inside is the part that is gated.
+  const maySeeSecurity = true;
   // A store manager holds this too: a till that dies mid-trade cannot wait for
   // an owner to answer their phone.
   const maySeeDevices = may('devices.view');
@@ -546,6 +558,22 @@ export function BackOffice() {
       group: 'admin',
       shown: maySeePortals,
     },
+    // Which card providers the shop has connected, and what they said.
+    {
+      key: 'payments',
+      label: t('nav.payments'),
+      icon: 'card',
+      group: 'admin',
+      shown: maySeePayments,
+    },
+    // Who can get in, and what they can do once they are.
+    {
+      key: 'security',
+      label: t('nav.security'),
+      icon: 'setup',
+      group: 'admin',
+      shown: maySeeSecurity,
+    },
     // Only for the platform's own staff, and it reads counts about tenants
     // rather than anything inside one.
     {
@@ -826,6 +854,10 @@ export function BackOffice() {
         <SubscriptionPanel />
       ) : section === 'portals' && maySeePortals ? (
         <PortalsArea companyId={activeCompany} />
+      ) : section === 'payments' && maySeePayments ? (
+        <PaymentsArea companyId={activeCompany} />
+      ) : section === 'security' ? (
+        <SecurityArea companyId={activeCompany} />
       ) : section === 'platform' && me?.is_super_admin ? (
         <PlatformArea />
       ) : section === 'customers' && maySeeCustomers ? (

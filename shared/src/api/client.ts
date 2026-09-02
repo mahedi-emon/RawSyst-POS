@@ -113,6 +113,25 @@ export class Client {
   }
 
   /**
+   * What a WebSocket needs to connect, and nothing more.
+   *
+   * The socket cannot go through `send`: it is not a request, and the browser's
+   * WebSocket API sets no headers. So it needs the base URL and the token
+   * directly — but exposing `session` would let any screen read the refresh
+   * token too, so this hands over exactly the two strings and returns null when
+   * there is no session to hand over.
+   *
+   * The token travels as a SUBPROTOCOL rather than a query parameter, because a
+   * query string is written into every access log and proxy log there is. See
+   * `useLive` and the note on `websocketToken` in the API.
+   */
+  socketTarget(path: string): { url: string; token: string } | null {
+    if (!this.session?.accessToken) return null;
+    const base = this.baseUrl.replace(/^http/, 'ws');
+    return { url: base + path, token: this.session.accessToken };
+  }
+
+  /**
    * Signs in, or reports that the server needs to know which business.
    *
    * One email can legitimately belong to several businesses — a bookkeeper

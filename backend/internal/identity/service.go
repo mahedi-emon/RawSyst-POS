@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 )
 
 // Lockout policy. Blueprint A4 lists "lockout thresholds" as configurable
@@ -28,10 +30,25 @@ const (
 type Service struct {
 	pool   *db.Pool
 	tokens *TokenService
+
+	// cipher seals the TOTP secret. Optional: an installation with no data
+	// encryption key cannot hold a second factor and says so when somebody
+	// tries to set one up, rather than storing the secret in the clear.
+	cipher *secrets.Cipher
 }
 
 func NewService(pool *db.Pool, tokens *TokenService) *Service {
 	return &Service{pool: pool, tokens: tokens}
+}
+
+// WithCipher supplies the keyring that seals second-factor secrets.
+//
+// A setter rather than a constructor argument, the way the server takes its
+// queue: every existing call site keeps working, and an installation without a
+// key refuses MFA enrolment instead of failing to start.
+func (s *Service) WithCipher(c *secrets.Cipher) *Service {
+	s.cipher = c
+	return s
 }
 
 // Credentials is a sign-in attempt.
@@ -51,6 +68,11 @@ type Credentials struct {
 	// a caller naming one that does not exist. Nothing here trusts the value
 	// beyond narrowing a query.
 	TenantID *uuid.UUID
+
+	// MFACode is the six-digit code from the authenticator, or a recovery
+	// code. Empty on the first attempt: the caller does not know a second
+	// factor is wanted until the challenge comes back.
+	MFACode string
 
 	// DeviceID binds this session to the terminal it was opened on.
 	//
@@ -79,6 +101,14 @@ type Session struct {
 	// which organisations a person belongs to, in exchange for a password they
 	// do not have.
 	Choices []TenantChoice `json:"tenants,omitempty"`
+
+	// MFARequired is true when the password was right and the account has a
+	// second factor. No tokens are issued: like Choices, this is a challenge.
+	//
+	// It is set only AFTER the password verified, which is deliberate. Telling
+	// somebody an account has MFA before they have proved they know its
+	// password would be telling them the account exists.
+	MFARequired bool `json:"mfa_required,omitempty"`
 }
 
 // TenantChoice is one business a signed-in email can belong to.
@@ -240,6 +270,19 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 			"This account has been disabled. Contact your owner.")
 	default:
 		return Session{}, errInvalidCredentials
+	}
+
+	// The second factor, after the password and after the status check.
+	//
+	// Both orderings matter. After the password, so a challenge cannot be used
+	// to discover that an account exists; after the status check, so a
+	// disabled account is refused as disabled rather than asked for a code it
+	// will never be allowed to use.
+	if err := s.requireSecondFactor(ctx, userID, c.MFACode, c.IP); err != nil {
+		if errors.Is(err, errMFARequired) {
+			return Session{MFARequired: true}, nil
+		}
+		return Session{}, err
 	}
 
 	a := actor.Actor{UserID: userID, SessionID: uuid.New()}
@@ -809,4 +852,46 @@ func nullDevice(id uuid.UUID) any {
 		return nil
 	}
 	return id
+}
+
+// errMFARequired is the sentinel that turns into a challenge rather than a
+// failure. Not an errs.Error: it never reaches a caller as one.
+var errMFARequired = errors.New("second factor required")
+
+// requireSecondFactor refuses unless the account either has no second factor or
+// the code given satisfies it.
+//
+// Runs on the platform plane, in one transaction, because a recovery code is
+// SPENT by the check and that write must not be separable from the decision it
+// made.
+func (s *Service) requireSecondFactor(
+	ctx context.Context, userID uuid.UUID, code, ip string,
+) error {
+	return s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		var enabled bool
+		if err := tx.QueryRow(ctx,
+			`SELECT mfa_enabled FROM app_user WHERE id = $1`,
+			userID).Scan(&enabled); err != nil {
+			return err
+		}
+		if !enabled {
+			return nil
+		}
+		if strings.TrimSpace(code) == "" {
+			return errMFARequired
+		}
+
+		ok, err := s.checkSecondFactor(ctx, tx, userID, code, ip)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			// The same generic refusal as a wrong password, and for the same
+			// reason: a message distinguishing "wrong code" from "wrong
+			// recovery code" tells an attacker which of the two they are
+			// closer to guessing.
+			return errInvalidCredentials
+		}
+		return nil
+	})
 }

@@ -234,9 +234,22 @@ func known(kind string) bool {
 // should use Raise instead, so the fact and the thing it is about land
 // together.
 func (s *Service) Announce(ctx context.Context, scope Scope, f Fact) error {
+	var raised uuid.UUID
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
-		_, e := Raise(ctx, tx, scope.TenantID, scope.CompanyID, f)
+		id, e := Raise(ctx, tx, scope.TenantID, scope.CompanyID, f)
+		raised = id
 		return e
 	})
-	return db.Translate(err, "")
+	if err != nil {
+		return db.Translate(err, "")
+	}
+
+	// AFTER the commit, and only for a fact that was actually written -- Raise
+	// returns uuid.Nil for one the quiet window swallowed, and a bell that
+	// refreshed for a notification nobody can see would be a bell that cries
+	// wolf.
+	if s.push != nil && raised != uuid.Nil {
+		s.push.Publish(ctx, scope.TenantID, scope.CompanyID, "notification.new")
+	}
+	return nil
 }

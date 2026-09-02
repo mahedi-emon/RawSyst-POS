@@ -81,6 +81,18 @@ func TestPublicRoutesAreOnlyTheExpectedOnes(t *testing.T) {
 		"POST /api/v1/auth/login":   true,
 		"POST /api/v1/auth/refresh": true,
 
+		// The scrape endpoint. Public in the route table because a scraper is
+		// not a person: Prometheus has no session and cannot hold one of this
+		// product's tokens, so the access levels here have nothing to offer it.
+		//
+		// What guards it instead is a bearer token checked in the handler,
+		// which config REFUSES to start without outside development. And what
+		// it would leak if that failed is bounded by design: request rates and
+		// latencies by route pattern, plus Go runtime figures. No tenant
+		// label, no user label, no record id, and no business figures at all —
+		// see internal/platform/metrics for why none of those may be added.
+		"GET /metrics": true,
+
 		// Pairing a terminal, H3. Both are unauthenticated because a terminal
 		// being paired has no credential yet — that is the problem being
 		// solved. What stands in for a token is the enrolment code on the

@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -47,11 +48,15 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/payments"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/cache"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/live"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/metrics"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
@@ -87,6 +92,11 @@ type harness struct {
 	// invoice can be issued at all.
 	tokens *identity.TokenService
 	shift  *shift.Service
+
+	// hub is the same instance the server was given, so a test can publish
+	// onto the channel the sockets are actually reading. Two instances would
+	// let a test prove something about a hub the router never calls.
+	hub *live.Hub
 
 	// authz lets a scope test drop a user's cached grants after narrowing their
 	// assignment. Grants are resolved once and held for a TTL, so a limit
@@ -134,7 +144,7 @@ func newHarness(t *testing.T) *harness {
 		RefreshTokenTTL: 720 * time.Hour,
 	})
 	authz := identity.NewAuthorizer(pool)
-	authSvc := identity.NewService(pool, tokens)
+	authSvc := identity.NewService(pool, tokens).WithCipher(testCipher(t))
 	mw := identity.NewMiddleware(tokens, authz)
 
 	provSvc := provisioning.NewService(pool)
@@ -176,15 +186,34 @@ func newHarness(t *testing.T) *harness {
 	// commit together.
 	portalSvc := portal.NewService(pool).WithQueue(jobs.NewQueue(pool))
 
+	// One hub, handed to the server AND kept on the harness. See the note on
+	// shiftSvc: two instances is how a module stayed unreachable while its
+	// tests passed.
+	hub := live.NewHub(ctx, cache.NewMemory(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { _ = hub.Close() })
+
 	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotions.NewService(pool), orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
-		func() error { return pool.Health(ctx) }, "test")
+		func() error { return pool.Health(ctx) }, "test").
+		// The card providers, sealed with the same test keyring the
+		// integrations use. Without this the payment routes report that the
+		// installation cannot hold a credential, which is true but not what
+		// these tests are about.
+		WithPayments(payments.NewService(pool, testCipher(t))).
+		// The live socket and the metrics wrapper, both as production has
+		// them. The wrapper matters here: it wraps every route including the
+		// socket, and a wrapper that hid http.Hijacker would refuse every
+		// upgrade -- which is exactly the kind of thing only the real stack
+		// catches.
+		WithLive(hub).
+		WithMetrics(metrics.New(), "")
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
 	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens, authz: authz,
-		shift: shiftSvc, rules: rules}
+		shift: shiftSvc, rules: rules, hub: hub}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role

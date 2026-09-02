@@ -89,10 +89,32 @@ const quietWindow = "6 hours"
 // Service reads and raises notifications.
 type Service struct {
 	pool *db.Pool
+
+	// push tells whoever is watching that something arrived, so a bell
+	// refreshes instead of polling. Optional, and NOTHING depends on it: the
+	// notification is already in the database by the time this is called, and
+	// a client that never hears about it finds it on its next read.
+	push Publisher
+}
+
+// Publisher is the live channel, as this package needs it.
+//
+// An interface rather than the concrete hub, so `notify` does not depend on the
+// transport. The argument order matches live.Hub.Publish because that is the
+// only implementation, and a needless translation layer between two things that
+// agree is a place for them to stop agreeing.
+type Publisher interface {
+	Publish(ctx context.Context, tenantID, companyID uuid.UUID, kind string)
 }
 
 // NewService builds the service.
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// WithPush wires the live channel.
+func (s *Service) WithPush(p Publisher) *Service {
+	s.push = p
+	return s
+}
 
 // Scope is who is asking and on whose books.
 type Scope struct {
