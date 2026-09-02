@@ -83,10 +83,10 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | B6 | Suppliers | **COMPLETE** | covered by purchasing suite incl. `supplier_edit_test` |
 | B7 | POS backend | **COMPLETE** | counters, session binding, shifts, tenders, returns, exchanges, X/Z, concurrency — see §1 |
 | B8 | Hardware integration | **N/A (frontend)** | Printer/drawer/scanner are client concerns; `I5` per-terminal config partly in `device.printer_config` |
-| B9 | Promotions & pricing | **PARTIAL** | `promotions` 5 svc · 4 routes · **16 pkg tests, 0 API tests**. Rules exist; no end-to-end test that a promotion actually alters a POS sale |
+| B9 | Promotions & pricing | **PARTIAL — with a P0 defect** | `promotions` 5 svc · 4 routes · 16 pkg tests, 0 API tests. `Quote` is reachable; **`Redeem` is called by nothing**, so usage limits never bite and campaign cost is permanently zero. See the B9 section below the table |
 | B10 | Returns / exchange | **COMPLETE** | `sales/refund.go`, `exchange.go`, C14 effects, `exchange_test` 9 tests |
 | B11 | Quotation → Order → Delivery | **COMPLETE** | `orders` 8 svc · 8 routes · 11 tests; `aftersales` delivery 4 routes |
-| B12 | **Wholesale / B2B** | **PARTIAL** | **Tier pricing FIXED 2026-09-02**: a `wholesale` customer is now charged `price_wholesale` (5 tests). **MOQ is implemented** — `orders.checkWholesaleMinimums` enforces `variant.min_wholesale_qty` on `channel='wholesale'` (2 tests); an earlier draft of this audit wrongly called it missing. Bulk discounts are expressible through promotions (`buy_x_get_y`, `bundle_price`). Credit limit exists (per company — see P22). **Remaining:** `price_dealer` still has no customer type that selects it (see below), and wholesale is signalled two ways — `customer.customer_type` for pricing, `order.channel` for MOQ — which nothing reconciles |
+| B12 | **Wholesale / B2B** | **PARTIAL — 4 of 6 bullets complete** | Re-verified bullet by bullet 2026-09-02, against code rather than route counts. See the breakdown below the table |
 | B12a | **`price_dealer` has no owner** | **BLOCKED (specification)** | B1 lists a Dealer/Corporate price tier; B16 lists customer types Retail / Wholesale / VIP. **No customer type selects the dealer price**, and VIP is a loyalty tier in B16, not a price tier. Wiring dealer to VIP, or adding a fourth customer type, would be inventing a rule. **Needs the owner's decision**, not code |
 | B13 | Online orders | **PARTIAL** | `orders.Channel` defaults to `store`; delivery workflow exists. No storefront order intake beyond the customer portal |
 | B14 | EMI / instalments | **COMPLETE** | `0088`, 7 routes, `aftersales_test` |
@@ -128,7 +128,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | H2 | Offline sync | **COMPLETE** | `sync` + `replay.go`, M3 gate, 8 pkg + 12 api tests |
 | H3 | Device management | **COMPLETE** | 10 routes, 26 tests, binding model (`0104`) |
 | H4 | Backup & restore | **COMPLETE** | `ops` 14 svc · 5 routes; `TestABackupThatRanIsNotABackupThatRestores` |
-| H5 | Subscription & billing | **PARTIAL** | `billing` **14 svc methods · 4 routes · ZERO tests anywhere**. Plans, feature flags, invoices, dunning — none exercised |
+| H5 | Subscription & billing | **PARTIAL** | **9 tests added 2026-09-02** covering entitlement resolution: plan tier decides, tenant override beats it in both directions, expired override falls back, unknown feature fails closed, no cross-tenant leak, Super-Admin-only mutation. **The resolver is correct and NOTHING CALLS IT** — see the critical finding below. Invoices and dunning remain untested |
 | H6 | API & integrations | **COMPLETE** | API keys (3 tests), webhooks (2 tests), `jobs/webhooks.go` dispatch with retry. Delivery not tested end-to-end |
 | H7 | Import / export | **COMPLETE** | `portability` 7 svc · 8 routes · 5 functional tests (stage→check→commit, refusal reasons, duplicate detection) |
 | H8 | Health monitoring | **COMPLETE** | `platformops`, 18 api tests |
@@ -138,6 +138,48 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | I3 | Numbering engine | **COMPLETE** | per-document series, gapless under concurrency, `TestACreditNoteHasItsOwnNumberSeries` |
 | N | Super Admin control plane | **COMPLETE** | 15 routes, tenant creation + market, plans, features, invoices, dunning, sub-processors |
 | Q | RBAC & isolation | **COMPLETE** | 426 routes access-declared; route-authz, company-confinement and cross-tenant walks |
+
+### B12 Wholesale / B2B — bullet-by-bullet re-verification
+
+The first audit pass judged this area partly from route counts and got two
+things wrong in opposite directions. Re-verified against the code:
+
+| B12 requirement | Status | Evidence |
+|---|---|---|
+| Wholesale customer type with a **pricing tier** | **COMPLETE** | `customer.customer_type` → `variant.price_wholesale` in `catalog.FindByBarcode`; 5 tests in `tier_pricing_test.go` incl. retail unchanged, null fallback, cross-company refusal. Fixed 2026-09-02 (`0f8c7da`) |
+| **Minimum order quantity** rules | **COMPLETE** | `orders.checkWholesaleMinimums` enforces `variant.min_wholesale_qty` where `sales_order.channel = 'wholesale'`; `TestAWholesaleOrderBelowTheMinimumCannotBeConfirmed`, `TestARetailOrderIgnoresTheWholesaleMinimum`. **The first audit wrongly called this missing** |
+| **Bulk-quantity discounts** | **PARTIAL** | Expressible: `0084` carries `bundle_price` ("flat price for `buy_qty` of them"), `buy_x_get_y`, `min_purchase`, and `customer_type` targeting. But promotions are **quote-only** — see the B9 defect below |
+| **Credit limit** per wholesale client | **COMPLETE** | `customer.credit_limit`, read `FOR UPDATE` in `receivables/collecting.go` so it holds under concurrency; 12 tests in `credit_sale_test.go` |
+| Wholesale workflows **kept separate so retail reporting is not distorted** | **MISSING** | `channel` exists on `sales_order` (`0085`) and **not on `sales_invoice`**. No report or dashboard splits on `channel` or `customer_type`. A POS sale to a wholesale customer is indistinguishable from a retail one in every report. The data to do it exists (`sales_invoice.customer_id`), the split does not |
+| **Wholesale customer ledger** | **COMPLETE** | `receivables.LedgerFor`, ageing, receipts, reversal — 42 api tests |
+
+**Also unreconciled:** wholesale is signalled two different ways —
+`customer.customer_type` drives pricing, `sales_order.channel` drives MOQ — and
+nothing connects them. A customer marked `wholesale` can place a `store`-channel
+order and skip the minimums.
+
+### 🔴 B9 defect found during the B12 re-verification — promotions never redeem
+
+`promotions.Redeem` writes `promotion_redemption` and its own comment says it is
+"called inside the transaction that finalises the sale". **Nothing calls it.**
+`sales.Finalize` contains no promotion code at all; the only reachable promotion
+entry point is `POST /api/v1/promotions/quote`, which the till asks and then
+applies as an ordinary discount.
+
+Two consequences, both silent:
+
+1. **Usage limits never bite.** `Quote` enforces `max_uses` and
+   `max_uses_per_customer` by counting rows in `promotion_redemption`
+   (`promotions.go:385-390`). That count is permanently zero, so a coupon
+   limited to one use per customer can be used without limit.
+2. **Campaign cost is permanently zero.** `manage.List` reports redemption count
+   and total discount from the same empty table, so nobody can see what a
+   campaign cost.
+
+Same shape as the entitlement gap: a control that looks implemented, is
+correct in isolation, and is wired to nothing. **P0** — it is a financial
+control, not a reporting nicety. Not fixed in this pass; scope was the B12
+re-verification.
 
 ### Counts
 
@@ -151,9 +193,24 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
    to the variant's own company so another company's customer cannot reprice a
    scan. **`price_dealer` remains unread** because no customer type in B16
    selects it — a specification gap for the owner, not a coding one.
-2. **Billing has no tests at all** — 14 service methods covering plans, feature
-   entitlement, invoicing and dunning. Feature flags gate what a tenant may use,
-   so a defect here is a licensing and access issue, not just a billing one.
+2. **🔴 Feature entitlement is resolved and never enforced.** `billing.Allows`
+   is written to be asked "on the request path in front of a handler" — its own
+   comment says so — and **the only caller in the repository is its test**. No
+   middleware, no handler, no service refuses anything on the strength of it.
+   `Entitlements` merely *reports*.
+
+   The effect: **plan tiers gate nothing**. A `starter` tenant, whose plan sets
+   `payroll`, `loyalty`, `api_access`, `webhooks`, `analytics`, `approvals`,
+   `wholesale`, `online_orders`, `installments`, `warranty`, `assets`,
+   `multi_company` and `consolidation` to false, reaches every one of those
+   modules. `TestEntitlementIsResolvedButNotYetEnforced` proves it against the
+   live payroll route and is written to **fail the moment somebody wires the
+   gate**, so the hole cannot be closed silently or forgotten.
+
+   This is access control, not billing: the tier decides what a tenant may DO.
+   Plan *ceilings* (`tenant_limit`: max companies, stores, users, terminals) are
+   a separate mechanism and ARE enforced — `CommitBusinessInfo` checks
+   `max_companies` — which is likely why the gap went unnoticed.
 3. **The approval engine's decision path is untested** even though it is wired
    into expenses and purchasing approvals.
 4. **Batch/Lot/Expiry is absent entirely** — required by B4 for
@@ -273,9 +330,18 @@ out of scope.
 1. ~~**Wholesale tier pricing**~~ **DONE 2026-09-02.** Awaiting the owner's
    decision on who pays `price_dealer` before that column is either wired or
    dropped.
-2. **Tests for billing/feature entitlement** — `Allows`/`Entitlements` gate what
-   a tenant may use. Untested access control is a security matter.
-3. **Tests for the approval decision path** — `Decide`, `Escalate`, `Delegate`,
+2. ~~**Tests for billing/feature entitlement**~~ **DONE 2026-09-02** (9 tests),
+   and it uncovered a bigger problem: **enforce the entitlement gate.**
+   `billing.Allows` is correct and unreachable, so plan tiers currently gate
+   nothing. The work is a middleware or route-level check mapping each H5
+   feature to the routes it covers, plus a refusal that names the plan. Deleting
+   `TestEntitlementIsResolvedButNotYetEnforced` is part of the task.
+3. **Call `promotions.Redeem` from `sales.Finalize`** — in the sale's own
+   transaction, as its comment already specifies. Until then a limited coupon is
+   unlimited and every campaign reports zero cost. Add an end-to-end test that a
+   promotion applied at the till writes a redemption and that the second use of
+   a one-use coupon is refused.
+4. **Tests for the approval decision path** — `Decide`, `Escalate`, `Delegate`,
    and the `Evaluate` gate in expenses and purchasing.
 
 **P1 — core business functionality**
