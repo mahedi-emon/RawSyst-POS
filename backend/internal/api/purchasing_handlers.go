@@ -3,12 +3,14 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -293,6 +295,11 @@ type receiveLineRequest struct {
 	QtyReceived  string `json:"qty_received"`
 	QtyRejected  string `json:"qty_rejected"`
 	RejectReason string `json:"reject_reason"`
+
+	// The supplier's lot, for a batch-tracked product (B4).
+	BatchNo        string `json:"batch_no"`
+	ManufacturedOn string `json:"manufactured_on"`
+	ExpiresOn      string `json:"expires_on"`
 }
 
 type receiveRequest struct {
@@ -378,9 +385,28 @@ func (s *Server) handleReceiveGoods(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		var batch *inventory.BatchInput
+		if strings.TrimSpace(line.BatchNo) != "" {
+			batch = &inventory.BatchInput{
+				BatchNo: strings.TrimSpace(line.BatchNo),
+			}
+			if d, e := optionalDate(line.ManufacturedOn, "manufactured_on"); e != nil {
+				httpx.Error(w, r, e)
+				return
+			} else {
+				batch.ManufacturedOn = d
+			}
+			if d, e := optionalDate(line.ExpiresOn, "expires_on"); e != nil {
+				httpx.Error(w, r, e)
+				return
+			} else {
+				batch.ExpiresOn = d
+			}
+		}
+
 		in.Lines = append(in.Lines, purchasing.ReceivedLine{
 			POLineID: lineID, QtyReceived: received, QtyRejected: rejected,
-			RejectReason: line.RejectReason,
+			RejectReason: line.RejectReason, Batch: batch,
 		})
 	}
 

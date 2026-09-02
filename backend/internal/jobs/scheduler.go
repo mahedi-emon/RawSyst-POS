@@ -72,6 +72,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 			// same twelve products are low is how people learn to ignore the
 			// bell.
 			s.enqueueLowStock(ctx)
+			// And the lot dates. Same tick, same daily dedupe: B4 wants
+			// "Expiring Soon / Expired" told once, not on every pass.
+			s.enqueueBatchExpiry(ctx)
 		}
 	}
 }
@@ -197,6 +200,36 @@ func (s *Scheduler) enqueueLowStock(ctx context.Context) {
 			DedupeKey:   KindLowStockSweep + ":" + id.String() + ":" + day,
 		}); err != nil {
 			s.log.Error("could not enqueue a low-stock sweep",
+				slog.String("tenant", id.String()),
+				slog.String("error", err.Error()))
+		}
+	}
+}
+
+// enqueueBatchExpiry queues one B4 lot-date sweep per tenant per day.
+func (s *Scheduler) enqueueBatchExpiry(ctx context.Context) {
+	now := time.Now().UTC()
+	tenants, err := s.tenants(ctx)
+	if err != nil {
+		s.log.Error("could not list tenants for the batch-expiry sweep",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	day := now.Format("2006-01-02")
+	for _, tenantID := range tenants {
+		id := tenantID
+		if err := s.queue.Enqueue(ctx, Spec{
+			TenantID: &id,
+			Kind:     KindBatchExpirySweep,
+			QueueKey: "tenant:" + id.String(),
+			// Beside the low-stock sweep: both are shop-floor warnings and
+			// neither outranks knowing the books disagree.
+			Priority:    80,
+			MaxAttempts: 3,
+			DedupeKey:   KindBatchExpirySweep + ":" + id.String() + ":" + day,
+		}); err != nil {
+			s.log.Error("could not enqueue a batch-expiry sweep",
 				slog.String("tenant", id.String()),
 				slog.String("error", err.Error()))
 		}

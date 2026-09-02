@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
@@ -191,20 +192,39 @@ func (s *Service) ListProducts(
 // `customerID` is optional. A walk-in has no customer and pays retail, which is
 // the same answer the till got before, so a scan with no customer is unchanged.
 //
-// # What is deliberately NOT decided here
+// # Dealer and wholesale are ONE tier, per B12
 //
-// **VIP.** B16's customer types are Retail / Wholesale / VIP, and B1's price
-// tiers are Retail / Wholesale / Dealer-Corporate. VIP is not a price tier in
-// B1 — it appears in B16 as a LOYALTY tier (Bronze/Silver/Gold/VIP) with
-// "tier-based perks", which is a different mechanism. So a VIP customer pays
-// retail here, and any VIP discount belongs to the loyalty and promotions
-// engines that already exist.
+// B1 lists three price columns — "Retail price, Wholesale price,
+// Dealer/Corporate price" — and B12 names the tier a customer type resolves to:
+// "Separate wholesale customer type with **Dealer/Wholesale pricing tier**".
+// One tier, written with both its names. B16's customer types are Retail /
+// Wholesale / VIP, and there is no dealer or corporate type anywhere in the
+// Blueprint for a separate dealer price to belong to.
 //
-// **Dealer/corporate.** No customer type selects `price_dealer`: B16 does not
-// list a dealer or corporate customer type, so nothing in the specification says
-// who pays that price. Wiring it to VIP, or inventing a fourth customer type,
-// would be inventing a business rule. The column stays unread, and the gap is
-// recorded in IMPLEMENTATION_PROGRESS.md for the owner to settle.
+// So a wholesale customer pays `coalesce(price_dealer, price_wholesale,
+// price_retail)`: whichever of the trade prices the shop actually set, falling
+// back to retail. That is what makes `price_dealer` a live column rather than
+// dead schema, without inventing a customer type the specification does not
+// have.
+//
+// Part L's checklist agrees: it lists "Multi-tier pricing" and "Wholesale
+// pricing & credit terms", and never names a dealer tier separately.
+//
+// # VIP is deliberately NOT a price tier
+//
+// VIP appears in B16 as a LOYALTY tier — "Tiering (Bronze/Silver/Gold/VIP) with
+// tier-based perks" — which is a different mechanism from a price list. B1 does
+// not list a VIP price. So a VIP customer pays retail here, and any VIP benefit
+// belongs to the loyalty and promotions engines that already exist and can
+// already target `customer_type`.
+//
+// # "Corporate" in this product means a B2B invoice, not a price
+//
+// The Blueprint's other use of the word (E1, the B2C/B2B table) is about
+// invoice TYPE: a "Corporate/VAT-registered buyer who needs the invoice for
+// their own input VAT" gets a standard tax invoice rather than a simplified
+// one. That is a document distinction the e-invoicing engine already makes, and
+// not a pricing one.
 //
 // # A missing wholesale price falls back to retail
 //
@@ -226,7 +246,8 @@ func (s *Service) FindByBarcode(
 			SELECT v.id, v.sku, v.attributes,
 			       CASE
 			         WHEN c.customer_type = 'wholesale'
-			           THEN coalesce(v.price_wholesale, v.price_retail)
+			           THEN coalesce(v.price_dealer, v.price_wholesale,
+			                         v.price_retail)
 			         ELSE v.price_retail
 			       END::text,
 			       v.is_active
@@ -399,4 +420,67 @@ func (s *Service) Snapshot(
 		return rows.Err()
 	})
 	return out, err
+}
+
+// VariantPrices is B1's multi-tier pricing for one variant.
+//
+// # Why this exists
+//
+// B1 asks for "Multi-tier pricing per product: Retail price, Wholesale price,
+// Dealer/Corporate price, and a Minimum Floor Price". Three of the four columns
+// have been in the schema since 0010 and only two could ever be set: the matrix
+// generator writes `price_retail`, `price_floor` and `cost_standard`, and there
+// was no variant-update route at all. `price_wholesale` could be reached only
+// through a CSV import and `price_dealer` by nothing whatsoever.
+//
+// So a shop could not price its trade customers through the product screens,
+// and the tier the till resolves for them had nothing to read.
+//
+// # Nil means leave alone, not clear
+//
+// A caller sending only the wholesale price is setting the wholesale price, not
+// blanking the floor. Clearing a tier is done by sending an explicit empty
+// string, which the handler turns into a null — the difference between "I did
+// not mention this" and "this no longer applies" has to survive the wire.
+type VariantPrices struct {
+	Retail    *decimal.Decimal
+	Wholesale *decimal.Decimal
+	Dealer    *decimal.Decimal
+	Floor     *decimal.Decimal
+
+	// ClearWholesale and ClearDealer are how a shop withdraws a tier, since a
+	// nil pointer already means "not mentioned".
+	ClearWholesale bool
+	ClearDealer    bool
+}
+
+// SetPrices writes a variant's price tiers.
+//
+// The floor is checked against the retail price the same way 0010's constraint
+// does, so a shop is told which price is impossible rather than meeting a
+// constraint violation.
+func (s *Service) SetPrices(
+	ctx context.Context, tenantID, companyID, variantID uuid.UUID, p VariantPrices,
+) error {
+	return s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE variant SET
+			  price_retail    = coalesce($3, price_retail),
+			  price_wholesale = CASE WHEN $6 THEN NULL
+			                         ELSE coalesce($4, price_wholesale) END,
+			  price_dealer    = CASE WHEN $7 THEN NULL
+			                         ELSE coalesce($5, price_dealer) END,
+			  price_floor     = coalesce($8, price_floor)
+			WHERE id = $1 AND company_id = $2`,
+			variantID, companyID,
+			p.Retail, p.Wholesale, p.Dealer,
+			p.ClearWholesale, p.ClearDealer, p.Floor)
+		if err != nil {
+			return db.Translate(err, "Those prices could not be saved.")
+		}
+		if tag.RowsAffected() == 0 {
+			return errs.New(errs.CodeNotFound, "That product was not found.")
+		}
+		return nil
+	})
 }

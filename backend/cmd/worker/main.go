@@ -92,6 +92,10 @@ func run() error {
 	// notification preferences like any other fact.
 	worker.Register(jobs.KindLowStockSweep,
 		jobs.NewLowStockSweeper(pool, notify.NewService(pool)))
+
+	// B4's expiring/expired lot alerts.
+	worker.Register(jobs.KindBatchExpirySweep,
+		jobs.NewBatchExpirySweeper(pool, notify.NewService(pool)))
 	// D1's scheduled reports. The sweep finds the schedules whose turn it is
 	// and queues the sends; the figures are computed when each is rendered.
 	worker.Register(jobs.KindReportSweep,

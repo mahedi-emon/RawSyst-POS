@@ -168,6 +168,11 @@ func (s *Service) ProcessReturn(
 			Qty: l.Qty, Value: l.COGSAmount,
 			Reason: "return", SourceType: "sales_invoice",
 			DeviceID: term.DeviceID, Note: ret.Reason,
+			// The sale being reversed, so batch-tracked goods go back into
+			// the lot they left in rather than the one expiring soonest.
+			// A return is not a receipt: these are the same physical units.
+			OriginalSourceType: "sales_invoice",
+			OriginalSourceID:   &original.id,
 		}); err != nil {
 			return Refunded{}, err
 		}

@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -397,4 +398,85 @@ func (s *Server) companyFromRequestOrDevice(r *http.Request) (uuid.UUID, error) 
 			"Say which company to search, or scan from a registered terminal.")
 	}
 	return s.catalog.CompanyForDevice(r.Context(), a.TenantID, a.DeviceID)
+}
+
+// --- multi-tier pricing (B1) ----------------------------------------------
+
+type variantPricesRequest struct {
+	// Absent means "leave alone". An explicit empty string clears a trade tier,
+	// which is how a shop withdraws one — the difference between not mentioning
+	// a price and withdrawing it has to survive the wire.
+	PriceRetail    *string `json:"price_retail"`
+	PriceWholesale *string `json:"price_wholesale"`
+	PriceDealer    *string `json:"price_dealer"`
+	PriceFloor     *string `json:"price_floor"`
+}
+
+// handleSetVariantPrices writes B1's price tiers for one variant.
+//
+// The only way to set the trade prices. Before this the matrix generator wrote
+// retail, floor and standard cost, `price_wholesale` could be reached only
+// through a CSV import, and `price_dealer` by nothing at all — so a shop could
+// not price its trade customers through the product screens.
+func (s *Server) handleSetVariantPrices(w http.ResponseWriter, r *http.Request) {
+	variantID, err := parseUUID(chi.URLParam(r, "variantID"), "variantID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req variantPricesRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	a := actor.From(r.Context())
+	companyID, err := s.companyFromRequestOrDevice(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var in catalog.VariantPrices
+	for _, f := range []struct {
+		raw   *string
+		field string
+		dst   **decimal.Decimal
+		clear *bool
+	}{
+		{req.PriceRetail, "price_retail", &in.Retail, nil},
+		{req.PriceWholesale, "price_wholesale", &in.Wholesale, &in.ClearWholesale},
+		{req.PriceDealer, "price_dealer", &in.Dealer, &in.ClearDealer},
+		{req.PriceFloor, "price_floor", &in.Floor, nil},
+	} {
+		if f.raw == nil {
+			continue
+		}
+		if strings.TrimSpace(*f.raw) == "" {
+			if f.clear == nil {
+				httpx.Error(w, r, errs.Newf(errs.CodeInvalidInput,
+					"%s cannot be cleared; every product needs one.", f.field))
+				return
+			}
+			*f.clear = true
+			continue
+		}
+		v, e := parseAmount(*f.raw, f.field, -1)
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		if v.IsNegative() {
+			httpx.Error(w, r, errs.Newf(errs.CodeInvalidInput,
+				"%s cannot be negative.", f.field))
+			return
+		}
+		*f.dst = &v
+	}
+
+	if err := s.catalog.SetPrices(r.Context(), a.TenantID, companyID,
+		variantID, in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

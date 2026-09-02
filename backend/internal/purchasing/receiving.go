@@ -44,6 +44,13 @@ type ReceivedLine struct {
 	QtyReceived  decimal.Decimal
 	QtyRejected  decimal.Decimal
 	RejectReason string
+
+	// Batch is the supplier's lot, for a batch-tracked product (B4). Passed
+	// straight through to inventory.Receive, which requires one for a tracked
+	// product and refuses one for anything else -- so a goods-in clerk is told
+	// at the loading bay rather than discovering it when the stock will not
+	// sell.
+	Batch *inventory.BatchInput
 }
 
 // Delivery is a supplier's delivery awaiting recording.
@@ -107,6 +114,14 @@ type ReceiptLine struct {
 	QtyRejected string    `json:"qty_rejected"`
 	UnitCost    string    `json:"unit_cost"`
 	Value       string    `json:"value"`
+
+	// The supplier's lot, for a batch-tracked product (B4). Required for one,
+	// refused for anything else -- inventory.Receive enforces both, so a
+	// goods-in clerk is told at the point of receiving rather than discovering
+	// it when the stock will not sell.
+	BatchNo        string `json:"batch_no"`
+	ManufacturedOn string `json:"manufactured_on"`
+	ExpiresOn      string `json:"expires_on"`
 }
 
 // ReceiveGoods records a delivery and puts it into stock, atomically.
@@ -206,6 +221,7 @@ func (s *Service) ReceiveGoods(
 			description string
 			unitCost    decimal.Decimal
 			kept        decimal.Decimal
+			batch       *inventory.BatchInput
 		}
 		items := make([]resolved, 0, len(in.Lines))
 
@@ -248,6 +264,7 @@ func (s *Service) ReceiveGoods(
 			items = append(items, resolved{
 				line: line, variantID: variantID, description: description,
 				unitCost: unitCost, kept: line.QtyReceived.Sub(rejected),
+				batch: line.Batch,
 			})
 		}
 
@@ -311,6 +328,7 @@ func (s *Service) ReceiveGoods(
 					// receipts outside every stock report that filters on it.
 					Reason: "grn", SourceType: "goods_receipt",
 					SourceID: &grnID,
+					Batch:    item.batch,
 				})
 				if e != nil {
 					return e

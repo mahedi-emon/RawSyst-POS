@@ -655,3 +655,74 @@ func (s *Server) handleTerminalStock(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// --- batches (B4) ----------------------------------------------------------
+
+// handleListBatches lists lots, soonest to expire first.
+//
+// `expiring_within_days` narrows it to what a shop has to act on, which is the
+// question the screen usually opens with.
+func (s *Server) handleListBatches(w http.ResponseWriter, r *http.Request) {
+	scope, err := s.stockScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var f stockops.BatchFilter
+	if raw := r.URL.Query().Get("variant_id"); raw != "" {
+		id, e := parseUUID(raw, "variant_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		f.VariantID = &id
+	}
+	if raw := r.URL.Query().Get("expiring_within_days"); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n < 0 {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"expiring_within_days must be a whole number of days."))
+			return
+		}
+		f.ExpiringWithinDays = n
+	}
+	f.IncludeEmpty = r.URL.Query().Get("include_empty") == "true"
+
+	out, err := s.stock.Batches(r.Context(), scope, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+type recallRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleRecallBatch withdraws a lot from sale and answers who bought from it.
+func (s *Server) handleRecallBatch(w http.ResponseWriter, r *http.Request) {
+	batchID, err := parseUUID(chi.URLParam(r, "batchID"), "batchID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req recallRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := s.stockScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.stock.Recall(r.Context(), scope, batchID, req.Reason)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}

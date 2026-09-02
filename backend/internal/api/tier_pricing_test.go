@@ -161,3 +161,104 @@ func TestACustomerFromAnotherCompanyDoesNotRepriceTheScan(t *testing.T) {
 		t.Errorf("price = %s; another company's customer changed the price", got)
 	}
 }
+
+// The dealer price is the trade tier, and a shop can actually set it.
+//
+// B1 lists "Retail price, Wholesale price, Dealer/Corporate price"; B12 names
+// the tier a customer type resolves to as the "Dealer/Wholesale pricing tier"
+// — one tier written with both its names. There is no dealer or corporate
+// CUSTOMER type anywhere in the Blueprint, so a wholesale customer pays
+// whichever trade price the shop set.
+func TestAWholesaleCustomerPaysTheDealerPriceWhenOneIsSet(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	barcode := pricedVariant(t, h, f, "100.0000", "80.0000")
+	wholesale := customerOfType(t, h, f, "wholesale")
+
+	// With only a wholesale price, that is the trade price.
+	if got := scanPrice(t, h, f, barcode, &wholesale); got != "80.0000" {
+		t.Fatalf("wholesale customer pays %s, want 80.0000", got)
+	}
+
+	// A dealer price takes precedence: B12 names it first, and it is the more
+	// specific of the two names for the same tier.
+	setPrices(t, h, f, map[string]any{"price_dealer": "70.00"})
+	if got := scanPrice(t, h, f, barcode, &wholesale); got != "70.0000" {
+		t.Errorf("wholesale customer pays %s, want the dealer price 70.0000", got)
+	}
+
+	// Retail is untouched by any of it.
+	if got := scanPrice(t, h, f, barcode, nil); got != "100.0000" {
+		t.Errorf("a walk-in pays %s, want 100.0000", got)
+	}
+}
+
+// A trade price can be withdrawn, and the tier falls back.
+func TestWithdrawingTheDealerPriceFallsBackToWholesale(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	barcode := pricedVariant(t, h, f, "100.0000", "80.0000")
+	wholesale := customerOfType(t, h, f, "wholesale")
+
+	setPrices(t, h, f, map[string]any{"price_dealer": "70.00"})
+	if got := scanPrice(t, h, f, barcode, &wholesale); got != "70.0000" {
+		t.Fatalf("dealer price not applied: %s", got)
+	}
+
+	// An explicit empty string withdraws the tier, which is different from not
+	// mentioning it.
+	setPrices(t, h, f, map[string]any{"price_dealer": ""})
+	if got := scanPrice(t, h, f, barcode, &wholesale); got != "80.0000" {
+		t.Errorf("after withdrawing the dealer price the customer pays %s, "+
+			"want the wholesale 80.0000", got)
+	}
+}
+
+// Setting one price does not blank the others.
+func TestSettingOnePriceLeavesTheOthersAlone(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	barcode := pricedVariant(t, h, f, "100.0000", "80.0000")
+	wholesale := customerOfType(t, h, f, "wholesale")
+
+	// Mention only the retail price.
+	setPrices(t, h, f, map[string]any{"price_retail": "120.00"})
+
+	if got := scanPrice(t, h, f, barcode, nil); got != "120.0000" {
+		t.Errorf("retail = %s, want 120.0000", got)
+	}
+	if got := scanPrice(t, h, f, barcode, &wholesale); got != "80.0000" {
+		t.Errorf("wholesale = %s, want 80.0000 — an unmentioned tier was "+
+			"cleared", got)
+	}
+}
+
+// Only somebody who may edit the catalogue may reprice it.
+func TestOnlyCatalogueEditorsMayChangePrices(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+
+	resp := h.do(t, http.MethodPut,
+		"/api/v1/catalog/variants/"+f.variantID.String()+"/prices?company_id="+
+			f.companyID.String(), f.token,
+		map[string]any{"price_dealer": "1.00"})
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+		t.Error("a cashier repriced the catalogue")
+	}
+}
+
+// setPrices writes tiers through the route under test.
+func setPrices(t *testing.T, h *harness, f *shopFixture, body map[string]any) {
+	t.Helper()
+	resp := h.do(t, http.MethodPut,
+		"/api/v1/catalog/variants/"+f.variantID.String()+"/prices?company_id="+
+			f.companyID.String(), f.token, body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		t.Fatalf("set prices: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+}

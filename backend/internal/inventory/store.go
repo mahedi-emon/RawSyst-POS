@@ -80,6 +80,13 @@ type Receipt struct {
 	SourceType string
 	SourceID   *uuid.UUID
 	Note       string
+
+	// Batch names the lot this delivery arrived in (B4). Required for a
+	// variant whose `tracks_batches` flag is set, refused for one whose is
+	// not: recording a lot against untracked stock would produce a batch that
+	// no issue will ever draw from, and its quantity would drift from the
+	// movements for ever.
+	Batch *BatchInput
 }
 
 // Issue is stock leaving: a sale, wastage, a transfer out.
@@ -145,14 +152,38 @@ func Receive(ctx context.Context, tx pgx.Tx, r Receipt) (decimal.Decimal, error)
 		poolBefore = pool.TotalValue
 	}
 
-	if _, err := tx.Exec(ctx, `
+	tracksBatches, err := TracksBatches(ctx, tx, r.VariantID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	switch {
+	case tracksBatches && r.Batch == nil:
+		return decimal.Zero, errs.New(errs.CodeInvalidInput,
+			"This product is tracked by batch, so a delivery has to say which "+
+				"lot it arrived in.")
+	case !tracksBatches && r.Batch != nil:
+		return decimal.Zero, errs.New(errs.CodeInvalidInput,
+			"This product is not tracked by batch. Turn batch tracking on for "+
+				"it before receiving stock against a lot number.")
+	}
+
+	var movementID uuid.UUID
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO stock_movement
 		  (tenant_id, company_id, variant_id, warehouse_id, delta, reason,
 		   source_type, source_id, value_delta, note)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		RETURNING id`,
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID, r.Qty, r.Reason,
-		nullText(r.SourceType), r.SourceID, value, nullText(r.Note)); err != nil {
+		nullText(r.SourceType), r.SourceID, value, nullText(r.Note)).
+		Scan(&movementID); err != nil {
 		return decimal.Zero, namedStock(err)
+	}
+
+	if tracksBatches {
+		if err := receiveIntoBatch(ctx, tx, r, movementID); err != nil {
+			return decimal.Zero, err
+		}
 	}
 
 	// The ledger moved. Recorded, not published: see observed.go.
@@ -214,6 +245,13 @@ type Restoration struct {
 	SourceID   *uuid.UUID
 	DeviceID   *uuid.UUID
 	Note       string
+
+	// OriginalSourceType and OriginalSourceID name the sale being reversed, so
+	// batch-tracked goods go back into the lot they left in. A return is not a
+	// receipt: the units coming back are the same physical units, and putting
+	// them into whichever lot expires soonest would quietly relabel them.
+	OriginalSourceType string
+	OriginalSourceID   *uuid.UUID
 }
 
 // Restore puts stock back at exactly the value it left at.
@@ -260,16 +298,30 @@ func Restore(ctx context.Context, tx pgx.Tx, r Restoration) error {
 		}
 	}
 
-	_, err = tx.Exec(ctx, `
+	var movementID uuid.UUID
+	if err = tx.QueryRow(ctx, `
 		INSERT INTO stock_movement
 		  (tenant_id, company_id, variant_id, warehouse_id, delta, reason,
 		   source_type, source_id, device_id, value_delta, note)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		RETURNING id`,
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID,
 		r.Qty, r.Reason, nullText(r.SourceType), r.SourceID, r.DeviceID,
-		r.Value, nullText(r.Note))
-	if err != nil {
+		r.Value, nullText(r.Note)).Scan(&movementID); err != nil {
 		return namedStock(err)
+	}
+
+	// Back into the lots the original sale drew from.
+	tracksBatches, err := TracksBatches(ctx, tx, r.VariantID)
+	if err != nil {
+		return err
+	}
+	if tracksBatches {
+		if err := restoreToBatches(ctx, tx, r.TenantID,
+			r.OriginalSourceType, r.OriginalSourceID,
+			r.VariantID, r.WarehouseID, r.Qty, movementID); err != nil {
+			return err
+		}
 	}
 
 	// The ledger moved. Recorded, not published: see observed.go.
@@ -384,15 +436,45 @@ func Consume(ctx context.Context, tx pgx.Tx, iss Issue) (CostResult, error) {
 		}
 	}
 
-	if _, err := tx.Exec(ctx, `
+	// Which physical lots leave, for a batch-tracked product. Allocated BEFORE
+	// the movement is written so a shortfall in the lots refuses the issue
+	// without having recorded half of it, and locked FOR UPDATE inside the
+	// caller's transaction so two tills cannot both take the last of a lot.
+	//
+	// The costing above is untouched: the company's method decides what the
+	// issue is worth, and this decides which carton it came out of. See
+	// batch.go for why those are kept apart.
+	tracksBatches, err := TracksBatches(ctx, tx, iss.VariantID)
+	if err != nil {
+		return CostResult{}, err
+	}
+	var allocations []batchAllocation
+	if tracksBatches {
+		if allocations, err = allocateFEFO(ctx, tx, iss.VariantID,
+			iss.WarehouseID, iss.Qty); err != nil {
+			return CostResult{}, err
+		}
+	}
+
+	var movementID uuid.UUID
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO stock_movement
 		  (tenant_id, company_id, variant_id, warehouse_id, delta, reason,
 		   source_type, source_id, device_id, value_delta, note)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		RETURNING id`,
 		iss.TenantID, iss.CompanyID, iss.VariantID, iss.WarehouseID,
 		iss.Qty.Neg(), iss.Reason, nullText(iss.SourceType), iss.SourceID,
-		iss.DeviceID, result.TotalCost.Neg(), nullText(iss.Note)); err != nil {
+		iss.DeviceID, result.TotalCost.Neg(), nullText(iss.Note)).
+		Scan(&movementID); err != nil {
 		return CostResult{}, namedStock(err)
+	}
+
+	if len(allocations) > 0 {
+		if err := consumeFromBatches(ctx, tx, iss.TenantID, movementID,
+			allocations); err != nil {
+			return CostResult{}, err
+		}
 	}
 
 	// The ledger moved. Recorded, not published: see observed.go for why the

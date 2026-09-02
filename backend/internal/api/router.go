@@ -493,6 +493,14 @@ func (s *Server) Routes() []Route {
 		// Withdrawing needs catalog.delete even though nothing is deleted: it is
 		// the destructive-intent permission, and a variant off sale is as
 		// disruptive to a shop as one removed would be.
+		// B1's multi-tier pricing. The only way to set the trade prices: the
+		// matrix generator writes retail, floor and standard cost, and before
+		// this `price_wholesale` could be reached only through a CSV import
+		// while `price_dealer` could not be set at all.
+		{http.MethodPut, "/api/v1/catalog/variants/{variantID}/prices",
+			AccessPermission, "catalog.edit", s.handleSetVariantPrices,
+			"retail, wholesale, dealer and floor prices for one variant"},
+
 		{http.MethodDelete, "/api/v1/catalog/variants/{variantID}", AccessPermission, "catalog.delete",
 			s.handleWithdrawVariant, ""},
 		{http.MethodGet, "/api/v1/catalog/scan", AccessPermission, "catalog.view",
@@ -989,6 +997,20 @@ func (s *Server) Routes() []Route {
 			s.handlePostStockCount, ""},
 		{http.MethodPost, "/api/v1/stock/counts/{adjustmentID}/cancel", AccessPermission, "inventory.adjust_stock",
 			s.handleCancelStockCount, ""},
+
+		// --- batches / lots (B4) ---
+		//
+		// Reading rides on inventory.view: a cashier asked "when does this
+		// expire" needs the answer, and it is the same stock they can already
+		// see. Recalling is its own verb because it takes sellable goods out
+		// of circulation and hands back a customer list.
+		{http.MethodGet, "/api/v1/stock/batches", AccessPermission, "inventory.view",
+			s.handleListBatches,
+			"lots with their dates and what is left, soonest to expire first"},
+		{http.MethodPost, "/api/v1/stock/batches/{batchID}/recall",
+			AccessPermission, "inventory.recall_batch", s.handleRecallBatch,
+			"withdraws a lot from sale and answers who bought from it; the " +
+				"lot keeps its history, which is the point of recording it"},
 
 		{http.MethodGet, "/api/v1/stock/transfers", AccessPermission, "inventory.view",
 			s.handleListStockTransfers, ""},

@@ -539,6 +539,19 @@ func (s *Service) costLines(
 	variantIDs := make([]uuid.UUID, 0, len(sale.Lines))
 	for _, ref := range sale.Lines {
 		variantIDs = append(variantIDs, ref.VariantID)
+
+		// A combo's COMPONENTS are what actually move, so they are what has to
+		// be locked. Locking only the bundle would leave two tills selling two
+		// different combos that share a tie free to take it in opposite orders
+		// — which is the deadlock LockStock's deterministic ordering exists to
+		// prevent.
+		components, err := componentsOf(ctx, tx, ref.VariantID)
+		if err != nil {
+			return costing{}, err
+		}
+		for _, c := range components {
+			variantIDs = append(variantIDs, c.VariantID)
+		}
 	}
 	if err := inventory.LockStock(ctx, tx, term.WarehouseID, variantIDs); err != nil {
 		return costing{}, err
@@ -547,7 +560,22 @@ func (s *Service) costLines(
 	for i, ref := range sale.Lines {
 		in := sale.Input.Lines[i]
 
-		result, err := inventory.Consume(ctx, tx, inventory.Issue{
+		description := in.Description
+		if description == "" {
+			description = "this item"
+		}
+
+		// A combo package takes its stock from the things inside it (B1). It
+		// holds none of its own, so it is never consumed directly: the loop
+		// below runs once per component, and the line's cost is what those
+		// components cost when they left. An ordinary item has no components
+		// and takes the single-issue path unchanged.
+		components, err := componentsOf(ctx, tx, ref.VariantID)
+		if err != nil {
+			return costing{}, err
+		}
+
+		issues := []inventory.Issue{{
 			TenantID: term.TenantID, CompanyID: term.CompanyID,
 			VariantID: ref.VariantID, WarehouseID: term.WarehouseID,
 			Qty: in.Qty.Abs(), Reason: "sale",
@@ -558,30 +586,49 @@ func (s *Service) costLines(
 			SourceType: "sales_invoice", SourceID: &invoiceID,
 			DeviceID:     term.DeviceID,
 			StandardCost: ref.StandardCost,
-		})
-		if err != nil {
-			return costing{}, err
+		}}
+		if len(components) > 0 {
+			issues = issues[:0]
+			for _, c := range components {
+				issues = append(issues, inventory.Issue{
+					TenantID: term.TenantID, CompanyID: term.CompanyID,
+					VariantID: c.VariantID, WarehouseID: term.WarehouseID,
+					// Proportional, per B1: two of a combo containing three
+					// ties takes six.
+					Qty:        in.Qty.Abs().Mul(c.Qty),
+					Reason:     "sale",
+					SourceType: "sales_invoice", SourceID: &invoiceID,
+					DeviceID:     term.DeviceID,
+					StandardCost: ref.StandardCost,
+				})
+			}
 		}
 
-		description := in.Description
-		if description == "" {
-			description = "this item"
-		}
-		if err := inventory.CheckAvailability(sale.StockPolicy, result, description); err != nil {
-			return costing{}, err
-		}
+		lineCost := decimal.Zero
+		for _, iss := range issues {
+			result, err := inventory.Consume(ctx, tx, iss)
+			if err != nil {
+				return costing{}, err
+			}
+			if err := inventory.CheckAvailability(
+				sale.StockPolicy, result, description); err != nil {
+				return costing{}, err
+			}
+			if result.ShortBy.IsPositive() {
+				out.Shortfalls = append(out.Shortfalls, Shortfall{
+					LineNo: i + 1, VariantID: iss.VariantID,
+					ShortBy: result.ShortBy,
+				})
+			}
+			lineCost = lineCost.Add(result.TotalCost)
 
-		if result.ShortBy.IsPositive() {
-			out.Shortfalls = append(out.Shortfalls, Shortfall{
-				LineNo: i + 1, VariantID: ref.VariantID, ShortBy: result.ShortBy,
-			})
+			// Standard costing books a fixed cost and the difference is the
+			// whole point: an unexpected purchase price must become visible
+			// rather than being absorbed into margin. Accumulated here and
+			// posted with the sale.
+			out.Variance = out.Variance.Add(result.Variance)
 		}
-		out.Costs[i] = result.TotalCost
-
-		// Standard costing books a fixed cost and the difference is the whole
-		// point: an unexpected purchase price must become visible rather than
-		// being absorbed into margin. Accumulated here and posted with the sale.
-		out.Variance = out.Variance.Add(result.Variance)
+		out.Costs[i] = lineCost
 	}
 
 	return out, nil
