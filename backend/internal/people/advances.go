@@ -12,6 +12,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
@@ -335,6 +336,20 @@ func (s *Service) eosbDaysPerYear(
 		return decimal.Zero, errs.New(errs.CodeInternal,
 			"The payroll service was built without the regulatory rule registry.")
 	}
+
+	// Asked of the market first. EOSB is Saudi labour law; resolving it for a
+	// company in another market found no rule and failed the accrual for a
+	// benefit that market may not have — or may have on entirely different
+	// terms. Declining to compute one is the honest answer, and applying Saudi
+	// service bands to a foreign contract would be inventing a rule.
+	if !market.EndOfServiceApplies(country) {
+		return decimal.Zero, errs.Newf(errs.CodeUnverifiedRule,
+			"This product has no end-of-service entitlement rule for %s, so "+
+				"the benefit cannot be accrued here. The Saudi rule does not "+
+				"apply outside the Kingdom.",
+			strings.ToUpper(strings.TrimSpace(country)))
+	}
+
 	return s.rules.Decimal(ctx, registry.Query{
 		Key:      "SA.EOSB.ENTITLEMENT",
 		Country:  country,

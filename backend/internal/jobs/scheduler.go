@@ -66,6 +66,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 			// rather than the minute, so this costs one query per tenant per
 			// hour rather than sixty.
 			s.enqueueReports(ctx)
+			// And the minimum-stock alerts. Same tick and the same dedupe
+			// shape: a shop that stays low for a week is told once a day
+			// rather than once a minute, because being told hourly that the
+			// same twelve products are low is how people learn to ignore the
+			// bell.
+			s.enqueueLowStock(ctx)
 		}
 	}
 }
@@ -158,6 +164,39 @@ func (s *Scheduler) enqueueTieOut(ctx context.Context) {
 			DedupeKey:   KindAccountingTieOut + ":" + id.String() + ":" + day,
 		}); err != nil {
 			s.log.Error("could not enqueue a tie-out",
+				slog.String("tenant", id.String()),
+				slog.String("error", err.Error()))
+		}
+	}
+}
+
+// enqueueLowStock queues one B4 minimum-stock sweep per tenant per day.
+//
+// Per tenant, like the tie-out, because the sweep runs in tenant context: one
+// tenant's failure must not stop another's alerts.
+func (s *Scheduler) enqueueLowStock(ctx context.Context) {
+	now := time.Now().UTC()
+	tenants, err := s.tenants(ctx)
+	if err != nil {
+		s.log.Error("could not list tenants for the low-stock sweep",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	day := now.Format("2006-01-02")
+	for _, tenantID := range tenants {
+		id := tenantID
+		if err := s.queue.Enqueue(ctx, Spec{
+			TenantID: &id,
+			Kind:     KindLowStockSweep,
+			QueueKey: "tenant:" + id.String(),
+			// Below the tie-out: knowing the books disagree matters more than
+			// knowing a shirt is down to its last three.
+			Priority:    80,
+			MaxAttempts: 3,
+			DedupeKey:   KindLowStockSweep + ":" + id.String() + ":" + day,
+		}); err != nil {
+			s.log.Error("could not enqueue a low-stock sweep",
 				slog.String("tenant", id.String()),
 				slog.String("error", err.Error()))
 		}

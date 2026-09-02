@@ -77,7 +77,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | B3 | Barcode & Label Studio | **COMPLETE** | `labels` 9 svc · 9 routes · 17 api tests (`studio_test`, `stationery_test`) |
 | B4 | Inventory core | **COMPLETE** | `inventory`+`stockops` 21 svc · 23 routes · 46 pkg + 28 api tests. FIFO/WAC/standard, landed cost (`0034`), negative-stock policy, transfers with in-transit status, counts, adjustments, **GL tie-out exact**, concurrency tests |
 | B4a | **Batch / Lot / Expiry** | **MISSING** | Blueprint B4 requires batch no, mfg/expiry date, qty, supplier, cost + Expiring-Soon / Expired / Recall alerts. **No column, table, service or route anywhere** |
-| B4b | **Minimum-stock alert engine** | **PARTIAL** | `variant.reorder_level` stored and read by `insight` for D2 forecasting. **No alert, no notification, no job** — B4 requires dashboard + notification on threshold crossing |
+| B4b | Minimum-stock alert engine | **COMPLETE 2026-09-03** | `jobs.LowStockSweeper` (`stock.low_sweep`), scheduled daily per tenant with a date dedupe key so a shop low for a week is told once a day. Announces `notify.KindLowStock` per variant with the variant as `subject_id`, so tapping it reaches the product. **Uses the dashboard's exact query** — summed across warehouses, `qty > 0` — because two places disagreeing about "low" is worse than either answer. 5 tests incl. tenant isolation and out-of-stock exclusion |
 | B5 | Purchasing / procurement | **COMPLETE** | `purchasing` 32 svc · 31 routes · 9 pkg + 57 api tests: PO, partial receiving, GRNI (`0034`), bills, **three-way match**, payments + reversal, returns, supplier balances |
 | B5.1 | RFQ & supplier comparison | **COMPLETE** | `0087`, 11 api tests (`sourcing_test`) |
 | B6 | Suppliers | **COMPLETE** | covered by purchasing suite incl. `supplier_edit_test` |
@@ -96,7 +96,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | C2 | Cash & bank | **COMPLETE** | `treasury` 11 svc · 10 routes · 10 tests |
 | C3 | Expenses & investment | **COMPLETE** | `expenses` 9 svc · 8 routes · 13 tests; investors 4 routes |
 | C4 | AR / AP | **COMPLETE** | `receivables` 15 svc · 15 routes · **42 api tests** incl. receipt reversal, ageing, credit standing |
-| C5/C6 | HR & payroll | **PARTIAL** | `people` 23 svc · 23 routes · 13 tests. **Saudi-only rule keys resolved unconditionally** (`SA.GOSI.RATES`, `SA.WPS.*`, `SA.EOSB.ENTITLEMENT`) — a non-Saudi tenant errors rather than degrading |
+| C5/C6 | HR & payroll | **PARTIAL — market gap FIXED 2026-09-03** | `people` 23 svc · 23 routes · 15 tests. **A Bangladeshi shop could not run payroll at all** — not "payroll without a GOSI line", but no payslips and no wages, because `SA.GOSI.RATES` found no rule for `bd` and the registry error killed the run. Each obligation is now asked of the market (`market.SocialInsuranceApplies` / `WageProtectionApplies` / `EndOfServiceApplies`), so a market without the scheme loses that ONE figure and still pays people. **No foreign equivalent is invented** — this product has Saudi's rules and no others. 2 tests, both directions. Saudi values remain unverified |
 | C7 | Fixed assets | **COMPLETE** | `assets` 10 svc · 4 routes · 10 tests, depreciation |
 | C8 | Shift & drawer | **COMPLETE** | `shift`, blind close, X/Z, `drawer_derivation_test`, `shift_close_race_test` |
 | C9 | Double-entry engine | **COMPLETE** | all 12 posting rules as data, resolved at transaction date |
@@ -104,18 +104,18 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | C11 | Bank reconciliation | **COMPLETE** | `treasury`, `treasury_test` |
 | C12 | Settlement & gateways | **COMPLETE** | `settlement`+`payments` 11 svc · 13 routes · 6 pkg + 35 api tests |
 | C13 | Costing & COGS | **COMPLETE** | tie-out exact incl. negative-stock correction (`0047`/`0048`) |
-| C14 | Accounting-aware returns | **PARTIAL** | 7 of 9 effects. **Loyalty and commission reversal not built** (P13) — reported in `Refunded.Outstanding`, so tracked not hidden |
+| C14 | Accounting-aware returns | **PARTIAL — 8 of 9** | **Loyalty reversal IS built** — `sales.reverseLoyalty` takes points back in proportion and rounds *up*, so a partial return cannot leave a customer ahead. The P13 note calling it missing was stale. **Effect 7 (commission) is blocked for a deeper reason than reported: commission is never EARNED on a sale.** `commission_rule` exists; no commission entry is ever attributed to a salesperson, so there is nothing to reverse. Reported honestly in `Refunded.Outstanding` |
 | D1 | Reporting suite | **COMPLETE** | `reports` 17 svc · 9 routes · 7 tests; TB, P&L, BS, cash flow |
 | D2 | Analytics & forecasting | **PARTIAL** | `insight` 5 svc · 4 routes. **Thin test coverage** (touched only by `studio_test`) |
 | D3 | Notifications | **COMPLETE** | `notify` 8 svc · 7 routes; 3 functional tests (preferences, in-app cannot be silenced, announcement reaches inbox) |
 | D4 | Audit trail | **COMPLETE** | append-only, `TestAuditLogIsAppendOnly`, `audit.Write` with `actor_label` |
-| D5 | Approval centre | **COMPLETE (core)** | `workflow` 12 svc · 10 routes, wired into `expenses.Record` and `purchasing.IssueOrder`. **A P0 defect that made the whole module unusable was found and fixed 2026-09-03** — see below. 6 end-to-end tests. `Escalate` and `Delegate` still untested |
+| D5 | Approval centre | **COMPLETE** | `workflow` 12 svc · 10 routes, wired into `expenses.Record` and `purchasing.IssueOrder`. **A P0 defect that made the whole module unusable was found and fixed 2026-09-03** — see below. **10 end-to-end tests**: decision path (6) plus escalation on an elapsed deadline, no escalation inside it, an escalated request still decidable, and delegation refusing backwards cover |
 | D6 | Document management | **PARTIAL** | `docs` 7 svc · 4 routes. **Isolation-only test coverage** (`cross_tenant_walk`) |
 | D7 | Global search | **PARTIAL** | 1 route, `insight/search.go`. Touched by `studio_test` only |
 | E1 | ZATCA | **DEFERRED** | as instructed |
 | E2 | Saudi tax engine | **COMPLETE** | multi-market treatments; rates now per treatment |
 | E3 | Payment methods | **COMPLETE** | gateways, providers, attempts, settlement |
-| E4 | PDPL / privacy | **PARTIAL** | `privacy` 29 svc · 25 routes — a large module with **isolation-only tests**. Saudi-only keys (`SA.PDPL.*`) resolved unconditionally |
+| E4 | PDPL / privacy | **PARTIAL** | `privacy` 29 svc · 25 routes — a large module with **isolation-only tests**. `SA.PDPL.*` is now gated on `market.PrivacyRegimeApplies` (2026-09-03), so a non-Saudi tenant is told there is no regime on file rather than meeting a registry error. **Functional tests still missing** |
 | E7 | Compliance dashboard | **PARTIAL** | `compliance` 1 svc · 1 route · **0 tests** |
 | E8 | Regulatory registry | **COMPLETE** | dated values, evidence required, market-aware boot + provisioning gates, 9 tests |
 | F1 | Workflow engine | see D5 | |
@@ -150,7 +150,7 @@ things wrong in opposite directions. Re-verified against the code:
 | **Minimum order quantity** rules | **COMPLETE** | `orders.checkWholesaleMinimums` enforces `variant.min_wholesale_qty` where `sales_order.channel = 'wholesale'`; `TestAWholesaleOrderBelowTheMinimumCannotBeConfirmed`, `TestARetailOrderIgnoresTheWholesaleMinimum`. **The first audit wrongly called this missing** |
 | **Bulk-quantity discounts** | **PARTIAL** | Expressible: `0084` carries `bundle_price` ("flat price for `buy_qty` of them"), `buy_x_get_y`, `min_purchase`, and `customer_type` targeting. But promotions are **quote-only** — see the B9 defect below |
 | **Credit limit** per wholesale client | **COMPLETE** | `customer.credit_limit`, read `FOR UPDATE` in `receivables/collecting.go` so it holds under concurrency; 12 tests in `credit_sale_test.go` |
-| Wholesale workflows **kept separate so retail reporting is not distorted** | **MISSING** | `channel` exists on `sales_order` (`0085`) and **not on `sales_invoice`**. No report or dashboard splits on `channel` or `customer_type`. A POS sale to a wholesale customer is indistinguishable from a retail one in every report. The data to do it exists (`sales_invoice.customer_id`), the split does not |
+| Wholesale workflows **kept separate so retail reporting is not distorted** | **COMPLETE 2026-09-03** | `reports.SalesFor` now returns `retail_total` / `wholesale_total` and their counts, derived from `customer.customer_type` through `sales_invoice.customer_id` — the fact already exists, so no second copy on every invoice to keep in step. A walk-in has no customer and counts as retail, the same answer the pricing tier gives. 3 tests |
 | **Wholesale customer ledger** | **COMPLETE** | `receivables.LedgerFor`, ageing, receipts, reversal — 42 api tests |
 
 **Also unreconciled:** wholesale is signalled two different ways —

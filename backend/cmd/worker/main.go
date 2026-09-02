@@ -18,6 +18,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
@@ -85,6 +86,12 @@ func run() error {
 	// and watched on no live tenant — a shop whose books drifted after go-live
 	// would have heard it from its accountant months later.
 	worker.Register(jobs.KindAccountingTieOut, jobs.NewTieOutSweeper(pool))
+
+	// B4's minimum-stock alert. The notify service is the same one the rest of
+	// the worker sends through, so a low-stock warning honours the recipient's
+	// notification preferences like any other fact.
+	worker.Register(jobs.KindLowStockSweep,
+		jobs.NewLowStockSweeper(pool, notify.NewService(pool)))
 	// D1's scheduled reports. The sweep finds the schedules whose turn it is
 	// and queues the sends; the figures are computed when each is rendered.
 	worker.Register(jobs.KindReportSweep,

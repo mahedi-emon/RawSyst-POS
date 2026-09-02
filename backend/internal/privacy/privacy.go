@@ -43,6 +43,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
@@ -412,6 +413,16 @@ func (s *Service) responseDays(
 	if err != nil {
 		return 0, err
 	}
+	// Asked of the market first. PDPL is Saudi law; quoting its deadline to a
+	// market it does not govern would be stating a legal obligation that does
+	// not exist, and resolving the rule for such a market simply failed.
+	if !market.PrivacyRegimeApplies(country) {
+		return 0, errs.Newf(errs.CodeUnverifiedRule,
+			"This product has no data-protection regime on record for %s. "+
+				"PDPL is Saudi law and its response deadline does not apply "+
+				"here.", strings.ToUpper(strings.TrimSpace(country)))
+	}
+
 	n, err := s.registry.Int(ctx, registry.Query{
 		Key:      "SA.PDPL.DSR_RESPONSE_DAYS",
 		Country:  country,

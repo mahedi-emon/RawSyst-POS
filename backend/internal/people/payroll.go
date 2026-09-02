@@ -17,6 +17,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
@@ -406,16 +407,26 @@ func (s *Service) computeSlip(
 	// Social insurance. A rate that has not been verified stops THIS figure
 	// and nothing else: the wage is still owed and still posts, and the run
 	// says plainly which number is missing.
-	con, err := s.resolveGOSI(ctx, tx, scope.TenantID, country, period, emp)
-	switch {
-	case err == nil:
-		c.gosiEmployee, c.gosiEmployer = con.employee, con.employer
-	case errs.CodeOf(err) == errs.CodeUnverifiedRule:
-		if *gosiBlocked == "" {
-			*gosiBlocked = err.Error()
+	//
+	// Asked of the MARKET first. GOSI is Saudi Arabia's scheme; resolving
+	// `SA.GOSI.RATES` for a Bangladeshi company found no rule and the
+	// registry's "no regulatory rule is on record" error came back through
+	// `default:` below and killed the whole run — so a Bangladeshi shop could
+	// not pay anybody at all. A market with no scheme this product knows simply
+	// has no social-insurance line, which is different from having one of zero
+	// and very different from being unable to run payroll.
+	if market.SocialInsuranceApplies(country) {
+		con, err := s.resolveGOSI(ctx, tx, scope.TenantID, country, period, emp)
+		switch {
+		case err == nil:
+			c.gosiEmployee, c.gosiEmployer = con.employee, con.employer
+		case errs.CodeOf(err) == errs.CodeUnverifiedRule:
+			if *gosiBlocked == "" {
+				*gosiBlocked = err.Error()
+			}
+		default:
+			return c, err
 		}
-	default:
-		return c, err
 	}
 
 	// Advances, oldest first. C5: "issue an advance and have it automatically
@@ -1044,6 +1055,16 @@ func (s *Service) GenerateWageFile(
 			`SELECT count(*) FROM payslip WHERE run_id = $1`,
 			runID).Scan(&count); e != nil {
 			return e
+		}
+
+		// Asked of the market first. Mudad is Saudi Arabia's wage protection
+		// system; producing its file for another market would generate a
+		// document no authority asked for and none would accept.
+		if !market.WageProtectionApplies(country) {
+			return errs.Newf(errs.CodeUnverifiedRule,
+				"There is no wage-protection file format on record for %s. "+
+					"Mudad is Saudi Arabia's system and does not apply here.",
+				strings.ToUpper(strings.TrimSpace(country)))
 		}
 
 		// The format itself. Unverified means no file.

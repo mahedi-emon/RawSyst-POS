@@ -72,6 +72,26 @@ type SalesDetail struct {
 	TaxTotal     string `json:"tax_total"`
 	InvoiceCount int    `json:"invoice_count"`
 	RefundCount  int    `json:"refund_count"`
+
+	// Retail and wholesale, split out.
+	//
+	// B12 asks for wholesale to be "kept separate from retail so retail
+	// reporting isn't distorted by bulk transactions", and it was not: a
+	// wholesale sale at the till was indistinguishable from a retail one in
+	// every report, so one bulk order could swamp a day's retail figures and an
+	// owner comparing weeks would be comparing noise.
+	//
+	// Derived from `customer.customer_type` through the invoice's customer
+	// rather than a new column on the invoice: the fact already exists, and a
+	// second copy of it on every invoice row is a second thing to keep in step.
+	//
+	// A walk-in has no customer and counts as retail, which is the same answer
+	// the pricing tier gives for the same reason.
+	RetailTotal    string `json:"retail_total"`
+	WholesaleTotal string `json:"wholesale_total"`
+	RetailCount    int    `json:"retail_count"`
+	WholesaleCount int    `json:"wholesale_count"`
+
 	HasMore      bool   `json:"has_more"`
 	BaseCurrency string `json:"base_currency"`
 }
@@ -104,17 +124,33 @@ func (s *Service) SalesFor(
 		// owner needs to see.
 		if e := tx.QueryRow(ctx, `
 			SELECT
-			  coalesce(sum(total_inclusive) FILTER (WHERE doc_type <> 'credit_note'), 0)::text,
-			  coalesce(sum(total_inclusive) FILTER (WHERE doc_type =  'credit_note'), 0)::text,
-			  coalesce(sum(tax_total)       FILTER (WHERE doc_type <> 'credit_note'), 0)::text,
-			  count(*) FILTER (WHERE doc_type <> 'credit_note'),
-			  count(*) FILTER (WHERE doc_type =  'credit_note')
-			FROM sales_invoice
-			WHERE company_id = $1 AND issue_date >= $2 AND issue_date < $3
-			  AND ($4::uuid IS NULL OR store_id = $4::uuid)`,
+			  coalesce(sum(i.total_inclusive) FILTER (WHERE i.doc_type <> 'credit_note'), 0)::text,
+			  coalesce(sum(i.total_inclusive) FILTER (WHERE i.doc_type =  'credit_note'), 0)::text,
+			  coalesce(sum(i.tax_total)       FILTER (WHERE i.doc_type <> 'credit_note'), 0)::text,
+			  count(*) FILTER (WHERE i.doc_type <> 'credit_note'),
+			  count(*) FILTER (WHERE i.doc_type =  'credit_note'),
+			  -- B12's split. A walk-in has no customer and is retail.
+			  coalesce(sum(i.total_inclusive) FILTER (
+			    WHERE i.doc_type <> 'credit_note'
+			      AND coalesce(c.customer_type, 'retail') <> 'wholesale'), 0)::text,
+			  coalesce(sum(i.total_inclusive) FILTER (
+			    WHERE i.doc_type <> 'credit_note'
+			      AND c.customer_type = 'wholesale'), 0)::text,
+			  count(*) FILTER (
+			    WHERE i.doc_type <> 'credit_note'
+			      AND coalesce(c.customer_type, 'retail') <> 'wholesale'),
+			  count(*) FILTER (
+			    WHERE i.doc_type <> 'credit_note'
+			      AND c.customer_type = 'wholesale')
+			FROM sales_invoice i
+			LEFT JOIN customer c ON c.id = i.customer_id
+			WHERE i.company_id = $1 AND i.issue_date >= $2 AND i.issue_date < $3
+			  AND ($4::uuid IS NULL OR i.store_id = $4::uuid)`,
 			scope.CompanyID, from, to, scope.StoreID,
 		).Scan(&out.SalesTotal, &out.RefundTotal, &out.TaxTotal,
-			&out.InvoiceCount, &out.RefundCount); e != nil {
+			&out.InvoiceCount, &out.RefundCount,
+			&out.RetailTotal, &out.WholesaleTotal,
+			&out.RetailCount, &out.WholesaleCount); e != nil {
 			return e
 		}
 
