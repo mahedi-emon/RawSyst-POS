@@ -162,7 +162,7 @@ func run() error {
 		return err
 	}
 
-	provSvc := provisioning.NewService(pool)
+	provSvc := provisioning.NewService(pool).WithRules(rules)
 
 	// Signing never happens here in any environment — the key lives in the
 	// terminal's OS keystore and never reaches this process. What this stack

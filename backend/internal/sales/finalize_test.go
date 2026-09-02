@@ -260,7 +260,7 @@ func (s *shop) sale(qty, unitPrice string, tenders ...Tender) Sale {
 		InvoiceUUID: uuid.New(), DocType: "simplified",
 		IssuedAt: aug15(), Currency: "SAR",
 		Input: SaleInput{
-			PricesIncludeTax: true, TaxRate: saudiRules(), Rules: saudi,
+			PricesIncludeTax: true, TaxRates: standardOnly(saudiRules()), Rules: saudi,
 			Lines: []LineInput{{
 				Description: "Executive Abaya", Qty: dec(qty),
 				UnitPrice: dec(unitPrice), TaxTreatment: "standard",

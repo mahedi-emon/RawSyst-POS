@@ -388,6 +388,64 @@ func (s *Service) VATRate(
 	}, "rate")
 }
 
+// rateKeyFor names the rule holding the rate for one treatment in one country.
+//
+// A key per treatment rather than one rule holding several rates, because each
+// is separately dated, separately sourced and separately verified: a country
+// can change its reduced rate without touching its standard one, and the
+// evidence recorded against each has to be the evidence for that rate.
+//
+// Only treatments that CHARGE need a key. Zero-rated, exempt and out-of-scope
+// are answered from the treatment list itself — there is no rate to record and
+// no source to cite for "this is not taxed".
+func rateKeyFor(country, treatment string) (string, bool) {
+	cc := strings.ToUpper(strings.TrimSpace(country))
+	switch strings.ToLower(strings.TrimSpace(treatment)) {
+	case "standard":
+		return cc + ".VAT.STANDARD_RATE", true
+	case "reduced":
+		return cc + ".VAT.REDUCED_RATE", true
+	default:
+		// Includes "taxable", the US sales-tax treatment. Deliberately NOT
+		// given a country-level key: US tax is set by state, county and city,
+		// so a national rate does not exist, and minting a key for one would
+		// invite somebody to fill it in. See TaxRate for what is said instead.
+		return "", false
+	}
+}
+
+// TaxRate resolves the rate for one tax treatment in one market at a date.
+//
+// This is what the sale path asks now. VATRate answered "the rate for this
+// country", which is a question with no answer in two of the three markets this
+// product serves: Bangladesh charges several rates, and the United States sets
+// tax by jurisdiction rather than nationally.
+//
+// A missing rule is reported as a missing rule, naming what has to be recorded.
+// Nothing is defaulted, because every default here would be an invented legal
+// value.
+func (s *Service) TaxRate(
+	ctx context.Context, tx pgx.Tx, country, treatment string, asOf time.Time,
+	tenantID uuid.UUID,
+) (decimal.Decimal, error) {
+	key, ok := rateKeyFor(country, treatment)
+	if !ok {
+		return decimal.Zero, errs.Newf(errs.CodeUnverifiedRule,
+			"Tax for %q in %s is not set nationally, so it cannot be resolved "+
+				"from a country and a date alone. It needs a tax jurisdiction "+
+				"— state, county, city — with rates recorded against it.",
+			treatment, strings.ToUpper(strings.TrimSpace(country)))
+	}
+
+	return s.Decimal(ctx, Query{
+		Key:      key,
+		Country:  country,
+		AsOf:     asOf,
+		TenantID: tenantID,
+		Tx:       tx,
+	}, "rate")
+}
+
 // HealthReport summarises registry verification state for the Super Admin
 // dashboard. Blueprint E8.3 calls staleness alerting "the operational
 // mechanism that keeps the platform legally current instead of quietly
@@ -496,6 +554,62 @@ func (s *Service) healthFor(ctx context.Context, served []string) (HealthReport,
 		}
 	}
 	return rep, nil
+}
+
+// RequiresVerification reports whether this deployment refuses unverified legal
+// values. True in staging and production.
+//
+// Exposed so a caller can ask the question the registry was configured with,
+// rather than deciding for itself what "strict" means. Provisioning uses it: a
+// development machine may create a tenant in any market, and a production
+// deployment may not create one whose legal values are still placeholders.
+func (s *Service) RequiresVerification() bool { return s.requireVerified }
+
+// UnverifiedBlockersFor lists the release-blocking rules for one market that
+// have never been verified against their official source.
+//
+// The provisioning-time half of the boot gate. `Health` answers "may this
+// process start given the tenants it already has"; this answers "may a tenant
+// be created in this market at all", which is the moment the boot answer would
+// otherwise change underneath a process already running.
+func (s *Service) UnverifiedBlockersFor(
+	ctx context.Context, market string,
+) ([]string, error) {
+	market = strings.ToLower(strings.TrimSpace(market))
+	if market == "" {
+		return nil, nil
+	}
+
+	var out []string
+	tx, err := s.pool.Raw().Begin(ctx)
+	if err != nil {
+		return nil, db.Translate(err, "")
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	rows, err := tx.Query(ctx, `
+		SELECT rule_key FROM regulatory_rule
+		WHERE release_blocker
+		  AND verified_on IS NULL
+		  AND effective_to IS NULL
+		  AND lower(country) = $1
+		ORDER BY rule_key`, market)
+	if err != nil {
+		return nil, db.Translate(err, "")
+	}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			rows.Close()
+			return nil, db.Translate(err, "")
+		}
+		out = append(out, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, db.Translate(err, "")
+	}
+	return out, tx.Commit(ctx)
 }
 
 // servedMarkets is the set of countries this deployment's tenants trade in.

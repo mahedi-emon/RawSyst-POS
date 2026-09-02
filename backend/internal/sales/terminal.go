@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
@@ -108,6 +109,53 @@ type companyProfile struct {
 	stockPolicy inventory.NegativeStockPolicy
 }
 
+// resolveRates finds a rate for every treatment this sale actually uses.
+//
+// # Only the treatments present
+//
+// A sale of three standard-rated shirts asks the registry for one rate. It does
+// not ask for the reduced rate, so a market that has never recorded one can
+// still sell everything it sells today — which is the difference between an
+// architecture that supports several rates and one that demands every rate
+// exist before anything can be sold.
+//
+// # A treatment with no rate is refused, not defaulted
+//
+// `taxable()` accepts `reduced`, and until now a single rate was applied to
+// every taxable line — so a reduced-rate line was charged the STANDARD rate.
+// That silently overcharges the customer and overstates the tax return. The
+// honest answer where no reduced rate has been recorded is to refuse the sale
+// and say so, because the alternative is inventing a legal value.
+//
+// Bangladesh is the live example: its treatment list includes `reduced`, and
+// the rate behind it has never been established against the NBR. Selling such a
+// line at 15% would be a guess presented as a legal figure.
+func (s *Service) resolveRates(
+	ctx context.Context, tx pgx.Tx, sale *Sale, rules catalog.TaxRules,
+	country string, tenantID uuid.UUID,
+) (map[string]decimal.Decimal, error) {
+	out := make(map[string]decimal.Decimal, 2)
+
+	for _, l := range sale.Input.Lines {
+		treatment := l.TaxTreatment
+		if _, done := out[treatment]; done {
+			continue
+		}
+		// Not taxable at all: no lookup, and nothing for a market to record.
+		// Pricing answers these from the rules rather than from a rate.
+		if !taxable(rules, treatment) {
+			continue
+		}
+
+		rate, err := s.rules.TaxRate(ctx, tx, country, treatment, sale.IssuedAt, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		out[treatment] = rate
+	}
+	return out, nil
+}
+
 // applyTaxProfile fills in the values the till is not allowed to choose.
 //
 // tx is the sale's own transaction, and the rule lookups below run inside it.
@@ -128,13 +176,13 @@ func (s *Service) applyTaxProfile(
 	if err != nil {
 		return err
 	}
-	rate, err := s.rules.VATRate(ctx, tx, profile.country, sale.IssuedAt, tenantID)
+	rates, err := s.resolveRates(ctx, tx, sale, rules, profile.country, tenantID)
 	if err != nil {
 		return err
 	}
 
 	sale.Input.Rules = rules
-	sale.Input.TaxRate = rate
+	sale.Input.TaxRates = rates
 	sale.Currency = profile.baseCurrency
 
 	// Read from the company, never from the request. The handler cannot supply

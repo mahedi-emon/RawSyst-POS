@@ -58,8 +58,36 @@ type SaleInput struct {
 	// True where displayed prices already contain tax — the Saudi retail norm.
 	PricesIncludeTax bool
 
-	TaxRate decimal.Decimal
-	Rules   catalog.TaxRules
+	// TaxRates is the rate to charge for each tax treatment this sale uses,
+	// resolved server-side from the registry at the transaction date.
+	//
+	// A MAP rather than one rate, because "the rate" is not a property of a
+	// country. It used to be a single decimal, and `taxable()` returned true
+	// for `reduced` — so a reduced-rate line was charged the STANDARD rate,
+	// silently, overcharging the customer and overstating the return. Only
+	// Bangladesh lists the treatment, which is the only reason it had not yet
+	// been sold wrongly.
+	//
+	// A treatment with no entry here is refused rather than defaulted. There is
+	// no sensible fallback: guessing a rate is how a tax return becomes wrong
+	// in a way nobody notices until an audit.
+	TaxRates map[string]decimal.Decimal
+
+	Rules catalog.TaxRules
+}
+
+// rateFor is the rate to charge a line, and whether one is known.
+//
+// A treatment the rules say is not taxable charges nothing whatever the
+// registry holds — that is what zero-rated, exempt and out-of-scope mean, and
+// they are answered here rather than by expecting a 0 row in the registry for
+// each of them.
+func (in SaleInput) rateFor(treatment string) (decimal.Decimal, bool) {
+	if !taxable(in.Rules, treatment) {
+		return decimal.Zero, true
+	}
+	r, ok := in.TaxRates[treatment]
+	return r, ok
 }
 
 // ComputedLine is one line after tax.
@@ -134,9 +162,12 @@ func Compute(in SaleInput) (ComputedSale, error) {
 		return ComputedSale{}, errs.New(errs.CodeInvalidInput,
 			"A sale needs at least one item.")
 	}
-	if in.TaxRate.IsNegative() || in.TaxRate.GreaterThanOrEqual(decimal.NewFromInt(1)) {
-		return ComputedSale{}, errs.New(errs.CodeInternal,
-			"The tax rate resolved for this sale is not usable.")
+	for treatment, r := range in.TaxRates {
+		if r.IsNegative() || r.GreaterThanOrEqual(decimal.NewFromInt(1)) {
+			return ComputedSale{}, errs.Newf(errs.CodeInternal,
+				"The tax rate resolved for %q on this sale is not usable.",
+				treatment)
+		}
 	}
 
 	// Gross before any invoice-level discount, used to weight the allocation.
@@ -219,10 +250,16 @@ func Compute(in SaleInput) (ComputedSale, error) {
 		afterDiscount := lineGross.Sub(share)
 
 		// A zero-rated, exempt or out-of-scope line carries no tax whatever the
-		// country's standard rate is.
-		rate := in.TaxRate
-		if !taxable(in.Rules, l.TaxTreatment) {
-			rate = decimal.Zero
+		// country's standard rate is. A taxable one charges the rate resolved
+		// for ITS OWN treatment, and is refused if none was.
+		rate, known := in.rateFor(l.TaxTreatment)
+		if !known {
+			return ComputedSale{}, errs.Newf(errs.CodeUnverifiedRule,
+				"No tax rate is on file for %q in this market, so this sale "+
+					"cannot be priced. The rate has to be recorded in the "+
+					"regulatory register, with its source, before an item "+
+					"carrying that treatment can be sold.",
+				l.TaxTreatment)
 		}
 
 		var net, tax decimal.Decimal

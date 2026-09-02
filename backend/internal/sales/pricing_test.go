@@ -1,6 +1,7 @@
 package sales
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -8,11 +9,91 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 )
 
+// standardOnly is the rate table for a sale whose taxable lines are all
+// standard-rated, which is every fixture in this package.
+//
+// It exists because SaleInput carries a rate PER TREATMENT rather than one rate
+// for the sale. A test that wants to prove reduced-rate behaviour builds its own
+// map and deliberately leaves `reduced` out or in — see
+// TestAReducedRateLineIsNotChargedTheStandardRate.
+func standardOnly(rate decimal.Decimal) map[string]decimal.Decimal {
+	return map[string]decimal.Decimal{"standard": rate}
+}
+
+// A reduced-rate line is charged the reduced rate, not the standard one.
+//
+// It used to be charged the standard rate, silently. SaleInput carried a single
+// rate and `taxable()` returned true for `reduced`, so the two treatments were
+// indistinguishable by the time Compute ran. That overcharges the customer and
+// overstates the tax return, and the only reason it had never been sold wrongly
+// is that Bangladesh is the sole market listing the treatment and has never
+// traded on this.
+func TestAReducedRateLineIsChargedTheReducedRate(t *testing.T) {
+	got := mustCompute(t, SaleInput{
+		Lines: []LineInput{
+			line("1", "100", "standard"),
+			line("1", "100", "reduced"),
+		},
+		PricesIncludeTax: false,
+		TaxRates: map[string]decimal.Decimal{
+			"standard": dec("0.15"),
+			"reduced":  dec("0.05"),
+		},
+		Rules: bangladesh,
+	})
+
+	eq(t, "standard line tax", got.Lines[0].TaxAmount, "15")
+	eq(t, "reduced line tax", got.Lines[1].TaxAmount, "5")
+	eq(t, "total tax", got.TaxTotal, "20")
+}
+
+// A treatment with no rate on file refuses the sale rather than guessing.
+//
+// The honest answer where no reduced rate has been established: charging the
+// standard rate would be inventing a legal value, and charging zero would be
+// inventing a different one.
+func TestATaxableTreatmentWithNoRateOnFileIsRefused(t *testing.T) {
+	_, err := Compute(SaleInput{
+		Lines:            []LineInput{line("1", "100", "reduced")},
+		PricesIncludeTax: false,
+		TaxRates:         standardOnly(dec("0.15")), // no `reduced` entry
+		Rules:            bangladesh,
+	})
+	if err == nil {
+		t.Fatal("a reduced-rate line was priced with no reduced rate on file")
+	}
+	if !strings.Contains(err.Error(), "reduced") {
+		t.Errorf("the refusal does not name the treatment: %v", err)
+	}
+}
+
+// Not-taxable treatments need no rate and must not be refused for lacking one.
+//
+// Zero-rated, exempt and out-of-scope are answered from the treatment list
+// rather than from a rate. If they went looking for one, a shop selling exempt
+// goods would be blocked on a rule that should never exist.
+func TestNonTaxableTreatmentsNeedNoRate(t *testing.T) {
+	for _, treatment := range []string{"zero_rated", "exempt", "out_of_scope"} {
+		got := mustCompute(t, SaleInput{
+			Lines:            []LineInput{line("1", "100", treatment)},
+			PricesIncludeTax: false,
+			TaxRates:         standardOnly(dec("0.15")),
+			Rules:            saudi,
+		})
+		eq(t, treatment+" tax", got.TaxTotal, "0")
+	}
+}
+
 var (
 	saudi = catalog.TaxRules{
 		Country: "sa", Model: catalog.TaxModelVAT, InputTaxRecoverable: true,
 		Treatments: []string{"standard", "zero_rated", "exempt", "out_of_scope",
 			"export", "reverse_charge", "import"},
+	}
+	bangladesh = catalog.TaxRules{
+		Country: "bd", Model: catalog.TaxModelVAT, InputTaxRecoverable: true,
+		Treatments: []string{"standard", "reduced", "zero_rated", "exempt",
+			"out_of_scope", "export"},
 	}
 	usa = catalog.TaxRules{
 		Country: "us", Model: catalog.TaxModelSalesTax, InputTaxRecoverable: false,
@@ -27,7 +108,7 @@ func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
 func TestVATInclusivePricingBackCalculates(t *testing.T) {
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 		Lines: []LineInput{{
 			Description: "Executive Abaya", Qty: dec("1"),
@@ -54,7 +135,7 @@ func TestVATInclusivePricingBackCalculates(t *testing.T) {
 func TestTaxExclusivePricingAddsTax(t *testing.T) {
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: false,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 		Lines: []LineInput{{
 			Description: "Executive Abaya", Qty: dec("1"),
@@ -75,7 +156,7 @@ func TestLinesSumExactlyToTheTotal(t *testing.T) {
 	// Prices chosen so the per-line VAT lands on a half-hallala.
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 		Lines: []LineInput{
 			{Description: "A", Qty: dec("1"), UnitPrice: dec("33.33"), TaxTreatment: "standard"},
@@ -115,7 +196,7 @@ func TestInvoiceDiscountAllocationSumsBackExactly(t *testing.T) {
 	// 100 split across three lines in a ratio that does not divide evenly.
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 		InvoiceDiscount:  dec("100.00"),
 		Lines: []LineInput{
@@ -144,7 +225,7 @@ func TestNonStandardTreatmentsCarryNoTax(t *testing.T) {
 		t.Run(treatment, func(t *testing.T) {
 			got, err := Compute(SaleInput{
 				PricesIncludeTax: true,
-				TaxRate:          dec("0.15"),
+				TaxRates:         standardOnly(dec("0.15")),
 				Rules:            saudi,
 				Lines: []LineInput{{
 					Description: "X", Qty: dec("1"),
@@ -169,7 +250,7 @@ func TestNonStandardTreatmentsCarryNoTax(t *testing.T) {
 func TestMixedTreatmentsOnOneInvoice(t *testing.T) {
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 		Lines: []LineInput{
 			{Description: "Taxable", Qty: dec("1"), UnitPrice: dec("115.00"), TaxTreatment: "standard"},
@@ -192,7 +273,7 @@ func TestMixedTreatmentsOnOneInvoice(t *testing.T) {
 func TestUnitedStatesTreatmentNames(t *testing.T) {
 	got, err := Compute(SaleInput{
 		PricesIncludeTax: false,
-		TaxRate:          dec("0.0825"),
+		TaxRates:         map[string]decimal.Decimal{"taxable": dec("0.0825")},
 		Rules:            usa,
 		Lines: []LineInput{
 			{Description: "Shirt", Qty: dec("1"), UnitPrice: dec("100.00"), TaxTreatment: "taxable"},
@@ -208,7 +289,7 @@ func TestUnitedStatesTreatmentNames(t *testing.T) {
 
 	// "standard" is a VAT word and must not be accepted in a US catalogue.
 	_, err = Compute(SaleInput{
-		PricesIncludeTax: false, TaxRate: dec("0.0825"), Rules: usa,
+		PricesIncludeTax: false, TaxRates: map[string]decimal.Decimal{"taxable": dec("0.0825")}, Rules: usa,
 		Lines: []LineInput{{
 			Description: "X", Qty: dec("1"), UnitPrice: dec("10"), TaxTreatment: "standard",
 		}},
@@ -224,7 +305,7 @@ func TestUnitedStatesTreatmentNames(t *testing.T) {
 // was drawn down and on the company's method, neither of which a price knows.
 func TestCOGSIsAppliedFromTheCostingEngine(t *testing.T) {
 	got, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
+		PricesIncludeTax: true, TaxRates: standardOnly(dec("0.15")), Rules: saudi,
 		Lines: []LineInput{
 			{Description: "A", Qty: dec("3"), UnitPrice: dec("115.00"),
 				TaxTreatment: "standard"},
@@ -260,7 +341,7 @@ func TestCOGSIsAppliedFromTheCostingEngine(t *testing.T) {
 // worse than one that fails.
 func TestCostsMustMatchTheLinesPriced(t *testing.T) {
 	got, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
+		PricesIncludeTax: true, TaxRates: standardOnly(dec("0.15")), Rules: saudi,
 		Lines: []LineInput{
 			{Description: "A", Qty: dec("1"), UnitPrice: dec("115.00"), TaxTreatment: "standard"},
 			{Description: "B", Qty: dec("1"), UnitPrice: dec("230.00"), TaxTreatment: "standard"},
@@ -306,14 +387,14 @@ func TestSplitTenderMustCoverTheTotalExactly(t *testing.T) {
 }
 
 func TestSaleNeedsAtLeastOneLine(t *testing.T) {
-	if _, err := Compute(SaleInput{TaxRate: dec("0.15"), Rules: saudi}); err == nil {
+	if _, err := Compute(SaleInput{TaxRates: standardOnly(dec("0.15")), Rules: saudi}); err == nil {
 		t.Fatal("an empty sale was accepted")
 	}
 }
 
 func TestDiscountLargerThanTheSaleIsRefused(t *testing.T) {
 	_, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
+		PricesIncludeTax: true, TaxRates: standardOnly(dec("0.15")), Rules: saudi,
 		InvoiceDiscount: dec("500.00"),
 		Lines: []LineInput{{
 			Description: "A", Qty: dec("1"), UnitPrice: dec("100.00"), TaxTreatment: "standard",
@@ -326,7 +407,7 @@ func TestDiscountLargerThanTheSaleIsRefused(t *testing.T) {
 
 func TestLineDiscountLargerThanTheLineIsRefused(t *testing.T) {
 	_, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
+		PricesIncludeTax: true, TaxRates: standardOnly(dec("0.15")), Rules: saudi,
 		Lines: []LineInput{{
 			Description: "A", Qty: dec("1"), UnitPrice: dec("100.00"),
 			LineDiscount: dec("150.00"), TaxTreatment: "standard",
@@ -340,7 +421,7 @@ func TestLineDiscountLargerThanTheLineIsRefused(t *testing.T) {
 // Fractional quantities are normal where goods are sold by length or weight.
 func TestFractionalQuantity(t *testing.T) {
 	got, err := Compute(SaleInput{
-		PricesIncludeTax: true, TaxRate: dec("0.15"), Rules: saudi,
+		PricesIncludeTax: true, TaxRates: standardOnly(dec("0.15")), Rules: saudi,
 		Lines: []LineInput{{
 			Description: "Fabric", Qty: dec("2.5"),
 			UnitPrice: dec("46.00"), TaxTreatment: "standard",

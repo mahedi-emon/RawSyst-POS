@@ -100,7 +100,7 @@ func TestAHundredPercentDiscountNeverDrivesALineNegative(t *testing.T) {
 		Lines:            lines,
 		InvoiceDiscount:  dec("20.13"),
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 
@@ -159,7 +159,7 @@ func TestNoAllocationShapeProducesANegativeLine(t *testing.T) {
 					Lines:            lines,
 					InvoiceDiscount:  discount,
 					PricesIncludeTax: true,
-					TaxRate:          dec("0.15"),
+					TaxRates:         standardOnly(dec("0.15")),
 					Rules:            saudi,
 				})
 				checkInternallyConsistent(t, got)
@@ -178,9 +178,9 @@ func TestNoAllocationShapeProducesANegativeLine(t *testing.T) {
 // third decimal to 15.00. The gross is 114.99.
 func TestExclusivePricingRoundsTaxHalfUp(t *testing.T) {
 	got := mustCompute(t, SaleInput{
-		Lines:   []LineInput{line("3", "33.33", "standard")},
-		TaxRate: dec("0.15"),
-		Rules:   saudi,
+		Lines:    []LineInput{line("3", "33.33", "standard")},
+		TaxRates: standardOnly(dec("0.15")),
+		Rules:    saudi,
 	})
 	checkInternallyConsistent(t, got)
 	eq(t, "net", got.SubtotalNet, "99.99")
@@ -198,7 +198,7 @@ func TestInclusivePricingTakesTaxAsTheRemainder(t *testing.T) {
 	got := mustCompute(t, SaleInput{
 		Lines:            []LineInput{line("2", "50", "standard")},
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -218,7 +218,7 @@ func TestALineDiscountIsAppliedBeforeTax(t *testing.T) {
 	got := mustCompute(t, SaleInput{
 		Lines:            []LineInput{l},
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -243,7 +243,7 @@ func TestAnInvoiceDiscountIsSplitInProportion(t *testing.T) {
 		},
 		InvoiceDiscount:  dec("10"),
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -273,7 +273,7 @@ func TestDiscountSharesSumBackToTheDiscountExactly(t *testing.T) {
 		},
 		InvoiceDiscount:  dec("10"),
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -298,7 +298,7 @@ func TestZeroRatedAndStandardOnOneInvoice(t *testing.T) {
 			line("1", "50", "zero_rated"),
 		},
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -320,7 +320,7 @@ func TestTheSmallestAmountBehaves(t *testing.T) {
 	got := mustCompute(t, SaleInput{
 		Lines:            []LineInput{line("1", "0.01", "standard")},
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -337,7 +337,7 @@ func TestALargeAmountKeepsItsPrecision(t *testing.T) {
 	got := mustCompute(t, SaleInput{
 		Lines:            []LineInput{line("1", "9999999.99", "standard")},
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -352,7 +352,7 @@ func TestAZeroStandardRateChargesNothing(t *testing.T) {
 	got := mustCompute(t, SaleInput{
 		Lines:            []LineInput{line("2", "25", "standard")},
 		PricesIncludeTax: true,
-		TaxRate:          decimal.Zero,
+		TaxRates:         standardOnly(decimal.Zero),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)
@@ -375,7 +375,7 @@ func TestLineAndInvoiceDiscountsCombine(t *testing.T) {
 		Lines:            []LineInput{l1, line("1", "100", "standard")},
 		InvoiceDiscount:  dec("20"),
 		PricesIncludeTax: true,
-		TaxRate:          dec("0.15"),
+		TaxRates:         standardOnly(dec("0.15")),
 		Rules:            saudi,
 	})
 	checkInternallyConsistent(t, got)

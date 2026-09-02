@@ -22,14 +22,91 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 )
 
 // Service provisions tenants.
 type Service struct {
 	pool *db.Pool
+
+	// rules is the regulatory registry, consulted before a tenant is created in
+	// a market. Optional; see WithRules.
+	rules *registry.Service
 }
 
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// WithRules gives provisioning the regulatory registry, so creating a tenant can
+// refuse a market whose legal values are still placeholders.
+//
+// Optional rather than a constructor argument, in the shape identity.WithCipher
+// already uses here: a caller that has not wired it keeps working, and the
+// check below states plainly that it was not asked rather than silently
+// passing. The API server wires it.
+func (s *Service) WithRules(rules *registry.Service) *Service {
+	s.rules = rules
+	return s
+}
+
+// requireMarketIsUsable refuses to create a tenant in a market whose
+// release-blocking legal values have never been verified.
+//
+// # Why provisioning and not only boot
+//
+// The boot gate asks "may this process start given the tenants it has". That
+// answer changes the moment a tenant is created in a new market, and the
+// process does not re-run it — so a Bangladesh-only deployment could be given a
+// Saudi client at 10:00 and keep serving it on placeholder GOSI, EOSB and WPS
+// values until somebody happened to restart. This closes that window at the
+// only point where the market is chosen.
+//
+// # It refuses only where the deployment refuses unverified values anyway
+//
+// A development machine creates tenants in any market, because that is what
+// development is for and the per-use gate is off there too. Where
+// requireVerified is set, the refusal here is the same judgement the boot gate
+// and gate() already make, applied earlier.
+//
+// # It does not mark anything verified
+//
+// The remedy is to verify the rule against its official source and record the
+// evidence. There is deliberately no override flag: one would be used.
+func (s *Service) requireMarketIsUsable(ctx context.Context, market string) error {
+	if s.rules == nil || !s.rules.RequiresVerification() {
+		return nil
+	}
+
+	blockers, err := s.rules.UnverifiedBlockersFor(ctx, market)
+	if err != nil {
+		return err
+	}
+	if len(blockers) == 0 {
+		return nil
+	}
+
+	return errs.Newf(errs.CodeUnverifiedRule,
+		"This deployment cannot take on a business in %s yet: %s "+
+			"%s never been verified against their official source. "+
+			"Verify them in Super Admin > Regulatory Registry first — a "+
+			"business created now would compute legal figures from placeholders.",
+		marketName(market), strings.Join(blockers, ", "),
+		plural(len(blockers), "has", "have"))
+}
+
+// marketName is the reader's word for a market code, falling back to the code.
+func marketName(market string) string {
+	if name, ok := supportedCountries[strings.ToLower(strings.TrimSpace(market))]; ok {
+		return name
+	}
+	return strings.ToUpper(market)
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
 
 // NewTenant is a provisioning request.
 type NewTenant struct {
@@ -87,6 +164,12 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 	}
 
 	if err := req.validate(); err != nil {
+		return Provisioned{}, err
+	}
+
+	// Before anything is written. A tenant half-created and then refused would
+	// leave the operator with an account they cannot use and cannot see.
+	if err := s.requireMarketIsUsable(ctx, req.Market); err != nil {
 		return Provisioned{}, err
 	}
 
