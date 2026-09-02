@@ -59,6 +59,104 @@ requirement and an audit trail naming user *and* counter all still apply.
 
 ---
 
+## 1b. Full Blueprint audit — 2026-09-02
+
+Every area below was checked for: migration · service · routes · tests. Where a
+status is PARTIAL or worse, the exact missing piece is named. **Nothing is
+COMPLETE on the strength of a table or route existing.**
+
+Evidence notation: `svc` = exported `Service` methods, `routes` = live route
+declarations, `tests` = functional tests (isolation-only coverage is called out).
+
+| # | Area | Status | Evidence / exact gap |
+|---|---|---|---|
+| A | Platform & multi-tenancy | **COMPLETE** | `0001`–`0008`, RLS FORCE, `TestCrossTenantRead/Write`, `TestPlatformAdminHasNoBusinessDataAccess`, `TestConnectionCannotBypassRowLevelSecurity` |
+| B1 | Catalog & variants | **COMPLETE** | `catalog` 10 svc · 7 routes · 8 pkg + 21 api tests (`catalog_test`, `matrix_test`) |
+| B1b | **Bundles / kits** | **MISSING** | No table, no service, no route. Blueprint B1 product composition unimplemented |
+| B2 | Variant matrix | **COMPLETE** | `matrix_test.go` 5 tests; regeneration adds only what is missing |
+| B3 | Barcode & Label Studio | **COMPLETE** | `labels` 9 svc · 9 routes · 17 api tests (`studio_test`, `stationery_test`) |
+| B4 | Inventory core | **COMPLETE** | `inventory`+`stockops` 21 svc · 23 routes · 46 pkg + 28 api tests. FIFO/WAC/standard, landed cost (`0034`), negative-stock policy, transfers with in-transit status, counts, adjustments, **GL tie-out exact**, concurrency tests |
+| B4a | **Batch / Lot / Expiry** | **MISSING** | Blueprint B4 requires batch no, mfg/expiry date, qty, supplier, cost + Expiring-Soon / Expired / Recall alerts. **No column, table, service or route anywhere** |
+| B4b | **Minimum-stock alert engine** | **PARTIAL** | `variant.reorder_level` stored and read by `insight` for D2 forecasting. **No alert, no notification, no job** — B4 requires dashboard + notification on threshold crossing |
+| B5 | Purchasing / procurement | **COMPLETE** | `purchasing` 32 svc · 31 routes · 9 pkg + 57 api tests: PO, partial receiving, GRNI (`0034`), bills, **three-way match**, payments + reversal, returns, supplier balances |
+| B5.1 | RFQ & supplier comparison | **COMPLETE** | `0087`, 11 api tests (`sourcing_test`) |
+| B6 | Suppliers | **COMPLETE** | covered by purchasing suite incl. `supplier_edit_test` |
+| B7 | POS backend | **COMPLETE** | counters, session binding, shifts, tenders, returns, exchanges, X/Z, concurrency — see §1 |
+| B8 | Hardware integration | **N/A (frontend)** | Printer/drawer/scanner are client concerns; `I5` per-terminal config partly in `device.printer_config` |
+| B9 | Promotions & pricing | **PARTIAL** | `promotions` 5 svc · 4 routes · **16 pkg tests, 0 API tests**. Rules exist; no end-to-end test that a promotion actually alters a POS sale |
+| B10 | Returns / exchange | **COMPLETE** | `sales/refund.go`, `exchange.go`, C14 effects, `exchange_test` 9 tests |
+| B11 | Quotation → Order → Delivery | **COMPLETE** | `orders` 8 svc · 8 routes · 11 tests; `aftersales` delivery 4 routes |
+| B12 | **Wholesale / B2B** | **PARTIAL** | `customer_type` in (retail, wholesale, vip) exists and is used by promotions/receivables. **`variant.price_dealer` is stored (`0010`) and read by NO Go code** — a wholesale customer is not charged dealer pricing. **No MOQ rules, no bulk-quantity discount tiers.** Credit limit exists (per company — see P22) |
+| B13 | Online orders | **PARTIAL** | `orders.Channel` defaults to `store`; delivery workflow exists. No storefront order intake beyond the customer portal |
+| B14 | EMI / instalments | **COMPLETE** | `0088`, 7 routes, `aftersales_test` |
+| B15 | Warranty / serial / service | **COMPLETE** | `0088`, serials + service-jobs routes, `TestASerialCarriesItsWarrantyFromTheSale` |
+| B16 | CRM & loyalty | **COMPLETE** | `loyalty` + `wallet`, gift cards, store credit, 13 api tests (`crm_test`) |
+| C1 | Core accounting | **COMPLETE** | `accounting` + `0015`/`0022`/`0025`, 47 pkg + 26 api tests; balanced-entry CONSTRAINT TRIGGER, immutability, period lock, gapless numbering under concurrency |
+| C2 | Cash & bank | **COMPLETE** | `treasury` 11 svc · 10 routes · 10 tests |
+| C3 | Expenses & investment | **COMPLETE** | `expenses` 9 svc · 8 routes · 13 tests; investors 4 routes |
+| C4 | AR / AP | **COMPLETE** | `receivables` 15 svc · 15 routes · **42 api tests** incl. receipt reversal, ageing, credit standing |
+| C5/C6 | HR & payroll | **PARTIAL** | `people` 23 svc · 23 routes · 13 tests. **Saudi-only rule keys resolved unconditionally** (`SA.GOSI.RATES`, `SA.WPS.*`, `SA.EOSB.ENTITLEMENT`) — a non-Saudi tenant errors rather than degrading |
+| C7 | Fixed assets | **COMPLETE** | `assets` 10 svc · 4 routes · 10 tests, depreciation |
+| C8 | Shift & drawer | **COMPLETE** | `shift`, blind close, X/Z, `drawer_derivation_test`, `shift_close_race_test` |
+| C9 | Double-entry engine | **COMPLETE** | all 12 posting rules as data, resolved at transaction date |
+| C10 | Fiscal period / year-end | **COMPLETE** | `fiscal` 5 svc · 14 tests (`yearend_test`, `fiscal_test`) |
+| C11 | Bank reconciliation | **COMPLETE** | `treasury`, `treasury_test` |
+| C12 | Settlement & gateways | **COMPLETE** | `settlement`+`payments` 11 svc · 13 routes · 6 pkg + 35 api tests |
+| C13 | Costing & COGS | **COMPLETE** | tie-out exact incl. negative-stock correction (`0047`/`0048`) |
+| C14 | Accounting-aware returns | **PARTIAL** | 7 of 9 effects. **Loyalty and commission reversal not built** (P13) — reported in `Refunded.Outstanding`, so tracked not hidden |
+| D1 | Reporting suite | **COMPLETE** | `reports` 17 svc · 9 routes · 7 tests; TB, P&L, BS, cash flow |
+| D2 | Analytics & forecasting | **PARTIAL** | `insight` 5 svc · 4 routes. **Thin test coverage** (touched only by `studio_test`) |
+| D3 | Notifications | **COMPLETE** | `notify` 8 svc · 7 routes; 3 functional tests (preferences, in-app cannot be silenced, announcement reaches inbox) |
+| D4 | Audit trail | **COMPLETE** | append-only, `TestAuditLogIsAppendOnly`, `audit.Write` with `actor_label` |
+| D5 | Approval centre | **PARTIAL** | `workflow` 11 svc · 10 routes, **and it is genuinely wired** — `Evaluate` is called by `expenses/record.go` and `purchasing/purchasing.go`. **Only rule CRUD is tested**; `Decide`, `Escalate`, `Delegate` and the `Evaluate` gate have no tests |
+| D6 | Document management | **PARTIAL** | `docs` 7 svc · 4 routes. **Isolation-only test coverage** (`cross_tenant_walk`) |
+| D7 | Global search | **PARTIAL** | 1 route, `insight/search.go`. Touched by `studio_test` only |
+| E1 | ZATCA | **DEFERRED** | as instructed |
+| E2 | Saudi tax engine | **COMPLETE** | multi-market treatments; rates now per treatment |
+| E3 | Payment methods | **COMPLETE** | gateways, providers, attempts, settlement |
+| E4 | PDPL / privacy | **PARTIAL** | `privacy` 29 svc · 25 routes — a large module with **isolation-only tests**. Saudi-only keys (`SA.PDPL.*`) resolved unconditionally |
+| E7 | Compliance dashboard | **PARTIAL** | `compliance` 1 svc · 1 route · **0 tests** |
+| E8 | Regulatory registry | **COMPLETE** | dated values, evidence required, market-aware boot + provisioning gates, 9 tests |
+| F1 | Workflow engine | see D5 | |
+| F2/F3 | Customer & supplier portals | **PARTIAL** | `portal` 26 svc · 24 routes · **only 4 tests** for a large external-facing surface |
+| F4 | Group consolidation | **PARTIAL** | `group` 11 svc · 10 routes · **isolation-only tests** |
+| G1 | Country configuration | **COMPLETE** | `tenant.market`, onboarding constraint, `internal/market` |
+| G2 | Multi-currency | **PARTIAL** | `fx_rate` on invoices, base-currency allocation in journals. No FX revaluation, no rate source |
+| G4 | Tax templates library | **PARTIAL** | treatments per country in registry; jurisdiction model added (`0106`), **no rates** |
+| H1 | Security & auth | **COMPLETE** | argon2id, refresh rotation with reuse detection, MFA, httpOnly cookie, lockout |
+| H2 | Offline sync | **COMPLETE** | `sync` + `replay.go`, M3 gate, 8 pkg + 12 api tests |
+| H3 | Device management | **COMPLETE** | 10 routes, 26 tests, binding model (`0104`) |
+| H4 | Backup & restore | **COMPLETE** | `ops` 14 svc · 5 routes; `TestABackupThatRanIsNotABackupThatRestores` |
+| H5 | Subscription & billing | **PARTIAL** | `billing` **14 svc methods · 4 routes · ZERO tests anywhere**. Plans, feature flags, invoices, dunning — none exercised |
+| H6 | API & integrations | **COMPLETE** | API keys (3 tests), webhooks (2 tests), `jobs/webhooks.go` dispatch with retry. Delivery not tested end-to-end |
+| H7 | Import / export | **COMPLETE** | `portability` 7 svc · 8 routes · 5 functional tests (stage→check→commit, refusal reasons, duplicate detection) |
+| H8 | Health monitoring | **COMPLETE** | `platformops`, 18 api tests |
+| H9 | Job queue | **COMPLETE** | `jobs` 9 files, retry, per-terminal ordering, escalation, reaping, 6 pkg + 12 tests |
+| H10 | Support ticketing | **COMPLETE** | 5 routes, `TestReplyingToATicketPutsItBackOnSupport` |
+| I2 | Receipt templates | **COMPLETE** | `branding` 9 svc, `template_test` + `branding_test` 12 tests |
+| I3 | Numbering engine | **COMPLETE** | per-document series, gapless under concurrency, `TestACreditNoteHasItsOwnNumberSeries` |
+| N | Super Admin control plane | **COMPLETE** | 15 routes, tenant creation + market, plans, features, invoices, dunning, sub-processors |
+| Q | RBAC & isolation | **COMPLETE** | 426 routes access-declared; route-authz, company-confinement and cross-tenant walks |
+
+### Counts
+
+**COMPLETE 40 · PARTIAL 16 · MISSING 2 · BLOCKED 3 · DEFERRED 1**
+
+### Critical findings from this audit
+
+1. **`variant.price_dealer` is dead.** Stored since `0010`, read by nothing. A
+   wholesale customer pays retail. Data-integrity-adjacent: the column implies a
+   behaviour the product does not have.
+2. **Billing has no tests at all** — 14 service methods covering plans, feature
+   entitlement, invoicing and dunning. Feature flags gate what a tenant may use,
+   so a defect here is a licensing and access issue, not just a billing one.
+3. **The approval engine's decision path is untested** even though it is wired
+   into expenses and purchasing approvals.
+4. **Batch/Lot/Expiry is absent entirely** — required by B4 for
+   cosmetics/grocery inventory, with recall alerts.
+5. **Privacy/PDPL (29 svc) and the portals (26 svc) have almost no functional
+   tests** relative to their size and external exposure.
+
 ## 2. What is NOT done
 
 ### ✅ CLOSED — the production boot gate is market-aware
@@ -161,6 +259,38 @@ the counter.
 - Offline sync path for browser counters.
 
 ---
+
+## 2b. Recommended implementation order (from the 1b audit)
+
+Ordered by risk, not by size. Everything here is backend; the frontend is still
+out of scope.
+
+**P0 — correctness and data integrity**
+1. **Wholesale dealer pricing** — either apply `price_dealer` for
+   `customer_type = 'wholesale'` or drop the column. A stored price nothing
+   reads is a promise the product does not keep.
+2. **Tests for billing/feature entitlement** — `Allows`/`Entitlements` gate what
+   a tenant may use. Untested access control is a security matter.
+3. **Tests for the approval decision path** — `Decide`, `Escalate`, `Delegate`,
+   and the `Evaluate` gate in expenses and purchasing.
+
+**P1 — core business functionality**
+4. **Wire a sale to its tax jurisdiction** (see §3 — still the top single task).
+5. **Batch / Lot / Expiry tracking** (B4), including recall alerts.
+6. **Minimum-stock alert engine** (B4) — the reorder level is already stored.
+7. **Market-aware HR/privacy/compliance rule keys** so a non-Saudi tenant
+   degrades instead of erroring.
+
+**P2 — remaining Blueprint backend features**
+8. Wholesale MOQ and bulk-discount tiers (B12).
+9. Bundles / kits (B1).
+10. Loyalty and commission reversal — C14 effects 6 and 7 (P13).
+11. Functional tests for privacy/PDPL, portals, group consolidation, documents.
+
+**P3 — utilities**
+12. Promotions end-to-end test through a POS sale.
+13. Analytics and global-search test coverage.
+14. FX revaluation and a rate source (G2).
 
 ## 3. The single highest-priority next backend task
 
