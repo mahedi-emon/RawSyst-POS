@@ -620,3 +620,38 @@ func atoiOr(s string, fallback int) int {
 	}
 	return fallback
 }
+
+// handleTerminalStock serves the till its own warehouse's quantities.
+//
+// # Why the till does not call /stock/on-hand
+//
+// It cannot say which company or which warehouse: a terminal deliberately
+// knows neither, and every POS route resolves both from the DEVICE. A till
+// that could name its own company could read another company's figures, and
+// row-level security would not catch it because the rows belong to the same
+// tenant.
+//
+// # What the till does with it
+//
+// Caches it, and applies `stock.moved` deltas to the cache while it is online.
+// The cache is provisional by construction — it is stale the moment another
+// till sells something — and design 03 forbids it from refusing a sale. It
+// exists so a cashier can be told, not so the terminal can decide.
+//
+// Gated on `inventory.view` like every other reading of stock levels. A cashier
+// without it simply gets no cached quantity and the till says nothing about
+// stock, which is exactly how it behaved before this existed.
+func (s *Server) handleTerminalStock(w http.ResponseWriter, r *http.Request) {
+	a := actor.From(r.Context())
+	f, err := stockFilterFrom(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.stock.OnHandForTerminal(r.Context(), a.TenantID, a.DeviceID, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}

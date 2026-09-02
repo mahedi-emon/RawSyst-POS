@@ -25,8 +25,8 @@ import { scan } from '../api/pos';
 import { handleCounterKey } from './keys';
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
-import { money } from '@rawsyst/shared/ui/format';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { money, shortDate } from '@rawsyst/shared/ui/format';
+import { useLocale, useT } from '@rawsyst/shared/i18n/locale';
 import { currentShift, type ShiftSession } from '@rawsyst/shared/api/shift';
 import { openedAtTime } from './shift';
 import { useTerminal } from '../offline/useTerminal';
@@ -64,6 +64,7 @@ const DISPLAY_RATE = '0.15';
 
 export function PosCounter() {
   const t = useT();
+  const { locale } = useLocale();
   const { can, me, client } = useAuth();
   const terminal = useTerminal();
 
@@ -216,6 +217,31 @@ export function PosCounter() {
       setNotice(t('till.withdrawn'));
       return;
     }
+    // What the cached stock figure has to say, if anything.
+    //
+    // A WARNING and never a refusal. The main stock ledger is the single
+    // source of truth and this is a copy of part of it that goes stale the
+    // moment another till sells something — design 03 is explicit that an
+    // offline terminal cannot prevent overselling and that the product chooses
+    // accurate detection over false confidence. A stale figure turning a real
+    // customer away at the counter is exactly that false confidence.
+    //
+    // So the line is added either way, and the notice is set first so it is
+    // already on screen when it appears.
+    const short = terminal.stock?.shortfall(v.id, '1');
+    if (short) {
+      setNotice(
+        t(
+          short.kind === 'none-left'
+            ? 'till.stockNoneLeft'
+            : short.kind === 'not-enough'
+              ? 'till.stockNotEnough'
+              : 'till.stockBelowReorder',
+          { count: short.onHand, when: shortDate(short.asOf, locale) },
+        ),
+      );
+    }
+
     setLines((prev) => [
       ...prev,
       emptyLine({

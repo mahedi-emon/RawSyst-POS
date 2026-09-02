@@ -948,6 +948,10 @@ func (s *Server) Routes() []Route {
 
 		{http.MethodGet, "/api/v1/stock/on-hand", AccessPermission, "inventory.view",
 			s.handleStockOnHand, ""},
+		// The same figures, for the till, resolved from the DEVICE rather than
+		// from a company the terminal names. See handleTerminalStock.
+		{http.MethodGet, "/api/v1/pos/stock", AccessPermission, "inventory.view",
+			s.handleTerminalStock, ""},
 		{http.MethodGet, "/api/v1/stock/movements", AccessPermission, "inventory.view",
 			s.handleStockMovements, ""},
 
@@ -2161,13 +2165,23 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 // installation with metrics off pays nothing at all rather than paying for
 // a middleware that discards its work.
 func (s *Server) measured(rt Route) http.Handler {
+	// The stock announcement goes on first, so it sits INSIDE the metrics
+	// timing: publishing is a channel send and belongs in the request's own
+	// duration rather than hidden beside it.
+	//
+	// It wraps every route rather than the ones that obviously move stock,
+	// because the ones that obviously move stock are not the whole list — a
+	// sync push replaying an offline batch does, and so will whatever is added
+	// next. See announceStockMovements.
+	handler := s.announceStockMovements(rt.Handler)
+
 	if s.metrics == nil {
-		return rt.Handler
+		return handler
 	}
 	// The scrape endpoint does not measure itself. It would be the busiest
 	// route on the graph and would say nothing about the product.
 	if rt.Pattern == "/metrics" {
 		return rt.Handler
 	}
-	return s.metrics.Middleware(rt.Pattern, rt.Handler)
+	return s.metrics.Middleware(rt.Pattern, handler)
 }

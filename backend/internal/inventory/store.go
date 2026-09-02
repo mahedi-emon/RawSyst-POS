@@ -155,6 +155,13 @@ func Receive(ctx context.Context, tx pgx.Tx, r Receipt) (decimal.Decimal, error)
 		return decimal.Zero, namedStock(err)
 	}
 
+	// The ledger moved. Recorded, not published: see observed.go.
+	record(ctx, Movement{
+		TenantID: r.TenantID, CompanyID: r.CompanyID,
+		VariantID: r.VariantID, WarehouseID: r.WarehouseID,
+		Delta: r.Qty,
+	})
+
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO cost_layer
 		  (tenant_id, company_id, variant_id, warehouse_id,
@@ -261,7 +268,17 @@ func Restore(ctx context.Context, tx pgx.Tx, r Restoration) error {
 		r.TenantID, r.CompanyID, r.VariantID, r.WarehouseID,
 		r.Qty, r.Reason, nullText(r.SourceType), r.SourceID, r.DeviceID,
 		r.Value, nullText(r.Note))
-	return namedStock(err)
+	if err != nil {
+		return namedStock(err)
+	}
+
+	// The ledger moved. Recorded, not published: see observed.go.
+	record(ctx, Movement{
+		TenantID: r.TenantID, CompanyID: r.CompanyID,
+		VariantID: r.VariantID, WarehouseID: r.WarehouseID,
+		Delta: r.Qty,
+	})
+	return nil
 }
 
 type layerPart struct{ qty, unitCost decimal.Decimal }
@@ -377,6 +394,14 @@ func Consume(ctx context.Context, tx pgx.Tx, iss Issue) (CostResult, error) {
 		iss.DeviceID, result.TotalCost.Neg(), nullText(iss.Note)); err != nil {
 		return CostResult{}, namedStock(err)
 	}
+
+	// The ledger moved. Recorded, not published: see observed.go for why the
+	// announcement waits for the commit.
+	record(ctx, Movement{
+		TenantID: iss.TenantID, CompanyID: iss.CompanyID,
+		VariantID: iss.VariantID, WarehouseID: iss.WarehouseID,
+		Delta: iss.Qty.Neg(),
+	})
 
 	// C13: the cost of units no layer covered is PROVISIONAL and corrects on
 	// the next receipt. Recording it is what makes that correction possible —

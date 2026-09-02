@@ -129,6 +129,65 @@ seconds.
 That is a **prevention layer**, not a correctness guarantee, and nothing may be
 built so that it only works when the socket is up.
 
+### The stock invariant
+
+> The main stock ledger is the single source of truth. A till's local figure is
+> a **cache** of it. `stock.moved` is the synchronisation event the server emits
+> **after** an authoritative mutation.
+
+Three consequences, and each of them is a rule something in the code enforces:
+
+**1. Every authoritative mutation announces itself.** Not just an online sale —
+an offline sale replayed by the sync engine, a goods receipt, an adjustment,
+both halves of a transfer, a return, a part issued to a repair job.
+
+The first version announced from the sale *handler*. That covered one path and
+silently missed the rest, including the one the announcement exists for: a
+day's offline trading arriving on reconnect. `inventory.Consume` alone has five
+callers.
+
+So the recording happens where the ledger is written — `Receive`, `Consume` and
+`Restore` in `internal/inventory`, the only three functions that touch
+`stock_movement` — onto a collector carried on the request context. The API
+drains it after the response. Adding a route that moves stock now announces it
+without anyone remembering to.
+
+**2. Nothing is published from inside a transaction.** A push about stock that
+then rolled back would never be corrected: there is no second event to say the
+sale came undone. The middleware publishes only after a 2xx.
+
+**3. A till's cache never refuses a sale.** It is stale the moment another till
+sells something; it can be an hour old, belong to the wrong warehouse, or have
+missed a delta while the socket reconnected. `StockCache.shortfall` returns
+something to **say**, never a verdict, and there is no method on it that could
+block one.
+
+Two smaller rules fall out of the same reasoning:
+
+- **A delta cannot create a row.** It says how much a quantity *moved*, not
+  what it became, so applying one to a variant the till never pulled would
+  invent a figure from nothing — and an invented quantity is worse than an
+  absent one, because a screen shows it just as confidently.
+- **Deltas accumulate as decimal strings**, never floats. A till adding
+  `0.1 + 0.2` in a float64 drifts away from the ledger it is caching, slowly
+  and in a direction nobody could reconstruct.
+
+### How the till gets its figures
+
+`GET /api/v1/pos/stock`, not `/api/v1/stock/on-hand`.
+
+A terminal deliberately knows no company, no store and no warehouse — every POS
+route resolves those from the **device**, because a till that could name its
+own company could read another company's figures, and row-level security would
+not catch it: the rows belong to the same tenant. So the till-scoped endpoint
+resolves the warehouse the same way a sale does and returns it.
+
+It is gated on `inventory.view` like every other reading of stock levels. A
+cashier without it gets a refusal, the till holds no cached quantity, and it
+says nothing about stock — exactly how it behaved before any of this existed.
+That refusal is a legitimate answer, not a fault, and the cache treats it as
+one.
+
 It also carries what a back office wants without polling — a notification
 arriving, a shift closing. A bell that polls every ten seconds makes eight and
 a half thousand requests a day per open tab and is still ten seconds late.

@@ -3678,6 +3678,12 @@ export const en = {
   'sec.section.oversight': 'Oversight',
   'sec.section.system': 'The system',
   'sec.section.other': 'Everything else',
+  'till.stockNoneLeft':
+    'The stock record says none left ({count}, as of {when}). Selling it anyway is fine — the count may be behind.',
+  'till.stockNotEnough':
+    'The stock record says only {count} left, as of {when}. Selling more is fine — the count may be behind.',
+  'till.stockBelowReorder':
+    'This takes the shelf below its reorder point. {count} left, as of {when}.',
   'nav.payments': 'Card providers',
   'pay.title': 'Taking cards',
   'pay.intro': 'Connect the provider you signed with, and see what it said.',
@@ -7434,6 +7440,12 @@ export const ar: Record<Key, string> = {
   'sec.section.oversight': 'الإشراف',
   'sec.section.system': 'النظام',
   'sec.section.other': 'أشياء أخرى',
+  'till.stockNoneLeft':
+    'يقول سجل المخزون إنه لم يتبقَّ شيء ({count}، حتى {when}). لا مانع من البيع رغم ذلك، فقد يكون السجل متأخرًا.',
+  'till.stockNotEnough':
+    'يقول سجل المخزون إنه لم يتبقَّ سوى {count}، حتى {when}. لا مانع من بيع أكثر، فقد يكون السجل متأخرًا.',
+  'till.stockBelowReorder':
+    'هذا ينزل بالرف تحت حد إعادة الطلب. المتبقي {count}، حتى {when}.',
   'nav.payments': 'مزودو البطاقات',
   'pay.title': 'قبول البطاقات',
   'pay.intro': 'اربط المزود الذي تعاقدت معه، واطلع على ما ردّ به.',
@@ -10984,6 +10996,12 @@ export const bn: Partial<Record<Key, string>> = {
   'sec.section.oversight': 'তদারকি',
   'sec.section.system': 'সিস্টেম',
   'sec.section.other': 'বাকি সব',
+  'till.stockNoneLeft':
+    'মজুদের হিসাব বলছে কিছুই বাকি নেই ({count}, {when} পর্যন্ত)। তবু বিক্রি করতে অসুবিধা নেই — হিসাব পিছিয়ে থাকতে পারে।',
+  'till.stockNotEnough':
+    'মজুদের হিসাব বলছে মাত্র {count} বাকি, {when} পর্যন্ত। বেশি বিক্রি করতে অসুবিধা নেই — হিসাব পিছিয়ে থাকতে পারে।',
+  'till.stockBelowReorder':
+    'এতে তাক পুনরায় অর্ডারের সীমার নিচে নেমে যাবে। {count} বাকি, {when} পর্যন্ত।',
   'nav.payments': 'কার্ড প্রদানকারী',
   'pay.title': 'কার্ডে টাকা নেওয়া',
   'pay.intro': 'যাদের সঙ্গে চুক্তি করেছেন তাদের যুক্ত করুন, আর তারা কী বলল দেখুন।',

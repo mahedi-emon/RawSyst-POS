@@ -1,12 +1,13 @@
 package api
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
-
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -94,33 +95,106 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	s.metrics.Handler(s.metricsToken).ServeHTTP(w, r)
 }
 
-// publishStockMoved tells the other tills what a sale took off the shelf.
+// announceStockMovements tells the tills what moved on the main stock ledger.
 //
-// One message per line rather than one per sale, because that is the shape a
-// till consumes: it holds a quantity per variant and applies a delta to it.
+// # Wrapped around every route, not called from one handler
+//
+// The main stock ledger is the single source of truth and a till's figure is a
+// cache of it, so every authoritative mutation has to be announced or the
+// caches drift silently.
+//
+// The first version of this was a call in the sale handler. It covered an
+// online sale and missed every other way stock moves — an OFFLINE sale replayed
+// by the sync engine on reconnect, a goods receipt, an adjustment, both halves
+// of a transfer, a return, a part issued to a repair. `inventory.Consume` alone
+// has five callers.
+//
+// So the recording happens at the ledger itself (see inventory/observed.go) and
+// this drains what was recorded. Adding a route that moves stock now announces
+// it without anybody remembering to.
+//
+// # After the response, and only a successful one
+//
+// The handler has returned by the time this drains, so its transaction has
+// committed. A non-2xx rolled back, and a push about stock that did not move
+// would never be corrected.
 //
 // The payload names the variant, the warehouse and the quantity, and nothing
-// else. Not the price, not the customer, not the invoice — a push travels to
-// every socket in the tenant, and what a client is allowed to see is decided
-// by the endpoint it reads next, not by this.
-func (s *Server) publishStockMoved(
-	r *http.Request, tenantID, warehouseID uuid.UUID, sale sales.Sale,
-) {
-	if s.live == nil || len(sale.Lines) != len(sale.Input.Lines) {
-		return
+// else. Not the cost, not the customer, not the document — a push travels to
+// every socket in the tenant, and what a client may SEE is decided by the
+// endpoint it reads next, not by this.
+func (s *Server) announceStockMovements(next http.Handler) http.Handler {
+	if s.live == nil {
+		return next
 	}
-	for i, line := range sale.Lines {
-		s.live.Publish(r.Context(), tenantID, uuid.Nil, live.Message{
-			Kind: "stock.moved",
-			Payload: map[string]any{
-				"variant_id":   line.VariantID.String(),
-				"warehouse_id": warehouseID.String(),
-				// Negative: a sale takes stock away. Sent as a string for the
-				// same reason every other quantity in this API is — a decimal
-				// through a JSON number has been through a float64 by the time
-				// it arrives.
-				"delta": sale.Input.Lines[i].Qty.Neg().String(),
-			},
-		})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, collector := inventory.Collecting(r.Context())
+		recorder := &statusWatcher{ResponseWriter: w, status: http.StatusOK}
+
+		next.ServeHTTP(recorder, r.WithContext(ctx))
+
+		// Only on success. A handler that answered 4xx or 5xx rolled its
+		// transaction back, and a push about stock that did not move would
+		// never be corrected -- there is no second event to say the sale came
+		// undone.
+		if recorder.status < 200 || recorder.status >= 300 {
+			return
+		}
+
+		for _, m := range collector.Drain() {
+			s.live.Publish(r.Context(), m.TenantID, m.CompanyID, live.Message{
+				Kind: "stock.moved",
+				Payload: map[string]any{
+					"variant_id":   m.VariantID.String(),
+					"warehouse_id": m.WarehouseID.String(),
+					// A string, for the same reason every other quantity in
+					// this API is one: a decimal sent as a JSON number has been
+					// through a float64 by the time it arrives.
+					"delta": m.Delta.String(),
+				},
+			})
+		}
+	})
+}
+
+// statusWatcher remembers what was written, and passes through the optional
+// interfaces a real writer implements.
+//
+// The passthroughs are not optional politeness: this wraps every route, the
+// live socket included, and a wrapper that hid http.Hijacker would refuse every
+// upgrade with an error naming nothing recognisable. The same trap as the
+// metrics middleware, and the same fix.
+type statusWatcher struct {
+	http.ResponseWriter
+	status  int
+	written bool
+}
+
+func (s *statusWatcher) WriteHeader(code int) {
+	if !s.written {
+		s.status = code
+		s.written = true
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusWatcher) Write(b []byte) (int, error) {
+	s.written = true
+	return s.ResponseWriter.Write(b)
+}
+
+func (s *statusWatcher) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
 	}
 }
+
+func (s *statusWatcher) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := s.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return h.Hijack()
+}
+
+func (s *statusWatcher) Unwrap() http.ResponseWriter { return s.ResponseWriter }

@@ -38,6 +38,8 @@ import {
   type ConnectivityState,
 } from './connectivity';
 import { openLocalStore } from './sqlite';
+import { StockCache } from './stock';
+import { useLive, type LiveMessage } from '@rawsyst/shared/live/useLive';
 import { Stationery, receiptStationery, type ReceiptStationery } from './stationery';
 
 /** The backstop flush. The connectivity monitor triggers a drain the moment
@@ -77,6 +79,19 @@ export interface TerminalState {
   /** Carts parked mid-sale. Local only and never synced. */
   held: HeldCarts | null;
 
+  /**
+   * The till's cached view of the main stock ledger.
+   *
+   * Null until local storage opens. Holds nothing at all for a cashier
+   * without `inventory.view`, which is a legitimate answer rather than a
+   * fault — the till then says nothing about stock, exactly as it did
+   * before this existed.
+   *
+   * A CACHE. It is stale the moment another till sells something, and
+   * design 03 forbids it from refusing a sale. See offline/stock.ts.
+   */
+  stock: StockCache | null;
+
   record(payload: OfflineSalePayload): Promise<void>;
   flushNow(): Promise<void>;
   refreshCatalogue(): Promise<void>;
@@ -99,6 +114,7 @@ export function useTerminal(
   );
   const [customers, setCustomers] = useState<Customers | null>(null);
   const [held, setHeld] = useState<HeldCarts | null>(null);
+  const [stock, setStock] = useState<StockCache | null>(null);
   const [counts, setCounts] = useState<QueueCounts>({ pending: 0, failed: 0 });
   const [sending, setSending] = useState(false);
   const [cached, setCached] = useState(0);
@@ -144,6 +160,14 @@ export function useTerminal(
         await st.load();
         setStationery(st);
         setReceiptWords(receiptStationery(st.current()));
+
+        // Read off disk before any network is attempted, so a till that
+        // opens with no connection still knows what it last agreed —
+        // dated, so a screen can say how old the figure is rather than
+        // present it as current.
+        const stk = new StockCache(stores.stock);
+        await stk.hydrate();
+        setStock(stk);
 
         const h = new HeldCarts(stores.held);
         setHeld(h);
@@ -218,6 +242,19 @@ export function useTerminal(
         // Same bargain as below: the book the till already holds is untouched.
       }
 
+      // The stock figures ride along on the same schedule and the same
+      // reconnect trigger, for the same reason the customer book does: a
+      // till whose prices were fresh and whose quantities were a day old
+      // is a worse position than having both equally current.
+      //
+      // A refusal is expected and silent. A cashier without
+      // `inventory.view` gets one every time, and it is not a fault.
+      try {
+        await stock?.pull(client);
+      } catch {
+        // What the till holds is untouched, and every row is dated.
+      }
+
       // The stationery rides along too. A failure leaves what the terminal was
       // already holding, which is the point: a till that loses the network
       // mid-shift keeps printing the shop's words rather than reverting to the
@@ -282,6 +319,31 @@ export function useTerminal(
     };
   }, [signedIn, client, config]);
 
+  // The main stock ledger announcing that it moved.
+  //
+  // This is what keeps the cached quantities current BETWEEN pulls: another
+  // till three metres away sells the last one, the server writes it to the one
+  // ledger that is true, and this terminal hears about it in seconds rather
+  // than at its next refresh.
+  //
+  // Best-effort by construction. A missed message is not a fault — the socket
+  // reconnects, the next pull replaces everything, and design 03 forbids
+  // anything from depending on the figure anyway. A delta for a variant this
+  // till never pulled is ignored rather than invented; see offline/stock.ts.
+  const onLive = useCallback(
+    (m: LiveMessage) => {
+      if (m.kind !== 'stock.moved' || !stock) return;
+      const variantId = String(m.payload?.variant_id ?? '');
+      const warehouseId = String(m.payload?.warehouse_id ?? '');
+      const delta = String(m.payload?.delta ?? '');
+      if (!variantId || !warehouseId || !delta) return;
+      void stock.apply(variantId, warehouseId, delta);
+    },
+    [stock],
+  );
+
+  useLive(client, { enabled: signedIn && stock !== null, onMessage: onLive });
+
   // The backstop. Reconnection is handled by the monitor, so this is slow on
   // purpose: it exists for a push that failed for some reason other than the
   // network, where no connectivity transition will ever come to retry it.
@@ -333,6 +395,7 @@ export function useTerminal(
     stationery: receiptWords,
     customers,
     held,
+    stock,
     record,
     flushNow,
     refreshCatalogue,

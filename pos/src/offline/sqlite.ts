@@ -208,7 +208,35 @@ CREATE TABLE IF NOT EXISTS held_cart (
 );`,
 
   `
-CREATE INDEX IF NOT EXISTS held_cart_recent ON held_cart (held_at DESC);`
+CREATE INDEX IF NOT EXISTS held_cart_recent ON held_cart (held_at DESC);`,
+
+  `
+-- What the MAIN stock ledger last told this till.
+--
+-- A cache, and nothing more. The server-side ledger is the single source of
+-- truth; this is a copy of part of it that goes stale the moment another till
+-- sells something, and it is brought back into line two ways: a full pull when
+-- the terminal comes online, and a stock.moved delta while it stays online.
+--
+-- It is never consulted to decide whether a sale may happen. Design 03 is
+-- explicit that an offline till cannot prevent overselling and that the product
+-- chooses accurate detection over false confidence — a stale figure refusing a
+-- real customer is exactly the false confidence that rules out.
+CREATE TABLE IF NOT EXISTS cached_stock (
+  variant_id    TEXT NOT NULL,
+  warehouse_id  TEXT NOT NULL,
+  -- A decimal STRING, like every other quantity that crosses this boundary.
+  -- Through a JavaScript number it would be a float64, and a till that
+  -- accumulated deltas in one would drift away from the ledger it is caching.
+  on_hand       TEXT NOT NULL,
+  -- B4's minimum-stock level, so a warning can say "below the reorder point"
+  -- rather than only "none left".
+  reorder_level TEXT NOT NULL DEFAULT '',
+  -- When this row was last agreed with the server, so a screen can say how old
+  -- the figure is instead of presenting a guess as a fact.
+  as_of         TEXT NOT NULL,
+  PRIMARY KEY (variant_id, warehouse_id)
+);`
 ];
 
 interface Row {
@@ -261,6 +289,7 @@ export async function openLocalStore(): Promise<LocalStores> {
     customers: new SqliteCustomerStore(db),
     held: new SqliteHeldCartStore(db),
     stationery: new SqliteStationeryStore(db),
+    stock: new SqliteStockStore(db),
   };
 }
 
@@ -273,6 +302,8 @@ export interface LocalStores {
   customers: SqliteCustomerStore;
   held: SqliteHeldCartStore;
   stationery: SqliteStationeryStore;
+  /** The till's cached copy of part of the main stock ledger. */
+  stock: SqliteStockStore;
 }
 
 /** The shop's own words, held on the terminal so a receipt still prints with
@@ -322,6 +353,171 @@ export class SqliteStationeryStore {
       ],
     );
   }
+}
+
+/** One variant's cached quantity in one warehouse. */
+export interface CachedStock {
+  variantId: string;
+  warehouseId: string;
+  /** A decimal string. See the note in the schema on why not a number. */
+  onHand: string;
+  reorderLevel: string;
+  /** When the server last agreed this figure, ISO 8601. */
+  asOf: string;
+}
+
+/**
+ * The till's copy of part of the main stock ledger.
+ *
+ * A CACHE. The ledger on the server is the single source of truth and this is a
+ * copy of it that is stale the moment another till sells something. It is
+ * brought back into line by a full pull when the terminal comes online and by
+ * `stock.moved` deltas while it stays online.
+ *
+ * Nothing here decides whether a sale may happen — see the schema note.
+ */
+export class SqliteStockStore {
+  constructor(private readonly db: Database) {}
+
+  /**
+   * Everything held, whichever warehouse it is for.
+   *
+   * A till sells out of exactly one location, so this is normally one
+   * warehouse's rows — but it is read WITHOUT naming one, because on start-up
+   * the terminal does not yet know which it sells from. It learns that from
+   * the server on its first pull.
+   */
+  async everything(): Promise<CachedStock[]> {
+    const rows = await this.db.select<Array<Record<string, unknown>>>(
+      `SELECT variant_id, warehouse_id, on_hand, reorder_level, as_of
+       FROM cached_stock`,
+    );
+    return rows.map(toStock);
+  }
+
+  async all(warehouseId: string): Promise<CachedStock[]> {
+    const rows = await this.db.select<Array<Record<string, unknown>>>(
+      `SELECT variant_id, warehouse_id, on_hand, reorder_level, as_of
+       FROM cached_stock WHERE warehouse_id = $1`,
+      [warehouseId],
+    );
+    return rows.map(toStock);
+  }
+
+  async get(variantId: string, warehouseId: string): Promise<CachedStock | null> {
+    const rows = await this.db.select<Array<Record<string, unknown>>>(
+      `SELECT variant_id, warehouse_id, on_hand, reorder_level, as_of
+       FROM cached_stock WHERE variant_id = $1 AND warehouse_id = $2`,
+      [variantId, warehouseId],
+    );
+    const row = rows[0];
+    return row ? toStock(row) : null;
+  }
+
+  /** Replaces what is held for these variants, from an authoritative read. */
+  async put(lines: CachedStock[]): Promise<void> {
+    for (const line of lines) {
+      await this.db.execute(
+        `INSERT INTO cached_stock
+           (variant_id, warehouse_id, on_hand, reorder_level, as_of)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (variant_id, warehouse_id) DO UPDATE SET
+           on_hand = excluded.on_hand,
+           reorder_level = excluded.reorder_level,
+           as_of = excluded.as_of`,
+        [
+          line.variantId,
+          line.warehouseId,
+          line.onHand,
+          line.reorderLevel,
+          line.asOf,
+        ],
+      );
+    }
+  }
+
+  /**
+   * Applies a delta the server announced.
+   *
+   * A row that is not held is NOT created. A delta says how much a quantity
+   * moved, not what it became, so applying one to a variant this till has never
+   * pulled would invent a figure from nothing — and a made-up quantity is worse
+   * than an absent one, because a screen will show it.
+   *
+   * Returns whether anything was updated, so a caller can decide to re-pull.
+   */
+  async applyDelta(
+    variantId: string,
+    warehouseId: string,
+    delta: string,
+    at: string,
+  ): Promise<boolean> {
+    const held = await this.get(variantId, warehouseId);
+    if (!held) return false;
+
+    const next = addDecimals(held.onHand, delta);
+    await this.db.execute(
+      `UPDATE cached_stock SET on_hand = $3, as_of = $4
+       WHERE variant_id = $1 AND warehouse_id = $2`,
+      [variantId, warehouseId, next, at],
+    );
+    return true;
+  }
+
+  /** Empties the cache, for a till switching warehouse or signing out. */
+  async clear(): Promise<void> {
+    await this.db.execute(`DELETE FROM cached_stock`);
+  }
+}
+
+function toStock(row: Record<string, unknown>): CachedStock {
+  return {
+    variantId: String(row.variant_id ?? ''),
+    warehouseId: String(row.warehouse_id ?? ''),
+    onHand: String(row.on_hand ?? '0'),
+    reorderLevel: String(row.reorder_level ?? ''),
+    asOf: String(row.as_of ?? ''),
+  };
+}
+
+/**
+ * Adds two decimal strings without going through a float.
+ *
+ * `0.1 + 0.2` is not `0.3` in a float64, and a till that accumulated deltas
+ * that way would drift away from the ledger it is caching — slowly, invisibly,
+ * and in a direction nobody could reconstruct. Quantities here are small and
+ * have at most a few decimal places, so integer arithmetic on the scaled values
+ * is exact and short.
+ */
+export function addDecimals(a: string, b: string): string {
+  const left = parseDecimal(a);
+  const right = parseDecimal(b);
+  const scale = Math.max(left.scale, right.scale);
+
+  const total =
+    left.units * BigInt(10 ** (scale - left.scale)) +
+    right.units * BigInt(10 ** (scale - right.scale));
+
+  if (scale === 0) return total.toString();
+
+  const negative = total < 0n;
+  const digits = (negative ? -total : total).toString().padStart(scale + 1, '0');
+  const whole = digits.slice(0, digits.length - scale);
+  const fraction = digits.slice(digits.length - scale).replace(/0+$/, '');
+
+  const body = fraction ? `${whole}.${fraction}` : whole;
+  return negative ? `-${body}` : body;
+}
+
+function parseDecimal(value: string): { units: bigint; scale: number } {
+  const trimmed = (value ?? '').trim();
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return { units: 0n, scale: 0 };
+
+  const [whole = '0', fraction = ''] = trimmed.split('.');
+  const negative = whole.startsWith('-');
+  const digits = (negative ? whole.slice(1) : whole) + fraction;
+  const units = BigInt(digits || '0');
+  return { units: negative ? -units : units, scale: fraction.length };
 }
 
 /** What the till holds to print a receipt with. */

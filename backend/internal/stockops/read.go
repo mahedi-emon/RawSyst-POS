@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
 
@@ -335,4 +336,97 @@ func (s *Service) Movements(
 		return rows.Err()
 	})
 	return out, err
+}
+
+// TerminalStock is what one till's warehouse holds.
+//
+// The till's own copy of this is a CACHE and this read is what it caches.
+// Design 03 is explicit that an offline terminal cannot be prevented from
+// overselling, so nothing derived from this may refuse a sale — it exists so a
+// cashier can be TOLD, and so the window for a concurrent oversell is seconds
+// rather than hours.
+type TerminalStock struct {
+	// WarehouseID is which location these figures are for, so a till that has
+	// been moved between branches can notice its cache belongs elsewhere.
+	WarehouseID uuid.UUID   `json:"warehouse_id"`
+	Lines       []StockLine `json:"lines"`
+}
+
+// OnHandForTerminal reports what the terminal's own warehouse holds.
+//
+// # Why this exists beside OnHand
+//
+// A till does not know its company, its store or its warehouse, and that is
+// deliberate — see the note above buildPayload in the POS. Every POS route
+// resolves those from the DEVICE, because a terminal that could name its own
+// company could read another company's figures, and row-level security would
+// not catch it: the rows belong to the same tenant.
+//
+// So this takes a device rather than a scope, and resolves the rest the same
+// way a sale does.
+//
+// # What it deliberately does NOT require
+//
+// Not an open shift, and not e-invoicing onboarding. `resolveTerminal` insists
+// on both because it is about to issue a legal document; reading a quantity is
+// not, and a till that cannot yet sell should still be able to say what is on
+// the shelf.
+func (s *Service) OnHandForTerminal(
+	ctx context.Context, tenantID, deviceID uuid.UUID, f StockFilter,
+) (TerminalStock, error) {
+	if deviceID == uuid.Nil {
+		return TerminalStock{}, errs.New(errs.CodeForbidden,
+			"Stock for a till is read on a registered terminal. This session "+
+				"is not bound to one.")
+	}
+
+	var out TerminalStock
+	var scope Scope
+	scope.TenantID = tenantID
+
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		var storeID uuid.UUID
+		var status string
+		e := tx.QueryRow(ctx, `
+			SELECT company_id, store_id, status::text
+			FROM device WHERE id = $1`, deviceID).
+			Scan(&scope.CompanyID, &storeID, &status)
+		if errors.Is(e, pgx.ErrNoRows) {
+			// Another tenant's device reads as absent under row-level
+			// security, which is the right answer: its existence is not this
+			// caller's business.
+			return errs.New(errs.CodeNotFound, "That terminal is not registered.")
+		}
+		if e != nil {
+			return e
+		}
+		if status != "active" {
+			return errs.Newf(errs.CodeForbidden,
+				"This terminal is %s.", status)
+		}
+
+		// The same warehouse a sale from this till would consume from. A
+		// different rule here would cache figures for a location the terminal
+		// never sells out of, which is worse than caching nothing.
+		return tx.QueryRow(ctx, `
+			SELECT id FROM warehouse
+			WHERE is_active AND (store_id = $1 OR store_id IS NULL)
+			ORDER BY store_id NULLS LAST, code
+			LIMIT 1`, storeID).Scan(&out.WarehouseID)
+	})
+	if err != nil {
+		return TerminalStock{}, db.Translate(err, "")
+	}
+	if out.WarehouseID == uuid.Nil {
+		return TerminalStock{}, errs.New(errs.CodeNotFound,
+			"This branch has no active stock location.")
+	}
+
+	f.WarehouseID = &out.WarehouseID
+	lines, err := s.OnHand(ctx, scope, f)
+	if err != nil {
+		return TerminalStock{}, err
+	}
+	out.Lines = lines
+	return out, nil
 }

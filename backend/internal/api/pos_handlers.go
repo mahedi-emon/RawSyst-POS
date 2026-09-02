@@ -129,20 +129,11 @@ func (s *Server) handleCreateSale(w http.ResponseWriter, r *http.Request) {
 	if out.AlreadyRung {
 		status = http.StatusOK
 		w.Header().Set("Idempotency-Replayed", "true")
-	} else {
-		// The stock moved, so tell the other tills (design 03).
-		//
-		// AFTER the commit and only on a sale that actually happened: a push
-		// about a sale that then rolled back is a till showing stock nobody
-		// sold, and a push on a replay would count the same sale twice.
-		//
-		// This PREVENTS rather than guarantees. Design 03 is explicit that an
-		// offline till cannot be stopped from overselling and that the product
-		// chooses accurate detection over false confidence — so nothing may be
-		// made to depend on this arriving. What it buys is a window measured
-		// in seconds instead of hours.
-		s.publishStockMoved(r, a.TenantID, warehouseID, sale)
 	}
+	// Nothing announces the stock movement here. It is recorded at the ledger
+	// itself and published by announceStockMovements once this has returned —
+	// which is what makes a REPLAYED offline sale announce it too, and this
+	// handler was the only place that used to.
 
 	httpx.JSON(w, status, saleResponse(out))
 }
