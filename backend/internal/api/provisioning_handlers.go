@@ -19,6 +19,7 @@ type createTenantRequest struct {
 	Name       string `json:"name"`
 	DataRegion string `json:"data_region"`
 	PlanTier   string `json:"plan_tier"`
+	Market     string `json:"market"`
 	OwnerEmail string `json:"owner_email"`
 	OwnerName  string `json:"owner_name"`
 }
@@ -34,6 +35,7 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		Name:       req.Name,
 		DataRegion: req.DataRegion,
 		PlanTier:   req.PlanTier,
+		Market:     req.Market,
 		OwnerEmail: req.OwnerEmail,
 		OwnerName:  req.OwnerName,
 	})

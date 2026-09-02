@@ -46,6 +46,20 @@ type NewTenant struct {
 
 	PlanTier string
 
+	// Market is the country this account is sold into, chosen here by the
+	// platform operator rather than left to the Owner.
+	//
+	// It is NOT a second copy of `company.country`. That column decides tax
+	// rules and stays authoritative for them. This one answers the operator's
+	// question — which market is this client in — at the only moment the
+	// operator is present to answer it. Without it a tenant has no market at
+	// all between provisioning and the day the Owner happens to reach setup
+	// step `business_info`, which is also the window in which the operator is
+	// most likely to be asked about the account.
+	//
+	// Onboarding then holds the Owner to it, so the two cannot disagree.
+	Market string
+
 	OwnerEmail string
 	OwnerName  string
 }
@@ -89,10 +103,10 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 
 	err = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO tenant (name, data_region, plan_tier)
-			VALUES ($1, $2::data_region, $3::plan_tier)
+			INSERT INTO tenant (name, data_region, plan_tier, market)
+			VALUES ($1, $2::data_region, $3::plan_tier, $4)
 			RETURNING id`,
-			req.Name, req.DataRegion, req.PlanTier).Scan(&out.TenantID); err != nil {
+			req.Name, req.DataRegion, req.PlanTier, req.Market).Scan(&out.TenantID); err != nil {
 			return err
 		}
 
@@ -178,6 +192,7 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 			EntityType: "tenant", EntityID: &out.TenantID,
 			After: map[string]any{
 				"plan_tier": req.PlanTier, "data_region": req.DataRegion,
+				"market": req.Market,
 			},
 		})
 	})
@@ -213,6 +228,22 @@ func (r *NewTenant) validate() error {
 		r.DataRegion = "sa"
 	default:
 		v.WithField("data_region", "Choose sa, eu, asia or other.")
+		bad = true
+	}
+
+	// Checked against the same map the Owner's country is checked against, so
+	// the operator cannot sell an account into a market the product has no tax
+	// rules for — which would produce a client who completes setup and then
+	// cannot ring up a sale, discovered at the counter rather than here.
+	r.Market = strings.ToLower(strings.TrimSpace(r.Market))
+	if r.Market == "" {
+		v.WithField("market",
+			"Choose the market this business is being sold into.")
+		bad = true
+	} else if _, ok := supportedCountries[r.Market]; !ok {
+		v.WithField("market", "RawSyst serves "+offered(supportedCountries)+
+			" so far. Tax rules come from the regulatory register for the "+
+			"market you choose, and there are none on file for that one.")
 		bad = true
 	}
 

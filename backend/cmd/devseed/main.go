@@ -82,6 +82,10 @@ func run(email, name, password string) error {
 		Name:       name,
 		DataRegion: cfg.DataRegion,
 		PlanTier:   "business",
+		// Matches the company seedShop creates below, which is Saudi. The two
+		// have to agree: onboarding refuses a company whose country is not the
+		// tenant's market, and a seed that cannot complete setup is not a seed.
+		Market:     "sa",
 		OwnerEmail: email,
 		OwnerName:  "Demo Owner",
 	})

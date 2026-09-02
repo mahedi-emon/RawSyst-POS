@@ -3285,6 +3285,51 @@
   font-weight: 600;
 }
 
+/* The credential a newly provisioned Owner is given, shown once.
+ *
+ * A definition list rather than a table: it is two labelled facts, not rows of
+ * anything, and a screen reader reads the pairing without needing headers.
+ *
+ * The value is monospaced because it is going to be read aloud or copied
+ * character by character, and a proportional font makes `l`/`1` and `O`/`0` a
+ * guess. The temporary-password alphabet already excludes the worst of those
+ * pairs; the font is the second half of the same decision.
+ *
+ * `user-select: all` so one click takes the whole value — a partial selection
+ * that silently drops a character is the failure mode here, and the operator
+ * cannot check it against a stored copy because there is not one.
+ */
+.plat__once {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  margin: var(--space-4) 0;
+}
+
+.plat__once dt {
+  margin: 0;
+}
+
+.plat__once dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.0625rem;
+  word-break: break-all;
+  user-select: all;
+}
+
+@media (max-width: 30rem) {
+  .plat__once {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .plat__once dd {
+    margin-block-end: var(--space-3);
+  }
+}
+
 .plat__error,
 .adm__error {
   font-family: var(--font-mono);

@@ -172,6 +172,8 @@ export interface PlatformTenant {
   name: string;
   plan_tier?: string;
   status?: string;
+  /** The market this account was sold into: `sa`, `bd` or `us`. */
+  market?: string;
   companies: number;
   users: number;
   created_at: string;
@@ -429,6 +431,39 @@ export function platformTenants(
   client: Client,
 ): Promise<{ data: PlatformTenant[] }> {
   return client.send('GET', '/api/v1/platform/tenants');
+}
+
+/** What the platform operator answers to provision a client. */
+export interface NewBusiness {
+  name: string;
+  market: string;
+  plan_tier: string;
+  data_region: string;
+  owner_name: string;
+  owner_email: string;
+}
+
+/**
+ * What comes back once, and only once.
+ *
+ * The temporary password is not stored anywhere in readable form, so this
+ * response is the only time it exists outside the owner's head. The screen has
+ * to treat it accordingly: shown until dismissed, never refetched, and not put
+ * anywhere a later render could recover it from.
+ */
+export interface ProvisionedBusiness {
+  tenant_id: string;
+  owner_user_id: string;
+  owner_email: string;
+  temporary_password: string;
+  detail: string;
+}
+
+export function createBusiness(
+  client: Client,
+  body: NewBusiness,
+): Promise<ProvisionedBusiness> {
+  return client.send('POST', '/api/v1/platform/tenants', body);
 }
 
 export function failedJobs(client: Client): Promise<{ data: FailedJob[] }> {

@@ -84,13 +84,18 @@ type Health struct {
 
 // Tenant is one customer of the platform, as the control plane sees them.
 type Tenant struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Plan      string    `json:"plan_tier,omitempty"`
-	Status    string    `json:"status,omitempty"`
-	Companies int       `json:"companies"`
-	Users     int       `json:"users"`
-	CreatedAt string    `json:"created_at"`
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Plan   string    `json:"plan_tier,omitempty"`
+	Status string    `json:"status,omitempty"`
+
+	// Market is the country this account was sold into (0103). Shown in the
+	// list because it is the question an operator asks about a tenant they do
+	// not recognise, and answering it otherwise means opening the account.
+	Market    string `json:"market,omitempty"`
+	Companies int    `json:"companies"`
+	Users     int    `json:"users"`
+	CreatedAt string `json:"created_at"`
 
 	// LastActivity is the most recent sale anywhere in the tenant. The one
 	// figure that separates a customer from a signup, and it is a timestamp
@@ -183,7 +188,7 @@ func (s *Service) Tenants(ctx context.Context) ([]Tenant, error) {
 	out := []Tenant{}
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
-			SELECT t.id, t.name, t.plan_tier::text, t.status::text,
+			SELECT t.id, t.name, t.plan_tier::text, t.status::text, t.market,
 			       (SELECT count(*)::int FROM company c WHERE c.tenant_id = t.id),
 			       (SELECT count(*)::int FROM app_user u
 			        WHERE u.tenant_id = t.id AND u.status = 'active'),
@@ -204,7 +209,7 @@ func (s *Service) Tenants(ctx context.Context) ([]Tenant, error) {
 			var t Tenant
 			var created time.Time
 			var lastActivity, verified *time.Time
-			if e := rows.Scan(&t.ID, &t.Name, &t.Plan, &t.Status, &t.Companies,
+			if e := rows.Scan(&t.ID, &t.Name, &t.Plan, &t.Status, &t.Market, &t.Companies,
 				&t.Users, &created, &lastActivity, &verified); e != nil {
 				return e
 			}

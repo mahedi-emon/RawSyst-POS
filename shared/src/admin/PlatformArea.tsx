@@ -18,6 +18,7 @@ import { useCallback, useState } from 'react';
 
 import {
   answerTicket,
+  createBusiness,
   failedJobs,
   platformHealth,
   platformTenants,
@@ -26,14 +27,23 @@ import {
   type FailedJob,
   type PlatformHealth,
   type PlatformTenant,
+  type ProvisionedBusiness,
   type Ticket,
 } from '../api/admin';
+import { RequestFailed } from '../api/client';
 import { useAuth } from '../auth/session';
 import { EmptyState, RemoteBody } from '../dashboard/DetailScreen';
 import { useRemote } from '../dashboard/useRemote';
 import { useLocale, useT } from '../i18n/locale';
-import type { Key } from '../i18n/strings';
-import { FormError, TextInput } from '../ui/Form';
+import type { Key, Translate } from '../i18n/strings';
+import {
+  Field,
+  FormActions,
+  FormError,
+  SelectInput,
+  TextInput,
+  type FieldErrors,
+} from '../ui/Form';
 import { shortDate } from '../ui/format';
 
 type Tab = 'health' | 'tenants' | 'jobs' | 'support';
@@ -205,6 +215,24 @@ function Tile({
   );
 }
 
+/**
+ * The markets a business can be sold into.
+ *
+ * The same three the backend accepts, and it is the backend that decides: a
+ * fourth added there without being added here shows a shorter list, which is a
+ * missing option rather than a wrong one. A country whose tax rules are not in
+ * the regulatory register would otherwise produce an owner who finishes setup
+ * and then cannot ring up a sale.
+ */
+const MARKETS: Array<{ id: string; label: Key }> = [
+  { id: 'sa', label: 'plat.marketSa' },
+  { id: 'bd', label: 'plat.marketBd' },
+  { id: 'us', label: 'plat.marketUs' },
+];
+
+const PLAN_TIERS = ['starter', 'professional', 'business', 'enterprise'];
+const DATA_REGIONS = ['sa', 'eu', 'asia', 'other'];
+
 function TenantsPanel() {
   const { client } = useAuth();
   const t = useT();
@@ -212,6 +240,7 @@ function TenantsPanel() {
 
   const load = useCallback(() => platformTenants(client), [client]);
   const { remote, reload } = useRemote(load);
+  const [creating, setCreating] = useState(false);
 
   return (
     <section className="ds-panel" aria-label={t('plat.tenants')}>
@@ -220,7 +249,23 @@ function TenantsPanel() {
           <h2 className="ds-h3">{t('plat.tenants')}</h2>
           <p className="ds-caption">{t('plat.tenantsHint')}</p>
         </div>
+
+        {!creating && (
+          <button
+            className="ds-btn ds-btn--primary"
+            onClick={() => setCreating(true)}
+          >
+            {t('plat.newBusiness')}
+          </button>
+        )}
       </div>
+
+      {creating && (
+        <NewBusinessForm
+          onClose={() => setCreating(false)}
+          onCreated={reload}
+        />
+      )}
 
       <RemoteBody remote={remote} onRetry={reload}>
         {(payload: { data: PlatformTenant[] }) =>
@@ -237,6 +282,7 @@ function TenantsPanel() {
                 <thead>
                   <tr>
                     <th scope="col">{t('plat.tenant')}</th>
+                    <th scope="col">{t('plat.market')}</th>
                     <th scope="col" className="num">
                       {t('plat.companies')}
                     </th>
@@ -257,6 +303,7 @@ function TenantsPanel() {
                           {x.status ? ` · ${x.status}` : ''}
                         </span>
                       </td>
+                      <td>{marketName(t, x.market)}</td>
                       <td className="num">{x.companies}</td>
                       <td className="num">{x.users}</td>
                       <td>
@@ -286,6 +333,252 @@ function TenantsPanel() {
         }
       </RemoteBody>
     </section>
+  );
+}
+
+/** A market code as a reader's word. Unknown codes render as themselves rather
+ *  than as an empty cell — a tenant with a market this build does not know
+ *  about is a fact worth seeing, not one worth hiding. */
+function marketName(t: Translate, market: string | undefined): string {
+  if (!market) return '—';
+  const known = MARKETS.find((m) => m.id === market);
+  return known ? t(known.label) : market.toUpperCase();
+}
+
+/**
+ * Provisioning a client, which is the one thing the platform operator does that
+ * writes into a tenant.
+ *
+ * # The password is shown once because it exists once
+ *
+ * The server hashes it before replying and keeps nothing readable, so this
+ * response is the only copy. That shapes the screen: the result replaces the
+ * form rather than appearing beside it, there is no refetch that could bring it
+ * back, and the operator has to dismiss it deliberately. Reloading the list
+ * behind it would be a way to lose it by accident, so the reload happens when
+ * the panel closes.
+ *
+ * # The market is the field that cannot be corrected later
+ *
+ * `plan_tier` and `data_region` are commercial settings. The market decides
+ * which country's tax rules every future sale is calculated with, and the Owner
+ * is held to it during setup — so it is asked with a hint saying so, and it does
+ * not pre-select.
+ */
+function NewBusinessForm({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { client } = useAuth();
+  const t = useT();
+
+  const [name, setName] = useState('');
+  const [market, setMarket] = useState('');
+  const [planTier, setPlanTier] = useState('starter');
+  const [dataRegion, setDataRegion] = useState('sa');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [done, setDone] = useState<ProvisionedBusiness | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setFormError(null);
+    setErrors({});
+    try {
+      const out = await createBusiness(client, {
+        name,
+        market,
+        plan_tier: planTier,
+        data_region: dataRegion,
+        owner_name: ownerName,
+        owner_email: ownerEmail,
+      });
+      setDone(out);
+    } catch (err) {
+      // Field messages go under their own fields; anything else goes to the
+      // top. The server keys them exactly as the form does.
+      if (err instanceof RequestFailed) {
+        setErrors(err.fields ?? {});
+        setFormError(err.fields ? null : err.message);
+      } else {
+        setFormError(String(err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function close() {
+    // Reload here rather than at creation, so the new row never arrives
+    // underneath the one-time password and pushes it out of view.
+    if (done) onCreated();
+    onClose();
+  }
+
+  if (done) {
+    return (
+      <div className="ds-panel__body">
+        <section className="ds-panel" aria-label={t('plat.created')}>
+          <div className="ds-panel__body">
+            <h3 className="ds-h3">{t('plat.created')}</h3>
+            <p className="ds-caption">{done.detail}</p>
+
+            <dl className="plat__once">
+              <dt className="field__label">{t('plat.ownerEmail')}</dt>
+              <dd className="detail__strong">{done.owner_email}</dd>
+
+              <dt className="field__label">{t('plat.tempPassword')}</dt>
+              {/* Not a text input: nothing here should look editable, and a
+                  value that is never sent back should not sit in a form
+                  control that a password manager would offer to save. */}
+              <dd className="detail__strong">{done.temporary_password}</dd>
+            </dl>
+
+            <p className="field__hint">{t('plat.tempPasswordHint')}</p>
+
+            <div className="form__actions">
+              <button className="ds-btn ds-btn--primary" onClick={close}>
+                {t('action.done')}
+              </button>
+              <button
+                className="ds-btn ds-btn--quiet"
+                onClick={() => {
+                  onCreated();
+                  setDone(null);
+                  setName('');
+                  setMarket('');
+                  setOwnerName('');
+                  setOwnerEmail('');
+                }}
+              >
+                {t('plat.createAnother')}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ds-panel__body">
+      <form className="form" onSubmit={submit}>
+        <p className="ds-caption">{t('plat.newBusinessHint')}</p>
+
+        <FormError message={formError} />
+
+        <div className="form__grid">
+          <Field
+            label={t('plat.businessName')}
+            htmlFor="biz-name"
+            hint={t('plat.businessNameHint')}
+            required
+            error={errors.name}
+          >
+            <TextInput
+              id="biz-name"
+              value={name}
+              onChange={setName}
+              error={errors.name}
+            />
+          </Field>
+
+          <Field
+            label={t('plat.market')}
+            htmlFor="biz-market"
+            hint={t('plat.marketHint')}
+            required
+            error={errors.market}
+          >
+            <SelectInput
+              id="biz-market"
+              value={market}
+              onChange={setMarket}
+              options={MARKETS}
+              label={(o) => t(o.label)}
+              placeholder={t('common.choose')}
+              error={errors.market}
+            />
+          </Field>
+
+          <Field
+            label={t('plat.plan')}
+            htmlFor="biz-plan"
+            required
+            error={errors.plan_tier}
+          >
+            <SelectInput
+              id="biz-plan"
+              value={planTier}
+              onChange={setPlanTier}
+              options={PLAN_TIERS.map((id) => ({ id }))}
+              label={(o) => o.id}
+              error={errors.plan_tier}
+            />
+          </Field>
+
+          <Field
+            label={t('plat.region')}
+            htmlFor="biz-region"
+            hint={t('plat.regionHint')}
+            required
+            error={errors.data_region}
+          >
+            <SelectInput
+              id="biz-region"
+              value={dataRegion}
+              onChange={setDataRegion}
+              options={DATA_REGIONS.map((id) => ({ id }))}
+              label={(o) => o.id}
+              error={errors.data_region}
+            />
+          </Field>
+
+          <Field
+            label={t('plat.ownerName')}
+            htmlFor="biz-owner"
+            required
+            error={errors.owner_name}
+          >
+            <TextInput
+              id="biz-owner"
+              value={ownerName}
+              onChange={setOwnerName}
+              error={errors.owner_name}
+            />
+          </Field>
+
+          <Field
+            label={t('plat.ownerEmail')}
+            htmlFor="biz-email"
+            hint={t('plat.ownerEmailHint')}
+            required
+            error={errors.owner_email}
+          >
+            <TextInput
+              id="biz-email"
+              value={ownerEmail}
+              onChange={setOwnerEmail}
+              error={errors.owner_email}
+            />
+          </Field>
+        </div>
+
+        <FormActions
+          submitLabel={t('plat.create')}
+          busy={busy}
+          onCancel={onClose}
+        />
+      </form>
+    </div>
   );
 }
 

@@ -186,7 +186,7 @@ func (s *Service) CompleteStep(ctx context.Context, step string) (Progress, erro
 			"The next step is %q, not %q.", current.CurrentStep, step)
 	}
 
-	if err := s.validateStep(step, current.StepData); err != nil {
+	if err := s.validateStep(ctx, step, current.StepData); err != nil {
 		return Progress{}, err
 	}
 
@@ -209,12 +209,28 @@ func (s *Service) CompleteStep(ctx context.Context, step string) (Progress, erro
 	return s.GetProgress(ctx)
 }
 
+// tenantMarket reads the market the platform operator sold this account into.
+//
+// Tenant-scoped rather than platform-scoped: the `tenant` policy admits a row
+// to its own tenant, so a company setting itself up can read the one fact about
+// itself it needs, and this does not become another reason to reach for the
+// platform plane.
+func (s *Service) tenantMarket(ctx context.Context) (string, error) {
+	var market string
+	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT market FROM tenant WHERE id = $1`,
+			actor.From(ctx).TenantID).Scan(&market)
+	})
+	return market, err
+}
+
 // validateStep checks a step's answers before allowing progress.
 //
 // Only the fields that would break something downstream are required. An
 // over-strict wizard is abandoned; blueprint A5's whole point is that a
 // non-technical shop owner completes it alone.
-func (s *Service) validateStep(step string, all json.RawMessage) error {
+func (s *Service) validateStep(ctx context.Context, step string, all json.RawMessage) error {
 	var payload map[string]json.RawMessage
 	if len(all) > 0 {
 		_ = json.Unmarshal(all, &payload)
@@ -262,6 +278,21 @@ func (s *Service) validateStep(step string, all json.RawMessage) error {
 			e.WithField("country", "RawSyst serves "+offered(supportedCountries)+
 				" so far. Tax rules are applied from the regulatory register for "+
 				"the country you choose, and there are none on file for that one.")
+			bad = true
+		} else if market, err := s.tenantMarket(ctx); err == nil && country != market {
+			// Said here as well as at the commit so the owner meets it on the
+			// field they typed it into, rather than five steps later on a
+			// button that does not mention countries. The commit is still the
+			// authority — see CommitBusinessInfo.
+			//
+			// A read failure is not turned into a refusal: the commit will
+			// catch the same disagreement, and blocking setup because one
+			// query did not answer would be the wizard failing closed on
+			// something the owner cannot fix.
+			e.WithField("country", "This account is set up for "+
+				supportedCountries[market]+". Ask your RawSyst contact to "+
+				"change the market if that is wrong — the tax rules every sale "+
+				"is calculated with follow it.")
 			bad = true
 		}
 
@@ -452,6 +483,29 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 		if existing >= ceiling {
 			return errs.Newf(errs.CodeLimitReached,
 				"Your plan allows %d companies and you already have %d.", ceiling, existing)
+		}
+
+		// The market is the platform operator's decision (0103), so the Owner
+		// confirms it rather than chooses it.
+		//
+		// Enforced HERE, at the insert, and not only in validateStep: the step
+		// validator sees the answers but has no transaction, and a guard that
+		// runs only on the wizard's happy path is a guard any other caller of
+		// this method walks straight past. The tax engine reads
+		// `company.country` on every sale, so the two disagreeing means a shop
+		// sold as Bangladeshi quietly charging Saudi VAT.
+		var market string
+		if err := tx.QueryRow(ctx,
+			`SELECT market FROM tenant WHERE id = $1`, a.TenantID).
+			Scan(&market); err != nil {
+			return err
+		}
+		if country := strings.ToLower(strings.TrimSpace(v.Country)); country != market {
+			return errs.Newf(errs.CodeInvalidInput,
+				"This account is set up for %s. Ask your RawSyst contact to "+
+					"change the market if that is wrong — the tax rules every "+
+					"sale is calculated with follow it.",
+				supportedCountries[market])
 		}
 
 		if err := tx.QueryRow(ctx, `

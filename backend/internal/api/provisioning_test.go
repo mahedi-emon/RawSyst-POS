@@ -85,6 +85,7 @@ func TestProvisionTenantThenOwnerCompletesOnboarding(t *testing.T) {
 			"name":        "Al Nakheel Fashion",
 			"data_region": "sa",
 			"plan_tier":   "professional",
+			"market":      "sa",
 			"owner_email": ownerEmail,
 			"owner_name":  "Mahedi Hasan",
 		})
@@ -340,6 +341,7 @@ func TestProvisioningAppliesPlanTierLimits(t *testing.T) {
 		map[string]string{
 			"name":        "Starter Shop",
 			"plan_tier":   "starter",
+			"market":      "sa",
 			"owner_email": "s" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12] + "@example.test",
 			"owner_name":  "Starter Owner",
 		})
@@ -444,6 +446,14 @@ func TestProvisioningReportsEveryInvalidField(t *testing.T) {
 // with none of the assertions: a fixture, not a test.
 func newOwnerSession(t *testing.T, h *harness) string {
 	t.Helper()
+	return newOwnerSessionInMarket(t, h, "sa")
+}
+
+// newOwnerSessionInMarket is newOwnerSession with the market named, for the
+// tests that care which one it is. Saudi is the default because the rest of the
+// wizard fixtures build Saudi companies.
+func newOwnerSessionInMarket(t *testing.T, h *harness, market string) string {
+	t.Helper()
 
 	adminToken := h.login(t, h.seedSuperAdmin(t))
 	ownerEmail := "owner" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12] + "@example.test"
@@ -453,6 +463,7 @@ func newOwnerSession(t *testing.T, h *harness) string {
 			"name":        "Wizard Fixture",
 			"data_region": "sa",
 			"plan_tier":   "professional",
+			"market":      market,
 			"owner_email": ownerEmail,
 			"owner_name":  "Fixture Owner",
 		})
@@ -589,5 +600,159 @@ func TestOnboardingAcceptsEitherCaseForCountryAndCurrency(t *testing.T) {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want the step to complete: %s",
 			resp.StatusCode, readBody(t, resp))
+	}
+}
+
+// The market is the platform operator's decision, and it is not optional.
+//
+// `data_region` and `plan_tier` both default when omitted, and the market
+// deliberately does not. Those two are commercial settings the operator can
+// correct later with no consequence for the books. The market decides which
+// country's tax rules every future sale is calculated with, so defaulting it
+// means a Bangladeshi shop silently sold as Saudi — discovered, if at all, on a
+// VAT return.
+func TestCreatingATenantRequiresTheOperatorToChooseAMarket(t *testing.T) {
+	cases := []struct {
+		name   string
+		market any
+		says   string
+	}{
+		{name: "omitted entirely", market: nil, says: "Choose the market"},
+		{name: "a country the product does not serve", market: "fr", says: "BD, SA, US"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			adminToken := h.login(t, h.seedSuperAdmin(t))
+
+			body := map[string]any{
+				"name":        "Market Test",
+				"data_region": "sa",
+				"plan_tier":   "starter",
+				"owner_email": "market" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12] + "@example.test",
+				"owner_name":  "Market Owner",
+			}
+			if c.market != nil {
+				body["market"] = c.market
+			}
+
+			resp := h.do(t, http.MethodPost, "/api/v1/platform/tenants", adminToken, body)
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusCreated {
+				t.Fatal("the tenant was created with no usable market")
+			}
+
+			var env struct {
+				Error struct {
+					Fields map[string]string `json:"fields"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			message := env.Error.Fields["market"]
+			if message == "" {
+				t.Fatalf("no message against \"market\"; fields = %v", env.Error.Fields)
+			}
+			if !strings.Contains(message, c.says) {
+				t.Errorf("the refusal does not say %q: %s", c.says, message)
+			}
+		})
+	}
+}
+
+// The Owner confirms the market; they do not get to change it.
+//
+// Both facts are real and both are read: `tenant.market` is what the operator
+// sold, `company.country` is what the tax engine resolves a VAT rate from on
+// every sale. If the Owner could set the second to something other than the
+// first, an account sold as Bangladeshi would charge Saudi VAT and every
+// document it produced would be wrong in a way no screen shows.
+//
+// Enforced at the commit rather than in the step validator, so any other caller
+// of CommitBusinessInfo meets it too.
+func TestAnOwnerCannotSetUpACompanyOutsideTheMarketTheyWereSold(t *testing.T) {
+	h := newHarness(t)
+	token := newOwnerSessionInMarket(t, h, "bd")
+
+	// A supported country — just not this account's.
+	save := h.doRaw(t, http.MethodPut,
+		"/api/v1/onboarding/steps/business_info", token,
+		`{"legal_name":"Wrong Market Ltd","country":"sa","base_currency":"SAR"}`)
+	save.Body.Close()
+
+	// Refused in the wizard, on the field the owner typed it into.
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/onboarding/steps/business_info/complete", token, nil)
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		t.Fatal("the wizard accepted a Saudi company under an account sold as Bangladeshi")
+	}
+	// The message has to name the market the account IS in. An owner who cannot
+	// see which one it is has no way to tell whether the refusal or their own
+	// answer is the mistake.
+	if body := readBody(t, resp); !strings.Contains(body, "Bangladesh") {
+		t.Errorf("the refusal does not name the account's market: %s", body)
+	}
+
+	// And refused again at the commit, which is the authority. Reached
+	// directly, because that is what any caller that is not the wizard does —
+	// and a guard that only the wizard's happy path meets is not a guard.
+	commit := h.do(t, http.MethodPost, "/api/v1/onboarding/company", token, nil)
+	defer commit.Body.Close()
+
+	if commit.StatusCode == http.StatusOK || commit.StatusCode == http.StatusCreated {
+		t.Fatal("the commit created a Saudi company under an account sold as Bangladeshi")
+	}
+	if body := readBody(t, commit); !strings.Contains(body, "Bangladesh") {
+		t.Errorf("the commit's refusal does not name the account's market: %s", body)
+	}
+}
+
+// The matching country still works, and the market reaches the operator's list.
+func TestATenantSoldIntoBangladeshSetsUpABangladeshiCompany(t *testing.T) {
+	h := newHarness(t)
+	token := newOwnerSessionInMarket(t, h, "bd")
+
+	save := h.doRaw(t, http.MethodPut,
+		"/api/v1/onboarding/steps/business_info", token,
+		`{"legal_name":"Dhaka Retail Ltd","country":"bd","base_currency":"BDT"}`)
+	save.Body.Close()
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/onboarding/steps/business_info/complete", token, nil)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want the step to complete: %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+
+	// The operator's list is where the market is actually consulted, so it has
+	// to carry it rather than merely storing it.
+	adminToken := h.login(t, h.seedSuperAdmin(t))
+	list := h.do(t, http.MethodGet, "/api/v1/platform/tenants", adminToken, nil)
+	defer list.Body.Close()
+
+	var env struct {
+		Data []struct {
+			Name   string `json:"name"`
+			Market string `json:"market"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(list.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found bool
+	for _, row := range env.Data {
+		if row.Market == "bd" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no tenant in the platform list reports the bd market: %+v", env.Data)
 	}
 }
