@@ -11,7 +11,14 @@
       "type": "http",
       "url": "https://21st.dev/api/mcp",
       "headers": {
-        "x-api-key": "${API_KEY_21ST}"
+        "x-api-key": "${API_KEY_21ST:-}"
+      }
+    },
+    "stitch": {
+      "type": "http",
+      "url": "https://stitch.googleapis.com/mcp",
+      "headers": {
+        "X-Goog-Api-Key": "${STITCH_API_KEY:-}"
       }
     }
   }

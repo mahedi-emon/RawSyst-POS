@@ -45,6 +45,7 @@ repo on another machine.
 |---|---|---|---|
 | **Claude Code plugins** | `.claude/settings.json` (`enabledPlugins`, `extraKnownMarketplaces`); content cached under `~/.claude/plugins/` | yes (the declaration) | clone + restart Claude Code |
 | **Agent Skills** (`skills.sh` format) | `.claude/skills/<name>/`. The eight installed by `npx skills` are pinned in `skills-lock.json`; the seven `21st-*` ones were installed by the 21st CLI and are pinned in `.21st/skills.lock`, which is gitignored | yes (the files, all fifteen) | already present; `npx skills experimental_install` restores the eight |
+| **This repository's own skill** | `.claude/skills/rawsyst-design-system/` | yes | Nothing to restore — it is written here, not fetched. It is the only skill in the tree with no upstream, and the only one you should edit |
 | **MCP servers** | `.mcp.json` | yes | clone + restart Claude Code |
 | **Slash commands** | `.claude/commands/ds/` | yes (the files) | already present |
 
@@ -72,7 +73,7 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 | 13 | Motion / Framer | ✅ installed | `motion-framer@claude-design-skillstack` (`freshtechbro/claudedesignskills`) | project | `claude plugin list` → enabled |
 | 14 | Convex Agent Skills | ✅ installed (entry point) | skill `convex` — the repo's own documented top-level router into the other 31 Convex skills | project | Loaded and listed this session |
 | 15 / 20 | Vercel React Native | ✅ installed | skill `vercel-react-native-skills` | project | Loaded and listed this session |
-| 16 | Google Stitch | ✅ installed | `stitch-design`, `stitch-build`, `stitch-utilities` from `google-labs-code/stitch-skills` | project | `claude plugin list` → 3 plugins enabled |
+| 16 | Google Stitch | ✅ installed + MCP configured | `stitch-design`, `stitch-build`, `stitch-utilities` from `google-labs-code/stitch-skills`, plus the hosted MCP at `https://stitch.googleapis.com/mcp` — §5 | project | `claude plugin list` → 3 plugins enabled; MCP `tools/list` → 15 tools |
 | 17 | Vercel Web Design Guidelines | ✅ installed | skill `web-design-guidelines` | project | Loaded and listed this session |
 | 18 | Vercel Composition Patterns | ✅ installed | skill `vercel-composition-patterns` | project | Loaded and listed this session |
 | 19 | Vercel Building Components | ↔ superseded | Folded into `vercel-composition-patterns`, whose own description is "building flexible component libraries, designing reusable APIs… compound components". There is no separate skill in the repo | project | Skill body read and confirmed |
@@ -80,6 +81,7 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 | 21 | Vercel Optimize | ✅ installed | skill `vercel-optimize` | project | Loaded and listed this session |
 | 22 | Emil design engineering / visual polish | ✅ installed | skill `emil-design-eng` from `emilkowalski/skills`. The prompt did not name a repository; this is the maintained one (★34.6k, pushed 2026-08-21) | project | Installed, `skills-lock.json` pinned |
 | 23 | Vercel Design Systems → Agent Skills | ✅ installed | Not a runtime skill — a 6-stage **generator pipeline**. Installed as slash commands: `/ds:interview`, `/ds:extract`, `/ds:usage-analysis`, `/ds:prd`, `/ds:generate`, `/ds:assets`, `/ds:port`, plus `scripts/verify-skills.sh` | project | Files present under `.claude/commands/ds/` |
+| — | **RawSyst's own design system, as a skill** | ✅ generated | `rawsyst-design-system` — 11 files under `.claude/skills/`, produced by running the §23 pipeline against this repository. See §9 | project | `verify.mjs` passes: 0 undefined classes, 0 undefined tokens, 0 missing paths |
 
 ### 3.2 shadcn/ui
 
@@ -89,7 +91,7 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 | — | Official shadcn MCP | ✅ installed | `.mcp.json` → `npx shadcn@latest mcp`, exactly the official configuration. 7 tools, verified live |
 | — | shadcn Agent Skill | ✅ installed | skill `shadcn` from `shadcn/ui`, project scope |
 | 09 | `Jpisnice/shadcn-ui-mcp-server` | ↔ superseded | See §4.3 |
-| 10 | 21st "Magic MCP" | ↔ superseded | `@21st-dev/magic` on npm is stuck at 0.2.2 and is the old branding. The maintained implementation is `@21st-dev/cli` 1.17.0 plus the hosted HTTP MCP at `https://21st.dev/api/mcp`; both are configured. The obsolete package was deliberately not installed |
+| 10 | 21st "Magic MCP" | ↔ superseded | `@21st-dev/magic` on npm is stuck at 0.2.2 and is the old branding. The maintained implementation is `@21st-dev/cli` 1.17.0 plus the hosted HTTP MCP at `https://21st.dev/api/mcp`; both are configured, and the endpoint answers 401 rather than failing to resolve. The obsolete package was deliberately not installed |
 
 ### 3.3 Component sources
 
@@ -193,7 +195,7 @@ after the change.
 
 ---
 
-## 5. 21st.dev — working, with one loose end
+## 5. The two hosted MCPs, and what is actually proved
 
 ### What works
 
@@ -220,34 +222,67 @@ cap is a good reason not to reach for 21st reflexively.
 
 ### The loose end: the HTTP MCP wants its own key
 
-`.mcp.json` carries the entry the CLI wrote:
+`.mcp.json` carries the entry the CLI wrote, with one edit:
 
 ```json
 "21st": {
   "type": "http",
   "url": "https://21st.dev/api/mcp",
-  "headers": { "x-api-key": "${API_KEY_21ST}" }
+  "headers": { "x-api-key": "${API_KEY_21ST:-}" }
 }
 ```
 
-That reads `API_KEY_21ST` from the environment, and the browser login does not
-set it — the CLI's stored session token and an MCP API key are different
-credentials. `API_KEY_21ST` is **not** set, so the MCP server itself is
-configured but unverified, and is not claimed to work.
+The `:-` was added deliberately. A bare `${VAR}` that is unset makes Claude Code
+refuse to start that server, which is a *broken* entry rather than an
+unauthenticated one; the default form means the server always loads and simply
+answers 401 until a key arrives.
 
-If you want the MCP path as well as the CLI path, take a key from
-https://21st.dev/mcp and set it in your environment before starting Claude Code
-(`API_KEY_21ST`; the CLI also honours `TWENTYFIRST_TOKEN`). Set it in the
-environment, not in `.mcp.json` — that file is committed.
+The browser login does not set that variable — **the CLI's stored session token
+and an MCP API key are different credentials.** `API_KEY_21ST` is not set here.
 
-### Google Stitch — MCP not configured
+What *was* verified, without exposing anything: the endpoint is live and the
+transport in the config is correct. `POST https://21st.dev/api/mcp` with an MCP
+`initialize` body answers **HTTP 401** — a real server refusing an
+unauthenticated caller, not a DNS failure or a wrong path. The server itself is
+therefore **configured and reachable but not authenticated**, and no tool call
+through it is claimed to work.
 
-The three Stitch **skills** plugins are installed and need nothing. Stitch also
-offers a *remote MCP server*, which is a separate thing: its URL is issued per
-account through the setup flow at
-https://stitch.withgoogle.com/docs/mcp/setup/. No URL was invented and no MCP
-entry was written. If you complete that setup, the URL goes into `.mcp.json`
-alongside the other two.
+To finish it, take a key from https://21st.dev/mcp and set `API_KEY_21ST` in
+your environment before starting Claude Code (the CLI also honours
+`TWENTYFIRST_TOKEN`). **Set it in the environment, never in `.mcp.json`** — that
+file is committed.
+
+### Google Stitch — MCP now configured
+
+An earlier version of this document said Stitch's MCP URL was issued per
+account. That was wrong. It is a **fixed public endpoint** authenticated by a
+header, which the Stitch skills themselves document: they look for an
+`X-Goog-Api-Key` header and an optional `httpUrl` "defaulting to
+`https://stitch.googleapis.com`".
+
+So it is configured, the same way as 21st:
+
+```json
+"stitch": {
+  "type": "http",
+  "url": "https://stitch.googleapis.com/mcp",
+  "headers": { "X-Goog-Api-Key": "${STITCH_API_KEY:-}" }
+}
+```
+
+Verified live and unauthenticated: `initialize` returns a valid handshake
+(`StatelessServer`, protocol `2024-11-05`) and `tools/list` returns **15 tools**
+— `create_project`, `list_screens`, `generate_screen_from_text`, `edit_screens`,
+`generate_variants`, `upload_design_md`, `create_design_system`,
+`apply_design_system` and the rest. Discovery works with no key at all.
+
+**Tool calls will need a key.** Set `STITCH_API_KEY` in your environment when
+you want to actually generate a screen. Until then the server connects and lists
+its tools, which is strictly better than an entry that fails to load.
+
+Nothing was invented: the URL came out of the Stitch skills' own text and was
+confirmed by probing three candidate paths — the bare host 404s, `/v1/mcp`
+404s, `/mcp` answers.
 
 ---
 
@@ -292,8 +327,10 @@ What is expected instead, for any UI task:
 
 1. Understand what the shop, the cashier or the accountant actually needs.
 2. Read the existing implementation with Serena before writing anything.
-3. Read the design system — `shared/src/design-system.css` and
-   `docs/ui-ux/00-design-system.md` — before inventing a token.
+3. Read the design system. The `rawsyst-design-system` skill is the fast path —
+   it is this product's own system, extracted from the source, and it is almost
+   always the *only* thing a UI task needs. `shared/src/design-system.css` and
+   `docs/ui-ux/00-design-system.md` remain the authority behind it.
 4. Reuse a RawSyst component if one exists. This is usually the answer.
 5. Reach outside only when something out there is materially better than what
    can be written directly, and adapt it into RawSyst's idiom rather than
@@ -335,9 +372,92 @@ yours to make, not theirs.
 | shadcn CLI reaches @shadcn, @magicui, @skiper-ui | `search` and `view` run against all three |
 | Declaring `@skiper-ui` breaks CLI search | Tested, observed, reverted |
 | 21st CLI authenticated and answering | `21st whoami` → "Logged in as mahedi-emon"; `21st usage` → free tier, 2/2 retrievals left; `21st search "dashboard"` → 8 results |
-| 21st **MCP** not verified | `API_KEY_21ST` is unset, so the HTTP server was never exercised. Recorded as configured, not as working — §5 |
+| 21st **MCP** reachable, not authenticated | `POST https://21st.dev/api/mcp` with an `initialize` body → **HTTP 401**. The URL and transport are right; the key is absent. No tool call through it is claimed to work |
+| Stitch MCP live and enumerable | `initialize` → `StatelessServer`, protocol 2024-11-05; `tools/list` → **15 tools**. Tool *calls* will need `STITCH_API_KEY` |
+| No secret in any committed file | Both hosted servers read their key from the environment with `${VAR:-}`. `~/.config/21st/auth.json` is user scope, outside the repo |
+| 16 project skills, every frontmatter `name` matching its directory | Checked across `.claude/skills/*/SKILL.md` |
+| The RawSyst design-system skill describes code that exists | `node .claude/skills/rawsyst-design-system/verify.mjs` → 0 undefined classes, 0 undefined custom properties, 0 missing paths, against 820 classes and 70 properties |
 | No dependency added to the product | `git diff` on `package.json` is the `registries` key alone; `package-lock.json` unchanged |
 
 One thing to know about that last row: `npx shadcn mcp init` added `shadcn` to
 the root `devDependencies` and grew `package-lock.json` by 127 KB. That was
 reverted — the MCP runs through `npx` and does not need the local package.
+
+---
+
+## 9. RawSyst's own design system, as a skill
+
+The §23 pipeline exists to turn a design system into something an agent can read
+without guessing. RawSyst has a real one — 2,290 lines of custom properties and
+class primitives in `shared/src/design-system.css`, plus 1,243 more of screen
+furniture in `dashboard.css` — and nothing in the toolbox knew about it. That was
+the largest remaining gap: every other tool here teaches an agent about somebody
+*else's* system.
+
+`.claude/skills/rawsyst-design-system/` is the result. Eleven files:
+
+```
+SKILL.md                              pre-flight, the hard rules, a routing matrix
+verify.mjs                            the drift check
+references/tokens.md                  every custom property, both themes, what each is for
+references/layout-and-type.md         type scale, breakpoints, tap targets, the shell
+references/components.md              the class catalogue + the React helpers
+references/i18n-rtl.md                Arabic, Bangla, bidi, money, dates
+references/rules.md                   guardrails, anti-patterns, the checks
+references/patterns/tables.md
+references/patterns/forms.md
+references/patterns/buttons-and-actions.md
+references/patterns/panels-and-dialogs.md
+references/patterns/states.md
+```
+
+### How it was produced
+
+The `/ds:*` pipeline is written for a packaged React component library — an npm
+package with per-component TypeScript interfaces and an export map to validate
+imports against. RawSyst is not that: it is a CSS class system with a handful of
+React helpers. So the pipeline's *discipline* was followed — scope decided
+first, facts extracted mechanically from source, a closed structure, then
+generation, then verification — while the artefacts were shaped to what RawSyst
+actually is. Its literal Stage 2 (per-component `api.md` from a TS interface)
+has no subject here.
+
+Scoping decisions, made from repository evidence rather than by interview, since
+the source could answer every question the interview asks:
+
+| Decision | Answer | Why |
+|---|---|---|
+| Short name | `rawsyst-design-system` | |
+| Output | `.claude/skills/`, not `skills/` | It has to be discoverable by Claude Code, which is the point |
+| Scope | All four stylesheets, `shared/src/ui/`, `shared/src/i18n/`, `dashboard/DetailScreen.tsx` | These are what a UI change actually touches |
+| Categories | Tokens · layout/type · catalogue · five patterns · i18n · rules | Follows how the CSS is already sectioned, not an imported taxonomy |
+| Component granularity | One file per *pattern*, not per class | There is no component library to enumerate. 126 classes in the system file are primitives, not components |
+
+Every fact was read out of the source. The two places a plausible-looking
+example was written from memory rather than from the code — a `t()` call with an
+invented key, and `useRemote` given a dependency array it does not take — were
+caught by re-reading the source and corrected before commit.
+
+### Keeping it true
+
+A design-system skill that has drifted is worse than none: an agent will write
+markup for a system that no longer exists, confidently. `verify.mjs` checks
+every class name, custom property and repository path the skill states in
+backticks against the actual stylesheets and the actual tree, and reads the
+legitimate no-rule naming hooks out of `stylesheetCoverage.test.ts` rather than
+keeping a second list that could disagree with the first.
+
+```bash
+node .claude/skills/rawsyst-design-system/verify.mjs
+```
+
+Run it after changing the design system, and after changing the skill.
+
+### What it deliberately does not do
+
+It documents the system as it is. It does not propose a new one, it does not
+introduce Tailwind or shadcn components, and it does not describe any visual
+language other than RawSyst's. Where the CSS explains *why* a rule exists — and
+roughly half of `design-system.css` is that explanation — the skill carries the
+reason, because the reason is what stops the next agent 'simplifying' a rule
+that exists because a specific screen broke.

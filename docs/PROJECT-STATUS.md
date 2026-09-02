@@ -271,20 +271,43 @@ outside.
 
 ## 6. Frontend/UI toolbox
 
-**Status: complete.** Set up 2026-09-02. The full record — every tool, its
-current implementation, what was verified and what was deliberately not
-installed — is in [`FRONTEND_TOOLBOX.md`](../FRONTEND_TOOLBOX.md). Only the
-things that change how work is done here are repeated below.
+**Status: complete.** Set up 2026-09-02, finished the same day. The full record —
+every tool, its current implementation, what was verified and what was
+deliberately not installed — is in
+[`FRONTEND_TOOLBOX.md`](../FRONTEND_TOOLBOX.md). Only the things that change how
+work is done here are repeated below.
 
 | | |
 |---|---|
 | **Claude Code plugins** | 10 enabled, 7 declared at project scope: UI UX Pro Max, taste-skill, GSAP (8 skills), motion-framer, and Stitch design/build/utilities |
-| **Agent skills** | 15 under `.claude/skills/`: 5 Vercel, 7 first-party 21st, plus `shadcn`, `emil-design-eng` and the `convex` router. The eight non-21st ones are pinned in `skills-lock.json` |
-| **MCP servers** | `.mcp.json` — official shadcn (verified, 7 tools) and 21st HTTP (configured, needs `API_KEY_21ST`). Serena stays at user scope and was not touched |
+| **Agent skills** | 16 under `.claude/skills/`: 5 Vercel, 7 first-party 21st, `shadcn`, `emil-design-eng`, the `convex` router, and **RawSyst's own design system** |
+| **MCP servers** | `.mcp.json` — official shadcn (7 tools, verified), Stitch (15 tools, verified), 21st (reachable, answers 401 without a key). Serena stays at user scope and was not touched |
 | **Slash commands** | `/ds:interview` → `/ds:port`, the Vercel design-system-to-skills pipeline |
-| **21st.dev** | CLI 1.17.0 global, signed in, free tier — component-code retrievals capped at 2/day |
+| **21st.dev** | CLI 1.17.0 global, signed in as `mahedi-emon`, free tier — component-code retrievals capped at 2/day |
 
-### Three decisions that constrain future UI work
+### The design system is now a skill
+
+`.claude/skills/rawsyst-design-system/` — eleven files describing the system
+this product is actually built from: every custom property in both themes, the
+type scale, the class catalogue and where each class is defined, the five
+patterns (tables, forms, buttons, panels/dialogs, states), the Arabic/Bangla and
+bidi rules, and the anti-patterns with the damage each one did.
+
+It was produced by following the `/ds:*` pipeline's discipline — scope, then
+mechanical extraction, then a closed structure, then generation, then
+verification — with the artefacts shaped to what RawSyst is. The pipeline's
+literal per-component stage assumes a packaged React component library and has
+no subject here.
+
+`node .claude/skills/rawsyst-design-system/verify.mjs` checks every class,
+custom property and path the skill states against the real stylesheets and the
+real tree, and reads the legitimate no-rule naming hooks out of
+`stylesheetCoverage.test.ts` so the two lists cannot disagree. It passes: 0, 0,
+0 against 820 classes and 70 properties. **Run it after any design-system
+change** — a skill that has drifted is worse than none, because an agent will
+follow it confidently.
+
+### Four decisions that constrain future UI work
 
 - **shadcn/ui was NOT initialized, and must not be without a deliberate
   decision.** There is no Tailwind anywhere in this repository and
@@ -297,23 +320,34 @@ things that change how work is done here are repeated below.
   declares `@magicui` so the shadcn MCP can reach Magic UI. `@skiper-ui` is
   deliberately absent: declaring it overrides the CLI's working built-in with a
   URL that cannot answer a search, which was tested and does break it.
+- **Both hosted MCPs read their key from the environment**, written
+  `${VAR:-}` so an unset variable leaves the server loading-and-unauthenticated
+  rather than failing to start. No credential is committed, and none should be.
 - **There is no task-to-tool mapping and none should be written.** A tool being
   installed is not a reason to use it. RawSyst screens are read in columns of
   currency by someone with a queue; several of these tools are built for
-  marketing sites.
+  marketing sites. For almost any UI task here the right answer is the
+  `rawsyst-design-system` skill and nothing else.
 
 ### Blockers
 
-- `API_KEY_21ST` is unset, so the 21st **MCP** is configured but unverified. The
-  authenticated CLI plus its seven skills cover the same ground and need no key.
-- Google Stitch's remote MCP needs a per-account URL from
-  https://stitch.withgoogle.com/docs/mcp/setup/. The Stitch *skills* are
-  installed and need nothing.
+Two, both credential-only, neither blocking any work:
+
+- **`API_KEY_21ST` is unset.** The 21st MCP is configured and the endpoint was
+  proved live (`initialize` → HTTP 401, a real refusal rather than a bad URL),
+  but no call through it is claimed to work. The authenticated CLI and its seven
+  skills cover the same ground and need no key. Get one at https://21st.dev/mcp.
+- **`STITCH_API_KEY` is unset.** The Stitch MCP is configured at
+  `https://stitch.googleapis.com/mcp` — a fixed public endpoint, not the
+  per-account URL an earlier note claimed. Discovery works unauthenticated
+  (`tools/list` → 15 tools); generating a screen will need the key.
 
 ### Next frontend task
 
-Run the `/ds:*` pipeline over `shared/src/design-system.css` and
-`shared/src/ui/` to turn RawSyst's own design system into an agent skill. It is
-the one tool here that makes the *existing* system easier to extend rather than
-offering a different one, and 2,290 lines of tokens is exactly the kind of thing
-an agent otherwise guesses at.
+Nothing in the toolbox is outstanding. The next useful frontend work is product
+work, and §4 says which: **P6's remaining slice — the PWA's push-notification
+half of A7**, and the native-Arabic review of tax terminology noted in §1. Both
+are now better supported than they were: the design-system skill means a new
+screen can be built without re-deriving the token names, and
+`node e2e/tokens.mjs`, `classes.mjs`, `strings.mjs` and `currency.mjs` will say
+whether it drifted.
