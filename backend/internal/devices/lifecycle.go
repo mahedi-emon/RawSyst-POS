@@ -30,6 +30,7 @@ import (
 // including ones that were properly onboarded.
 const terminalSelect = `
 	SELECT d.id, d.store_id, s.name, d.terminal_label, d.status::text,
+	       d.binding,
 	       coalesce(d.os, ''), coalesce(d.app_version, ''),
 	       coalesce(to_char(d.last_sync_at,   'YYYY-MM-DD"T"HH24:MI:SSOF:00'), ''),
 	       coalesce(to_char(d.last_active_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'), ''),
@@ -53,7 +54,7 @@ type scanner interface{ Scan(dest ...any) error }
 
 func scanTerminal(row scanner) (Terminal, error) {
 	var t Terminal
-	if err := row.Scan(&t.ID, &t.StoreID, &t.Store, &t.Label, &t.Status,
+	if err := row.Scan(&t.ID, &t.StoreID, &t.Store, &t.Label, &t.Status, &t.Binding,
 		&t.OS, &t.AppVersion, &t.LastSyncAt, &t.LastActiveAt, &t.EnrolledAt,
 		&t.RevokedAt, &t.RevokedReason,
 		&t.EGSUnitID, &t.EGSUnit, &t.CSIDStatus, &t.CSIDSerial, &t.CSIDExpiresAt,
@@ -149,6 +150,83 @@ type Amendment struct {
 	// before Register required one: without it they are permanently unable to
 	// sell and the only fix is SQL.
 	EGSUnitID uuid.UUID
+}
+
+// Counters lists the tills a signed-in user could open a POS session on.
+//
+// Narrower than List on purpose. List is the management screen and shows
+// everything including revoked and pending ones, because a shop opens it when
+// something is wrong. This answers a different question — "which counter am I
+// about to stand at?" — so it offers only what would actually work: active, and
+// session-bound.
+//
+// A paired counter is deliberately absent rather than shown-and-refused. It is
+// not a counter a browser can open at all, and listing it as an option that
+// fails on selection would teach cashiers to try things.
+//
+// Store scope is applied by the CALLER against each row rather than in the SQL
+// here: this service does not hold the request's grants, and splitting the rule
+// across both would give it two places to be wrong.
+func (s *Service) Counters(ctx context.Context, scope Scope) ([]Terminal, error) {
+	out := []Terminal{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, terminalSelect+`
+			WHERE d.company_id = $1
+			  AND d.status = 'active'
+			  AND d.binding = $2
+			ORDER BY s.name, d.terminal_label`, scope.CompanyID, BindingSession)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			t, e := scanTerminal(rows)
+			if e != nil {
+				return e
+			}
+			out = append(out, t)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// Openable is the counter a user is asking to stand at, or the reason they may
+// not.
+//
+// Each refusal names which of the three things is wrong — the counter is not
+// here, it is not the kind a browser may open, or it is not usable — because
+// every one of them is otherwise discovered by a cashier with a queue waiting.
+func (s *Service) Openable(
+	ctx context.Context, scope Scope, deviceID uuid.UUID,
+) (Terminal, error) {
+	var out Terminal
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		t, e := s.read(ctx, tx, scope, deviceID)
+		if e != nil {
+			return e
+		}
+
+		if t.Binding != BindingSession {
+			// The answer is an instruction: this counter is claimed by one
+			// machine and opens in that machine's app. Letting a browser take
+			// it would be the weaker authority quietly overriding the stronger
+			// one somebody chose for it.
+			return errs.Newf(errs.CodeForbidden,
+				"%q is paired to one machine, so it opens in that machine's "+
+					"RawSyst app rather than in a browser.", t.Label)
+		}
+		if t.Status != "active" {
+			return errs.Newf(errs.CodeForbidden,
+				"%q is %s, so it cannot take a session. An owner can change "+
+					"that under Settings > Terminals.", t.Label, t.Status)
+		}
+
+		out = t
+		return nil
+	})
+	return out, err
 }
 
 func (s *Service) Amend(

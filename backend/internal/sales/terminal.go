@@ -9,6 +9,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -224,16 +225,32 @@ func resolveTerminal(
 				"activate it under Settings > Terminals.", status)
 	}
 
-	if egsUnitID == nil {
-		// Without an EGS unit there is no counter and no hash chain, so the
-		// invoice could not be a legal document. Better to refuse the sale than
-		// to issue something that cannot be reported.
+	// The chain is a Saudi obligation, not a property of selling.
+	//
+	// This used to refuse ANY terminal with no EGS unit, in every market. The
+	// unit is a ZATCA object — its columns are a CSR: organization identifier,
+	// invoice type, industry — and nothing outside Saudi Arabia has one or
+	// could fill one in. The effect was that a Bangladeshi or American shop
+	// could be provisioned, set up, stocked and paired, and then could not ring
+	// up a single item, refused by a message telling it to complete an
+	// onboarding that does not apply to it.
+	//
+	// So the requirement is now asked of the market rather than of every
+	// terminal. Where e-invoicing applies the refusal is unchanged and still
+	// happens before an ICV is consumed. Where it does not, the terminal sells
+	// with `EGSUnitID` left as uuid.Nil and `OnAChain` false, and the whole
+	// chain — reserve, document, hash, record, submission queue — is skipped
+	// rather than faked. A sale off a chain writes no `zatca_invoice` row,
+	// which is exactly what "this invoice is not on a chain" should look like
+	// in the data.
+	if egsUnitID != nil {
+		term.EGSUnitID = *egsUnitID
+	} else if market.EInvoicingApplies(profile.country) {
 		return Terminal{}, companyProfile{}, errs.New(errs.CodeComplianceBlocked,
 			"This terminal has not been onboarded for e-invoicing yet, so it "+
 				"cannot issue invoices. Complete onboarding under Settings > "+
 				"E-invoicing.")
 	}
-	term.EGSUnitID = *egsUnitID
 	term.Country = profile.country
 
 	term.WarehouseID, err = resolveWarehouse(ctx, tx, term.StoreID, warehouseID)

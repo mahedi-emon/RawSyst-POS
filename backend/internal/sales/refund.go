@@ -185,21 +185,28 @@ func (s *Service) ProcessReturn(
 	// Reserve, build, hash — the same three steps a sale takes, and for the same
 	// reason: the document carries its own ICV and PIH, and the hash is over the
 	// document.
-	icv, pih, err := s.chain.Reserve(ctx, tx, term.EGSUnitID)
-	if err != nil {
-		return Refunded{}, err
-	}
-	document, err := buildCreditNoteDocument(ctx, tx, term, ret, original, computed,
-		creditNoteNumber, icv, pih)
-	if err != nil {
-		return Refunded{}, err
-	}
-	link, err := s.chain.LinkFor(ctx, term.EGSUnitID, icv, pih, document)
-	if err != nil {
-		return Refunded{}, err
-	}
-	if err := s.chain.Record(ctx, tx, creditNoteID, term.TenantID, link); err != nil {
-		return Refunded{}, err
+	// Skipped whole where e-invoicing does not apply, exactly as the sale skips
+	// it. A credit note off a chain is still a credit note: it has its own
+	// number, it posts, it settles the refund, and it simply takes no position
+	// on a chain that does not exist.
+	var link zatca.Link
+	if term.OnAChain() {
+		icv, pih, err := s.chain.Reserve(ctx, tx, term.EGSUnitID)
+		if err != nil {
+			return Refunded{}, err
+		}
+		document, err := buildCreditNoteDocument(ctx, tx, term, ret, original, computed,
+			creditNoteNumber, icv, pih)
+		if err != nil {
+			return Refunded{}, err
+		}
+		link, err = s.chain.LinkFor(ctx, term.EGSUnitID, icv, pih, document)
+		if err != nil {
+			return Refunded{}, err
+		}
+		if err := s.chain.Record(ctx, tx, creditNoteID, term.TenantID, link); err != nil {
+			return Refunded{}, err
+		}
 	}
 
 	// 5. The refund settled.

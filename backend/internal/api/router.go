@@ -551,6 +551,22 @@ func (s *Server) Routes() []Route {
 		{http.MethodPut, "/api/v1/pos/sales/{invoiceID}/signed-document",
 			AccessPermission, "sales.create", s.handleUploadSignedDocument, ""},
 
+		// --- opening a counter from a browser ---
+		//
+		// Both gated on sales.create: choosing which till you are standing at
+		// is part of ringing up a sale, and nobody who cannot sell has a reason
+		// to open one. The counter is then resolved from the token on every
+		// route below, never from a body.
+		{http.MethodGet, "/api/v1/pos/counters", AccessPermission, "sales.create",
+			s.handleListCounters,
+			"the tills this user could stand at: active, session-bound, and in " +
+				"a shop their scope reaches"},
+		{http.MethodPost, "/api/v1/pos/counter-sessions", AccessPermission, "sales.create",
+			s.handleOpenCounterSession,
+			"binds the caller's own session to one counter and re-issues their " +
+				"access token naming it; no refresh token, so the counter is " +
+				"re-checked every time the access token expires"},
+
 		// --- shift and cash drawer (C8, design 11 §9) ---
 		//
 		// Opening and closing a till are the same act to blueprint A6.1, which

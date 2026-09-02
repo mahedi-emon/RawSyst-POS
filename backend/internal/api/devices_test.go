@@ -21,11 +21,19 @@ import (
 
 // --- helpers ---------------------------------------------------------------
 
-// registerTill creates a terminal in `pending` and returns its id.
+// registerTill creates a PAIRED terminal in `pending` and returns its id.
 //
-// It names the fixture's EGS unit because the route now requires one: a
-// terminal with no signing unit cannot sell, and letting these tests register
-// one anyway would mean they exercised a shape the product no longer produces.
+// It names the fixture's EGS unit because the route requires one in a market
+// with an e-invoicing obligation, and these fixtures are Saudi: a terminal with
+// no signing unit cannot sell there, and letting these tests register one
+// anyway would mean they exercised a shape the product no longer produces.
+//
+// `binding: paired` is explicit because every test below this line is about the
+// PAIRING lifecycle — issuing a code, enrolling, re-pairing, pausing, revoking,
+// and the list that shows which tills are still waiting for a machine. Since
+// 0104 a counter registered with no binding is `session`-bound and therefore
+// `active` immediately, which is correct for the web counter and is not the
+// thing these tests are testing.
 func registerTill(t *testing.T, h *harness, f *shopFixture, label string) string {
 	t.Helper()
 	resp := h.do(t, "POST",
@@ -34,6 +42,7 @@ func registerTill(t *testing.T, h *harness, f *shopFixture, label string) string
 			"store_id":       f.storeID.String(),
 			"terminal_label": label,
 			"egs_unit_id":    f.egsUnitID.String(),
+			"binding":        "paired",
 		})
 	if resp.StatusCode != 201 {
 		t.Fatalf("register %s: %d %s", label, resp.StatusCode, readBody(t, resp))

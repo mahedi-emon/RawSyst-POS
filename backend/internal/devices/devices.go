@@ -51,6 +51,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -91,15 +92,31 @@ const maxAttempts = 5
 
 // --- Registering a terminal ------------------------------------------------
 
+// How a session on a counter is authorised. See migration 0104.
+const (
+	// BindingSession — any user whose RBAC scope allows it opens the counter,
+	// proved by their own sign-in. The web counter.
+	BindingSession = "session"
+
+	// BindingPaired — only the enrolled machine, proved by the device secret in
+	// its OS keystore. Every counter registered before 0104.
+	BindingPaired = "paired"
+)
+
 type NewTerminal struct {
 	StoreID uuid.UUID
 	Label   string
 
-	// The EGS unit that will sign for this terminal. Required, because a
-	// terminal without one is refused at the till and nothing on the way in
-	// said so — which is precisely what happened to every terminal registered
-	// between 0013 and now.
+	// The EGS unit that will sign for this terminal.
+	//
+	// Required where e-invoicing applies, because a terminal without one is
+	// refused at the till and nothing on the way in said so — which is
+	// precisely what happened to every terminal registered between 0013 and
+	// 0104. Elsewhere it is meaningless and must be left empty.
 	EGSUnitID uuid.UUID
+
+	// Binding defaults to BindingSession. See the constants above.
+	Binding string
 }
 
 type Terminal struct {
@@ -108,6 +125,10 @@ type Terminal struct {
 	Store   string    `json:"store"`
 	Label   string    `json:"terminal_label"`
 	Status  string    `json:"status"`
+
+	// How a session on this counter is authorised: `session` or `paired`.
+	// See migration 0104.
+	Binding string `json:"binding"`
 
 	OS         string `json:"os,omitempty"`
 	AppVersion string `json:"app_version,omitempty"`
@@ -159,12 +180,28 @@ func (s *Service) Register(
 		return Terminal{}, errs.New(errs.CodeInvalidInput,
 			"Say which store this terminal is in.")
 	}
-	if in.EGSUnitID == uuid.Nil {
+	// A counter is `session`-bound unless the caller asks for the paired model.
+	//
+	// Web first, per the product direction: a counter somebody can open in a
+	// browser is the default, and pairing a machine to it is the stronger
+	// option a shop adds later. Enrolling the counter is what moves it.
+	binding := strings.TrimSpace(in.Binding)
+	if binding == "" {
+		binding = BindingSession
+	}
+	if binding != BindingSession && binding != BindingPaired {
 		return Terminal{}, errs.New(errs.CodeInvalidInput,
-			"Choose the e-invoicing unit this terminal will sign under. "+
-				"Every sale joins that unit's invoice sequence, so a terminal "+
-				"without one cannot ring anything up.").
-			WithField("egs_unit_id", "Choose an e-invoicing unit.")
+			"A counter is either opened by a signed-in user or bound to one "+
+				"paired machine.").
+			WithField("binding", "Choose "+BindingSession+" or "+BindingPaired+".")
+	}
+
+	// A session counter is usable the moment it is created; there is no machine
+	// to wait for. A paired one stays `pending` until it enrols, which is the
+	// behaviour every existing terminal has.
+	status := "pending"
+	if binding == BindingSession {
+		status = "active"
 	}
 
 	var out Terminal
@@ -182,17 +219,41 @@ func (s *Service) Register(
 			return errs.New(errs.CodeNotFound, "That store was not found.")
 		}
 
-		if e := bindable(ctx, tx, scope, in.EGSUnitID, in.StoreID); e != nil {
+		// The e-invoicing unit is required where e-invoicing is.
+		//
+		// This used to be demanded of every counter in every market, checked
+		// before the transaction even opened. An EGS unit is a ZATCA object —
+		// its fields are a CSR — so outside Saudi Arabia there was none to
+		// name and no till could be registered at all.
+		var country string
+		if e := tx.QueryRow(ctx,
+			`SELECT country FROM company WHERE id = $1`, scope.CompanyID).
+			Scan(&country); e != nil {
 			return e
+		}
+
+		switch {
+		case in.EGSUnitID != uuid.Nil:
+			if e := bindable(ctx, tx, scope, in.EGSUnitID, in.StoreID); e != nil {
+				return e
+			}
+		case market.EInvoicingApplies(country):
+			return errs.New(errs.CodeInvalidInput,
+				"Choose the e-invoicing unit this terminal will sign under. "+
+					"Every sale joins that unit's invoice sequence, so a "+
+					"terminal without one cannot ring anything up.").
+				WithField("egs_unit_id", "Choose an e-invoicing unit.")
 		}
 
 		var id uuid.UUID
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO device
-			  (tenant_id, company_id, store_id, terminal_label, status, egs_unit_id)
-			VALUES ($1,$2,$3,$4,'pending',$5) RETURNING id`,
-			scope.TenantID, scope.CompanyID, in.StoreID, label,
-			in.EGSUnitID).Scan(&id); e != nil {
+			  (tenant_id, company_id, store_id, terminal_label, status,
+			   egs_unit_id, binding)
+			VALUES ($1,$2,$3,$4,$5::device_status,nullif($6,$7::uuid),$8)
+			RETURNING id`,
+			scope.TenantID, scope.CompanyID, in.StoreID, label, status,
+			in.EGSUnitID, uuid.Nil, binding).Scan(&id); e != nil {
 			return db.Translate(e, "That terminal could not be registered.")
 		}
 
@@ -463,7 +524,16 @@ func (s *Service) Enrol(ctx context.Context, in Claim) (Enrolled, error) {
 
 		if _, e := tx.Exec(ctx, `
 			UPDATE device
-			SET status = 'active', secret_hash = $2, secret_selector = $7,
+			-- Enrolling is what moves a counter to the paired model, and it is
+			-- set in the same statement that writes the secret rather than in a
+			-- second one. The device_session_binding_holds_no_secret check
+			-- (0104) refuses the combination, so forgetting this is a failed
+			-- write and not a counter a browser may claim AND a machine may
+			-- authenticate as. It is also the upgrade path: a shop runs on
+			-- browser counters and pairs a locked-down till to one later, on
+			-- this same API, keeping the counter's history and its chain.
+			SET status = 'active', binding = 'paired',
+			    secret_hash = $2, secret_selector = $7,
 			    enrolled_at = now(),
 			    enrolled_by = $3, enrolled_ip = $4::inet,
 			    os = nullif($5, ''), app_version = nullif($6, ''),

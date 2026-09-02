@@ -563,6 +563,47 @@ func (s *Service) revokeFamily(
 }
 
 // Logout revokes the current session.
+// OpenCounterSession re-issues the caller's OWN access token with a counter
+// attached to it.
+//
+// # What this is and is not
+//
+// It is not a new sign-in and not a new session. The session id, the user, the
+// tenant and the company scopes are carried across untouched; the only thing
+// that changes is that `did` now names a counter, which is what every POS route
+// resolves the till from. So a POS operation says who is selling, which
+// business, which shop, which counter, and under which session — all from one
+// token that the server minted, none of it from a request body.
+//
+// It issues NO refresh token. The refresh token the caller already holds is
+// still theirs and still refreshes their ordinary session; standing at a
+// counter is not a reason to extend how long they stay signed in. When this
+// access token expires the client asks for the counter again, and every check
+// below runs again — which is the point, because a counter can be paused or
+// revoked between one token and the next.
+//
+// # The authority is the person, and the caller has already checked it
+//
+// This mints; it does not authorise. The route's permission, the company scope,
+// the store scope and whether the counter is session-bound at all are settled
+// by the handler before this is called, because those are questions about
+// grants and this package's job here is the token. Calling this without those
+// checks would hand out a counter to anyone who asked.
+func (s *Service) OpenCounterSession(
+	a actor.Actor, deviceID uuid.UUID,
+) (Session, error) {
+	if deviceID == uuid.Nil {
+		return Session{}, errs.New(errs.CodeInvalidInput, "Choose a counter.")
+	}
+
+	a.DeviceID = deviceID
+	token, exp, err := s.tokens.IssueAccess(a)
+	if err != nil {
+		return Session{}, err
+	}
+	return Session{AccessToken: token, ExpiresAt: exp, Actor: a}, nil
+}
+
 func (s *Service) Logout(ctx context.Context, sessionID uuid.UUID) error {
 	return s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `

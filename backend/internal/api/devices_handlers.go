@@ -46,10 +46,17 @@ func (s *Server) deviceScope(r *http.Request) (devices.Scope, error) {
 type terminalRequest struct {
 	StoreID string `json:"store_id"`
 	Label   string `json:"terminal_label"`
-	// Which EGS unit signs for this terminal. Required when registering,
-	// optional when amending — where it is also the only way to give a
-	// terminal registered before 0043 the unit it needs to sell.
+	// Which EGS unit signs for this terminal. Required when registering **in a
+	// market with an e-invoicing obligation**, optional when amending — where
+	// it is also the only way to give a terminal registered before 0043 the
+	// unit it needs to sell.
 	EGSUnitID string `json:"egs_unit_id"`
+
+	// How a session on this counter is authorised (0104). Empty means
+	// `session`: a counter an authorised person opens in a browser, which is
+	// the web-first default. `paired` registers it for one machine instead, and
+	// it stays `pending` until that machine enrols.
+	Binding string `json:"binding"`
 }
 
 func (s *Server) handleRegisterTerminal(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +92,12 @@ func (s *Server) handleRegisterTerminal(w http.ResponseWriter, r *http.Request) 
 	}
 
 	out, err := s.devices.Register(r.Context(), scope,
-		devices.NewTerminal{StoreID: storeID, Label: req.Label, EGSUnitID: egsUnitID})
+		devices.NewTerminal{
+			StoreID:   storeID,
+			Label:     req.Label,
+			EGSUnitID: egsUnitID,
+			Binding:   req.Binding,
+		})
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

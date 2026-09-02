@@ -56,6 +56,8 @@ type Terminal struct {
 
 	// EGSUnitID owns the ZATCA counter and hash chain. It is per terminal, not
 	// per store: E1.3 puts the CSID and the chain on the device itself.
+	//
+	// uuid.Nil in a market where e-invoicing does not apply. See OnAChain.
 	EGSUnitID uuid.UUID
 
 	// WarehouseID is the stock this till sells from.
@@ -76,6 +78,16 @@ type Terminal struct {
 	// up short has no way to prove it was not theirs.
 	CashSessionID *uuid.UUID
 }
+
+// OnAChain reports whether this terminal's invoices join a signed e-invoicing
+// chain.
+//
+// Asked of the terminal rather than of the country at each call site, because
+// by the time a sale is being finalised the question has already been settled
+// once — in resolveTerminal, which is also where the refusal lives. A second
+// country test further down could disagree with the first, and the way it would
+// disagree is by trying to reserve an ICV on uuid.Nil.
+func (t Terminal) OnAChain() bool { return t.EGSUnitID != uuid.Nil }
 
 // Sale is a rung-up sale awaiting finalisation.
 type Sale struct {
@@ -259,20 +271,27 @@ func (s *Service) Finalize(
 	// UBL with it, then hash what was built. A sale whose unit is not
 	// registered enough to produce a document fails HERE, before the counter
 	// moves — a consumed ICV cannot be handed back and a gap is permanent.
-	icv, pih, err := s.chain.Reserve(ctx, tx, term.EGSUnitID)
-	if err != nil {
-		return Finalized{}, err
-	}
-	document, err := buildSaleDocument(ctx, tx, term, sale, computed, humanNumber, icv, pih)
-	if err != nil {
-		return Finalized{}, err
-	}
-	link, err := s.chain.LinkFor(ctx, term.EGSUnitID, icv, pih, document)
-	if err != nil {
-		return Finalized{}, err
-	}
-	if err := s.chain.Record(ctx, tx, invoiceID, term.TenantID, link); err != nil {
-		return Finalized{}, err
+	// Skipped whole in a market with no e-invoicing obligation. Not stubbed,
+	// not given a placeholder ICV: an invoice off a chain has no position on
+	// one, and inventing a number would put a figure in `zatca_invoice` that
+	// looks like a chain and is not.
+	var link zatca.Link
+	if term.OnAChain() {
+		icv, pih, err := s.chain.Reserve(ctx, tx, term.EGSUnitID)
+		if err != nil {
+			return Finalized{}, err
+		}
+		document, err := buildSaleDocument(ctx, tx, term, sale, computed, humanNumber, icv, pih)
+		if err != nil {
+			return Finalized{}, err
+		}
+		link, err = s.chain.LinkFor(ctx, term.EGSUnitID, icv, pih, document)
+		if err != nil {
+			return Finalized{}, err
+		}
+		if err := s.chain.Record(ctx, tx, invoiceID, term.TenantID, link); err != nil {
+			return Finalized{}, err
+		}
 	}
 
 	revenue, cogs, err := s.post(ctx, tx, term, sale, computed, invoiceID, costed.Variance)
@@ -294,7 +313,12 @@ func (s *Service) Finalize(
 	// submit — an unreported document that no queue, no alert and no dashboard
 	// would ever mention, which is exactly the silent exposure E1.2 exists to
 	// prevent.
-	if term.DeviceID != nil {
+	//
+	// Only where there is somewhere to report TO. Queueing a submission for a
+	// market with no e-invoicing authority would fill the retry queue with work
+	// that can never succeed, and bury the Saudi submissions that matter among
+	// it.
+	if term.DeviceID != nil && term.OnAChain() {
 		if err := jobs.QueueSubmission(
 			ctx, tx, term.TenantID, invoiceID, *term.DeviceID); err != nil {
 			return Finalized{}, err

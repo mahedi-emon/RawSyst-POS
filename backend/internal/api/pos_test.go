@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 )
 
@@ -74,6 +75,21 @@ func (h *harness) seedShop(t *testing.T, roleKey string) *shopFixture {
 // is the state a till is in when the first cashier of the day signs in.
 func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixture {
 	t.Helper()
+	return h.seedShopBeforeOpeningIn(t, roleKey, "sa", "SAR")
+}
+
+// seedShopBeforeOpeningIn is the same shop in a named market.
+//
+// The country is a parameter because it decides which obligations apply, and
+// the interesting cases are on both sides of that: a Saudi shop's counter must
+// have an EGS unit before it can sell, and a Bangladeshi shop's must be able to
+// sell without one. A fixture that could only build Saudi shops is how the
+// e-invoicing prerequisite went unnoticed in every market for as long as it
+// did.
+func (h *harness) seedShopBeforeOpeningIn(
+	t *testing.T, roleKey, country, currency string,
+) *shopFixture {
+	t.Helper()
 	ctx := t.Context()
 
 	email := h.seedUserWithRole(t, roleKey)
@@ -87,8 +103,8 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 		}
 		return tx.QueryRow(ctx, `
 			INSERT INTO company (tenant_id, legal_name, country, base_currency)
-			VALUES ($1,'POS Test Co','sa','SAR') RETURNING id`,
-			f.tenantID).Scan(&f.companyID)
+			VALUES ($1,'POS Test Co',$2,$3) RETURNING id`,
+			f.tenantID, country, currency).Scan(&f.companyID)
 	})
 	if err != nil {
 		t.Fatalf("seed company: %v", err)
@@ -97,8 +113,8 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 	err = h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO store (tenant_id, company_id, code, name, street, building_number, district, city, postal_code, country_code)
-			VALUES ($1,$2,'MAIN','Main','Prince Sultan Road','2322','Al-Murabba','Riyadh','23333','SA') RETURNING id`,
-			f.tenantID, f.companyID).Scan(&f.storeID); e != nil {
+			VALUES ($1,$2,'MAIN','Main','Prince Sultan Road','2322','Al-Murabba','Riyadh','23333',upper($3)) RETURNING id`,
+			f.tenantID, f.companyID, country).Scan(&f.storeID); e != nil {
 			return e
 		}
 		if e := tx.QueryRow(ctx, `
@@ -108,19 +124,25 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 			return e
 		}
 
-		if e := tx.QueryRow(ctx, `
-			INSERT INTO egs_unit
-			  (tenant_id, company_id, store_id, label, architecture,
-			   csr_organization_name, csr_organization_identifier)
-			VALUES ($1,$2,$3,'till-1','smart_pos','Demo Retail Co','311111111111113') RETURNING id`,
-			f.tenantID, f.companyID, f.storeID).Scan(&f.egsUnitID); e != nil {
-			return e
+		// An EGS unit is a ZATCA object, so only a market with the obligation
+		// gets one. Outside Saudi Arabia the counter has none and must still
+		// sell; `f.egsUnitID` stays uuid.Nil and the device's column is null.
+		if market.EInvoicingApplies(country) {
+			if e := tx.QueryRow(ctx, `
+				INSERT INTO egs_unit
+				  (tenant_id, company_id, store_id, label, architecture,
+				   csr_organization_name, csr_organization_identifier)
+				VALUES ($1,$2,$3,'till-1','smart_pos','Demo Retail Co','311111111111113') RETURNING id`,
+				f.tenantID, f.companyID, f.storeID).Scan(&f.egsUnitID); e != nil {
+				return e
+			}
 		}
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO device
 			  (tenant_id, company_id, store_id, terminal_label, status, egs_unit_id)
-			VALUES ($1,$2,$3,'Till 1','active',$4) RETURNING id`,
-			f.tenantID, f.companyID, f.storeID, f.egsUnitID).Scan(&f.deviceID); e != nil {
+			VALUES ($1,$2,$3,'Till 1','active',nullif($4,$5::uuid)) RETURNING id`,
+			f.tenantID, f.companyID, f.storeID, f.egsUnitID, uuid.Nil).
+			Scan(&f.deviceID); e != nil {
 			return e
 		}
 
@@ -289,16 +311,16 @@ func (h *harness) seedShopBeforeOpening(t *testing.T, roleKey string) *shopFixtu
 			INSERT INTO journal_line
 			  (tenant_id, entry_id, line_no, account_id, currency,
 			   debit, credit, base_debit, base_credit)
-			VALUES ($1,$2,1,$3,'SAR',600,0,600,0)`,
-			f.tenantID, entryID, inventoryID); e != nil {
+			VALUES ($1,$2,1,$3,$4,600,0,600,0)`,
+			f.tenantID, entryID, inventoryID, currency); e != nil {
 			return e
 		}
 		_, e := tx.Exec(ctx, `
 			INSERT INTO journal_line
 			  (tenant_id, entry_id, line_no, account_id, currency,
 			   debit, credit, base_debit, base_credit)
-			VALUES ($1,$2,2,$3,'SAR',0,600,0,600)`,
-			f.tenantID, entryID, cashID)
+			VALUES ($1,$2,2,$3,$4,0,600,0,600)`,
+			f.tenantID, entryID, cashID, currency)
 		return e
 	})
 	if err != nil {
