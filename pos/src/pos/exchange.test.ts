@@ -14,7 +14,7 @@ import {
   submitExchange,
   type ReplacementLine,
 } from './exchange';
-import type { ReturnableLine, ReturnSelection } from './returns';
+import type { ReturnableLine, ReturnSelection } from '@rawsyst/shared/pos/returns';
 import type { CachedVariant } from '../offline/catalogue';
 
 const returnable: ReturnableLine[] = [

@@ -8,8 +8,8 @@ import {
   type StationeryStore,
 } from './stationery';
 import type { CachedStationery } from './sqlite';
-import { buildReceipt, renderReceipt, wrap } from '../pos/receipt';
-import type { CartLine, CartTender, CartTotals } from '../pos/cart';
+import { buildReceipt, renderReceipt, wrap } from '@rawsyst/shared/pos/receipt';
+import type { CartLine, CartTender, CartTotals } from '@rawsyst/shared/pos/cart';
 
 /** A terminal's local store, in memory. */
 class MemoryStore implements StationeryStore {

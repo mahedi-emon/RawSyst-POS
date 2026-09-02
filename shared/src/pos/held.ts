@@ -24,7 +24,7 @@
 // about at close; it is a customer who left. They expire, so the list a cashier
 // sees on Monday is not last week's ghosts.
 
-import type { Translate } from '@rawsyst/shared/i18n/strings';
+import type { Translate } from '../i18n/strings';
 
 import type { CartLine, CartTender } from './cart';
 

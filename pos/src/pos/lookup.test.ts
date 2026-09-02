@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { fetchReturnable, lookUpSale, submitReturn } from './returns';
+import { fetchReturnable, lookUpSale, submitReturn } from '@rawsyst/shared/pos/returns';
 import { submitExchange } from './exchange';
 
 /** Records what was asked for, and answers as the server would. */

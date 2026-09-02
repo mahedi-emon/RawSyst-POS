@@ -33,7 +33,7 @@ import {
   type InvoiceMatch,
   type ReturnableLine,
   type ReturnSelection,
-} from './returns';
+} from '@rawsyst/shared/pos/returns';
 import {
   previewDifference,
   readyToExchange,

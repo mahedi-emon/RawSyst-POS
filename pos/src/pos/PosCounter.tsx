@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { scan } from '../api/pos';
-import { handleCounterKey } from './keys';
+import { handleCounterKey } from '@rawsyst/shared/pos/keys';
 import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
 import { useAuth } from '@rawsyst/shared/auth/session';
 import { money, shortDate } from '@rawsyst/shared/ui/format';
@@ -39,9 +39,9 @@ import {
   totalCart,
   type CartLine,
   type CartTender,
-} from './cart';
+} from '@rawsyst/shared/pos/cart';
 import type { OfflineSalePayload } from '../offline/queue';
-import type { HeldCart } from './held';
+import type { HeldCart } from '@rawsyst/shared/pos/held';
 import { CustomerPicker } from './CustomerPicker';
 import {
   accountTender,
@@ -50,7 +50,7 @@ import {
   type CounterCustomer,
 } from './customer';
 import { major, minor } from '@rawsyst/shared/receivables/receivables';
-import { buildReceipt, renderReceipt, type Receipt } from './receipt';
+import { buildReceipt, renderReceipt, type Receipt } from '@rawsyst/shared/pos/receipt';
 
 /** The VAT rate shown while ringing up.
  *

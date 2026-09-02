@@ -29,7 +29,7 @@ import { pushBatch } from '../api/pos';
 import { SaleQueue, type OfflineSalePayload, type QueueCounts } from './queue';
 import { Catalogue } from './catalogue';
 import { Customers } from './customers';
-import { HeldCarts } from '../pos/held';
+import { HeldCarts } from '@rawsyst/shared/pos/held';
 import {
   ConnectivityMonitor,
   DEFAULT_CONNECTIVITY,

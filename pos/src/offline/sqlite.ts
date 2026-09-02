@@ -18,7 +18,7 @@ import type {
   QueuedSale,
   SettledState,
 } from './queue';
-import type { HeldCart, HeldCartStore } from '../pos/held';
+import type { HeldCart, HeldCartStore } from '@rawsyst/shared/pos/held';
 import type {
   CachedVariant,
   CatalogueCursor,

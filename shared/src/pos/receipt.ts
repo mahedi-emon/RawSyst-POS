@@ -26,7 +26,7 @@
 // The figures shown are the terminal's own, computed by `totalCart`, which is
 // why they are marked as provisional where the server may yet disagree.
 
-import type { Key, Translate } from '@rawsyst/shared/i18n/strings';
+import type { Key, Translate } from '../i18n/strings';
 
 import type { CartLine, CartTender } from './cart';
 import type { CartTotals } from './cart';

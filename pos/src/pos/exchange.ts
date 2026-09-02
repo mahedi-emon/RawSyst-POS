@@ -26,7 +26,7 @@
 
 import type { Client } from '@rawsyst/shared/api/client';
 import type { CachedVariant } from '../offline/catalogue';
-import type { ReturnableLine, ReturnSelection } from './returns';
+import type { ReturnableLine, ReturnSelection } from '@rawsyst/shared/pos/returns';
 
 /** A tender settling the difference, in whichever direction it is owed. */
 export interface SettlementTender {
