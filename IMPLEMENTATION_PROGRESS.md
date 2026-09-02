@@ -72,7 +72,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 |---|---|---|---|
 | A | Platform & multi-tenancy | **COMPLETE** | `0001`–`0008`, RLS FORCE, `TestCrossTenantRead/Write`, `TestPlatformAdminHasNoBusinessDataAccess`, `TestConnectionCannotBypassRowLevelSecurity` |
 | B1 | Catalog & variants | **COMPLETE** | `catalog` 10 svc · 7 routes · 8 pkg + 21 api tests (`catalog_test`, `matrix_test`) |
-| B1b | **Bundles / kits** | **MISSING** | No table, no service, no route. Blueprint B1 product composition unimplemented |
+| B1b | **Bundles / kits** | **MISSING** | A `bundle_price` PROMOTION kind exists (`0084`), which prices several items together. B1 asks for something different: a product composed of component SKUs with **automatic proportional stock deduction of each component on sale**. No composition table, no component deduction |
 | B2 | Variant matrix | **COMPLETE** | `matrix_test.go` 5 tests; regeneration adds only what is missing |
 | B3 | Barcode & Label Studio | **COMPLETE** | `labels` 9 svc · 9 routes · 17 api tests (`studio_test`, `stationery_test`) |
 | B4 | Inventory core | **COMPLETE** | `inventory`+`stockops` 21 svc · 23 routes · 46 pkg + 28 api tests. FIFO/WAC/standard, landed cost (`0034`), negative-stock policy, transfers with in-transit status, counts, adjustments, **GL tie-out exact**, concurrency tests |
@@ -86,7 +86,8 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | B9 | Promotions & pricing | **PARTIAL** | `promotions` 5 svc · 4 routes · **16 pkg tests, 0 API tests**. Rules exist; no end-to-end test that a promotion actually alters a POS sale |
 | B10 | Returns / exchange | **COMPLETE** | `sales/refund.go`, `exchange.go`, C14 effects, `exchange_test` 9 tests |
 | B11 | Quotation → Order → Delivery | **COMPLETE** | `orders` 8 svc · 8 routes · 11 tests; `aftersales` delivery 4 routes |
-| B12 | **Wholesale / B2B** | **PARTIAL** | `customer_type` in (retail, wholesale, vip) exists and is used by promotions/receivables. **`variant.price_dealer` is stored (`0010`) and read by NO Go code** — a wholesale customer is not charged dealer pricing. **No MOQ rules, no bulk-quantity discount tiers.** Credit limit exists (per company — see P22) |
+| B12 | **Wholesale / B2B** | **PARTIAL** | **Tier pricing FIXED 2026-09-02**: a `wholesale` customer is now charged `price_wholesale` (5 tests). **MOQ is implemented** — `orders.checkWholesaleMinimums` enforces `variant.min_wholesale_qty` on `channel='wholesale'` (2 tests); an earlier draft of this audit wrongly called it missing. Bulk discounts are expressible through promotions (`buy_x_get_y`, `bundle_price`). Credit limit exists (per company — see P22). **Remaining:** `price_dealer` still has no customer type that selects it (see below), and wholesale is signalled two ways — `customer.customer_type` for pricing, `order.channel` for MOQ — which nothing reconciles |
+| B12a | **`price_dealer` has no owner** | **BLOCKED (specification)** | B1 lists a Dealer/Corporate price tier; B16 lists customer types Retail / Wholesale / VIP. **No customer type selects the dealer price**, and VIP is a loyalty tier in B16, not a price tier. Wiring dealer to VIP, or adding a fourth customer type, would be inventing a rule. **Needs the owner's decision**, not code |
 | B13 | Online orders | **PARTIAL** | `orders.Channel` defaults to `store`; delivery workflow exists. No storefront order intake beyond the customer portal |
 | B14 | EMI / instalments | **COMPLETE** | `0088`, 7 routes, `aftersales_test` |
 | B15 | Warranty / serial / service | **COMPLETE** | `0088`, serials + service-jobs routes, `TestASerialCarriesItsWarrantyFromTheSale` |
@@ -144,9 +145,12 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 
 ### Critical findings from this audit
 
-1. **`variant.price_dealer` is dead.** Stored since `0010`, read by nothing. A
-   wholesale customer pays retail. Data-integrity-adjacent: the column implies a
-   behaviour the product does not have.
+1. ~~**`variant.price_dealer` is dead.**~~ **HALF FIXED 2026-09-02.** Tier
+   pricing now applies: a `wholesale` customer is charged `price_wholesale`,
+   with a documented fallback to retail when none is set, and the join is scoped
+   to the variant's own company so another company's customer cannot reprice a
+   scan. **`price_dealer` remains unread** because no customer type in B16
+   selects it — a specification gap for the owner, not a coding one.
 2. **Billing has no tests at all** — 14 service methods covering plans, feature
    entitlement, invoicing and dunning. Feature flags gate what a tenant may use,
    so a defect here is a licensing and access issue, not just a billing one.
@@ -266,9 +270,9 @@ Ordered by risk, not by size. Everything here is backend; the frontend is still
 out of scope.
 
 **P0 — correctness and data integrity**
-1. **Wholesale dealer pricing** — either apply `price_dealer` for
-   `customer_type = 'wholesale'` or drop the column. A stored price nothing
-   reads is a promise the product does not keep.
+1. ~~**Wholesale tier pricing**~~ **DONE 2026-09-02.** Awaiting the owner's
+   decision on who pays `price_dealer` before that column is either wired or
+   dropped.
 2. **Tests for billing/feature entitlement** — `Allows`/`Entitlements` gate what
    a tenant may use. Untested access control is a security matter.
 3. **Tests for the approval decision path** — `Decide`, `Escalate`, `Delegate`,

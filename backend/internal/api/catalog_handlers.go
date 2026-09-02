@@ -293,7 +293,21 @@ func (s *Server) handleScanBarcode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.catalog.FindByBarcode(r.Context(), a.TenantID, companyID, barcode)
+	// Optional. A walk-in has no customer and pays retail; a wholesale customer
+	// named here is charged the wholesale price. The till already knows which
+	// customer is on the cart — this is the same id it will put on the sale.
+	var customerID *uuid.UUID
+	if raw := r.URL.Query().Get("customer_id"); raw != "" {
+		id, e := parseUUID(raw, "customer_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		customerID = &id
+	}
+
+	out, err := s.catalog.FindByBarcode(r.Context(), a.TenantID, companyID,
+		barcode, customerID)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

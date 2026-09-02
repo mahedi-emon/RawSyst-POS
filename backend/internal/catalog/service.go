@@ -175,19 +175,66 @@ func (s *Service) ListProducts(
 	return out, err
 }
 
-// FindByBarcode is the till's lookup: one scan, one variant.
+// FindByBarcode is the till's lookup: one scan, one variant, at the price that
+// customer pays.
+//
+// # Why the customer is a parameter
+//
+// B1 gives a product three sellable prices — retail, wholesale and
+// dealer/corporate — and B16 gives a customer a type. Until now this returned
+// `price_retail` unconditionally, so a wholesale customer was charged the retail
+// price: `price_wholesale` was written only by the importer and read by nothing,
+// and `price_dealer` was read and written by nothing at all. Migration 0035 even
+// says of `customer_type` that it "drives which price list applies later" — this
+// is later.
+//
+// `customerID` is optional. A walk-in has no customer and pays retail, which is
+// the same answer the till got before, so a scan with no customer is unchanged.
+//
+// # What is deliberately NOT decided here
+//
+// **VIP.** B16's customer types are Retail / Wholesale / VIP, and B1's price
+// tiers are Retail / Wholesale / Dealer-Corporate. VIP is not a price tier in
+// B1 — it appears in B16 as a LOYALTY tier (Bronze/Silver/Gold/VIP) with
+// "tier-based perks", which is a different mechanism. So a VIP customer pays
+// retail here, and any VIP discount belongs to the loyalty and promotions
+// engines that already exist.
+//
+// **Dealer/corporate.** No customer type selects `price_dealer`: B16 does not
+// list a dealer or corporate customer type, so nothing in the specification says
+// who pays that price. Wiring it to VIP, or inventing a fourth customer type,
+// would be inventing a business rule. The column stays unread, and the gap is
+// recorded in IMPLEMENTATION_PROGRESS.md for the owner to settle.
+//
+// # A missing wholesale price falls back to retail
+//
+// A shop that has not set a wholesale price sells at retail rather than being
+// refused. `price_wholesale` is nullable and most shops will never fill it in,
+// and a null there means "not set", not "free" and not "unsellable".
 func (s *Service) FindByBarcode(
 	ctx context.Context, tenantID, companyID uuid.UUID, barcode string,
+	customerID *uuid.UUID,
 ) (VariantSummary, error) {
 	var out VariantSummary
 	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
 		var attrs []byte
 		var price string
+		// The join is scoped to the same company as the variant, so naming
+		// another company's customer selects no row and the price stays retail
+		// rather than reaching across a boundary to price a sale.
 		e := tx.QueryRow(ctx, `
-			SELECT v.id, v.sku, v.attributes, v.price_retail::text, v.is_active
+			SELECT v.id, v.sku, v.attributes,
+			       CASE
+			         WHEN c.customer_type = 'wholesale'
+			           THEN coalesce(v.price_wholesale, v.price_retail)
+			         ELSE v.price_retail
+			       END::text,
+			       v.is_active
 			FROM variant v
+			LEFT JOIN customer c
+			       ON c.id = $3 AND c.company_id = v.company_id
 			WHERE v.company_id = $1 AND v.barcode = $2`,
-			companyID, barcode).
+			companyID, barcode, customerID).
 			Scan(&out.ID, &out.SKU, &attrs, &price, &out.IsActive)
 
 		if errors.Is(e, pgx.ErrNoRows) {
