@@ -73,7 +73,7 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 | 13 | Motion / Framer | ✅ installed | `motion-framer@claude-design-skillstack` (`freshtechbro/claudedesignskills`) | project | `claude plugin list` → enabled |
 | 14 | Convex Agent Skills | ✅ installed (entry point) | skill `convex` — the repo's own documented top-level router into the other 31 Convex skills | project | Loaded and listed this session |
 | 15 / 20 | Vercel React Native | ✅ installed | skill `vercel-react-native-skills` | project | Loaded and listed this session |
-| 16 | Google Stitch | ✅ installed + MCP configured | `stitch-design`, `stitch-build`, `stitch-utilities` from `google-labs-code/stitch-skills`, plus the hosted MCP at `https://stitch.googleapis.com/mcp` — §5 | project | `claude plugin list` → 3 plugins enabled; MCP `tools/list` → 15 tools |
+| 16 | Google Stitch | ✅ installed + MCP connected | `stitch-design`, `stitch-build`, `stitch-utilities` from `google-labs-code/stitch-skills`, plus the hosted MCP at `https://stitch.googleapis.com/mcp`, `X-Goog-Api-Key` auth — §5 | project | `claude plugin list` → 3 plugins enabled; `claude mcp list` → `stitch: ✔ Connected`; `tools/list` → 15 tools |
 | 17 | Vercel Web Design Guidelines | ✅ installed | skill `web-design-guidelines` | project | Loaded and listed this session |
 | 18 | Vercel Composition Patterns | ✅ installed | skill `vercel-composition-patterns` | project | Loaded and listed this session |
 | 19 | Vercel Building Components | ↔ superseded | Folded into `vercel-composition-patterns`, whose own description is "building flexible component libraries, designing reusable APIs… compound components". There is no separate skill in the repo | project | Skill body read and confirmed |
@@ -252,37 +252,65 @@ your environment before starting Claude Code (the CLI also honours
 `TWENTYFIRST_TOKEN`). **Set it in the environment, never in `.mcp.json`** — that
 file is committed.
 
-### Google Stitch — MCP now configured
+### Google Stitch — MCP connected
 
-An earlier version of this document said Stitch's MCP URL was issued per
-account. That was wrong. It is a **fixed public endpoint** authenticated by a
-header, which the Stitch skills themselves document: they look for an
-`X-Goog-Api-Key` header and an optional `httpUrl` "defaulting to
-`https://stitch.googleapis.com`".
-
-So it is configured, the same way as 21st:
+The endpoint is a **fixed public host**, not a per-account URL:
+`https://stitch.googleapis.com/mcp`, authenticated by an `X-Goog-Api-Key`
+header. That is what Stitch's own documented setup uses
+(https://stitch.withgoogle.com/docs/mcp/setup/, linked from the
+`google-labs-code/stitch-skills` README), and it is what the installed skills
+read — `upload-to-stitch` looks for "the `X-Goog-Api-Key` header" and an
+`--api-url` "defaulting to `https://stitch.googleapis.com`".
 
 ```json
 "stitch": {
   "type": "http",
   "url": "https://stitch.googleapis.com/mcp",
-  "headers": { "X-Goog-Api-Key": "${STITCH_API_KEY:-}" }
+  "headers": { "X-Goog-Api-Key": "${STITCH_API_KEY}" }
 }
 ```
 
-Verified live and unauthenticated: `initialize` returns a valid handshake
-(`StatelessServer`, protocol `2024-11-05`) and `tools/list` returns **15 tools**
-— `create_project`, `list_screens`, `generate_screen_from_text`, `edit_screens`,
-`generate_variants`, `upload_design_md`, `create_design_system`,
-`apply_design_system` and the rest. Discovery works with no key at all.
+**The `:-` default is deliberately absent, and that is the whole fix.** This
+entry previously read `${STITCH_API_KEY:-}`. With `STITCH_API_KEY` unset that
+expands to an *empty* header value, and Claude Code reads an empty credential
+as "no credential configured" — so instead of connecting it began an OAuth
+handshake: it fetched
+`https://stitch.googleapis.com/.well-known/oauth-protected-resource/mcp`
+(HTTP 200, `authorization_servers: ["https://accounts.google.com/"]`), then
+Google's authorization-server metadata, which has **no `registration_endpoint`**
+because Google does not implement RFC 7591 Dynamic Client Registration. Claude
+Code gave up with:
 
-**Tool calls will need a key.** Set `STITCH_API_KEY` in your environment when
-you want to actually generate a screen. Until then the server connects and lists
-its tools, which is strictly better than an entry that fails to load.
+```
+stitch: ✘ Failed to connect — Incompatible auth server: does not support
+dynamic client registration
+```
 
-Nothing was invented: the URL came out of the Stitch skills' own text and was
-confirmed by probing three candidate paths — the bare host 404s, `/v1/mcp`
-404s, `/mcp` answers.
+That error was never about Stitch being unreachable. Written without the `:-`,
+an unset variable makes Claude Code omit the header rather than blank it, the
+OAuth path is never entered, and the config warning names the real problem:
+`Missing environment variables: STITCH_API_KEY`.
+
+Verified after the change: `claude mcp list` → **`stitch: ✔ Connected`**, and
+`tools/list` returns **15 tools** — `create_project`, `get_project`,
+`delete_project`, `list_projects`, `list_screens`, `get_screen`,
+`generate_screen_from_text`, `edit_screens`, `generate_variants`,
+`upload_design_md`, `create_design_system`,
+`create_design_system_from_design_md`, `update_design_system`,
+`list_design_systems`, `apply_design_system`. Handshake and discovery need no
+key at all.
+
+**Tool calls will need a key.** Get one from
+https://stitch.withgoogle.com/settings → **API Keys** → **Create API Key**, then
+set it in your environment before starting Claude Code — never in `.mcp.json`,
+which is committed:
+
+```powershell
+setx STITCH_API_KEY "<the key>"   # user-scope, persists; reopen the terminal
+```
+
+There is no OAuth, no client ID and no `gcloud` login in Stitch's supported
+Claude Code setup; the API key is the whole mechanism.
 
 ---
 
@@ -301,6 +329,12 @@ npx plugins add google-labs-code/stitch-skills --scope project --target claude-c
 npm install -g @21st-dev/cli@latest
 21st login
 ```
+
+The two hosted MCP servers also need their keys set per machine, in the
+environment rather than in any file: `STITCH_API_KEY` from
+https://stitch.withgoogle.com/settings and `API_KEY_21ST` from
+https://21st.dev/mcp. Both servers connect without them; only tool *calls*
+fail.
 
 The seven `21st-*` skill files themselves ARE committed under `.claude/skills/`,
 so they need no reinstall; only the login is per-machine. `.21st/skills.lock`,
@@ -373,8 +407,10 @@ yours to make, not theirs.
 | Declaring `@skiper-ui` breaks CLI search | Tested, observed, reverted |
 | 21st CLI authenticated and answering | `21st whoami` → "Logged in as mahedi-emon"; `21st usage` → free tier, 2/2 retrievals left; `21st search "dashboard"` → 8 results |
 | 21st **MCP** reachable, not authenticated | `POST https://21st.dev/api/mcp` with an `initialize` body → **HTTP 401**. The URL and transport are right; the key is absent. No tool call through it is claimed to work |
-| Stitch MCP live and enumerable | `initialize` → `StatelessServer`, protocol 2024-11-05; `tools/list` → **15 tools**. Tool *calls* will need `STITCH_API_KEY` |
-| No secret in any committed file | Both hosted servers read their key from the environment with `${VAR:-}`. `~/.config/21st/auth.json` is user scope, outside the repo |
+| Stitch MCP connected, not just reachable | `claude mcp list` → `stitch: ✔ Connected`. `initialize` → `StatelessServer`, protocol 2024-11-05; `tools/list` → **15 tools**. Tool *calls* will need `STITCH_API_KEY` |
+| The Stitch DCR failure was caused by the empty header, not by the endpoint | Same config with a non-empty `STITCH_API_KEY` in the environment → `✔ Connected`; with `${STITCH_API_KEY:-}` and the variable unset → `Incompatible auth server: does not support dynamic client registration`. `https://accounts.google.com/.well-known/openid-configuration` has no `registration_endpoint` |
+| Stitch's auth method is an API key, per its own docs | `google-labs-code/stitch-skills` README points at https://stitch.withgoogle.com/docs/mcp/setup/; `upload-to-stitch/SKILL.md` reads the key "from the `X-Goog-Api-Key` header" |
+| No secret in any committed file | Both hosted servers read their key from the environment (`${STITCH_API_KEY}`, `${API_KEY_21ST:-}`). `~/.config/21st/auth.json` is user scope, outside the repo |
 | 16 project skills, every frontmatter `name` matching its directory | Checked across `.claude/skills/*/SKILL.md` |
 | The RawSyst design-system skill describes code that exists | `node .claude/skills/rawsyst-design-system/verify.mjs` → 0 undefined classes, 0 undefined custom properties, 0 missing paths, against 820 classes and 70 properties |
 | No dependency added to the product | `git diff` on `package.json` is the `registries` key alone; `package-lock.json` unchanged |
