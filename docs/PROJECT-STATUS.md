@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Last updated** | 2026-09-02 |
-| **Branch** | `main` @ `32bc9d5` |
+| **Last updated** | 2026-09-02 (verification pass + `0103`; see §3's dated entry) |
+| **Branch** | `main` @ `2c22cf5` |
 | **Backend** | 190 Go files, ~58,000 lines, 1,285 integration tests + 425 unit tests, 70 migrations |
 | **HTTP routes live** | 109 — auth, e-invoicing onboarding (status, compliance CSID, production CSID, renewal), invoice reprint (logged), branding (company logo upload/replace/remove/serve), onboarding, platform, card settlement (pending / record deposit / read batch), POS (incl. signed-document upload), sync, shifts (open, current, peek, X-report, cash drop, Z-report close), statements, VAT return, catalogue (incl. offline snapshot), returnable lines, exchanges, dashboard + drill-through, purchasing (suppliers, orders, receipts, bills, three-way match, payments, payment reversal, ageing, supplier edit/retire), customers and receivables (accounts, credit limits, ledger, open invoices, receipts, receipt reversal, ageing, till snapshot), terminals (register, enrol, identity, branches, rename/reassign, pause, revoke), companies, reachability ping |
 | **Binaries** | `api`, `worker`, `migrate`, `lintwording` |
@@ -182,6 +182,89 @@ fixing it involves.
 | ~~P87~~ | ~~**An unknown item at the till answered 500.**~~ **DONE.** A stock movement naming a variant that is not in this company's catalogue was caught by the foreign key, and the raw driver error travelled to the API as "Something went wrong on our side". Nothing is wrong on our side: it is a barcode to rescan or a product to add, and a cashier told the server is broken calls the shop's IT instead of doing either. | Reachable from a sale, a return, an exchange and an offline replay. The existing exchange test asserted only "not 201" and accepted the 500. | — |
 | ~~P88~~ | ~~**The leaked `sale.revenue` test rule.**~~ **DONE** (0070). A development database carried a version 2 of `sale.revenue`, effective 2026-09-01, naming a role no chart maps — left by an earlier form of `TestARuleIsResolvedAtTheTransactionDate`, which edited a real rule. From 1 September no sale could post in that database at all. **Superseded rather than deleted**: `posting_rule` carries `reject_delete()` and a frozen trigger, and removing the row needs `session_replication_role = replica`, which disables EVERY trigger on the connection — journal immutability, the period lock, the write-once stamp. Turning all of that off to tidy one row is a far worse trade than the row. A version 3 carrying the correct lines from the same date wins on the registry's own resolution order, and the migration is guarded on the bad row being present so it does nothing on a clean database. | The two tests that found it walked every stored version's roles rather than the version that would resolve, so they also reported a permanently-superseded row as a defect. They now ask the question the posting engine asks, at every date a rule changes shape. | — |
 | **P19** | **No PDPL-specific implementation.** Audit logging and RLS exist; consent records, data-subject access/erasure, and the retention schedule do not. | Required before a Saudi go-live. | Depends on legal review (§ open questions in `00-architecture-overview.md`). |
+
+---
+
+### 2026-09-02 — the international directive: verification, the market, and the two things that block it
+
+A full verification pass was run against the code rather than against this
+document, under a directive that reorients the product: **an international
+business-management platform with an integrated POS, ZATCA skipped, web
+first**, serving Bangladesh, Saudi Arabia and International.
+
+**Everything that exists, passes.** `go build` · `go vet` clean;
+`go test -tags=integration ./...` with `RAWSYST_DB_DSN` set is green across all
+20 packages that have tests — `internal/api` alone runs 1,034s and
+`platform/db` 836s, so this is real database work and not a suite that skipped.
+Front end: 667 tests, `tsc --noEmit` clean.
+
+**This document was understating the code.** It said 70 migrations; there are
+102. **P44 was stale**: it recorded stock adjustments, counts and transfers as
+Phase 2 with "seeded permissions and no route", and `internal/stockops`
+(adjust · count · transfer · read) has been built with ~14 live routes under
+`/api/v1/stock/*` the whole time. Verify in both directions.
+
+#### Done in this pass
+
+| | |
+|---|---|
+| **The market is now the platform operator's choice** | Migration `0103` puts `market` on `tenant`, backfilled from each tenant's existing company country rather than defaulted. `provisioning.NewTenant` requires it — deliberately unlike `plan_tier` and `data_region`, which default — because the market decides which country's tax rules every future sale is calculated with. Onboarding holds the Owner to it, at `CommitBusinessInfo` (the authority, which any caller meets) and again in the wizard (so the refusal lands on the field). Four new integration tests. |
+| **The operator can create a business** | `POST /api/v1/platform/tenants` existed and **no front end called it**. `PlatformArea` now has the form — name, market, plan, region, owner — and shows the one-time temporary password on a `.plat__once` list that is monospaced and `user-select: all`, because it is read aloud or copied and never stored readably. The tenant list gained a Market column. |
+| **The POS's pure logic now lives in `shared/`** | `cart` · `keys` · `receipt` · `held` · `returns` (+ their tests) moved to `shared/src/pos/`, `decimal.js` with them. They were already free of Tauri; the only thing keeping them in the till app was where the files sat. Test counts unchanged (667), which is the point. |
+
+#### The counter model — business → shop → counters → user → session → sale
+
+Both blockers below were closed in the same pass, because they were the same
+assumption wearing two hats: **that a till is a Saudi machine**.
+
+| | |
+|---|---|
+| **`0104` — `device.binding`** | A counter is still a `device` row; there is no second POS. What the column records is only how a session on it is authorised. `session`: any user the RBAC scope allows, proved by their own sign-in — the web counter, created `active` because there is no machine to wait for. `paired`: the enrolled machine only, proved by the secret in its OS keystore — every counter that existed before, backfilled by adding the column with `paired` as its default (a column default reaches every row; an `UPDATE` would have matched none under FORCE RLS, silently). **Enrolling moves a counter from `session` to `paired`**, in the same statement that writes the secret, with a CHECK making the pair unrepresentable — so a shop runs on browsers now and pairs a locked-down till to the busy counter later, on the same API, keeping that counter's history and its chain. |
+| **`POST /api/v1/pos/counter-sessions`** | Binds the caller's *own* session to a counter and re-issues *their* access token with `did` set. Not a new sign-in: same session id, same user, same company scopes. **No refresh token** — standing at a till is not a reason to stay signed in longer, and when the access token expires every check runs again, which is how a counter paused or revoked in between takes effect. The company is resolved from the counter rather than accepted from the caller. `GET /api/v1/pos/counters` lists only what would actually work — active, session-bound, in a shop the caller's scope reaches; a paired counter is absent rather than shown-and-refused. |
+| **`0105` + `registry.vatRateKeyFor`** | `VATRate` asked for the constant key `SA.VAT.STANDARD_RATE` while passing the caller's country beside it, so a Bangladeshi sale asked for Saudi Arabia's rule filtered to Bangladesh and matched nothing. The key is now derived from the country. `BD.VAT.STANDARD_RATE` is seeded as an **unverified placeholder** with the NBR named — Bangladesh applies several rates and supplementary duty, which one value does not express. The US is deliberately still absent: its sales tax needs a jurisdiction, not a country. |
+| **`internal/market`** | One function, `EInvoicingApplies(country)`, so `country == "sa"` lives in one place instead of in every module that has to care. |
+
+**The security trade-off, stated plainly:** a `session` counter is proved by a
+permission, not by a machine. A stolen user session can open any counter that
+user's scope allows, where before it could not ring up a sale at all.
+Everything else still applies — tenant isolation, the route permission, company
+and store scope, an open shift, and an audit trail naming the user *and* the
+counter. `paired` remains available and is not overridable by the weaker
+authority: a browser is refused on a paired counter by name.
+
+Five integration tests cover it: a Bangladeshi shop sells **and writes no
+`zatca_invoice` row**; a Saudi terminal with its unit removed is **still**
+refused; a person's ordinary session cannot sell until it opens a counter and
+can immediately after; a paired counter refuses the browser and is not offered;
+and two counters in one shop sell into **two different cash sessions** — the
+fact that decides whose drawer is short.
+
+#### The two things that blocked the directive (both now closed)
+
+**🔴 A shop outside Saudi Arabia could not ring up a sale — FIXED above.**
+`sales.resolveTerminal`
+refuses any terminal whose `egs_unit_id` is null — *"This terminal has not been
+onboarded for e-invoicing yet"* — and it refuses **regardless of country**. The
+only way to get an EGS unit is `egs.Service.Create`, whose fields are a ZATCA
+CSR (`csr_organization_identifier`, `csr_invoice_type`, …); provisioning never
+creates one. So the Saudi compliance object is a hard prerequisite of the sale
+path in every market. A Bangladeshi or American shop can be provisioned, set
+up, stocked and paired, and then cannot sell. **This is the first thing to fix
+under the directive** — the EGS unit needs to become required only where the
+market requires it, with a non-Saudi terminal resolving a chain-free equivalent.
+
+**🟠 A browser POS had no terminal identity — FIXED above.** The sale routes take the device
+from the token (`did`), which only a paired terminal carries; a signed-in
+person's session has `DeviceID == uuid.Nil`, and `resolveTerminal` refuses it by
+design. The owner's decision on 2026-09-02 was to **build the web POS
+online-only first** and settle offline custody later — but online-only still
+needs to say which till is selling. Nothing in the codebase mints a
+device-bound token for a browser session today. The minimal shape that adds no
+browser-stored secret: a permission-gated route that binds an existing user
+session to a terminal the caller's scope already allows, minting an access
+token carrying `did` with the normal short lifetime. **It is a security-model
+decision and has not been taken** — the Tauri model proves the machine with a
+secret in the OS keystore, and this would prove it with a permission instead.
 
 ---
 
