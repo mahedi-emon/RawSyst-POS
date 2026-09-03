@@ -238,8 +238,15 @@ func (h *harness) seedUserWithRole(t *testing.T, roleKey string) string {
 	// design, so the second half runs in tenant context.
 	var tenantID, userID uuid.UUID
 	err = h.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// On the top tier, because a fixture exists to test the module under
+		// test and not the subscription in front of it. H5's gate is real now
+		// (see entitlement.go), so a starter tenant would be refused payroll,
+		// loyalty, analytics and the rest with a 402 -- correct behaviour, and
+		// nothing to do with what those tests are checking. The gate has its
+		// own tests, which provision the tier they mean to exercise.
 		if err := tx.QueryRow(ctx,
-			`INSERT INTO tenant (name) VALUES ($1) RETURNING id`, email).
+			`INSERT INTO tenant (name, plan_tier) VALUES ($1, 'enterprise')
+			 RETURNING id`, email).
 			Scan(&tenantID); err != nil {
 			return err
 		}

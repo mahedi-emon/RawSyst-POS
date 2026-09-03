@@ -57,6 +57,16 @@ const (
 
 	// CodeLimitReached is returned when a plan ceiling would be exceeded.
 	CodeLimitReached Code = "plan_limit_reached"
+
+	// CodeFeatureNotInPlan is a module the tenant's subscription does not
+	// include (H5).
+	//
+	// Deliberately NOT CodeForbidden. The caller is authenticated and holds the
+	// permission; what is missing is a commercial entitlement, and the two have
+	// completely different remedies -- ask an owner for the permission, or
+	// upgrade the subscription. A client that could not tell them apart would
+	// send people to the wrong place, and 402 is the answer that says which.
+	CodeFeatureNotInPlan Code = "feature_not_in_plan"
 )
 
 // Error is the application error type.
@@ -89,6 +99,8 @@ func (e *Error) HTTPStatus() int {
 		return http.StatusNotFound
 	case CodeConflict, CodeImmutable, CodePeriodClosed, CodeLimitReached:
 		return http.StatusConflict
+	case CodeFeatureNotInPlan:
+		return http.StatusPaymentRequired
 	case CodeComplianceBlocked, CodeUnverifiedRule:
 		return http.StatusUnprocessableEntity
 	case CodeRateLimited:

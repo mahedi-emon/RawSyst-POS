@@ -910,3 +910,22 @@ func (s *Service) Dun(ctx context.Context) (int, error) {
 	})
 	return moved, db.Translate(err, "")
 }
+
+// Permits is Allows with its own transaction, for the request path.
+//
+// `Allows` takes the caller's transaction because it was written to be asked in
+// front of a handler that already holds one. The entitlement middleware runs
+// BEFORE any handler, so it holds nothing and opening a connection here is
+// safe — and is what lets the gate be a middleware rather than a line repeated
+// in every handler that could forget it.
+func (s *Service) Permits(
+	ctx context.Context, tenantID uuid.UUID, feature string,
+) (bool, error) {
+	var allowed bool
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		var e error
+		allowed, e = s.Allows(ctx, tx, tenantID, feature)
+		return e
+	})
+	return allowed, err
+}

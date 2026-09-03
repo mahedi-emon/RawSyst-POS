@@ -2170,6 +2170,16 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 		// something worth looking at.
 		handler := s.measured(rt)
 
+		// H5's subscription gate, where the route belongs to a module a plan
+		// sells. Wrapped INSIDE the access middleware below, so a caller who is
+		// not signed in gets 401 rather than being told what their plan
+		// contains -- an unauthenticated 402 would answer a question the caller
+		// has not earned the right to ask.
+		if feature := featureFor(rt.Pattern); feature != "" {
+			handler = http.HandlerFunc(
+				s.requireFeature(feature)(handler).ServeHTTP)
+		}
+
 		switch rt.Access {
 		case AccessPublic:
 			r.Method(rt.Method, rt.Pattern, handler)

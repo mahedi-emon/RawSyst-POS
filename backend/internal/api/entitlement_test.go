@@ -69,6 +69,7 @@ func setFeature(t *testing.T, h *harness, tenantID uuid.UUID, feature string, on
 func TestAPlanTierDecidesWhichFeaturesATenantGets(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner")
+	_ = tenantOnTier(t, h, f, "starter")
 
 	if !allows(t, h, f.tenantID, "promotions") {
 		t.Error("promotions is included in every tier and was refused")
@@ -85,6 +86,7 @@ func TestAPlanTierDecidesWhichFeaturesATenantGets(t *testing.T) {
 func TestATenantOverrideBeatsThePlanDefault(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner")
+	_ = tenantOnTier(t, h, f, "starter")
 
 	if allows(t, h, f.tenantID, "payroll") {
 		t.Fatal("payroll was already allowed; the fixture is not starter-tier")
@@ -121,6 +123,7 @@ func TestAnOverrideCanWithdrawAFeatureThePlanIncludes(t *testing.T) {
 func TestAnExpiredOverrideFallsBackToThePlan(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner")
+	_ = tenantOnTier(t, h, f, "starter")
 
 	setFeature(t, h, f.tenantID, "payroll", true, "2020-01-01")
 
@@ -146,6 +149,8 @@ func TestAFeatureGrantDoesNotLeakToAnotherTenant(t *testing.T) {
 	h := newHarness(t)
 	mine := h.seedShop(t, "owner")
 	theirs := h.seedShop(t, "owner")
+	_ = tenantOnTier(t, h, mine, "starter")
+	_ = tenantOnTier(t, h, theirs, "starter")
 
 	setFeature(t, h, mine.tenantID, "payroll", true, "")
 
@@ -199,40 +204,14 @@ func TestATenantReadsItsOwnEntitlements(t *testing.T) {
 	}
 }
 
-// The gap, stated as a test rather than as a comment.
+// The gap this file used to record is closed.
 //
-// Every assertion above proves the RESOLUTION is right. Nothing calls it: the
-// only caller of Allows in the repository is this file. `Entitlements` reports,
-// and no middleware or handler refuses a request on the strength of it — so a
-// starter tenant, whose plan excludes payroll, reaches the payroll routes.
+// `TestEntitlementIsResolvedButNotYetEnforced` stood here and passed on purpose,
+// asserting that nothing refused a request on the strength of an entitlement.
+// Its own comment said to delete it the moment somebody wired the gate. That
+// happened -- see api/entitlement.go and the refusals in
+// entitlement_gate_test.go, which assert the 402 in the modules H5 gates.
 //
-// This test passes TODAY and is meant to. It fails the moment somebody wires
-// the gate, which is the signal to come back here, delete it, and replace it
-// with the refusal that should have been there. Written this way because a
-// known hole recorded only in prose is a hole nobody trips over.
-//
-// Priority is recorded in IMPLEMENTATION_PROGRESS.md: it is access control, not
-// billing, because plan tiers decide what a tenant may DO.
-func TestEntitlementIsResolvedButNotYetEnforced(t *testing.T) {
-	h := newHarness(t)
-	f := h.seedShop(t, "owner")
-	owner := h.login(t, f.email)
-
-	if allows(t, h, f.tenantID, "payroll") {
-		t.Fatal("the fixture's plan now includes payroll; pick another excluded feature")
-	}
-
-	// The plan says no. The route answers anyway.
-	resp := h.do(t, http.MethodGet,
-		"/api/v1/employees?company_id="+f.companyID.String(), owner, nil)
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusPaymentRequired {
-		t.Fatal("entitlement is now enforced — delete this test and assert the " +
-			"refusal properly, in every module H5 gates")
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Skipf("route answered %d for an unrelated reason; the gap is unproven here",
-			resp.StatusCode)
-	}
-}
+// The tests above continue to prove the RESOLUTION is right, and provision the
+// tier they mean to exercise rather than relying on the shared fixture, which
+// sits on the top tier so that a module test is not really a subscription test.
