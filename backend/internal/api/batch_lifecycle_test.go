@@ -98,7 +98,7 @@ func TestARecallNamesWhoBoughtFromTheLot(t *testing.T) {
 	receiveBatch(t, h, f, "SUSPECT", "20", "5.00", expiryIn(90))
 
 	customer := customerOfType(t, h, f, "retail")
-	sale := oneItemSale(f, newUUID(), "2", "115.00", "115.00")
+	sale := oneItemSale(f, newUUID(), "2", "115.00", "230.00")
 	sale["customer_id"] = customer.String()
 	sold := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token, sale)
 	sold.Body.Close()
@@ -131,7 +131,7 @@ func TestAnOwnerRecallingALotGetsTheCustomerList(t *testing.T) {
 	receiveBatch(t, h, f, "SUSPECT", "20", "5.00", expiryIn(90))
 
 	customer := customerOfType(t, h, f, "retail")
-	sale := oneItemSale(f, newUUID(), "2", "115.00", "115.00")
+	sale := oneItemSale(f, newUUID(), "2", "115.00", "230.00")
 	sale["customer_id"] = customer.String()
 	sold := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token, sale)
 	sold.Body.Close()

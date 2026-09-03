@@ -294,7 +294,6 @@ func TestSeededPermissionsWithNoRoute(t *testing.T) {
 		// the lock was enforced and the calendar it locked did not exist, so
 		// every posting in a company provisioned by this product was refused
 		// for want of a period. 0079 and 0080 built both modules.
-		"catalog.edit":                "awaited — Phase 2, product editing; Phase 1 creates and retires",
 		"accounting.approve":          "awaited — Phase 2, journal approval workflow",
 		"report.export":               "awaited — Phase 3, report generation and delivery (design 08 job kinds)",
 		"compliance.retry_submission": "awaited — deliberately not offered: submission is automatic and ordered, and the screen says so",

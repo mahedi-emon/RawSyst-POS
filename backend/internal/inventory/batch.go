@@ -55,7 +55,9 @@ func TracksBatches(
 		`SELECT tracks_batches FROM variant WHERE id = $1`, variantID).
 		Scan(&tracks)
 	if err == pgx.ErrNoRows {
-		return false, errs.New(errs.CodeNotFound, "That product was not found.")
+		return false, errs.New(errs.CodeNotFound,
+			"That item is not in this company's catalogue. Check the "+
+				"barcode, or add the item first.")
 	}
 	return tracks, err
 }

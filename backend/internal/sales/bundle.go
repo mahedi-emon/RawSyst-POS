@@ -46,7 +46,13 @@ func componentsOf(
 		`SELECT is_bundle FROM variant WHERE id = $1`, variantID).
 		Scan(&isBundle); err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, errs.New(errs.CodeNotFound, "That product was not found.")
+			// Worded for the person holding the scanner. This lookup is the
+			// first thing a sale does with a variant id, so it is where an
+			// item that is not in the catalogue is caught -- and "not found"
+			// alone tells a cashier nothing they can act on.
+			return nil, errs.New(errs.CodeNotFound,
+				"That item is not in this company's catalogue. Check the "+
+					"barcode, or add the item first.")
 		}
 		return nil, err
 	}

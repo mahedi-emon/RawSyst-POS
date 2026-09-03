@@ -70,7 +70,7 @@ const batchSelect = `
 	       coalesce(to_char(b.expires_on, 'YYYY-MM-DD'), ''),
 	       b.qty_received::text, b.qty_remaining::text,
 	       coalesce(b.unit_cost::text, ''),
-	       coalesce(s.name, ''),
+	       coalesce(s.legal_name, ''),
 	       CASE WHEN b.expires_on IS NULL THEN NULL
 	            ELSE (b.expires_on - current_date)::int END,
 	       coalesce(b.expires_on < current_date, false),
