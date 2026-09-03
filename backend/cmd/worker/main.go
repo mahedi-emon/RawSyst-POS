@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
@@ -96,6 +97,12 @@ func run() error {
 	// B4's expiring/expired lot alerts.
 	worker.Register(jobs.KindBatchExpirySweep,
 		jobs.NewBatchExpirySweeper(pool, notify.NewService(pool)))
+	// B13's lapsed stock holds. `expires_at` has always been recorded and
+	// nothing ever acted on it, so an abandoned unpaid basket held its units
+	// for ever.
+	worker.Register(jobs.KindReservationExpirySweep,
+		jobs.NewReservationExpirySweeper(pool, aftersales.NewService(pool)))
+
 	// D1's scheduled reports. The sweep finds the schedules whose turn it is
 	// and queues the sends; the figures are computed when each is rendered.
 	worker.Register(jobs.KindReportSweep,

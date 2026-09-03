@@ -364,6 +364,17 @@ func releaseOrderHolds(
 		return err
 	}
 
+	// Null rather than the zero uuid when nobody is behind this. The expiry
+	// sweep releases a lapsed hold on its own initiative, and writing
+	// 00000000-… would break the foreign key and, worse, name a person who
+	// did not do it. `created_by` is nullable precisely so a release can say
+	// "the system, on a deadline".
+	var by *uuid.UUID
+	if scope.UserID != uuid.Nil {
+		id := scope.UserID
+		by = &id
+	}
+
 	for _, h := range holds {
 		if _, e := tx.Exec(ctx, `
 			INSERT INTO stock_reservation
@@ -371,7 +382,7 @@ func releaseOrderHolds(
 			   order_id, created_by)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 			scope.TenantID, scope.CompanyID, h.variantID, h.warehouseID,
-			h.qty.Neg(), reason, orderID, scope.UserID); e != nil {
+			h.qty.Neg(), reason, orderID, by); e != nil {
 			return e
 		}
 	}

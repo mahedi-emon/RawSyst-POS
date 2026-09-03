@@ -112,7 +112,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | D5 | Approval centre | **COMPLETE** | `workflow` 12 svc · 10 routes, wired into `expenses.Record` and `purchasing.IssueOrder`. **A P0 defect that made the whole module unusable was found and fixed 2026-09-03** — see below. **10 end-to-end tests**: decision path (6) plus escalation on an elapsed deadline, no escalation inside it, an escalated request still decidable, and delegation refusing backwards cover |
 | D6 | Document management | **COMPLETE 2026-09-03** | `docs` 7 svc · 4 routes · **2 tests** (was isolation-only). Register lists, filing takes `document.manage`, and a cross-tenant read returns no rows |
 | D7 | Global search | **COMPLETE 2026-09-03** | `insight/search.go` · **3 tests**. Finds the fixture’s own product by name, answers empty for a miss rather than failing, and does not return another tenant’s catalogue |
-| E1 | ZATCA | **DEFERRED** | as instructed |
+| E1 | ZATCA | **DEFERRED — PRODUCTION PHASE** | Not blocked and not blocking. Existing code untouched; no other market depends on it |
 | E2 | Saudi tax engine | **COMPLETE** | multi-market treatments; rates now per treatment |
 | E3 | Payment methods | **COMPLETE** | gateways, providers, attempts, settlement |
 | E4 | PDPL / privacy | **COMPLETE 2026-09-03** | `privacy` 29 svc · 25 routes · **6 functional tests** (was isolation-only). Consent recorded → listed → withdrawn with `withdrawn_at` stamped; DSR opened → closed and dropping out of the `?open=true` list; breach incident logged and registered; ROPA read; permission enforced on all four registers. No defect found |
@@ -950,3 +950,57 @@ balances including current earnings; cash flow's opening plus movement is its
 closing, and that closing is the cash account; the payables ageing agrees with
 the AP control account; statements are drawn from the journal rather than from
 document state; and all four statements take `accounting.view`.
+
+---
+
+## Final completion check — 2026-09-03
+
+Evidence-based sweep of the whole backend rather than a re-audit of proven
+modules. Mechanical checks first: no duplicate migration versions, `0115` (a
+duplicate reservation table I created and reverted) is gone, no `.env` or key
+material tracked, and every one of the 18 `TODO`/`FIXME`/`placeholder` matches
+in non-test code is **prose describing the refuse-on-placeholder design**, not
+an actual placeholder. There is no `panic("not implemented")` anywhere.
+
+Client-supplied identity: `cashier_id` comes from the authenticated user,
+`company_id` is checked by `CanAccessCompany` at 23 call sites and walked over
+the whole route table by `company_confinement_walk_test.go`. The one
+`employee_id` read from a query string is a FILTER inside an already-scoped
+tenant and company, not a trust boundary.
+
+### One genuine defect found and fixed
+
+**`aftersales.ExpireHolds` was called by nothing.** No route, no job, no
+schedule — the function was written, correct, and unreachable.
+`stock_reservation.expires_at` was recorded on every hold and the deadline never
+arrived. B13 reserves against UNPAID online orders precisely so an abandoned
+basket cannot hold the last unit for ever, and that is exactly what happened:
+the unit became unsellable through every channel, permanently, with nothing
+anywhere saying why the shelf showed one and the till refused to sell it.
+
+Fixed by giving it the path it was written for — `jobs.ReservationExpirySweeper`,
+following the existing `LowStockSweeper` / `BatchExpirySweeper` pattern exactly
+and registered in the worker beside them. No new mechanism, no second
+reservation system.
+
+Fixing it exposed a second, smaller one: `releaseOrderHolds` wrote
+`created_by = scope.UserID` unconditionally, so a release with no human behind
+it violated the foreign key on the zero uuid. A sweep releasing a lapsed hold
+now writes NULL, which is what the nullable column is for — "the system, on a
+deadline" — rather than naming somebody who did not do it.
+
+### Reservation ledger, now proven end to end (8 tests)
+
+Holding takes effect · **releasing puts stock back on sale** · **a lapsed hold
+is released by the sweep** · **an unexpired hold survives it** · **a hold with
+no deadline is never swept** (null means "until the order resolves", which is a
+paid order's hold) · **eight concurrent channels each asking for all ten units
+yield exactly one** · holds do not cross tenants · holding takes
+`order.manage`.
+
+`Reserve` was already correct: it takes a transaction-scoped advisory lock on
+the variant and warehouse before reading availability, with a documented reason
+for advisory over `SELECT … FOR UPDATE` — there is nothing to lock before the
+first reservation, so two callers would both find nothing. The ledger is
+append-only by trigger, signed, and writes no stock movement, so the C13
+tie-out is unaffected.
