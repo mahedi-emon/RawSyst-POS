@@ -1151,3 +1151,75 @@ Completes the order and links the invoice · **moves stock and posts revenue
 moved nothing · billing twice yields one invoice · an undelivered order is
 refused by name · invoicing releases the stock hold · the route is
 permission-gated · one tenant cannot invoice another's order.
+
+---
+
+## Forensic audit findings, 2026-09-03
+
+Three defects found by reading the code rather than by a failing test. None had
+a failing test, because in each case nothing could reach the feature to fail.
+They are the same shape: **something the product enforces, with no path for
+anyone to change or complete it.**
+
+### 1. B11 could not complete — fixed
+
+See the *Order invoicing* section. `sales_order.invoice_id` was written by
+nothing, no route existed, and `internal/orders` touched neither stock nor
+accounting.
+
+### 2. The registry could not be written — fixed
+
+See the *Saudi payroll* section. Every unverified legal value was described as
+"an operations task" and the operation could only be performed with a SQL client
+against production.
+
+Fixing it exposed a hole in the fix: `RecordRule` allowed an unverified rule
+with **no note**, which is exactly what `TestUnverifiedRulesAreNotDisguised`
+forbids the database to contain. The write path could create the state the
+invariant exists to prevent. It now refuses.
+
+### 3. Tenant limits were enforced and unwritable — fixed
+
+`tenant_limit` gates companies, shops, users, terminals, SKUs, custom roles,
+storage and SMS credits. It is read by provisioning (which refuses a second
+company on a one-company plan), by identity (which refuses the sixth user on a
+plan selling five) and by the entitlement gate. It was written **once at
+signup** and then unreachable, so a tenant who upgraded could not be given the
+headroom they had paid for.
+
+`GET`/`PUT /api/v1/platform/tenants/{tenantID}/limits`, Super Admin only.
+
+Every field is optional, because a plan upgrade moves one or two numbers and
+requiring the whole set is how a storage limit gets reset by somebody adding a
+till. Lowering a limit below what is already in use is refused and names the
+figure: a limit gates the next thing created and does not delete what exists, so
+setting max_stores to 2 for a business running 5 would leave a state the product
+cannot express.
+
+4 tests, including that a business owner cannot raise their own allowances —
+which would be buying capacity without paying for it.
+
+### Also checked, and found sound
+
+* **Approvals genuinely block.** `Blocked` refuses with 403; `NeedsApproval`
+  rolls the transaction back, writes the request in its own transaction so it
+  survives the refusal, and returns `CodeComplianceBlocked`. Wired into expenses
+  and purchase-order issue.
+* **Idempotency on every money path**: sales (`alreadyRung`), customer receipts
+  (`alreadyTaken`), purchase bills, supplier payments, expenses, settlement,
+  stock movements, treasury transfers, and order invoicing.
+* **No real placeholders.** Four `panic(` calls in non-test code: two are
+  correct re-panics in recovery middleware, two are ZATCA compile-time constant
+  assertions. Every `TODO`/`placeholder` match is prose describing the
+  refuse-on-placeholder design.
+* **Migrations**: 117 files, 0001–0117, no duplicates, no gaps, strictly
+  increasing. The duplicate reservation migration created and reverted earlier
+  in this session is gone; 0088's ledger is the only reservation system.
+* **No secrets tracked.**
+
+### A note on searching
+
+Two findings in this session came from bad searches rather than bad code. A
+`grep … | head -3` hid the existing reservation system and led to a duplicate
+being built; a package-reference heuristic reported all 46 packages as
+unreachable and was discarded. A truncated search is not a search.

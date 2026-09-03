@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -254,4 +255,62 @@ func (s *Server) handleImportRates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"result": out})
+}
+
+type setLimitsRequest struct {
+	MaxCompanies   *int `json:"max_companies"`
+	MaxStores      *int `json:"max_stores"`
+	MaxUsers       *int `json:"max_users"`
+	MaxTerminals   *int `json:"max_terminals"`
+	MaxSKUs        *int `json:"max_skus"`
+	MaxCustomRoles *int `json:"max_custom_roles"`
+	MaxStorageMB   *int `json:"max_storage_mb"`
+	SMSCredits     *int `json:"sms_credits"`
+}
+
+func (s *Server) handleTenantLimits(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := parseUUID(chi.URLParam(r, "tenantID"), "tenantID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.billing.TenantLimits(r.Context(), tenantID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"limits": out})
+}
+
+// handleSetTenantLimits raises or lowers what a business is allowed.
+//
+// `tenant_limit` is enforced everywhere — provisioning refuses a second company
+// on a one-company plan, identity refuses the sixth user on a plan that sells
+// five — and it was written once at signup and then unreachable. A tenant that
+// upgraded could not be given the headroom they had paid for.
+func (s *Server) handleSetTenantLimits(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := parseUUID(chi.URLParam(r, "tenantID"), "tenantID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req setLimitsRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	out, err := s.billing.SetLimits(r.Context(), tenantID, a.UserID,
+		billing.LimitChange{
+			MaxCompanies: req.MaxCompanies, MaxStores: req.MaxStores,
+			MaxUsers: req.MaxUsers, MaxTerminals: req.MaxTerminals,
+			MaxSKUs: req.MaxSKUs, MaxCustomRoles: req.MaxCustomRoles,
+			MaxStorageMB: req.MaxStorageMB, SMSCredits: req.SMSCredits,
+		})
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"limits": out})
 }

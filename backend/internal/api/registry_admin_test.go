@@ -716,3 +716,114 @@ func jurisdictionByCode(
 	t.Fatalf("no jurisdiction with code %s", code)
 	return uuid.Nil
 }
+
+// --- tenant limits (A4) ---------------------------------------------------
+
+// A Platform Owner can raise what a business is allowed.
+//
+// `tenant_limit` is enforced everywhere — provisioning refuses a second company
+// on a one-company plan, identity refuses the sixth user on a plan selling five
+// — and it was written once at signup and then unreachable. A tenant that
+// upgraded could not be given the headroom they had paid for.
+func TestThePlatformOwnerCanRaiseATenantsLimits(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+	f := h.seedShop(t, "owner")
+
+	read := h.do(t, http.MethodGet,
+		"/api/v1/platform/tenants/"+f.tenantID.String()+"/limits", admin, nil)
+	defer read.Body.Close()
+	if read.StatusCode != http.StatusOK {
+		t.Fatalf("read limits: %d %s", read.StatusCode, readBody(t, read))
+	}
+	limits, _ := decodeJSON(t, read)["limits"].(map[string]any)
+	if limits == nil {
+		t.Fatal("no limits came back")
+	}
+
+	set := h.do(t, http.MethodPut,
+		"/api/v1/platform/tenants/"+f.tenantID.String()+"/limits", admin,
+		map[string]any{"max_stores": 25, "max_users": 60})
+	defer set.Body.Close()
+	if set.StatusCode != http.StatusOK {
+		t.Fatalf("set limits: %d %s", set.StatusCode, readBody(t, set))
+	}
+	after, _ := decodeJSON(t, set)["limits"].(map[string]any)
+	if got, _ := after["max_stores"].(float64); int(got) != 25 {
+		t.Errorf("max_stores = %v, want 25", after["max_stores"])
+	}
+	if got, _ := after["max_users"].(float64); int(got) != 60 {
+		t.Errorf("max_users = %v, want 60", after["max_users"])
+	}
+}
+
+// An unmentioned limit is left alone.
+//
+// A plan upgrade moves one or two numbers. Requiring the whole set would mean
+// re-sending values nobody meant to touch, which is how a storage limit gets
+// reset because somebody was adding a till.
+func TestChangingOneLimitLeavesTheOthersAlone(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+	f := h.seedShop(t, "owner")
+
+	first := h.do(t, http.MethodPut,
+		"/api/v1/platform/tenants/"+f.tenantID.String()+"/limits", admin,
+		map[string]any{"max_skus": 5000})
+	before, _ := decodeJSON(t, first)["limits"].(map[string]any)
+	first.Body.Close()
+	wantStores := before["max_stores"]
+
+	second := h.do(t, http.MethodPut,
+		"/api/v1/platform/tenants/"+f.tenantID.String()+"/limits", admin,
+		map[string]any{"max_users": 40})
+	defer second.Body.Close()
+	after, _ := decodeJSON(t, second)["limits"].(map[string]any)
+
+	if after["max_skus"] != float64(5000) {
+		t.Errorf("max_skus = %v after an unrelated change, want 5000",
+			after["max_skus"])
+	}
+	if after["max_stores"] != wantStores {
+		t.Errorf("max_stores moved from %v to %v without being mentioned",
+			wantStores, after["max_stores"])
+	}
+}
+
+// A limit cannot be set below what the business already uses.
+//
+// A limit gates the next one created; it does not delete what exists. Setting
+// max_stores to zero for a shop that has one would leave a state the product
+// cannot express — nothing closes the shop, and every later check fails against
+// a number that was never true.
+func TestALimitCannotBeSetBelowWhatIsInUse(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+	f := h.seedShop(t, "owner") // has one company and one shop
+
+	resp := h.do(t, http.MethodPut,
+		"/api/v1/platform/tenants/"+f.tenantID.String()+"/limits", admin,
+		map[string]any{"max_stores": 0})
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("a shop limit was set below the number of shops that exist")
+	}
+	if body := readBody(t, resp); !containsFold(body, "already has") {
+		t.Errorf("the refusal does not say what is in use: %s", body)
+	}
+}
+
+// A business owner cannot change their own allowances.
+func TestABusinessOwnerCannotChangeTheirOwnLimits(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+
+	resp := h.do(t, http.MethodPut,
+		"/api/v1/platform/tenants/"+f.tenantID.String()+"/limits", f.token,
+		map[string]any{"max_users": 999})
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Error("a business raised its own limits, which is buying capacity " +
+			"without paying for it")
+	}
+}

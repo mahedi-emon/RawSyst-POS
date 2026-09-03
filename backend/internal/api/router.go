@@ -2125,6 +2125,13 @@ func (s *Server) Routes() []Route {
 			s.handleSetPlan,
 			"a tenant who could edit their own plan would be a tenant on the " +
 				"Enterprise plan"},
+		{http.MethodGet, "/api/v1/platform/tenants/{tenantID}/limits", AccessSuperAdmin, "",
+			s.handleTenantLimits,
+			"what a business is allowed, and what it is using"},
+		{http.MethodPut, "/api/v1/platform/tenants/{tenantID}/limits", AccessSuperAdmin, "",
+			s.handleSetTenantLimits,
+			"raises or lowers a tenant's allowances; enforced everywhere and " +
+				"until now writable only at signup"},
 		{http.MethodPut, "/api/v1/platform/tenants/{tenantID}/features", AccessSuperAdmin, "",
 			s.handleSetFeature,
 			"H5's commercial flexibility: a module granted to one client " +
