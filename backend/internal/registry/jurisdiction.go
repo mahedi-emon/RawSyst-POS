@@ -12,6 +12,8 @@ package registry
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,13 +46,24 @@ type CombinedRate struct {
 // JurisdictionRate resolves the combined rate for a treatment in a jurisdiction
 // on a date.
 //
-// # Every ancestor counts
+// # Every ancestor counts, and every ancestor must have answered
 //
 // A sale in a city is taxed by the city, its county and its state. The walk
 // starts at the named jurisdiction and climbs to the country root, taking each
-// authority's rate for the treatment that is in force on the day. An authority
-// with no rate row for that treatment contributes nothing — which is different
-// from contributing zero only in that nothing has to be recorded to say so.
+// authority's rate for the treatment that is in force on the day.
+//
+// An authority with NO rate row on that date refuses the whole calculation. It
+// is tempting to let it contribute nothing — the sum still comes out, the sale
+// still rings up — and that is exactly the failure to avoid: a city rate
+// recorded and a state rate not yet loaded would charge the customer the city's
+// 2% alone, print it on a receipt as the tax due, and post it to the tax
+// account. Nobody would see an error, and the shop would be under-remitting to
+// the state until an audit found it.
+//
+// So absence and zero are different facts here, and only one of them is a
+// statement. An authority that genuinely levies nothing on a treatment gets an
+// explicit 0.000000 row with its source, which somebody has to look up and
+// write down; an authority nobody has loaded yet gets a refusal that names it.
 //
 // # An unverified share refuses the whole rate
 //
@@ -109,6 +122,8 @@ func (s *Service) JurisdictionRate(
 
 		total := decimal.Zero
 		found := false
+		// Authorities in the chain with no rate row for this treatment today.
+		var silent []string
 		for rows.Next() {
 			var sh JurisdictionShare
 			var rate *decimal.Decimal
@@ -119,6 +134,10 @@ func (s *Service) JurisdictionRate(
 			}
 			found = true
 			if rate == nil {
+				// Named, not counted. The refusal below has to say WHICH
+				// authority is unanswered, because "the total looks low" is
+				// not something anyone can act on.
+				silent = append(silent, fmt.Sprintf("%s (%s)", sh.Name, sh.Level))
 				continue
 			}
 			if s.requireVerified && (verified == nil || !*verified) {
@@ -146,6 +165,19 @@ func (s *Service) JurisdictionRate(
 					"authority above it, so a sale here cannot be priced. The "+
 					"rates have to be entered with their source before this "+
 					"market can trade.", treatment)
+		}
+		if len(silent) > 0 {
+			// The partial case, and the dangerous one: some authorities
+			// answered and some did not, so a total exists and is too low.
+			return CombinedRate{}, errs.Newf(errs.CodeUnverifiedRule,
+				"No %s tax rate is on file for %s on %s, and a sale here is "+
+					"taxed by that authority as well as the ones that are on "+
+					"file. Pricing it on the rates present would undercharge "+
+					"the customer and under-remit. Record the missing rate "+
+					"with its source — or record it as 0 if that authority "+
+					"levies nothing, which is a statement somebody has to "+
+					"make rather than one this can assume.",
+				treatment, strings.Join(silent, ", "), asOf.Format("2006-01-02"))
 		}
 
 		out.Total = total

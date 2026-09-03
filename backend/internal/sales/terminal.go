@@ -3,6 +3,7 @@ package sales
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,6 +14,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 )
 
 // WithPool gives the service a connection pool so it can own the transaction
@@ -101,6 +103,11 @@ type companyProfile struct {
 	country      string
 	baseCurrency string
 
+	// storeID is which shop is selling. Needed because a market that taxes by
+	// jurisdiction resolves the rate from the SHOP's jurisdiction, and a
+	// company with branches in two cities is taxed differently in each.
+	storeID uuid.UUID
+
 	// stockPolicy decides whether a till may sell past what is on hand. It
 	// belongs to the COMPANY, not to the request: a till that named its own
 	// policy could sell below zero at a shop that had deliberately forbidden
@@ -132,9 +139,12 @@ type companyProfile struct {
 // line at 15% would be a guess presented as a legal figure.
 func (s *Service) resolveRates(
 	ctx context.Context, tx pgx.Tx, sale *Sale, rules catalog.TaxRules,
-	country string, tenantID uuid.UUID,
-) (map[string]decimal.Decimal, error) {
+	country string, tenantID, storeID uuid.UUID,
+) (map[string]decimal.Decimal, map[string]registry.CombinedRate, error) {
 	out := make(map[string]decimal.Decimal, 2)
+	// Only treatments resolved through a jurisdiction have shares. A national
+	// VAT has one authority and nothing to apportion.
+	shares := make(map[string]registry.CombinedRate, 2)
 
 	for _, l := range sale.Input.Lines {
 		treatment := l.TaxTreatment
@@ -148,12 +158,33 @@ func (s *Service) resolveRates(
 		}
 
 		rate, err := s.rules.TaxRate(ctx, tx, country, treatment, sale.IssuedAt, tenantID)
+		if errs.CodeOf(err) == errs.CodeUnverifiedRule && err != nil {
+			// The market does not set this tax nationally — the United States
+			// levies it by state, county and city — so it is resolved through
+			// the shop's jurisdiction instead. `TaxRate` says so rather than
+			// inventing a national rate, and this is where that answer is
+			// acted on.
+			combined, jErr := s.jurisdictionRate(ctx, tx, storeID, treatment, sale.IssuedAt)
+			if jErr != nil {
+				// The ORIGINAL refusal is returned when there is no
+				// jurisdiction at all: "this tax needs a jurisdiction" tells a
+				// shop what to do, where "that jurisdiction is not on file"
+				// would be answering a question they did not ask.
+				if errs.CodeOf(jErr) == errs.CodeInvalidInput {
+					return nil, nil, err
+				}
+				return nil, nil, jErr
+			}
+			out[treatment] = combined.Total
+			shares[treatment] = combined
+			continue
+		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out[treatment] = rate
 	}
-	return out, nil
+	return out, shares, nil
 }
 
 // applyTaxProfile fills in the values the till is not allowed to choose.
@@ -176,13 +207,15 @@ func (s *Service) applyTaxProfile(
 	if err != nil {
 		return err
 	}
-	rates, err := s.resolveRates(ctx, tx, sale, rules, profile.country, tenantID)
+	rates, shares, err := s.resolveRates(ctx, tx, sale, rules, profile.country,
+		tenantID, profile.storeID)
 	if err != nil {
 		return err
 	}
 
 	sale.Input.Rules = rules
 	sale.Input.TaxRates = rates
+	sale.TaxShares = shares
 	sale.Currency = profile.baseCurrency
 
 	// Read from the company, never from the request. The handler cannot supply
@@ -300,6 +333,7 @@ func resolveTerminal(
 				"E-invoicing.")
 	}
 	term.Country = profile.country
+	profile.storeID = term.StoreID
 
 	term.WarehouseID, err = resolveWarehouse(ctx, tx, term.StoreID, warehouseID)
 	if err != nil {
@@ -404,4 +438,40 @@ func resolveWarehouse(
 			"This branch has more than one stock location, so the sale must say "+
 				"which one it is selling from.")
 	}
+}
+
+// jurisdictionRate resolves tax through the shop's jurisdiction.
+//
+// For a market that does not set tax nationally — the United States levies it
+// by state, county and city, and several of those apply to one sale — the rate
+// is the sum of the authorities above the shop. See registry.JurisdictionRate.
+//
+// The shop's OWN jurisdiction is used: that is the origin, which is the right
+// answer for a customer standing at the counter. Destination-based sourcing,
+// where the delivery address decides, needs the sourcing rule per state, and
+// `tax_jurisdiction.is_origin_based` records that fact without anything reading
+// it yet. Choosing one silently would be inventing a rule.
+func (s *Service) jurisdictionRate(
+	ctx context.Context, tx pgx.Tx, storeID uuid.UUID, treatment string,
+	asOf time.Time,
+) (registry.CombinedRate, error) {
+	var jurisdictionID *uuid.UUID
+	if err := tx.QueryRow(ctx,
+		`SELECT tax_jurisdiction_id FROM store WHERE id = $1`, storeID).
+		Scan(&jurisdictionID); err != nil {
+		return registry.CombinedRate{}, err
+	}
+	if jurisdictionID == nil {
+		// Reported as invalid input rather than as a missing rate: the shop has
+		// not been told where it is, which is a setup step somebody can take,
+		// not a legal value nobody has verified.
+		return registry.CombinedRate{}, errs.New(errs.CodeInvalidInput,
+			"This shop has no tax jurisdiction set, and its market taxes by "+
+				"jurisdiction rather than nationally.")
+	}
+
+	// Returned whole, not summed. The total is what the customer pays; the
+	// shares are what each authority is owed, and 0111 keeps them because a
+	// total that cannot be broken down cannot be filed.
+	return s.rules.JurisdictionRate(ctx, tx, *jurisdictionID, treatment, asOf)
 }

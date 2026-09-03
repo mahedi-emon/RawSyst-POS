@@ -4,6 +4,7 @@ package registry
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,7 +49,9 @@ func (s *Service) fixtureChain(
 			return e
 		}
 
-		by := map[string]uuid.UUID{"state": stateID, "city": cityID}
+		by := map[string]uuid.UUID{
+			"country": countryID, "state": stateID, "city": cityID,
+		}
 		for level, rate := range rates {
 			verifiedOn := "NULL"
 			if verified {
@@ -112,8 +115,9 @@ func (s *Service) fixtureChain(
 func TestACombinedRateSumsEveryAuthorityAboveTheSale(t *testing.T) {
 	s := newRegistry(t)
 	city := s.fixtureChain(t, true, map[string]string{
-		"state": "0.0625",
-		"city":  "0.0200",
+		"country": "0", // stated, not absent — see JurisdictionRate
+		"state":   "0.0625",
+		"city":    "0.0200",
 	})
 
 	got, err := s.JurisdictionRate(context.Background(), nil, city, "taxable",
@@ -126,9 +130,12 @@ func TestACombinedRateSumsEveryAuthorityAboveTheSale(t *testing.T) {
 		t.Errorf("combined rate = %s, want 0.0825", got.Total)
 	}
 	// The parts have to survive: a shop files with each authority separately,
-	// and a total that cannot be broken down cannot be filed.
-	if len(got.Shares) != 2 {
-		t.Fatalf("shares = %d, want 2 (state and city)", len(got.Shares))
+	// and a total that cannot be broken down cannot be filed. Three, not two:
+	// the country root levies zero and says so, and an authority that answered
+	// is reported whatever it answered.
+	if len(got.Shares) != 3 {
+		t.Fatalf("shares = %d, want 3 (country, state and city)",
+			len(got.Shares))
 	}
 	levels := map[string]bool{}
 	for _, sh := range got.Shares {
@@ -197,27 +204,123 @@ func TestARateIsResolvedAtTheTransactionDateNotToday(t *testing.T) {
 	}
 }
 
-// The product ships with no jurisdiction rates at all.
+// Every rate that ships names its authority and is left unverified.
 //
-// 0106 seeds none on purpose: every rate is a legal value and must arrive with
-// its source and a verification date. This fails if somebody ever adds a
-// plausible-looking rate to a migration, which is the exact mistake that would
-// look correct in review.
-func TestNoTaxJurisdictionRatesAreSeededWithTheProduct(t *testing.T) {
+// 0106 shipped none at all, and this test used to say so. Two now ship — 0109's
+// California state share, read from the CDTFA, and 0110's statement that the
+// United States levies no federal sales tax — because a hierarchy with nothing
+// in it cannot be shown to work.
+//
+// The rule that actually matters was never "no rates" but "no INVENTED rates",
+// and that is what is asserted here. A shipped rate must name a real authority,
+// and must not claim to have been verified: verification records that an
+// operator of this deployment checked the figure against the authority and put
+// their name to it, and shipping a row that claims that on their behalf is the
+// exact mistake that would look correct in review.
+func TestEveryShippedJurisdictionRateNamesItsSourceAndIsUnverified(t *testing.T) {
 	s := newRegistry(t)
 	ctx := context.Background()
 
-	var seeded int
+	type shipped struct {
+		authority, document string
+		verified            bool
+	}
+	var rows []shipped
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `
-			SELECT count(*) FROM tax_jurisdiction_rate
-			WHERE source_authority <> 'test'`).Scan(&seeded)
+		rs, e := tx.Query(ctx, `
+			SELECT source_authority, coalesce(source_document,''),
+			       verified_on IS NOT NULL
+			FROM tax_jurisdiction_rate
+			WHERE source_authority <> 'test'`)
+		if e != nil {
+			return e
+		}
+		defer rs.Close()
+		for rs.Next() {
+			var r shipped
+			if e := rs.Scan(&r.authority, &r.document, &r.verified); e != nil {
+				return e
+			}
+			rows = append(rows, r)
+		}
+		return rs.Err()
 	})
 	if err != nil {
-		t.Fatalf("count seeded rates: %v", err)
+		t.Fatalf("read shipped rates: %v", err)
 	}
-	if seeded != 0 {
-		t.Errorf("%d tax rates ship with the product; every rate is a legal "+
-			"value and must be entered with its source, never seeded", seeded)
+
+	for _, r := range rows {
+		if r.authority == "" || r.document == "" {
+			t.Errorf("a shipped rate names no authority or document "+
+				"(%q/%q); a rate with no source is a guess", r.authority,
+				r.document)
+		}
+		if r.verified {
+			t.Errorf("the shipped rate from %q is marked verified; nobody on "+
+				"this deployment checked it", r.authority)
+		}
+	}
+}
+
+// An authority in the chain with no rate on file refuses the whole rate.
+//
+// The dangerous case, and the one this used to get wrong: the walk skipped an
+// authority that had nothing recorded, so a chain with a city rate loaded and a
+// state rate not yet loaded returned the city's share alone. That is not a
+// missing answer, it is a WRONG one — a plausible total, short by the state's
+// share, that would be charged to a customer and remitted as if it were right.
+//
+// Absence and zero are different facts. An authority that levies nothing says
+// so with a 0 row somebody looked up; an authority nobody has loaded is named
+// in the refusal so it can be loaded.
+func TestAnAuthorityWithNoRateOnFileRefusesTheWholeRate(t *testing.T) {
+	s := newRegistry(t)
+	// The country root and the city answer; the state never has.
+	city := s.fixtureChain(t, true, map[string]string{
+		"country": "0",
+		"city":    "0.0200",
+	})
+
+	_, err := s.JurisdictionRate(context.Background(), nil, city, "taxable",
+		time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("a rate was assembled from a partly loaded chain; the sale " +
+			"would have been charged the city's share alone")
+	}
+	if errs.CodeOf(err) != errs.CodeUnverifiedRule {
+		t.Errorf("code = %v, want %v: %v", errs.CodeOf(err),
+			errs.CodeUnverifiedRule, err)
+	}
+	if !strings.Contains(err.Error(), "Test State") {
+		t.Errorf("the refusal does not name the authority that has not "+
+			"answered, so nobody can act on it: %v", err)
+	}
+}
+
+// An authority that levies nothing is stated as zero, and the rate resolves.
+//
+// The other half: a shop in a city with no local sales tax must be able to
+// sell, and a 0 row is how its city says so.
+func TestAnAuthorityLevyingNothingIsStatedAsZero(t *testing.T) {
+	s := newRegistry(t)
+	city := s.fixtureChain(t, true, map[string]string{
+		"country": "0",
+		"state":   "0.0625",
+		"city":    "0",
+	})
+
+	got, err := s.JurisdictionRate(context.Background(), nil, city, "taxable",
+		time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !got.Total.Equal(decimal.RequireFromString("0.0625")) {
+		t.Errorf("total = %s, want 0.0625 — the state alone", got.Total)
+	}
+	// Three authorities levied, two of them nothing; all three are reported,
+	// because a return is filed with each of them.
+	if len(got.Shares) != 3 {
+		t.Errorf("shares = %d, want 3 — every authority that levied, "+
+			"including those that levied zero", len(got.Shares))
 	}
 }

@@ -509,16 +509,22 @@ func (s *Service) writeCreditNote(
 		  (tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   parent_invoice_id, issue_date, issued_at, currency, fx_rate,
 		   subtotal_net, discount_total, tax_total, total_inclusive, state,
-		   cash_session_id, human_number, customer_id)
+		   cash_session_id, human_number, customer_id, cashier_id)
 		VALUES ($1,$2,$3,$4,$5,'credit_note',$6,$7,$8,$9,$10,$11,$12,$13,$14,
-		        $15,$16,$17,$18)
+		        $15,$16,$17,$18,$19)
 		RETURNING id`,
 		term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		ret.CreditNoteUUID, original.id, ret.IssuedAt, ret.IssuedAt,
 		original.currency, original.fxRate,
 		computed.SubtotalNet, computed.DiscountTotal,
 		computed.TaxTotal, computed.TotalInclusive, state,
-		term.CashSessionID, humanNumber, original.customerID).Scan(&creditNoteID)
+		term.CashSessionID, humanNumber, original.customerID,
+		// Who processed the RETURN. Note that commission is reversed against
+		// whoever made the original SALE, not against this person -- see
+		// people.commissionFor, which resolves a credit note through its
+		// parent. This column answers "who was at the till", which is a
+		// different question and the one an audit asks.
+		ret.CashierID).Scan(&creditNoteID)
 	if err != nil {
 		return uuid.Nil, "", db.Translate(err, "That credit note could not be issued.")
 	}
@@ -538,6 +544,14 @@ func (s *Service) writeCreditNote(
 			return uuid.Nil, "", db.Translate(err,
 				"A line on that credit note could not be recorded.")
 		}
+	}
+
+	// Where tax was levied by more than one authority, the return has to be
+	// credited against each of them. Without this a US shop's remittance would
+	// keep counting tax it had already refunded.
+	if err := recordCreditNoteTaxShares(ctx, tx, term.TenantID, creditNoteID,
+		original.id, computed.TaxTotal); err != nil {
+		return uuid.Nil, "", err
 	}
 
 	return creditNoteID, humanNumber, nil

@@ -119,6 +119,13 @@ type Sale struct {
 
 	CashierID *uuid.UUID
 
+	// TaxShares breaks each treatment's rate down by the authority that levied
+	// it, for markets where tax is not set nationally. Empty for a Saudi or
+	// Bangladeshi sale, which has one rate and one authority. Filled by
+	// applyTaxProfile, never by the caller: a till that named its own tax
+	// authorities would be choosing what it owes.
+	TaxShares map[string]registry.CombinedRate
+
 	// StockPolicy decides what happens when a line exceeds what is on hand.
 	// Blocking suits serialised or high-value goods; allowing suits a busy shop
 	// where refusing a waiting customer is worse than a correction later (C13).
@@ -670,14 +677,18 @@ func (s *Service) writeInvoice(
 		  (id, tenant_id, company_id, store_id, device_id, uuid, doc_type,
 		   issue_date, issued_at, currency, fx_rate,
 		   subtotal_net, discount_total, tax_total, total_inclusive, state,
-		   cash_session_id, human_number, customer_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+		   cash_session_id, human_number, customer_id, cashier_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+		        $19,$20)`,
 		invoiceID, term.TenantID, term.CompanyID, term.StoreID, term.DeviceID,
 		sale.InvoiceUUID, sale.DocType,
 		sale.IssuedAt, sale.IssuedAt, sale.Currency, rate,
 		computed.SubtotalNet, computed.DiscountTotal,
 		computed.TaxTotal, computed.TotalInclusive, initialState(sale.DocType),
-		term.CashSessionID, humanNumber, sale.CustomerID); err != nil {
+		term.CashSessionID, humanNumber, sale.CustomerID,
+		// Who rang it up (0112). Commission, the employee-wise sales report
+		// and the cashier's own-sales view all read this one column.
+		sale.CashierID); err != nil {
 		return "", db.Translate(err, "That sale could not be recorded.")
 	}
 
@@ -696,6 +707,10 @@ func (s *Service) writeInvoice(
 			return "", db.Translate(err,
 				"A line on that sale could not be recorded.")
 		}
+	}
+
+	if err := recordTaxShares(ctx, tx, term.TenantID, invoiceID, sale, computed); err != nil {
+		return "", err
 	}
 
 	for i, td := range sale.Tenders {
