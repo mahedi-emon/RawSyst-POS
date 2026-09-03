@@ -533,33 +533,55 @@ func advancesToRecover(
 // wins — an employee-specific rule beats a store rule beats a company-wide one
 // — because a shop that writes a special rate for its best salesperson means it
 // to override the general one, not to stack with it.
+//
+// # Attribution
+//
+// A sale belongs to the person who rang it up, recorded on
+// `sales_invoice.cashier_id` (0112). Until that column existed this function
+// joined on `i.created_by`, which was never a column at all: the query errored
+// and payroll returned a 500 for every commission-eligible employee.
+//
+// A CREDIT NOTE is attributed to whoever made the ORIGINAL sale, not to
+// whoever stood at the till for the return. C14 effect 7 says to reverse the
+// commission attributed to the original sale, and taking it off the refunding
+// cashier instead would dock the wrong person and leave the seller paid for
+// goods that came back. That is what the join through `parent_invoice_id`
+// below is for.
+//
+// # Signed, so a return actually reverses
+//
+// A credit note's lines carry POSITIVE net and cost amounts, with the direction
+// held in the document type — so summing both kinds together made a refund
+// INCREASE commission. Selling something for 100 and refunding it in full paid
+// as if 200 had been sold. The CASE below is what makes a return subtract.
+//
+// # Only documents that legally exist
+//
+// Draft and cancelled invoices are excluded. A draft has consumed no invoice
+// counter and is not a sale yet; a cancelled one never became one. Every other
+// state — including `rejected`, which keeps its number and is corrected by a
+// credit note — is a real sale, and its correction arrives as its own document.
+//
+// # The rule's own scope decides which takings it covers
+//
+// `store_id`, `category_id`, `brand_id` and `variant_id` were previously read
+// only to RANK candidate rules and never to filter the takings, so a scheme
+// written for one branch paid on the whole company. A null means "any", as the
+// table's comment says.
 func (s *Service) commissionFor(
 	ctx context.Context, tx pgx.Tx, scope Scope, employeeID uuid.UUID,
 	period time.Time,
 ) (decimal.Decimal, error) {
 	end := period.AddDate(0, 1, 0)
 
-	// What they sold. Attributed by the user who rang the sale up, which is
-	// the only link between a sale and a person the system actually has.
-	var revenue, cost decimal.Decimal
-	err := tx.QueryRow(ctx, `
-		SELECT coalesce(sum(l.net_amount), 0),
-		       coalesce(sum(l.cogs_amount), 0)
-		FROM sales_invoice i
-		JOIN sales_invoice_line l ON l.invoice_id = i.id
-		JOIN employee e ON e.user_id = i.created_by
-		WHERE e.id = $1 AND i.company_id = $2
-		  AND i.issued_at >= $3 AND i.issued_at < $4`,
-		employeeID, scope.CompanyID, period, end).Scan(&revenue, &cost)
-	if err != nil {
-		return decimal.Zero, err
-	}
-
+	// The scheme in force for this employee this month, most specific first.
 	var basis string
 	var rate decimal.Decimal
 	var tiersRaw []byte
-	err = tx.QueryRow(ctx, `
-		SELECT basis, rate, tiers FROM commission_rule
+	var storeID, categoryID, brandID, variantID *uuid.UUID
+	err := tx.QueryRow(ctx, `
+		SELECT basis, rate, tiers, store_id, category_id, brand_id, variant_id
+		FROM commission_rule
 		WHERE company_id = $1 AND is_active
 		  AND effective_from <= $3
 		  AND (effective_to IS NULL OR effective_to >= $3)
@@ -568,10 +590,41 @@ func (s *Service) commissionFor(
 		         (store_id IS NOT NULL) DESC,
 		         effective_from DESC
 		LIMIT 1`, scope.CompanyID, employeeID, period).
-		Scan(&basis, &rate, &tiersRaw)
+		Scan(&basis, &rate, &tiersRaw, &storeID, &categoryID, &brandID, &variantID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return decimal.Zero, nil
 	}
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// What they sold, net of what came back, within the scheme's scope.
+	//
+	// `orig` is the invoice a credit note corrects; a sale is its own origin.
+	// Attribution and the store both come from there, so a return follows the
+	// sale it reverses rather than the till it was processed at.
+	var revenue, cost decimal.Decimal
+	err = tx.QueryRow(ctx, `
+		SELECT
+		  coalesce(sum(CASE WHEN i.doc_type = 'credit_note'
+		                    THEN -l.net_amount ELSE l.net_amount END), 0),
+		  coalesce(sum(CASE WHEN i.doc_type = 'credit_note'
+		                    THEN -l.cogs_amount ELSE l.cogs_amount END), 0)
+		FROM sales_invoice i
+		LEFT JOIN sales_invoice orig ON orig.id = i.parent_invoice_id
+		JOIN sales_invoice_line l ON l.invoice_id = i.id
+		JOIN employee e ON e.user_id = coalesce(orig.cashier_id, i.cashier_id)
+		LEFT JOIN variant v ON v.id = l.variant_id
+		LEFT JOIN product p ON p.id = v.product_id
+		WHERE e.id = $1 AND i.company_id = $2
+		  AND i.issued_at >= $3 AND i.issued_at < $4
+		  AND i.state NOT IN ('draft', 'cancelled')
+		  AND ($5::uuid IS NULL OR coalesce(orig.store_id, i.store_id) = $5)
+		  AND ($6::uuid IS NULL OR p.category_id = $6)
+		  AND ($7::uuid IS NULL OR p.brand_id    = $7)
+		  AND ($8::uuid IS NULL OR l.variant_id  = $8)`,
+		employeeID, scope.CompanyID, period, end,
+		storeID, categoryID, brandID, variantID).Scan(&revenue, &cost)
 	if err != nil {
 		return decimal.Zero, err
 	}
@@ -580,6 +633,9 @@ func (s *Service) commissionFor(
 	if basis == "profit" {
 		base = revenue.Sub(cost)
 	}
+	// Nothing sold, or more came back than went out. Commission is not
+	// negative: a month of net returns owes the employee nothing, and taking
+	// money off a salary for it would be a deduction nobody has authorised.
 	if !base.IsPositive() {
 		return decimal.Zero, nil
 	}
