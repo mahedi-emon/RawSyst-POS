@@ -657,6 +657,40 @@ func (s *Server) handleApprovePayroll(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, out)
 }
 
+type cancelPayrollRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleCancelPayroll abandons a run and unwinds what it posted.
+//
+// Behind `payroll.approve` rather than `payroll.run`: cancelling an approved
+// month reverses entries in the ledger, which is the same authority as putting
+// them there.
+func (s *Server) handleCancelPayroll(w http.ResponseWriter, r *http.Request) {
+	scope, err := hrScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	id, err := parseUUID(chi.URLParam(r, "runID"), "runID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req cancelPayrollRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	out, err := s.people.Cancel(r.Context(), scope, id, req.Reason)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handlePayPayroll(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AccountID string `json:"account_id"`

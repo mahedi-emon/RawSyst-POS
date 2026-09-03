@@ -1212,7 +1212,7 @@ which would be buying capacity without paying for it.
   correct re-panics in recovery middleware, two are ZATCA compile-time constant
   assertions. Every `TODO`/`placeholder` match is prose describing the
   refuse-on-placeholder design.
-* **Migrations**: 117 files, 0001–0117, no duplicates, no gaps, strictly
+* **Migrations**: 119 files, 0001–0119, no duplicates, no gaps, strictly
   increasing. The duplicate reservation migration created and reverted earlier
   in this session is gone; 0088's ledger is the only reservation system.
 * **No secrets tracked.**
@@ -1223,3 +1223,209 @@ Two findings in this session came from bad searches rather than bad code. A
 `grep … | head -3` hid the existing reservation system and led to a duplicate
 being built; a package-reference heuristic reported all 46 packages as
 unreachable and was discarded. A truncated search is not a search.
+
+---
+
+# Regulatory completion: GOSI, US tax, ZATCA
+
+Four things can be true of a regulatory feature, and they are not the same
+thing. This section says which is true of each, because "done" hides the
+difference:
+
+* **CODE COMPLETE** — the product implements it and tests hold it.
+* **DATA INGESTED** — the authority's own published figures are on file.
+* **OFFICIAL SOURCE VERIFIED** — a named person has checked those figures
+  against the authority and stamped them, which is what lets the product
+  charge them.
+* **PRODUCTION CREDENTIAL REQUIRED** — nothing further can be done here; it
+  needs a secret only the taxpayer can obtain.
+
+## US sales tax — CODE COMPLETE, DATA INGESTED, awaiting verification
+
+### What CDTFA publishes, and why it could not just be loaded
+
+The California Department of Tax and Fee Administration issues "California City
+& County Sales & Use Tax Rates" as a spreadsheet each quarter — there is no API,
+and the filename carries the effective date. The latest published file is
+`SalesTaxRates07-01-26.xlsx`, effective 1 July 2026; the following quarter's URL
+still returns an error page, so July is the schedule in force.
+
+Each row is a location and its **combined** rate. Alameda reads 10.75%, and
+that figure already contains California's 7.25% statewide rate and every
+district applying at that address. This product sums a jurisdiction chain
+instead, so loading 10.75% under a state already holding 7.25% would have
+charged 18%.
+
+So each location's stored share is the published combined rate **less** the
+statewide rate, and the chain adds back to exactly what CDTFA printed — which is
+the number a shop is audited against. That is arithmetic on two official
+figures, not a judgement about what any district levies.
+
+Locations hang off the **state**, never off their county: CDTFA's city figure
+already includes any county district, so a city nested under its county would
+have counted that district twice. The county rows are locations in their own
+right — the rate for the unincorporated parts — and sit beside the cities.
+
+### `cmd/cdtfaimport`
+
+The conversion is a step somebody performs each quarter, so it is written down
+and repeatable rather than done by hand. It reads the authority's workbook and
+emits the payload `POST /api/v1/platform/jurisdictions/import` accepts. It
+decides nothing: output is unverified, and a person still records it.
+
+Three things it refuses or reports rather than swallowing:
+
+* **A location below the statewide base** aborts the run. That means the state
+  rate has changed and the file is being read against a stale base; a clamped
+  negative share would hide it.
+* **Five counties CDTFA publishes no rate for** — Del Norte, Kern, Monterey,
+  Santa Cruz and Yuba — are named on the way out, not counted. Their Rate cell
+  is empty and a note directs the reader to the city or the unincorporated
+  area, each of which CDTFA does publish. A county-wide figure invented for
+  them, or a zero, would undercharge every sale in them.
+* **Cells are placed by their spreadsheet reference**, not by document order. A
+  workbook omits empty cells rather than writing them, so appending in order
+  shifted every later column left on exactly those five rows — putting the
+  county name where the rate belongs.
+
+One more trap, worth recording because it aborted the first run: the workbook
+stores rates as IEEE-754 doubles, and 7.25% is not exactly representable. Alpine
+County arrives as `0.072499999999999995`. Every rate CDTFA publishes is exact to
+five decimal places, so rounding to six recovers the published figure and
+discards only the storage error.
+
+### 0118
+
+541 locations, each with its own share, effective 2026-07-01, sourced to the
+file and the page. California's own 7.25% row is untouched — it has stood since
+2017 and this schedule does not change it.
+
+`verified_on` is NULL on every row, and that is deliberate. The figures are the
+authority's own, but the conversion from combined rates to shares is this
+product's arithmetic and nobody has put their name to it. **The product refuses
+an unverified rate rather than charging it**, so this does not yet let a
+Californian shop trade — it means the operator confirming these rates is
+checking 541 rows that are already filled in instead of typing them.
+
+### Tests
+
+`internal/api/cdtfa_test.go` and `internal/registry/cdtfa_test.go`, every figure
+transcribed from the authority's file:
+
+* Every shipped share plus the statewide rate equals what CDTFA published, for
+  a deliberate spread — Adelanto 7.75%, Alameda city 10.75% against Alameda
+  County 10.25%, Bakersfield 8.25%, La Cañada Flintridge 10.50%, Los Angeles
+  9.75%, Santa Fe Springs 11.00% (the highest in the state), Alpine County
+  7.25%. Also that each hangs off California and takes effect on 2026-07-01.
+* Alpine County is recorded at **zero**, not left out. Absence and zero are
+  different facts, and the resolver refuses a chain with an unanswered
+  authority — so omitting a county that genuinely levies nothing would block
+  every sale in it.
+* The five rateless counties are absent while their unincorporated areas are
+  present.
+* Nothing in the shipped schedule is marked verified.
+* A production deployment (`requireVerified`) refuses to price a sale on it,
+  and once verified charges exactly 10.75% in Alameda with the state's 0.0725
+  and the city's 0.035 nameable separately. Both run inside a transaction that
+  is rolled back, so the test cannot mark anything verified for anybody else.
+* A till given the real figures charges CDTFA's published rate on $100 for
+  eight named locations.
+* **An invoice already issued is not rewritten by a later schedule** — imported
+  a second schedule covering the sale's own date and the invoice keeps its
+  10.75% and its recorded 0.035 city share.
+
+No national US rate is invented anywhere: 0110 records the country root at an
+explicit **0**, which is a fact about the federation, not a guess.
+
+## GOSI — CODE COMPLETE, OFFICIAL SOURCE VERIFIED
+
+Re-checked against GOSI's own pages on 2026-09-04 (`FAQ_Employer`,
+`FAQ_Contributor`). They state Annuities 18% split 9/9, Occupational Hazards 2%
+payable by the employer, SANED 1.5% shared equally, contributory wage maximum
+SR 45,000 — which is the 11.75% employer / 9.75% employee that 0117 records.
+
+**The July 2024 law still has no published rate schedule.** GOSI's pages state
+the Annuities Branch flatly at 18% with no hire-date distinction and publish no
+year-by-year escalation. The Council of Ministers announcement covers who the
+new law applies to, retirement age and eligibility — not rates. So both Saudi
+bands stay at the published rate, which is what GOSI says an employer pays today
+for either, and the rule's note carries the re-check. If GOSI publishes a dated
+schedule it becomes a further version with its own `effective_from`, which is
+what the registry's dating is for.
+
+One figure worth recording that the pages added: Occupational Hazards can be
+**doubled to 4%** for non-compliance with safety regulations. That is a penalty
+rate, not the standard one, and the product correctly uses 2%.
+
+### Effective-date boundary, now tested
+
+0117 takes effect 2026-02-01 and closes the placeholder that stood before it. A
+run for January 2026 resolves the placeholder and reports social insurance as
+uncalculable; February resolves the recorded rates and deducts 780.00 from
+8,000. If resolution used today's date instead, every historical month would be
+restated at whatever the rule says now. Also tested: the same month run twice
+resolves the same rule.
+
+## Payroll could never be corrected — fixed
+
+Found while writing the reversal tests, and the same pattern as the rest of this
+document: **something the schema models, that nothing could reach.**
+
+0091 gave `payroll_run` four states and built the month's uniqueness around the
+fourth:
+
+```sql
+CREATE UNIQUE INDEX payroll_run_period_uq ON payroll_run (company_id, period)
+  WHERE status <> 'cancelled';
+```
+
+The index is partial precisely so a cancelled run releases its month for a
+corrected one. **No code in the product could set `cancelled`.** Approve posts
+two journal entries and Pay posts a third, and from there a run was final: a
+month approved on the wrong attendance, the wrong advance recovery or the wrong
+GOSI band stayed wrong, the entries stayed in the ledger, and the month could
+never be run again because the index still counted the bad run.
+
+`0119` adds who cancelled it, when and why — required, on the same terms as a
+rejected leave request. `people.Cancel` and
+`POST /api/v1/payroll/{runID}/cancel` (behind `payroll.approve`, the same
+authority that posted the entries) unwind it:
+
+* **Reversed, not deleted.** A posted month is a fact and correcting it is a
+  second fact. The lines come from the entry and are flipped, never re-derived
+  from the posting rule — the rule may have been amended since. Each reversal
+  takes its own `source_type`, because the journal's idempotency key is
+  `(source_type, source_id, rule_key)` and reusing the original's triple would
+  find the original entry and post nothing at all.
+* **Whatever is there.** A draft posted nothing, an approved run has two
+  entries, a paid one has three.
+* **Advances go back to being owed.** `advance_outstanding()` sums the recovery
+  rows, so leaving them would show a loan as partly repaid out of a month that
+  was never paid.
+* **A wage file already submitted to the bank refuses the cancellation.** The
+  product can reverse its own ledger; it cannot recall a transfer somebody has
+  instructed, and pretending otherwise would leave the books saying the month
+  never happened while the money was on its way.
+
+12 tests. The reversal assertion is not a count of entries but the run's whole
+ledger footprint: every account touched by any entry carrying the run's id nets
+to zero afterwards.
+
+## ZATCA — CODE COMPLETE, PRODUCTION CREDENTIAL REQUIRED
+
+The bug flagged for this session — `stamp` wrongly associated with `SignedXML`
+in `internal/jobs/zatcasubmit.go` — **is already fixed**, and the fix carries a
+comment recording the mistake: `SignedXML` takes the document and `Stamp` is
+sent beside it, because sending the stamp as the document would post a signature
+with nothing attached to it.
+
+26 files and 146 tests cover canonicalisation, XAdES, the CSR (checked with
+OpenSSL), certificates, credential sealing and key rotation, the ICV/PIH chain
+across 10,000 invoices with per-unit isolation and immutability, the QR payload
+(reproducing ZATCA's own worked Phase-1 example), onboarding and renewal, and
+submission. Validation is checked against ZATCA's own validator. It is wired
+into `cmd/worker` and gated by market, so a shop off the chain never touches it.
+
+What remains is genuinely external: **the OTP from the taxpayer's own Fatoora
+portal**. No certificate is fabricated, no API response is faked, and production
+onboarding is not marked complete.

@@ -1403,6 +1403,8 @@ func (s *Server) Routes() []Route {
 			"signs the run off and posts what it owes; the wage is earned here, not paid"},
 		{http.MethodPost, "/api/v1/payroll/{runID}/pay", AccessPermission, "payroll.approve",
 			s.handlePayPayroll, "settles an approved run from a cash or bank account"},
+		{http.MethodPost, "/api/v1/payroll/{runID}/cancel", AccessPermission, "payroll.approve",
+			s.handleCancelPayroll, "abandons a run and reverses whatever it posted, releasing the month to be run again"},
 		{http.MethodPost, "/api/v1/payroll/{runID}/wage-file", AccessPermission, "payroll.approve",
 			s.handleGenerateWageFile,
 			"builds the WPS submission; refuses while the Mudad layout is unverified, because a file in the wrong layout is rejected rather than partly right"},
