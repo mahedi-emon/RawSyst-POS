@@ -197,24 +197,24 @@ func (s *Service) ReversePayment(
 			})
 		}
 
-		// Rule 7 with the sides flipped: credit accounts payable, putting back
-		// what is owed, and debit whatever the money returned to. The rule is
-		// resolved rather than hand-written so the chart of accounts stays in
-		// one place — a purchasing package that wrote journal lines would put
-		// the posting rules in two.
+		// The original entry with its sides flipped: credit accounts payable,
+		// putting back what is owed, and debit whatever the money returned to.
+		//
+		// Read from the entry rather than rebuilt from rule 7. Re-deriving
+		// looks equivalent and is not — a payment that settled a foreign bill
+		// carries a realised exchange gain or loss whose size depended on two
+		// rates on two days, and no amount of rule evaluation at reversal time
+		// recovers it. Reversing one leg of that entry and not the other would
+		// leave the gain standing while the payment it arose from was undone.
 		rule, e := accounting.ResolveRule(ctx, tx, "payment.supplier", country, paidOn)
 		if e != nil {
 			return e
 		}
-		lines, e := rule.Build(accounting.Transaction{
-			Amounts: accounting.Amounts{"amount": orig.amount},
-			Groups: map[string]accounting.Group{
-				"payments": {{
-					Role: tenderRole(orig.method), Amount: orig.amount,
-					Memo: orig.method,
-				}},
-			},
-		})
+		if orig.entryID == nil {
+			return errs.New(errs.CodeConflict,
+				"That payment was never posted, so there is nothing to reverse.")
+		}
+		lines, e := accounting.LinesOf(ctx, tx, *orig.entryID)
 		if e != nil {
 			return e
 		}

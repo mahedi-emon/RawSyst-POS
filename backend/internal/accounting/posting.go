@@ -716,3 +716,58 @@ func nullText(s string) any {
 	}
 	return s
 }
+
+// LinesOf reads an entry's lines back, for reversal.
+//
+// A reversal must undo exactly what was posted. Re-deriving the lines from the
+// posting rule looks equivalent and is not: the rule may have been amended
+// since, and a transaction whose shape depended on values not carried on the
+// document — an exchange difference, a tender split — cannot be reconstructed
+// from the rule at all. Reading the entry and flipping it is both simpler and
+// the only version that is right in every case.
+//
+// Accounts are returned by id rather than by role, because the role that chose
+// an account at posting time is not what the reversal needs to know: it needs
+// the account the money actually went to.
+func LinesOf(ctx context.Context, tx pgx.Tx, entryID uuid.UUID) ([]Line, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT account_id, store_id, debit, credit, subledger_type,
+		       subledger_id, coalesce(memo, '')
+		FROM journal_line
+		WHERE entry_id = $1
+		ORDER BY line_no`, entryID)
+	if err != nil {
+		return nil, db.Translate(err, "")
+	}
+	defer rows.Close()
+
+	var out []Line
+	for rows.Next() {
+		var l Line
+		var accountID uuid.UUID
+		var debit, credit decimal.Decimal
+		var subledgerType *string
+		if err := rows.Scan(&accountID, &l.StoreID, &debit, &credit,
+			&subledgerType, &l.SubledgerID, &l.Memo); err != nil {
+			return nil, db.Translate(err, "")
+		}
+		l.AccountID = &accountID
+		if subledgerType != nil {
+			l.SubledgerType = *subledgerType
+		}
+		if debit.IsPositive() {
+			l.Side, l.Amount = Debit, debit
+		} else {
+			l.Side, l.Amount = Credit, credit
+		}
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, db.Translate(err, "")
+	}
+	if len(out) == 0 {
+		return nil, errs.New(errs.CodeNotFound,
+			"That journal entry has no lines to reverse.")
+	}
+	return out, nil
+}

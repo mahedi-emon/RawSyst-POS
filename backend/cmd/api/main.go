@@ -25,6 +25,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/group"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
@@ -212,7 +213,7 @@ func run() error {
 	// hold a reference to it. One instance: the engine reads and writes one
 	// set of tables and a second would be a second queue.
 	workflowSvc := workflow.NewService(pool)
-	purchasingSvc := purchasing.NewService(pool).WithApprovals(workflowSvc)
+	purchasingSvc := purchasing.NewService(pool).WithApprovals(workflowSvc).WithRates(fx.New(pool))
 	// The portal hands a one-time code to the same queue the staff recovery
 	// codes go through, so a code that exists and a message that will be sent
 	// commit together.
@@ -280,7 +281,7 @@ func run() error {
 			func() float64 { return float64(pool.Raw().Stat().EmptyAcquireCount()) })
 	}
 
-	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotionsSvc, orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool).WithPush(live.Notifications(hub)), integration.NewService(pool, cipher), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), audit.NewService(pool),
+	srv := api.NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shift.NewService(pool), settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotionsSvc, orders.NewService(pool), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool).WithPush(live.Notifications(hub)), integration.NewService(pool, cipher), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), fx.New(pool), audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, version).
 		// Onboarding is only wired when this installation can hold the
 		// credential ZATCA issues; without a key the routes say so rather than

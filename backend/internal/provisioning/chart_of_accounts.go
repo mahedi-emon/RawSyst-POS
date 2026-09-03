@@ -103,8 +103,17 @@ var defaultChart = []seedAccount{
 	// deliberately not Sales Revenue: selling a van is not trading, and folding
 	// it into turnover would overstate what the business actually does.
 	{"4900", "Gain on Disposal", "ربح استبعاد أصل", "revenue", "disposal_gain", ""},
+	// G2's realised currency gain, kept out of Sales Revenue for the same
+	// reason a disposal is: a favourable exchange rate is not trading, and
+	// folding it into turnover would overstate what the business does. Its
+	// matching loss is 5950.
+	{"4950", "Foreign Exchange Gain", "أرباح فروق العملة", "revenue", "fx_gain", ""},
 
 	{"5100", "Cost of Goods Sold", "تكلفة البضاعة المباعة", "expense", "cogs", ""},
+	// The loss half of G2. Deliberately not cost of goods: the stock cost
+	// what it cost, and a rate that moved between owing for it and paying is
+	// a separate event an owner needs to see on its own line.
+	{"5950", "Foreign Exchange Loss", "خسائر فروق العملة", "expense", "fx_loss", ""},
 	// Where a standard-costing difference lands, and where an allow_warn
 	// shortfall's provisional cost is corrected (C13).
 	//

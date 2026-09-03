@@ -31,6 +31,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/egs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fiscal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/group"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
@@ -144,6 +145,7 @@ type Server struct {
 	portal       *portal.Service
 	privacy      *privacy.Service
 	compliance   *compliance.Service
+	fx           *fx.Service
 	people       *people.Service
 	audit        *audit.Service
 
@@ -301,6 +303,7 @@ func NewServer(
 	privacySvc *privacy.Service,
 	complianceSvc *compliance.Service,
 	peopleSvc *people.Service,
+	fxSvc *fx.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -347,6 +350,7 @@ func NewServer(
 		privacy:      privacySvc,
 		compliance:   complianceSvc,
 		people:       peopleSvc,
+		fx:           fxSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -2017,6 +2021,20 @@ func (s *Server) Routes() []Route {
 		// --- E7: the compliance dashboard ---
 		{http.MethodGet, "/api/v1/compliance", AccessPermission, "compliance.view",
 			s.handleComplianceReport, ""},
+
+		// --- exchange rates (G2) ---
+		//
+		// Reading is `accounting.view` because a rate explains a figure on a
+		// report; entering one is `accounting.create` because it decides what
+		// every foreign-currency document is worth in the book — the same verb
+		// that writes a journal entry, held by an owner and an accountant.
+		{http.MethodGet, "/api/v1/exchange-rates", AccessPermission, "accounting.view",
+			s.handleListExchangeRates,
+			"the rates on file, most recent first"},
+		{http.MethodPut, "/api/v1/exchange-rates", AccessPermission, "accounting.create",
+			s.handleRecordExchangeRate,
+			"enters or corrects one pair's rate for one day; a rate is never " +
+				"guessed, so a pair with none refuses rather than booking at par"},
 
 		// --- global search (D7) ---
 		//

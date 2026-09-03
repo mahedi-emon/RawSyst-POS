@@ -3,6 +3,7 @@ package purchasing
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,6 +57,13 @@ type NewBill struct {
 	SupplierRef string
 	BillDate    time.Time
 	Lines       []BillLine
+
+	// Currency the supplier billed in. Empty means the company's own, which is
+	// the overwhelming majority of bills. A foreign one is translated at the
+	// rate in force on the BILL DATE and carries that rate for life, so the
+	// payable stays what the business agreed to owe even as the market moves —
+	// the difference is realised when it is paid (0114).
+	Currency string
 }
 
 type Bill struct {
@@ -131,16 +139,20 @@ func (s *Service) RecordBill(
 			return nil
 		}
 
-		var currency string
+		var base string
 		var tolerancePct, toleranceAmount decimal.Decimal
 		if e := tx.QueryRow(ctx, `
 			SELECT base_currency, match_tolerance_pct, match_tolerance_amount
 			FROM company WHERE id = $1`, scope.CompanyID).
-			Scan(&currency, &tolerancePct, &toleranceAmount); e != nil {
+			Scan(&base, &tolerancePct, &toleranceAmount); e != nil {
 			if errors.Is(e, pgx.ErrNoRows) {
 				return errs.New(errs.CodeNotFound, "That company was not found.")
 			}
 			return e
+		}
+		currency := strings.ToUpper(strings.TrimSpace(in.Currency))
+		if currency == "" {
+			currency = base
 		}
 
 		var terms int
@@ -159,6 +171,29 @@ func (s *Service) RecordBill(
 		if billDate.IsZero() {
 			billDate = time.Now().UTC()
 		}
+
+		// What one unit of the bill's currency was worth in the company's own
+		// on the day it was raised. One when they are the same currency, which
+		// is arithmetic rather than a market fact and needs no rate on file.
+		//
+		// A foreign bill with no rate recorded is REFUSED. Booking it at par
+		// would put a figure in the ledger that is wrong by however far the
+		// currencies differ, with nothing anywhere to indicate it — the same
+		// judgement the tax registry makes about an unrecorded rate.
+		rate := decimal.NewFromInt(1)
+		if currency != base {
+			if s.rates == nil {
+				return errs.New(errs.CodeInternal,
+					"This bill is in another currency and the purchasing "+
+						"service was built without the exchange rates.")
+			}
+			r, e := s.rates.RateOn(ctx, tx, scope.TenantID, currency, base,
+				billDate)
+			if e != nil {
+				return e
+			}
+			rate = r
+		}
 		// The due date follows the supplier's agreed terms rather than being
 		// stated by the caller. Terms are negotiated with the supplier, not
 		// chosen per invoice by whoever is typing it in.
@@ -168,10 +203,10 @@ func (s *Service) RecordBill(
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO purchase_bill
 			  (tenant_id, company_id, supplier_id, po_id, supplier_ref, uuid,
-			   bill_date, due_date, currency, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+			   bill_date, due_date, currency, fx_rate, created_by)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
 			scope.TenantID, scope.CompanyID, in.SupplierID, in.POID,
-			in.SupplierRef, in.UUID, billDate, dueDate, currency,
+			in.SupplierRef, in.UUID, billDate, dueDate, currency, rate,
 			scope.UserID).Scan(&billID); e != nil {
 			return conflictMessage(db.Translate(e, ""),
 				"Invoice "+in.SupplierRef+" has already been recorded for this "+

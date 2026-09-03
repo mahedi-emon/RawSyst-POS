@@ -74,7 +74,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | B1 | Catalog & variants | **COMPLETE** | `catalog` 10 svc · 7 routes · 8 pkg + 21 api tests (`catalog_test`, `matrix_test`) |
 | B1b | **Bundles / kits** | **MISSING** | A `bundle_price` PROMOTION kind exists (`0084`), which prices several items together. B1 asks for something different: a product composed of component SKUs with **automatic proportional stock deduction of each component on sale**. No composition table, no component deduction |
 | B2 | Variant matrix | **COMPLETE** | `matrix_test.go` 5 tests; regeneration adds only what is missing |
-| B3 | Barcode & Label Studio | **COMPLETE** | `labels` 9 svc · 9 routes · 17 api tests (`studio_test`, `stationery_test`) |
+| B3 | Barcode & Label Studio | **COMPLETE — manual half now tested 2026-09-03** | The bulk generator had 3 tests; the **manual override had none**, leaving the half of B3 that meets the outside world unproven. 2 added: a hand-assigned manufacturer EAN is what the till scans, and one code cannot be given to two products — refused as a correctable mistake rather than a 500 |
 | B4 | Inventory core | **COMPLETE** | `inventory`+`stockops` 21 svc · 23 routes · 46 pkg + 28 api tests. FIFO/WAC/standard, landed cost (`0034`), negative-stock policy, transfers with in-transit status, counts, adjustments, **GL tie-out exact**, concurrency tests |
 | B4a | **Batch / Lot / Expiry** | **CORE COMPLETE 2026-09-03** | `0107`: `variant.tracks_batches` (B1's flag), `stock_batch` (lot no, mfg/expiry date, qty, supplier, cost, recall), `stock_batch_movement` (the per-movement split, which is what makes a recall answerable). `inventory` receives into a lot, issues **FEFO** — earliest expiry first, undated last, recalled lots skipped — and returns go back into **the lot they left in**, never the soonest-expiring, because they are the same physical units. 8 tests. **Costing is provably unchanged**: `TestTurningOnBatchTrackingDoesNotChangeTheCostOfASale` runs the same sale in a tracked and an untracked shop and requires the same cost, so no company silently becomes specific-identification costed and C13's tie-out still holds. **Alerts:** `jobs.BatchExpirySweeper` (`stock.batch_expiry_sweep`), daily per tenant, warns 30 days out and raises a *critical* for a lot already past its date — two facts needing two messages, because one can still be sold and the other has to come off the shelf. Subject is the BATCH, so a shop with three lots of one item is sent to the right one. **Routes:** `GET /stock/batches` (soonest-expiring first, `expiring_within_days` filter, server-computed `days_left` so a till in another timezone cannot disagree about expiry) and `POST /stock/batches/{id}/recall` behind a new `inventory.recall_batch` verb, which withdraws the lot and **returns the customers who bought from it**. **Receiving:** GRN lines carry `batch_no` / `manufactured_on` / `expires_on` through to `inventory.Receive`, so a goods-in clerk is told at the loading bay rather than when the stock will not sell. The 30-day horizon is an operational default, deliberately NOT in the regulatory registry: that holds dated legal values carrying evidence, and "warn me a month out" is neither dated nor law |
 | B4b | Minimum-stock alert engine | **COMPLETE 2026-09-03** | `jobs.LowStockSweeper` (`stock.low_sweep`), scheduled daily per tenant with a date dedupe key so a shop low for a week is told once a day. Announces `notify.KindLowStock` per variant with the variant as `subject_id`, so tapping it reaches the product. **Uses the dashboard's exact query** — summed across warehouses, `qty > 0` — because two places disagreeing about "low" is worse than either answer. 5 tests incl. tenant isolation and out-of-stock exclusion |
@@ -83,7 +83,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | B6 | Suppliers | **COMPLETE** | covered by purchasing suite incl. `supplier_edit_test` |
 | B7 | POS backend | **COMPLETE** | counters, session binding, shifts, tenders, returns, exchanges, X/Z, concurrency — see §1 |
 | B8 | Hardware integration | **N/A (frontend)** | Printer/drawer/scanner are client concerns; `I5` per-terminal config partly in `device.printer_config` |
-| B9 | Promotions & pricing | **PARTIAL — with a P0 defect** | `promotions` 5 svc · 4 routes · 16 pkg tests, 0 API tests. `Quote` is reachable; **`Redeem` is called by nothing**, so usage limits never bite and campaign cost is permanently zero. See the B9 section below the table |
+| B9 | Promotions & pricing | **COMPLETE 2026-09-03** | `Redeem` is now called on every finalised sale AND enforces the caps itself. `Quote` filtered on `max_uses` by counting redemptions, which is right for showing a cashier what applies and is no control at all: two tills quoting the same last-use coupon both saw it available and both redeemed it. The campaign row is now locked `FOR UPDATE` before its redemptions are counted, the same shape as the credit limit. 9 tests incl. **8 concurrent tills redeeming a one-use coupon exactly once**, per-customer caps, and another company’s campaign refused |
 | B10 | Returns / exchange | **COMPLETE** | `sales/refund.go`, `exchange.go`, C14 effects, `exchange_test` 9 tests |
 | B11 | Quotation → Order → Delivery | **COMPLETE** | `orders` 8 svc · 8 routes · 11 tests; `aftersales` delivery 4 routes |
 | B12 | **Wholesale / B2B** | **PARTIAL — 4 of 6 bullets complete** | Re-verified bullet by bullet 2026-09-02, against code rather than route counts. See the breakdown below the table |
@@ -96,7 +96,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | C2 | Cash & bank | **COMPLETE** | `treasury` 11 svc · 10 routes · 10 tests |
 | C3 | Expenses & investment | **COMPLETE** | `expenses` 9 svc · 8 routes · 13 tests; investors 4 routes |
 | C4 | AR / AP | **COMPLETE** | `receivables` 15 svc · 15 routes · **42 api tests** incl. receipt reversal, ageing, credit standing |
-| C5/C6 | HR & payroll | **PARTIAL — market gap FIXED 2026-09-03** | `people` 23 svc · 23 routes · 15 tests. **A Bangladeshi shop could not run payroll at all** — not "payroll without a GOSI line", but no payslips and no wages, because `SA.GOSI.RATES` found no rule for `bd` and the registry error killed the run. Each obligation is now asked of the market (`market.SocialInsuranceApplies` / `WageProtectionApplies` / `EndOfServiceApplies`), so a market without the scheme loses that ONE figure and still pays people. **No foreign equivalent is invented** — this product has Saudi's rules and no others. 2 tests, both directions. Saudi values remain unverified |
+| C5/C6 | HR & payroll | **PARTIAL — market gap FIXED 2026-09-03** | `people` 23 svc · 23 routes · 15 tests. **A Bangladeshi shop could not run payroll at all** — not "payroll without a GOSI line", but no payslips and no wages, because `SA.GOSI.RATES` found no rule for `bd` and the registry error killed the run. Each obligation is now asked of the market (`market.SocialInsuranceApplies` / `WageProtectionApplies` / `EndOfServiceApplies`), so a market without the scheme loses that ONE figure and still pays people. **No foreign equivalent is invented** — this product has Saudi's rules and no others. 2 tests, both directions. Saudi values remain unverified  **Commission (C6): FIXED 2026-09-03, was totally broken — see the *Sales commission* section below.** |
 | C7 | Fixed assets | **COMPLETE** | `assets` 10 svc · 4 routes · 10 tests, depreciation |
 | C8 | Shift & drawer | **COMPLETE** | `shift`, blind close, X/Z, `drawer_derivation_test`, `shift_close_race_test` |
 | C9 | Double-entry engine | **COMPLETE** | all 12 posting rules as data, resolved at transaction date |
@@ -106,29 +106,30 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | C13 | Costing & COGS | **COMPLETE** | tie-out exact incl. negative-stock correction (`0047`/`0048`) |
 | C14 | Accounting-aware returns | **PARTIAL — 8 of 9** | **Loyalty reversal IS built** — `sales.reverseLoyalty` takes points back in proportion and rounds *up*, so a partial return cannot leave a customer ahead. The P13 note calling it missing was stale. **Effect 7 (commission) is blocked for a deeper reason than reported: commission is never EARNED on a sale.** `commission_rule` exists; no commission entry is ever attributed to a salesperson, so there is nothing to reverse. Reported honestly in `Refunded.Outstanding` |
 | D1 | Reporting suite | **COMPLETE** | `reports` 17 svc · 9 routes · 7 tests; TB, P&L, BS, cash flow |
-| D2 | Analytics & forecasting | **PARTIAL** | `insight` 5 svc · 4 routes. **Thin test coverage** (touched only by `studio_test`) |
+| D2 | Analytics & forecasting | **COMPLETE 2026-09-03** | `insight` 5 svc · 4 routes · **2 tests added**. All four analytics reads (kpis, movers, forecast, profitability) answer for a shop with a sale on the books, and all four take `report.view` |
 | D3 | Notifications | **COMPLETE** | `notify` 8 svc · 7 routes; 3 functional tests (preferences, in-app cannot be silenced, announcement reaches inbox) |
 | D4 | Audit trail | **COMPLETE** | append-only, `TestAuditLogIsAppendOnly`, `audit.Write` with `actor_label` |
 | D5 | Approval centre | **COMPLETE** | `workflow` 12 svc · 10 routes, wired into `expenses.Record` and `purchasing.IssueOrder`. **A P0 defect that made the whole module unusable was found and fixed 2026-09-03** — see below. **10 end-to-end tests**: decision path (6) plus escalation on an elapsed deadline, no escalation inside it, an escalated request still decidable, and delegation refusing backwards cover |
-| D6 | Document management | **PARTIAL** | `docs` 7 svc · 4 routes. **Isolation-only test coverage** (`cross_tenant_walk`) |
-| D7 | Global search | **PARTIAL** | 1 route, `insight/search.go`. Touched by `studio_test` only |
+| D6 | Document management | **COMPLETE 2026-09-03** | `docs` 7 svc · 4 routes · **2 tests** (was isolation-only). Register lists, filing takes `document.manage`, and a cross-tenant read returns no rows |
+| D7 | Global search | **COMPLETE 2026-09-03** | `insight/search.go` · **3 tests**. Finds the fixture’s own product by name, answers empty for a miss rather than failing, and does not return another tenant’s catalogue |
 | E1 | ZATCA | **DEFERRED** | as instructed |
 | E2 | Saudi tax engine | **COMPLETE** | multi-market treatments; rates now per treatment |
 | E3 | Payment methods | **COMPLETE** | gateways, providers, attempts, settlement |
-| E4 | PDPL / privacy | **PARTIAL** | `privacy` 29 svc · 25 routes — a large module with **isolation-only tests**. `SA.PDPL.*` is now gated on `market.PrivacyRegimeApplies` (2026-09-03), so a non-Saudi tenant is told there is no regime on file rather than meeting a registry error. **Functional tests still missing** |
-| E7 | Compliance dashboard | **PARTIAL** | `compliance` 1 svc · 1 route · **0 tests** |
+| E4 | PDPL / privacy | **COMPLETE 2026-09-03** | `privacy` 29 svc · 25 routes · **6 functional tests** (was isolation-only). Consent recorded → listed → withdrawn with `withdrawn_at` stamped; DSR opened → closed and dropping out of the `?open=true` list; breach incident logged and registered; ROPA read; permission enforced on all four registers. No defect found |
+| E7 | Compliance dashboard | **COMPLETE 2026-09-03** | `compliance` 1 svc · 1 route · **5 tests** (was 0). All eight aggregations assemble for a Saudi shop and for a Bangladeshi one, an un-onboarded shop reads as not-started rather than clear, scoping and permission hold. No defect found — the module was sound and simply unproven |
 | E8 | Regulatory registry | **COMPLETE** | dated values, evidence required, market-aware boot + provisioning gates, 9 tests |
 | F1 | Workflow engine | see D5 | |
-| F2/F3 | Customer & supplier portals | **PARTIAL** | `portal` 26 svc · 24 routes · **only 4 tests** for a large external-facing surface |
-| F4 | Group consolidation | **PARTIAL** | `group` 11 svc · 10 routes · **isolation-only tests** |
+| F2/F3 | Customer & supplier portals | **COMPLETE 2026-09-03** | `portal` 26 svc · 24 routes · **10 tests** (was 4, all of them door-locked checks). Now proves there is something behind the door: a customer sees their own invoice, a customer who bought nothing sees none, every read answers, an address saves and reads back, sign-out ends the session. A near-miss worth recording — the first draft of the isolation test read the wrong response key and would have passed no matter what the portal returned; the positive control is what caught it |
+| F4 | Group consolidation | **COMPLETE 2026-09-03** | `group` 11 svc · 10 routes · **4 tests** (was isolation-only). Group created → member added → read back; consolidated statement and intercompany view both answer; cross-tenant refused; creating one takes `group.manage`. Membership is dated, so a statement for a period before a company joined correctly finds nothing to consolidate |
 | G1 | Country configuration | **COMPLETE** | `tenant.market`, onboarding constraint, `internal/market` |
-| G2 | Multi-currency | **PARTIAL** | `fx_rate` on invoices, base-currency allocation in journals. No FX revaluation, no rate source |
-| G4 | Tax templates library | **PARTIAL** | treatments per country in registry; jurisdiction model added (`0106`), **no rates** |
+| G2 | Multi-currency | **COMPLETE (realised) 2026-09-03; unrealised revaluation deliberately not attempted** | See the *Multi-currency* section below |
+| G4 | Tax templates / US jurisdiction tax | **COMPLETE (engine), DATA IS AN OPERATIONS TASK 2026-09-03** | See the *US sales tax* section below. |
 | H1 | Security & auth | **COMPLETE** | argon2id, refresh rotation with reuse detection, MFA, httpOnly cookie, lockout |
 | H2 | Offline sync | **COMPLETE** | `sync` + `replay.go`, M3 gate, 8 pkg + 12 api tests |
 | H3 | Device management | **COMPLETE** | 10 routes, 26 tests, binding model (`0104`) |
 | H4 | Backup & restore | **COMPLETE** | `ops` 14 svc · 5 routes; `TestABackupThatRanIsNotABackupThatRestores` |
-| H5 | Subscription & billing | **PARTIAL** | **9 tests added 2026-09-02** covering entitlement resolution: plan tier decides, tenant override beats it in both directions, expired override falls back, unknown feature fails closed, no cross-tenant leak, Super-Admin-only mutation. **The resolver is correct and NOTHING CALLS IT** — see the critical finding below. Invoices and dunning remain untested |
+| H5 | Subscription & billing | **COMPLETE (entitlement) 2026-09-03** | **The gate is enforced.** `featureOfRoute` maps 28 route families to the 14 gateable modules `plan_feature` sells; `requireFeature` middleware refuses with **402 Payment Required** — deliberately not 403, because the caller holds the permission and what is missing is commercial, and the two have different remedies. Wrapped inside the auth middleware so an unauthenticated caller gets 401 rather than being told what a plan contains. 9 gate tests: starter refused, business allowed, core product never gated, tenant grant opens, expired grant closes, withdrawn module closes on a tier that includes it, no cross-tenant leak, Super Admin ungated, and a guard that every gated feature is one the plans actually sell. **`wholesale` and `multi_company` are deliberately not route-gated**: wholesale is a customer type and price tier with no endpoint of its own, and multi-company is a CEILING already enforced by `tenant_limit.max_companies` — gating a route would refuse the FIRST company on every plan. Test fixtures moved to `enterprise`, since a fixture exists to test its module and not the subscription in front of it. Invoices and dunning remain untested |
+| H5-old | (superseded note) | | **9 tests added 2026-09-02** covering entitlement resolution: plan tier decides, tenant override beats it in both directions, expired override falls back, unknown feature fails closed, no cross-tenant leak, Super-Admin-only mutation. **The resolver is correct and NOTHING CALLS IT** — see the critical finding below. Invoices and dunning remain untested |
 | H6 | API & integrations | **COMPLETE** | API keys (3 tests), webhooks (2 tests), `jobs/webhooks.go` dispatch with retry. Delivery not tested end-to-end |
 | H7 | Import / export | **COMPLETE** | `portability` 7 svc · 8 routes · 5 functional tests (stage→check→commit, refusal reasons, duplicate detection) |
 | H8 | Health monitoring | **COMPLETE** | `platformops`, 18 api tests |
@@ -505,3 +506,367 @@ chosen by the platform operator (0103) with the create-business UI that had no
 caller; POS pure logic moved to `shared/src/pos`; the counter model (0104), ZATCA
 decoupled from selling via `internal/market`, and the country-derived VAT-rate key
 with Bangladesh seeded (0105). Nothing committed — the working tree carries it all.
+
+---
+
+## US sales tax — production readiness (G1 / G4)
+
+**Status: the engine is complete and safe. The rate DATA is an operations task,
+not a code gap, and the product refuses to sell rather than guess at it.**
+
+### What a US sale does now
+
+`store.tax_jurisdiction_id` (0109) places a shop — on the STORE, because a chain
+is taxed differently in each city. `sales.resolveRates` asks the registry for a
+national rate first; where the market has none (the US), it falls through to
+`registry.JurisdictionRate`, which walks the shop's jurisdiction to its country
+root and sums each authority's share in force **on the invoice date**.
+
+Each authority's share is then written to `sales_invoice_tax_share` (0111). A
+shop files a return with the state and another with the city, each for its own
+share, and `sales_invoice.tax_total` alone cannot answer either. The breakdown
+is stored at the time of sale rather than recomputed at filing time, because
+rerunning last quarter's invoices through today's rates would reapportion tax
+that was already charged and collected under the old ones.
+
+The shares are apportioned proportionally and sum to the invoice tax exactly.
+The leftover penny goes to the authority with the **largest rate**, not to the
+last part as this codebase's usual rounding-remainder rule would have it: the
+walk ends at the country root, which in the US levies zero, so the ordinary rule
+would file a stray penny — negative, in the tested case — with an authority that
+charges nothing and is owed nothing.
+
+### The undercharge guarantee
+
+A US sale cannot be priced on incomplete data. Four refusals, each tested:
+
+| Situation | What happens |
+|---|---|
+| Shop has no jurisdiction set | Refused, naming the missing setup step |
+| Jurisdiction has no rates at all | Refused — a zero rate is a legal claim nobody made |
+| **An authority in the chain has no rate on file** | **Refused, naming that authority** |
+| Any share is unverified (production gate on) | Refused, naming the authority |
+
+The third was a real defect found and fixed during this pass. The chain walk
+skipped an authority with no rate row, so a shop whose city rate was loaded and
+whose state rate was not would have sold all day at the city's 2% — printed on
+the receipt as the tax due, posted to the tax account, and under-remitted to the
+state, with nothing anywhere looking wrong.
+
+The fix makes **absence and zero different facts**. An authority that genuinely
+levies nothing gets an explicit `0.000000` row with its source, which somebody
+has to look up and write down. An authority nobody has loaded yet gets a
+refusal that names it. 0110 records the one such statement the product ships:
+the United States levies no federal sales or use tax.
+
+### Data architecture: RawSyst maintains the datasets. This was NOT a business decision to escalate.
+
+The Blueprint settles it in two places, so no provider choice needed isolating:
+
+* **A4, Super Admin global configuration** — *"manage global list of countries,
+  currencies, languages, **tax templates** (so new country configs can be added
+  without code changes)"*. The Platform Owner curates tax data as platform data.
+* **G4** — *"A growing library of pre-built **tax templates per country**"*.
+
+And decisively, **H6's connector list does not include a tax provider**: payment
+gateways, SMS, email, WhatsApp, shipping, external accounting, e-commerce,
+banks, card terminals, and ZATCA. Tax is not an integration in this product; it
+is configuration the platform owns. The `tax_jurisdiction` / `tax_jurisdiction_rate`
+tables already have the shape that requires — `source_authority`,
+`source_document`, `source_url`, `verified_on`, `verified_by`, and a GiST
+exclusion forbidding overlapping date ranges — which a provider integration
+would not need and could not populate.
+
+This also fits the existing provider precedent rather than contradicting it.
+0102's payment gateways are *credentials the client types in*, because a shop
+has its own acquirer relationship. No shop has its own relationship with a rate
+dataset, and per-tenant tax rates would be a correctness hazard, not a feature.
+
+### What ships, and what an operator must do
+
+0109 seeds California's **state share only**, `verified_on` NULL on purpose.
+**Official source:** [CDTFA — Sales & Use Tax Rates](https://www.cdtfa.ca.gov/taxes-and-fees/sales-use-tax-rates.htm),
+read 2026-09-03: *"The statewide tax rate is 7.25%"*, and on the same page *"In
+most areas of California, local jurisdictions have added district taxes ...
+those district tax rates range from 0.10% to 2.00%"*, with sellers directed to
+look the combined rate up **by address**.
+
+A web search for consolidated state-rate tables returned only Tax Foundation and
+similar aggregators, which Part N of the Blueprint classifies as **Tier 2,
+orientation only**. They were not used as data. Every rate must come from the
+levying authority itself.
+
+Before a US shop can trade, an operator records the district/county/city
+jurisdictions for its address with their sources and verifies them. Until then
+the sale is refused, loudly and by name.
+
+### Still genuinely undecided (documented, not invented)
+
+**Origin versus destination sourcing.** Some US states tax where a sale
+originates and some where it is delivered. `tax_jurisdiction.is_origin_based`
+records the fact per authority and nothing reads it yet; the shop's own
+jurisdiction is used, which is correct for a customer at the counter and is the
+starting point for the delivery case. Wiring delivery addresses into rate
+selection needs the sourcing rules per state, and choosing one silently would be
+inventing a rule.
+
+### Returns
+
+A credit note is credited against the authorities that were paid on the sale it
+corrects, apportioned from **the original invoice's own shares** rather than
+resolved afresh — a rate that changed between the sale and the return would
+otherwise credit the state for tax the customer never paid it. Without this the
+breakdown would have been correct only until somebody brought something back,
+and the shop would have remitted tax it had already refunded.
+
+### Tests (16, all passing)
+
+`internal/api/us_tax_test.go` — multi-authority sum; no jurisdiction; unverified
+rate; the shipped California row; a Saudi sale unaffected; **an authority with
+no rate refuses and is named**; an authority levying zero sells; **a rate change
+applies from its effective date** (two sales ten days apart in one accounting
+period, 5% then 8%); **one shop's jurisdiction does not tax another's sale**;
+**tax reaches the ledger** (output tax credited 8.25, revenue 100); **each
+authority's share is recorded and the shares sum to the invoice tax**; **an
+authority levying zero is apportioned exactly zero** (6.25% + 1.25% on 55.55,
+where the split leaves a penny over); **a full return credits each authority the
+6.25 and 2.00 it was paid**; a Saudi sale records no shares.
+
+`internal/registry/jurisdiction_test.go` — the combined-rate walk, an unverified
+share, a jurisdiction with no rates, resolution at the transaction date, a
+partly loaded chain refused by name, an authority levying zero, and every
+shipped rate proven to name a real authority and to be unverified.
+
+---
+
+## Sales commission (C6) and C14 effect 7
+
+**Status: was broken outright, now works end to end. 12 tests.**
+
+### Root cause
+
+`people.commissionFor` attributed a month's takings with:
+
+```sql
+JOIN employee e ON e.user_id = i.created_by
+```
+
+and **`sales_invoice` has no `created_by` column** — it never has. The query
+errored, so `POST /api/v1/payroll` returned **HTTP 500 for any employee marked
+`commission_eligible`**. Not a wrong figure: a hard failure, on the payroll run
+itself. It went unnoticed because every payroll test hired staff who were not
+commission-eligible, so the function was never reached.
+
+Underneath that sat a real gap: **a sale did not record who made it.**
+`sales.Sale.CashierID` was populated from the authenticated user on every POS
+path and used for the journal's `posted_by`, but `writeInvoice` had nowhere to
+put it.
+
+Correcting an earlier note in this document: commission was *not* "never earned
+on a sale". `commissionFor` had always computed it at payroll time by
+aggregating the period, and `computeSlip` had always called it. The design was
+sound; the wiring was broken.
+
+### What changed
+
+`0112_sale_cashier.sql` adds `sales_invoice.cashier_id` (nullable, `ON DELETE
+SET NULL`, partial index on `company_id, cashier_id, issued_at`). Not
+backfilled: invoices written before it was captured cannot honestly be given an
+attribution, so they stay null and a period containing them is short rather
+than invented. The same column is what E-reporting's "Employee-wise" sales
+report and the cashier dashboard's "today's own sales" will read.
+
+`writeInvoice` and `writeCreditNote` now persist it. The name follows the
+Blueprint — A6 calls the role "Cashier / POS Operator" and C6 measures
+commission per employee; there is no separate salesperson concept to invent.
+
+`commissionFor` was rewritten to fix four defects, each of which was reachable
+the moment the 500 was fixed:
+
+| Defect | Effect before |
+|---|---|
+| Joined on a column that does not exist | Payroll 500 for any eligible employee |
+| No `doc_type` filter | A credit note's positive line amounts were **added** — selling 100 and refunding it in full paid commission on 200 |
+| Rule scope read only for ranking | A scheme written for one branch paid on the whole company |
+| No `state` filter | `draft` and `cancelled` invoices earned commission |
+
+**A credit note is attributed to whoever made the original sale**, resolved
+through `parent_invoice_id`, not to whoever stood at the till for the refund.
+C14 effect 7 says to reverse the commission attributed to *the original sale*;
+docking the refunding cashier would penalise the wrong person and leave the
+seller paid for goods that came back.
+
+Commission is never negative: a month whose returns exceed its sales pays zero,
+because taking money off a salary is a deduction nobody has authorised.
+
+`rateFromTiers` is untouched. Its reading — the highest band reached applies to
+the whole amount — matches C6's worked example and is now pinned by a test at
+the Blueprint's own numbers.
+
+### Base, and C14 coverage
+
+The base is the Blueprint's own: C6 says "total revenue, or profit", which is
+`sales_invoice_line.net_amount` and `cogs_amount`. Nothing invented.
+
+**Exchanges need no special case.** `ProcessExchange` is `ProcessReturn` plus
+`Finalize` — a credit note and a new sale through the same tables — so signed
+netting covers it with no double count. Voids are covered by the state filter.
+
+### Tests (12, all passing) — `internal/api/commission_test.go`
+
+Sale earns at the scheme's rate · **attribution is persisted on the invoice** ·
+credit note reverses it · **reversal follows the original seller, not the
+refunding cashier** · draft earns nothing · cancelled earns nothing ·
+store-scoped scheme does not pay on another store's sales · store-scoped scheme
+does pay on its own · profit basis differs from revenue basis · tenant
+isolation · **C6's worked example** (400.00 net at 1%, then 60,400.00 net
+crossing SAR 50,000 → 1,208.00 at 2% on the whole) · **20 concurrent sales
+count exactly 20**.
+
+Payroll integration verified end to end: `computeSlip` → `commissionFor` →
+`payslip.commission` → `gross`, through the real `POST /api/v1/payroll` route,
+which no longer 500s.
+
+---
+
+## Defects found and fixed while verifying the above
+
+Three failures in the full suite predated this pass and had been hidden by a
+truncated log tail:
+
+* **`stockops/batches.go` selected `s.name` from `supplier`**, whose column is
+  `legal_name`. `GET /api/v1/stock/batches` had never worked — it 500'd on
+  every call. Fixed.
+* **Two batch-lifecycle tests tendered 115.00 for a sale of two at 115.00.**
+  The tests were wrong, not the product. Fixed to 230.00.
+* **An unknown item was refused with "That product was not found."** The bundle
+  lookup added in the kits pass runs first on the sale path and had taken over
+  the refusal from the stock layer, whose wording tells a cashier what to do.
+  Both lookups now say the item is not in this company's catalogue and to check
+  the barcode or add it.
+
+One failure was caused by this pass and is fixed: enforcing H5's entitlement
+gate invalidated `TestEntitlementIsResolvedButNotYetEnforced`, whose own comment
+said to delete it the moment somebody wired the gate. Deleted; its replacement
+is `entitlement_gate_test.go`. Four sibling tests now provision the starter tier
+explicitly rather than relying on the shared fixture, which sits on the top tier
+so that a module test is not accidentally a subscription test.
+
+---
+
+## Backend completion pass — 2026-09-03
+
+Seven modules were PARTIAL for the same reason: they had isolation-only or no
+functional coverage. Tests proving one tenant cannot read another's rows, and
+nothing proving the rows can be read at all. For a reporting surface that is
+the weaker half — a query naming a column that does not exist isolates
+perfectly and answers 500 to everybody equally, which is exactly how the
+batches route shipped broken.
+
+**One real defect found, in promotions.** `Redeem` inserted unconditionally;
+`max_uses` and `max_uses_per_customer` were enforced only in `Quote`, by
+counting the redemption table outside the transaction that spends against it.
+A coupon issued for one use was good for as many as there were counters, and
+nothing failed or was logged — the campaign simply cost more than it was
+authorised to. The campaign row is now locked before its redemptions are
+counted. Pinned by 8 concurrent tills redeeming a one-use coupon exactly once.
+
+**The other six were sound and merely unproven**, and are now proven:
+compliance, privacy, portals, group consolidation, documents, global search and
+analytics. That is worth stating plainly rather than implying every gap is a
+bug — the earlier passes in this session found a defect behind almost every
+untested module, and these did not.
+
+**A near-miss in my own test.** The portal isolation test first read
+`["invoices"]` where the handler returns `["data"]`, so it counted zero rows no
+matter what the portal did and would have passed against a portal that leaked
+everything. The positive control — a customer who *should* see an invoice — is
+what exposed it. An isolation test with no positive counterpart is not evidence.
+
+### Verified on request: inventory, barcodes, business management, costing
+
+* **Inventory (B4/B4a)** — 46 package tests across `costing_test.go` (23),
+  `tieout_test.go` (12) and `shortfall_test.go` (11), plus batch/lot/expiry with
+  FEFO. The batches list route was 500ing on `supplier.name` and is fixed.
+* **Barcodes (B3)** — auto (bulk generator, idempotent, symbology-aware) and
+  manual (hand-assigned EAN, uniqueness enforced) both covered.
+* **Financial tracking / costing (C1–C13)** — FIFO, weighted average and
+  standard costing with variance; the C13 tie-out holds exactly, pinned by
+  `TestTheBooksBalanceAfterARealDay`, `TestStockAgreesWithItsMovementsAfterARealDay`,
+  `TestTheCustomerLedgerAgreesWithTheControlAccount` and
+  `TestAReturnReversesRevenueTaxCostAndStockTogether`.
+
+---
+
+## Multi-currency and realised FX (G2)
+
+**What was actually wrong was worse than "no revaluation".** Multi-currency was
+structural only. `sales_invoice`, `purchase_bill` and `purchase_order` all
+carried `currency` and `fx_rate`, and **every caller in the repository passed
+`decimal.NewFromInt(1)`**. `RecordBill` and `Collect` both overwrote the
+caller's currency with the company's base. No foreign-currency document could
+exist, so no gain or loss could arise and nothing was there to revalue.
+
+### What now happens
+
+`0113` makes a rate a recorded fact: a pair, a day, a rate and the source
+whoever entered it named. `internal/fx` resolves the rate in force on a
+document's own date (the latest not after it), derives the inverse rather than
+demanding both directions — a book whose USD→SAR and SAR→USD disagree does not
+balance — and **refuses a pair with no rate rather than defaulting to 1**. Which
+feed a business books at is its own decision, so there is deliberately no
+"fetch today's rates" route; what the product insists on is that a figure has a
+source.
+
+`0114` adds `4950 Foreign Exchange Gain` and `5950 Foreign Exchange Loss`, and
+version 2 of posting rule 7. A bill is carried at the rate it was booked at for
+life; when it is paid, the payable is relieved at that rate, the money leaves at
+the payment-day rate, and the difference is realised on a third leg.
+
+Partial and repeated settlements are correct by construction: the difference is
+computed **per allocation, against that bill's own rate**, so each settlement
+recognises its own share and no other. Four quarter-payments come to exactly
+what one full payment would have.
+
+### Two defects found on the way, neither in the brief
+
+* **The migration would have silently done nothing.** `account` and
+  `account_role_map` are FORCE row-level security on `current_tenant_id()`, and
+  a migration connection carries no tenant — the `INSERT … SELECT` would have
+  read zero rows and created no accounts, with the first foreign payment failing
+  on an unmapped role months later. This is the trap `0103` hit; `0030` still
+  contains the same latent no-op. `0114` lifts FORCE for its own transaction.
+* **Payment reversal re-derived its lines from the posting rule.** That looks
+  equivalent and is not: a settlement carrying a realised gain has a leg whose
+  size came from two rates on two days, and no rule evaluation at reversal time
+  recovers it — the reversal would have undone the payment and left the gain
+  standing. `accounting.LinesOf` now reads the entry that was actually posted
+  and flips it, which is both simpler and right in every case.
+
+Also worth recording: `posting_rule.lines` is immutable by trigger, so a rule is
+**versioned, not edited**. Every entry cites the version that produced it, and
+rewriting one in place would leave posted history explained by lines that were
+never used. Rule 7 version 1 stays exactly as it was.
+
+### Deliberately not done
+
+**Unrealised revaluation of open balances at period end.** That is a
+period-close routine with its own posting and reversal, and attempting it
+alongside realised recognition is the classic way to count one movement twice.
+It is a distinct feature, not a missing half of this one.
+
+### Tests (19)
+
+Rate management (10): recorded and read back; a missing pair refuses with
+`unverified_rule` rather than assuming par; a currency against itself is one;
+the rate in force is the latest not after the date and does not reach back
+before the first; re-recording a day corrects rather than duplicates; the
+inverse is derived; a rate must name its source; a non-positive rate is
+refused; rates do not cross tenants; setting one takes the bookkeeping verb.
+
+Realised gain/loss (9): **loss**, **gain** (and proven not to reach sales
+revenue), **settlement at the booked rate realises nothing**, **partial
+settlement realises only its share**, **four settlements do not double-recognise**,
+**the journal balances** at 3,800 debits against 3,800 credits, **eight
+concurrent payments of one bill settle it once**, a foreign bill needs its own
+tenant's rate, and a currency with no rate is refused by name.

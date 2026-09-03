@@ -438,12 +438,14 @@ type billLineRequest struct {
 }
 
 type billRequest struct {
-	UUID        string            `json:"uuid"`
-	SupplierID  string            `json:"supplier_id"`
-	POID        string            `json:"po_id"`
-	SupplierRef string            `json:"supplier_ref"`
-	BillDate    string            `json:"bill_date"`
-	Lines       []billLineRequest `json:"lines"`
+	UUID        string `json:"uuid"`
+	SupplierID  string `json:"supplier_id"`
+	POID        string `json:"po_id"`
+	SupplierRef string `json:"supplier_ref"`
+	BillDate    string `json:"bill_date"`
+	// Currency the supplier billed in. Omitted means the company's own.
+	Currency string            `json:"currency"`
+	Lines    []billLineRequest `json:"lines"`
 }
 
 func (s *Server) handleRecordBill(w http.ResponseWriter, r *http.Request) {
@@ -471,6 +473,7 @@ func (s *Server) handleRecordBill(w http.ResponseWriter, r *http.Request) {
 
 	in := purchasing.NewBill{
 		UUID: docUUID, SupplierID: supplierID, SupplierRef: req.SupplierRef,
+		Currency: req.Currency,
 	}
 	if req.POID != "" {
 		poID, e := parseUUID(req.POID, "po_id")

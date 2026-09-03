@@ -328,10 +328,10 @@ func (s *Service) PaySupplier(
 			return nil
 		}
 
-		var currency, country, supplier string
+		var base, country, supplier string
 		if e := tx.QueryRow(ctx,
 			`SELECT base_currency, country FROM company WHERE id = $1`,
-			scope.CompanyID).Scan(&currency, &country); e != nil {
+			scope.CompanyID).Scan(&base, &country); e != nil {
 			if errors.Is(e, pgx.ErrNoRows) {
 				return errs.New(errs.CodeNotFound, "That company was not found.")
 			}
@@ -359,6 +359,53 @@ func (s *Service) PaySupplier(
 			}
 			total = total.Add(a.Amount)
 		}
+
+		// What the bills being settled are denominated in.
+		//
+		// Read before the payment row is written, because the payment is
+		// recorded in the currency it was actually made in. One payment
+		// instrument moves one currency, so a payment spanning bills in two is
+		// refused rather than guessed at — the alternative is a single
+		// `supplier_payment.amount` that means two different things at once.
+		billIDs := make([]uuid.UUID, 0, len(in.Allocations))
+		for _, a := range in.Allocations {
+			billIDs = append(billIDs, a.BillID)
+		}
+		currencies := []string{}
+		rows, e := tx.Query(ctx, `
+			SELECT DISTINCT currency FROM purchase_bill
+			WHERE id = ANY($1) AND company_id = $2`, billIDs, scope.CompanyID)
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var c string
+			if e := rows.Scan(&c); e != nil {
+				rows.Close()
+				return e
+			}
+			currencies = append(currencies, c)
+		}
+		rows.Close()
+		if e := rows.Err(); e != nil {
+			return e
+		}
+		if len(currencies) > 1 {
+			return errs.Newf(errs.CodeInvalidInput,
+				"That payment settles bills in %d different currencies. Pay "+
+					"each currency separately, so the amount that left the "+
+					"account means one thing.", len(currencies))
+		}
+		currency := base
+		if len(currencies) == 1 {
+			currency = currencies[0]
+		}
+
+		// The payable is relieved at the rate each bill was BOOKED at; the
+		// money leaves at the rate on the day it left. Where those differ the
+		// gap is realised, and 0114 says why it is neither a cost of goods nor
+		// a rounding error.
+		payableRelieved := decimal.Zero
 
 		number, e := claimNumber(ctx, tx, scope.CompanyID, "payment", "PAY")
 		if e != nil {
@@ -389,15 +436,16 @@ func (s *Service) PaySupplier(
 			// Locked before it is read. Two payments allocated to the same
 			// bill at the same moment would otherwise both see the old
 			// amount_paid and between them overpay it.
-			var outstanding decimal.Decimal
+			var outstanding, billRate decimal.Decimal
 			var ref, status string
 			if e := tx.QueryRow(ctx, `
-				SELECT total_inclusive - amount_paid, supplier_ref, status
+				SELECT total_inclusive - amount_paid, supplier_ref, status,
+				       fx_rate
 				FROM purchase_bill
 				WHERE id = $1 AND company_id = $2 AND supplier_id = $3
 				FOR UPDATE`,
 				a.BillID, scope.CompanyID, in.SupplierID).
-				Scan(&outstanding, &ref, &status); e != nil {
+				Scan(&outstanding, &ref, &status, &billRate); e != nil {
 				if errors.Is(e, pgx.ErrNoRows) {
 					return errs.New(errs.CodeInvalidInput,
 						"One of those bills does not belong to this supplier.")
@@ -448,12 +496,54 @@ func (s *Service) PaySupplier(
 				return e
 			}
 
+			// Each allocation relieves the payable at ITS OWN bill's rate, so
+			// a payment settling two bills raised on days the rate differed
+			// is right for both. This is also what makes partial and repeated
+			// settlements come out: each recognises the difference on its own
+			// share and no other, so nothing is counted twice.
+			payableRelieved = payableRelieved.Add(a.Amount.Mul(billRate))
+
 			out.Settled = append(out.Settled, SettledBill{
 				BillID: a.BillID, SupplierRef: ref,
 				Amount:      a.Amount.StringFixed(2),
 				Outstanding: outstanding.Sub(a.Amount).StringFixed(2),
 				Status:      newStatus,
 			})
+		}
+
+		// What actually left the account, in the company's own currency.
+		paymentRate := decimal.NewFromInt(1)
+		if currency != base {
+			if s.rates == nil {
+				return errs.New(errs.CodeInternal,
+					"That payment is in another currency and the purchasing "+
+						"service was built without the exchange rates.")
+			}
+			r, e := s.rates.RateOn(ctx, tx, scope.TenantID, currency, base,
+				paidOn)
+			if e != nil {
+				return e
+			}
+			paymentRate = r
+		}
+		cashOut := total.Mul(paymentRate).Round(2)
+		payableRelieved = payableRelieved.Round(2)
+
+		// Positive when the business paid less of its own currency than it
+		// owed: a gain. Negative is a loss.
+		difference := payableRelieved.Sub(cashOut)
+		fxGain, fxLoss := accounting.Group{}, accounting.Group{}
+		switch {
+		case difference.IsPositive():
+			fxGain = accounting.Group{{
+				Role: "fx_gain", Amount: difference,
+				Memo: "Exchange gain on " + currency,
+			}}
+		case difference.IsNegative():
+			fxLoss = accounting.Group{{
+				Role: "fx_loss", Amount: difference.Neg(),
+				Memo: "Exchange loss on " + currency,
+			}}
 		}
 
 		// Rule 7, unchanged: debit accounts payable, credit whatever the money
@@ -464,11 +554,16 @@ func (s *Service) PaySupplier(
 			PostedBy: &scope.UserID, RuleKey: "payment.supplier",
 			Memo: "Paid " + supplier,
 		}, country, accounting.Transaction{
-			Amounts: map[string]decimal.Decimal{"amount": total},
+			Amounts: map[string]decimal.Decimal{
+				"payable_relieved": payableRelieved,
+			},
 			Groups: map[string]accounting.Group{
 				"payments": {{
-					Role: tenderRole(in.Method), Amount: total, Memo: in.Method,
+					Role: tenderRole(in.Method), Amount: cashOut,
+					Memo: in.Method,
 				}},
+				"fx_gain": fxGain,
+				"fx_loss": fxLoss,
 			},
 		})
 		if e != nil {

@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
@@ -50,6 +51,17 @@ type Service struct {
 	// field in the expenses service: an installation without it issues orders
 	// exactly as it always did.
 	approvals *workflow.Service
+
+	// rates resolves G2's exchange rates. Optional in the same way: a business
+	// buying only in its own currency never needs one, and a bill in a foreign
+	// currency is refused rather than booked at par when it is absent.
+	rates *fx.Service
+}
+
+// WithRates wires G2's exchange rates, which a foreign-currency bill needs.
+func (s *Service) WithRates(f *fx.Service) *Service {
+	s.rates = f
+	return s
 }
 
 // WithApprovals wires F1's approval engine.
