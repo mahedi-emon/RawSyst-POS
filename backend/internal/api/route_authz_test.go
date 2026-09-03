@@ -295,7 +295,6 @@ func TestSeededPermissionsWithNoRoute(t *testing.T) {
 		// every posting in a company provisioned by this product was refused
 		// for want of a period. 0079 and 0080 built both modules.
 		"accounting.approve":          "awaited — Phase 2, journal approval workflow",
-		"report.export":               "awaited — Phase 3, report generation and delivery (design 08 job kinds)",
 		"compliance.retry_submission": "awaited — deliberately not offered: submission is automatic and ordered, and the screen says so",
 	}
 

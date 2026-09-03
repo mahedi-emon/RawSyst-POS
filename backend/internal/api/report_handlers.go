@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"net/http"
 	"strconv"
 	"time"
@@ -463,4 +464,77 @@ func (s *Server) handleWorkforce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"workforce": out})
+}
+
+// handleExportReport sends a report as a CSV file.
+//
+// Behind `report.export`, a permission that has been seeded on the Owner and
+// Accountant roles since the permissions were written and guarded no route
+// until now: an owner who wanted the day's sales in a spreadsheet could read
+// them on a screen and retype them.
+//
+// The figures are produced by the same service calls the screens use, so the
+// file and the page cannot drift apart.
+func (s *Server) handleExportReport(w http.ResponseWriter, r *http.Request) {
+	scope, err := reportScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	kind := chi.URLParam(r, "kind")
+	if _, ok := reports.ExportKinds[kind]; !ok {
+		httpx.Error(w, r, errs.Newf(errs.CodeInvalidInput,
+			"There is no %q report to export.", kind))
+		return
+	}
+
+	q := reports.ExportQuery{Filter: r.URL.Query().Get("filter")}
+	if q.On, err = parseReportDate(
+		r.URL.Query().Get("on"), "on", time.Now().UTC()); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if v := r.URL.Query().Get("from"); v != "" {
+		if q.From, err = parseReportDate(v, "from", q.On); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+	if v := r.URL.Query().Get("to"); v != "" {
+		if q.To, err = parseReportDate(v, "to", q.On); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+	if q.Filter == "" {
+		// The drill-downs name their filter differently on each screen; accept
+		// what each one already sends rather than making them learn a new name.
+		q.Filter = firstNonEmpty(r.URL.Query().Get("account_id"),
+			r.URL.Query().Get("stock"))
+	}
+
+	// Headers before the body: once bytes are written the status is sent, and
+	// an error after that cannot be turned into a JSON error response. So the
+	// report is built into memory first and only then written out.
+	var buf bytes.Buffer
+	if err := s.reports.ExportCSV(r.Context(), scope, kind, q, &buf); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="`+reports.FilenameFor(kind, q)+`"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buf.Bytes())
+}
+
+func firstNonEmpty(vs ...string) string {
+	for _, v := range vs {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

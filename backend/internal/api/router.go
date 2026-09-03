@@ -1939,6 +1939,9 @@ func (s *Server) Routes() []Route {
 			"a count and a ratio; the ministry's own portal is where a Nitaqat " +
 				"band comes from, and asserting one from a head count would " +
 				"be inventing a classification"},
+		{http.MethodGet, "/api/v1/reports/{kind}/export", AccessPermission, "report.export",
+			s.handleExportReport,
+			"takes a report away as CSV, built from the same figures the screen shows"},
 
 		// --- documents (D6) ---
 		//
@@ -2187,6 +2190,15 @@ func (s *Server) Routes() []Route {
 			AccessSuperAdmin, "", s.handleRecordJurisdictionRate,
 			"puts one authority's rate on file with its source; this is what " +
 				"lets a shop in that jurisdiction trade"},
+		{http.MethodGet, "/api/v1/platform/jurisdictions/rates", AccessSuperAdmin, "",
+			s.handleRateBatches,
+			"every imported rate schedule and how far through review it is"},
+		{http.MethodPost, "/api/v1/platform/jurisdictions/rates/review",
+			AccessSuperAdmin, "", s.handleReviewRates,
+			"records that somebody checked a published schedule against its source"},
+		{http.MethodPost, "/api/v1/platform/jurisdictions/rates/verify",
+			AccessSuperAdmin, "", s.handleVerifyRates,
+			"signs a reviewed schedule off for production; refused to whoever reviewed it"},
 
 		{http.MethodGet, "/api/v1/platform/health", AccessSuperAdmin, "",
 			s.handlePlatformHealth,

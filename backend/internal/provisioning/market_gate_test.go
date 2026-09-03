@@ -70,9 +70,14 @@ func newTenantIn(market string) NewTenant {
 // A production deployment refuses a Saudi business while Saudi rules are
 // placeholders.
 //
-// SA.EOSB.ENTITLEMENT, SA.GOSI.RATES and SA.WPS.WAGE_FILE_FORMAT are seeded
-// unverified and are release blockers. Taking on a Saudi client now would mean
-// computing that client's legal figures from guesses.
+// SA.EOSB.ENTITLEMENT is seeded unverified and is a release blocker: the
+// entitlement is days of wage per year of service and nobody has confirmed the
+// bands against the Labour Law. Taking on a Saudi client now would mean
+// computing that client's end-of-service figures from a guess.
+//
+// GOSI and the WPS wage-file layout were the other two, and 0117 and 0116
+// recorded both from their authorities' own publications, verified. The gate
+// is unchanged; there is simply one rule left to confirm rather than three.
 func TestASaudiBusinessIsRefusedWhileItsRulesAreUnverified(t *testing.T) {
 	svc, _ := newProvisioning(t, true)
 
@@ -86,7 +91,7 @@ func TestASaudiBusinessIsRefusedWhileItsRulesAreUnverified(t *testing.T) {
 	}
 	// The message has to name the rules. "Cannot create" without saying which
 	// value is missing leaves the operator with nothing to act on.
-	for _, key := range []string{"SA.GOSI.RATES", "SA.EOSB.ENTITLEMENT", "SA.WPS.WAGE_FILE_FORMAT"} {
+	for _, key := range []string{"SA.EOSB.ENTITLEMENT"} {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("the refusal does not name %s: %v", key, err)
 		}

@@ -61,10 +61,22 @@ func contains(keys []string, want string) bool {
 // The Saudi HR rules are the ones this whole change is about, and they are
 // asserted by name. A test that only counted would still pass if the three
 // swapped places with three others.
+// SA.GOSI.RATES and SA.WPS.WAGE_FILE_FORMAT used to head this list. 0117
+// recorded GOSI's rates from GOSI's own employer guidance and 0116 recorded the
+// Ministry's published wage-file layout, both verified, so neither is an
+// unverified blocker any more and listing them here asserted the opposite.
+//
+// They kept passing for a while regardless, because two rows written by an
+// earlier test run — a 12.75% GOSI rate and a "reported revision" of the wage
+// file, both unverified, both open-ended from 2027 — had closed the verified
+// versions and stood in their place. The tests were green because of
+// fabricated data, which is worse than being red. Both rows are gone.
+//
+// End of service is the one genuinely outstanding: the entitlement is days of
+// wage per year of service and nobody has confirmed the bands against the
+// Labour Law.
 var saudiHRBlockers = []string{
 	"SA.EOSB.ENTITLEMENT",
-	"SA.GOSI.RATES",
-	"SA.WPS.WAGE_FILE_FORMAT",
 }
 
 // A Bangladesh-only deployment starts.

@@ -557,13 +557,14 @@ func (s *Service) ImportRates(
 				INSERT INTO tax_jurisdiction_rate
 				  (jurisdiction_id, treatment, rate, effective_from,
 				   source_authority, source_document, source_url, notes,
-				   verified_on, verified_by)
+				   verified_on, verified_by, imported_by)
 				VALUES ($1,$2,$3,$4,$5,$6,nullif($7,''),nullif($8,''),
-				        $9::date,$10)
+				        $9::date,$10,$11)
 				ON CONFLICT DO NOTHING`,
 				id, treatment, r.Rate, in.From, in.Authority,
 				strings.TrimSpace(in.Document), strings.TrimSpace(in.URL),
-				strings.TrimSpace(in.Notes), verified, verifier); e != nil {
+				strings.TrimSpace(in.Notes), verified, verifier,
+				by); e != nil {
 				return db.Translate(e, fmt.Sprintf(
 					"The rate for row %d (%s) could not be recorded.",
 					i+1, code))

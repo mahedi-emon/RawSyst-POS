@@ -1212,7 +1212,7 @@ which would be buying capacity without paying for it.
   correct re-panics in recovery middleware, two are ZATCA compile-time constant
   assertions. Every `TODO`/`placeholder` match is prose describing the
   refuse-on-placeholder design.
-* **Migrations**: 119 files, 0001–0119, no duplicates, no gaps, strictly
+* **Migrations**: 120 files, 0001–0120, no duplicates, no gaps, strictly
   increasing. The duplicate reservation migration created and reverted earlier
   in this session is gone; 0088's ledger is the only reservation system.
 * **No secrets tracked.**
@@ -1429,3 +1429,200 @@ into `cmd/worker` and gated by market, so a shop off the chain never touches it.
 What remains is genuinely external: **the OTP from the taxpayer's own Fatoora
 portal**. No certificate is fabricated, no API response is faked, and production
 onboarding is not marked complete.
+
+---
+
+# Final completion pass: verification workflow, export, isolation
+
+The three items carried as ⚠️ were GOSI's post-July-2024 schedule, the imported
+CDTFA rates being unverified, and ZATCA's production credential. Working
+through them turned up two things that were not on the list and mattered more
+than two of the three.
+
+## The imported rates could never be verified — fixed
+
+0118 loaded CDTFA's 541 Californian locations and marked none of them verified,
+which was right. There was then **no way to ever verify them**.
+
+Every `verified_on` write in the registry is on an INSERT path:
+`RecordJurisdictionRate` writes a new rate, `ImportRates` writes a batch, and
+neither can stamp a row that already exists. Re-importing the same schedule
+does nothing at all — the supersession UPDATE only closes rows starting BEFORE
+the new date, and the insert that follows hits the no-overlap constraint and is
+swallowed by `ON CONFLICT DO NOTHING`.
+
+So the shipped schedule was permanently stuck at "imported", every Californian
+shop was permanently unable to trade, and "0 rates verified" was not an
+operations task waiting to be done — it was an operations task that could not
+be done. Same shape as the payroll run that could never be cancelled and the
+tenant limit that could never be raised.
+
+### Four states, two people
+
+`0120` adds `imported_by`, `reviewed_on`, `reviewed_by` and `review_note`, and
+`registry.VerifyRates` is the route out:
+
+    imported  — the rows exist and nothing is stamped
+    reviewed  — somebody has checked them against the authority's publication
+    verified  — a SECOND person has signed them off for production use
+    active    — verified, in force on the date being priced, not superseded
+
+Only the first three are stored; "active" is a question about a date and is
+answered by resolution rather than by a column somebody has to maintain.
+
+Two refusals carry the weight. An unreviewed schedule cannot be verified, and
+**the reviewer cannot be the one who verifies**. One person mistyping a decimal
+in a tax rate charges every customer of every shop in that jurisdiction the
+wrong amount, and the shop remits the wrong amount to the state; a second pair
+of eyes is the cheapest available control on that.
+
+A batch is `(country, source_document, treatment, effective_from)` — what an
+authority actually publishes. Verifying 541 rows one at a time is not a safer
+version of the same thing, it is the same thing performed 541 times, which is
+how the 300th one stops being read.
+
+### The figure cannot move under a verification
+
+Stamping a rate verified is an UPDATE, and nothing stopped that UPDATE from
+also moving the rate, its dates or its provenance. `0120` puts the same
+frozen-column trigger on `tax_jurisdiction_rate` that `regulatory_rule` has
+since 0004: `jurisdiction_id`, `treatment`, `rate`, `effective_from`,
+`source_authority` and `source_document` are immutable once written.
+`effective_to` stays mutable, because closing a row is how a later schedule
+supersedes an earlier one.
+
+Three routes, Super Admin only: `GET /api/v1/platform/jurisdictions/rates`
+lists every schedule and how far through review it is;
+`POST .../rates/review` and `POST .../rates/verify` move it. Both write an
+audit entry. 9 tests.
+
+## Reports could not be exported — fixed
+
+`report.export` had been seeded on the Owner and Accountant roles since the
+permissions were written and guarded no route. The verb existed, the roles held
+it, and there was nothing to hold: an owner who wanted the day's takings in a
+spreadsheet could read them on a screen and retype them.
+
+`GET /api/v1/reports/{kind}/export` now returns CSV for sales, expenses, stock,
+trial balance, profit and loss, and the balance sheet.
+
+The property that makes it worth having is that **every export calls the same
+service method the screen calls**. It does not re-query. An export with its own
+SQL is one that disagrees with the page it was taken from, eventually and
+quietly, and the person who finds out is reconciling to a bank. A test asserts
+the exported trial balance equals the screen's, figure for figure.
+
+The file opens with a UTF-8 byte order mark, because Excel on Windows otherwise
+reads it as the system codepage and turns every Arabic account name into
+mojibake. Each export names its currency: a column of money with no currency on
+it is a page of numbers, and this product sells into three markets.
+
+`report.export` is removed from the permission ledger in
+`TestSeededPermissionsWithNoRoute`, which fails if an entry there does guard a
+route.
+
+## Tenant isolation is now an invariant, not a sample
+
+The isolation tests prove isolation by doing it — write as one tenant, read as
+another, check nothing comes back. That is the right way to test the mechanism,
+and it tests the tables those tests happen to touch. It cannot catch the next
+table: a migration that adds `tenant_id` and forgets `ENABLE ROW LEVEL
+SECURITY`, or enables it without `FORCE`, or forces it with no policy, produces
+a table readable across every business on the platform, and every existing test
+still passes because none of them knows it exists.
+
+`TestEveryTenantScopedTableIsIsolated` asks the catalogue directly. **163 tables
+carry a `tenant_id`; 162 have RLS enabled, forced, and at least one policy.**
+
+The one exception is `job`, and it is deliberate — 0027 says so in the table's
+own comment. It was checked rather than taken on trust: every access in
+`internal/jobs` goes through `TxAsPlatform`, including `EnqueueIn`, so no tenant
+connection reads or writes it, and a row carries an invoice id and a kind rather
+than business content. It is recorded in the test with that reason, so a future
+table cannot join it silently.
+
+A second test pins the other half: the application role is neither `SUPERUSER`
+nor `BYPASSRLS`, without which every guarantee above would be advisory.
+
+## GOSI — the question behind the missing schedule
+
+Re-checked against GOSI's own pages: Annuities 18% split 9/9, Occupational
+Hazards 2% employer, SANED 1.5% shared equally, ceiling SR 45,000 — the 11.75%
+/ 9.75% that 0117 records. **No post-July-2024 escalation is published**, and
+the Council of Ministers announcement covers who the new law applies to,
+retirement age and eligibility, not rates.
+
+The question that leaves open is whether the product could accept such a
+schedule when it appears. It can, and that is now tested rather than asserted:
+an escalation IS a series of dated rules, and `TestAPublishedGOSIEscalation-
+NeedsNoCodeChange` stages a future version, shows March 2027 resolving it while
+August 2026 still resolves 0117's, and shows the cohort the July 2024 law did
+not move staying where it was. The wage ceiling is read from the rule too, so a
+change to it is a new version rather than a release.
+
+What would need code is a new *dimension* — a rate that depended on years of
+contribution rather than hire date. A rate change, a cohort change or a ceiling
+change does not.
+
+### Two fabricated Saudi rules were live, and three tests were green because of them
+
+Found while writing those tests, and the most serious thing in this pass.
+
+Two rows written by earlier test runs sat open-ended from 2027-01-01, both
+unverified, both labelled "written by a test run and left behind. Not a
+confirmed value":
+
+* **`SA.GOSI.RATES` at an employer rate of 12.75%**, a figure no authority
+  published.
+* **`SA.WPS.WAGE_FILE_FORMAT`**, sourced to a "reported revision awaiting
+  confirmation".
+
+A label is not a date range. Each had CLOSED the verified version to make room
+for itself, so from 2027 the product would have resolved a made-up contribution
+rate and no confirmed wage-file layout at all.
+
+Worse, they were holding three registry health tests and one provisioning gate
+test green. Those tests assert that the Saudi release-blockers are unverified
+and block a Saudi deployment — and they passed because of fabricated rows,
+having stopped being true when 0116 and 0117 recorded the real figures. Green
+for the wrong reason is worse than red.
+
+Both rows are removed, the verified versions reopened, and the registry is now
+exactly what the migrations alone produce:
+
+    SA.EOSB.ENTITLEMENT       2026-01-01 -> open   verified=false
+    SA.GOSI.RATES             2026-02-01 -> open   verified=true
+    SA.WPS.WAGE_FILE_FORMAT   2026-02-01 -> open   verified=true
+
+`saudiHRBlockers` and the provisioning gate's expected list now name only
+**SA.EOSB.ENTITLEMENT**, which is the one genuinely outstanding: the
+entitlement is days of wage per year of service and nobody has confirmed the
+bands against the Labour Law. The gate itself is unchanged — it still refuses a
+Saudi business and still names what is missing; there is one rule left to
+confirm rather than three.
+
+The test that caught it is kept: `TestStagingAGOSIScheduleLeavesNothingBehind`
+fails if a staged version is ever committed.
+
+## ZATCA
+
+Unchanged and re-confirmed. The `stamp`/`SignedXML` bug is fixed, market gating
+runs through `market.EInvoicingApplies` in three places with a Bangladeshi shop
+test holding it, and `QueueSubmission` enqueues inside the sale's own
+transaction via `EnqueueIn` — so an invoice cannot exist without the obligation
+to report it, which is the exposure E1.2 names. The OTP from the taxpayer's
+Fatoora portal remains the only genuinely external dependency.
+
+## Still awaited, honestly
+
+`accounting.approve` is seeded on the Accountant role and guards no route,
+recorded in the permission ledger as awaiting Phase 2. It awaits a module that
+does not exist: **there is no manual journal entry anywhere in the product**.
+Every journal entry is posted by rule from a business document — a sale, a
+purchase, a payroll run, an expense — which is a deliberate and safer design
+than free-form journals. Adding manual entries plus their approval is a feature
+decision, not a defect, and it is left as one rather than half-built.
+
+`compliance.retry_submission` remains deliberately unoffered: submission is
+automatic and ordered, and there is no dead-letter path that discards an
+unreported invoice.

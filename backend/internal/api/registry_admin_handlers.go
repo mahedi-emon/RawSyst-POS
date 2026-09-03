@@ -314,3 +314,89 @@ func (s *Server) handleSetTenantLimits(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"limits": out})
 }
+
+// --- getting an imported schedule into production ---------------------------
+
+func (s *Server) handleRateBatches(w http.ResponseWriter, r *http.Request) {
+	out, err := s.rules.RateBatches(r.Context(), r.URL.Query().Get("country"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+type batchRequest struct {
+	Country   string `json:"country"`
+	Document  string `json:"source_document"`
+	Treatment string `json:"treatment"`
+	From      string `json:"effective_from"`
+	Note      string `json:"note"`
+}
+
+func (s *Server) batchRef(r *http.Request, req batchRequest) (
+	registry.BatchRef, error,
+) {
+	from, err := optionalDate(req.From, "effective_from")
+	if err != nil {
+		return registry.BatchRef{}, err
+	}
+	if from == nil {
+		return registry.BatchRef{}, errs.Validation(
+			"Say which effective date this schedule is.").
+			WithField("effective_from",
+				"One authority publishes many schedules; the date is what "+
+					"tells them apart.")
+	}
+	return registry.BatchRef{
+		Country: req.Country, Document: req.Document,
+		Treatment: req.Treatment, From: *from,
+	}, nil
+}
+
+// handleReviewRates records that somebody checked a schedule against its source.
+func (s *Server) handleReviewRates(w http.ResponseWriter, r *http.Request) {
+	var req batchRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	ref, err := s.batchRef(r, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	n, err := s.rules.ReviewRates(r.Context(), ref, a.UserID, req.Note)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"reviewed": n})
+}
+
+// handleVerifyRates signs a reviewed schedule off, so shops can charge it.
+//
+// Refused if the caller is the one who reviewed it: two people look at a tax
+// rate before a customer is charged it.
+func (s *Server) handleVerifyRates(w http.ResponseWriter, r *http.Request) {
+	var req batchRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	ref, err := s.batchRef(r, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	n, err := s.rules.VerifyRates(r.Context(), ref, a.UserID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"verified": n})
+}
