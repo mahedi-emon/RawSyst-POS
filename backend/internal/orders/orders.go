@@ -46,6 +46,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 )
 
 // The lifecycle B11 draws.
@@ -74,10 +75,24 @@ var forward = map[string]string{
 // Service manages orders.
 type Service struct {
 	pool *db.Pool
+
+	// sales writes the invoice that finishes an order (B11). Optional: an
+	// installation without it runs the whole order lifecycle as before and
+	// refuses only the final billing step, rather than failing to start.
+	sales *sales.Service
 }
 
 // NewService builds the service.
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// WithSales wires the engine that turns a delivered order into an invoice.
+//
+// The same engine the till uses. Anything else would be a second definition of
+// what a sale is worth.
+func (s *Service) WithSales(sv *sales.Service) *Service {
+	s.sales = sv
+	return s
+}
 
 // Scope is who is asking and on behalf of which legal entity.
 type Scope struct {

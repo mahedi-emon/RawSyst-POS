@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"net/http"
 	"strings"
 	"time"
@@ -295,4 +297,69 @@ func (s *Server) orderScopeAndID(
 		return orders.Scope{}, uuid.Nil, err
 	}
 	return scope, id, nil
+}
+
+type invoiceOrderRequest struct {
+	UUID             string `json:"uuid"`
+	DocType          string `json:"doc_type"`
+	PricesIncludeTax *bool  `json:"prices_include_tax"`
+	Tenders          []struct {
+		Method    string `json:"method"`
+		Amount    string `json:"amount"`
+		Reference string `json:"reference"`
+	} `json:"tenders"`
+}
+
+// handleInvoiceOrder bills a delivered order and completes it (B11).
+//
+// The last arrow of B11's lifecycle. Until this existed `sales_order.invoice_id`
+// was a column nothing wrote and `Advance` refused the final step telling the
+// caller to raise an invoice they had no way to raise.
+func (s *Server) handleInvoiceOrder(w http.ResponseWriter, r *http.Request) {
+	scope, id, err := s.orderScopeAndID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req invoiceOrderRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	docUUID, err := parseUUID(req.UUID, "uuid")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Tax-inclusive by default, matching the till, so a price means the same
+	// thing wherever it is quoted.
+	inclusive := true
+	if req.PricesIncludeTax != nil {
+		inclusive = *req.PricesIncludeTax
+	}
+
+	in := orders.InvoiceRequest{
+		UUID: docUUID, DocType: req.DocType, PricesIncludeTax: inclusive,
+	}
+	for i, t := range req.Tenders {
+		amount, aerr := decimal.NewFromString(t.Amount)
+		if aerr != nil {
+			httpx.Error(w, r, errs.Validation(
+				fmt.Sprintf("Tender %d has an amount that is not a number.",
+					i+1)).WithField("amount", "For example 115.00."))
+			return
+		}
+		in.Tenders = append(in.Tenders, sales.Tender{
+			Method: t.Method, Amount: amount, Reference: t.Reference,
+		})
+	}
+
+	out, err := s.orders.Invoice(r.Context(), scope, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, out)
 }

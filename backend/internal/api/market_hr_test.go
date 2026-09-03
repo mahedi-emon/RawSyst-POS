@@ -76,8 +76,15 @@ func TestABangladeshiShopCanRunPayroll(t *testing.T) {
 // A Saudi shop still gets the Saudi treatment.
 //
 // The other half, and the one that must not be weakened to make the first pass:
-// where the obligation DOES apply, the unverified Saudi rate must still stop
-// that figure rather than being quietly skipped.
+// where the obligation DOES apply, social insurance has to appear.
+//
+// This used to accept "it reported GOSI as blocked" as a pass, which was right
+// while `SA.GOSI.RATES` held __VERIFY__ in every field. 0117 records the rates
+// from GOSI's own employer guidance, so the honest assertion is now the
+// stronger one: the figures are actually on the payslip. A Saudi run that
+// computed no social insurance would be understating both the employee's
+// deduction and the employer's cost, which is the failure this test exists to
+// catch either way.
 func TestASaudiShopStillAnswersForItsOwnRules(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner") // Saudi fixture
@@ -86,18 +93,50 @@ func TestASaudiShopStillAnswersForItsOwnRules(t *testing.T) {
 
 	resp := h.do(t, http.MethodPost,
 		"/api/v1/payroll?company_id="+f.companyID.String(), owner,
-		map[string]any{"period": "2026-08-01"})
+		map[string]any{"period": "2026-08"})
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("a Saudi payroll run was refused: %d %s",
+			resp.StatusCode, readBody(t, resp))
+	}
 
-	// Either it runs and reports GOSI as blocked, or it refuses naming the
-	// rule. What it must NOT do is silently compute a Saudi payroll with no
-	// social insurance, which is what skipping the market check would give.
-	body := readBody(t, resp)
-	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
-		if !containsAny(body, "GOSI", "verified", "blocked") {
-			t.Errorf("a Saudi run neither computed nor reported social "+
-				"insurance: %s", body)
-		}
+	run := decodeJSONFrom(t, resp)
+	if blocked, _ := run["gosi_unavailable"].(bool); blocked {
+		t.Fatalf("social insurance is reported as uncalculable: %v",
+			run["gosi_blocked_reason"])
+	}
+
+	slips, _ := run["payslips"].([]any)
+	if len(slips) == 0 {
+		t.Fatal("the run produced no payslips")
+	}
+	slip, _ := slips[0].(map[string]any)
+
+	employee, _ := slip["gosi_employee"].(string)
+	employer, _ := slip["gosi_employer"].(string)
+	if employee == "" || employer == "" {
+		t.Fatalf("the payslip carries no social insurance figures: %v", slip)
+	}
+
+	// The EMPLOYER share is the one that must always be there. This fixture
+	// hires a non-Saudi, and for an expatriate the employee contributes
+	// nothing: GOSI puts non-Saudis in the Occupational Hazards Branch alone,
+	// at 2% paid entirely by the employer, while the Annuities Branch and SANED
+	// are Saudi-only. So 2% of 10,000 is 200.00 from the employer and a
+	// legitimate zero from the worker — asserting both were non-zero would be
+	// asserting a deduction the law does not make.
+	if amountsEqual(employer, "0.00") {
+		t.Errorf("a Saudi shop's payslip charges the employer nothing for " +
+			"social insurance; occupational hazards applies to every worker " +
+			"regardless of nationality")
+	}
+	if !amountsEqual(employer, "200.00") {
+		t.Errorf("the employer's share is %s, want 200.00 — 2%% of 10,000 "+
+			"for an expatriate", employer)
+	}
+	if !amountsEqual(employee, "0.00") {
+		t.Errorf("an expatriate was charged %s; the Annuities Branch and "+
+			"SANED are Saudi-only", employee)
 	}
 }
 

@@ -7,6 +7,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -181,3 +182,76 @@ func (s *Server) handleRecordJurisdictionRate(
 }
 
 var _ = time.Now
+
+type importRowRequest struct {
+	Level      string `json:"level"`
+	Code       string `json:"code"`
+	Name       string `json:"name"`
+	ParentCode string `json:"parent_code"`
+	Rate       string `json:"rate"`
+}
+
+type importRatesRequest struct {
+	Country   string             `json:"country"`
+	Treatment string             `json:"treatment"`
+	From      string             `json:"effective_from"`
+	Authority string             `json:"source_authority"`
+	Document  string             `json:"source_document"`
+	URL       string             `json:"source_url"`
+	Notes     string             `json:"notes"`
+	Verified  bool               `json:"verified"`
+	Rows      []importRowRequest `json:"rows"`
+}
+
+// handleImportRates loads a published rate schedule in one transaction.
+//
+// The shape a state's own publication is converted into. CDTFA issues a
+// spreadsheet each quarter rather than an API, so the conversion is a step
+// somebody performs; what the product owes them is a way to apply the result
+// atomically, with the source attached and nothing invented.
+func (s *Server) handleImportRates(w http.ResponseWriter, r *http.Request) {
+	var req importRatesRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	from, err := optionalDate(req.From, "effective_from")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if from == nil {
+		httpx.Error(w, r, errs.Validation(
+			"Say when this schedule takes effect.").
+			WithField("effective_from",
+				"A sale is taxed at the rate in force on the day it was made."))
+		return
+	}
+
+	in := registry.Import{
+		Country: req.Country, Treatment: req.Treatment, From: *from,
+		Authority: req.Authority, Document: req.Document, URL: req.URL,
+		Notes: req.Notes, Verified: req.Verified,
+	}
+	for i, row := range req.Rows {
+		rate, rerr := decimal.NewFromString(row.Rate)
+		if rerr != nil {
+			httpx.Error(w, r, errs.Validation(
+				fmt.Sprintf("Row %d has a rate that is not a number.", i+1)).
+				WithField("rate", "0.0725 is 7.25 per cent."))
+			return
+		}
+		in.Rows = append(in.Rows, registry.ImportRow{
+			Level: row.Level, Code: row.Code, Name: row.Name,
+			ParentCode: row.ParentCode, Rate: rate,
+		})
+	}
+
+	a := actor.From(r.Context())
+	out, err := s.rules.ImportRates(r.Context(), in, a.UserID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"result": out})
+}

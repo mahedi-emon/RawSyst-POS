@@ -85,7 +85,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | B8 | Hardware integration | **N/A (frontend)** | Printer/drawer/scanner are client concerns; `I5` per-terminal config partly in `device.printer_config` |
 | B9 | Promotions & pricing | **COMPLETE 2026-09-03** | `Redeem` is now called on every finalised sale AND enforces the caps itself. `Quote` filtered on `max_uses` by counting redemptions, which is right for showing a cashier what applies and is no control at all: two tills quoting the same last-use coupon both saw it available and both redeemed it. The campaign row is now locked `FOR UPDATE` before its redemptions are counted, the same shape as the credit limit. 9 tests incl. **8 concurrent tills redeeming a one-use coupon exactly once**, per-customer caps, and another company’s campaign refused |
 | B10 | Returns / exchange | **COMPLETE** | `sales/refund.go`, `exchange.go`, C14 effects, `exchange_test` 9 tests |
-| B11 | Quotation → Order → Delivery | **COMPLETE** | `orders` 8 svc · 8 routes · 11 tests; `aftersales` delivery 4 routes |
+| B11 | Quotation → Order → Delivery | **COMPLETE 2026-09-03 — the last step was missing entirely** | See the *Order invoicing* section below |
 | B12 | **Wholesale / B2B** | **COMPLETE 2026-09-03** | The one open bullet was bulk-quantity discounts, which depended on B9: promotions were quote-only, so a quantity break was expressible and never redeemed. `Redeem` is now called on every finalised sale and enforces its own caps. The other five bullets were already complete |
 | B12a | **`price_dealer` has no owner** | **RESOLVED 2026-09-03 — was never a specification gap** | B12 line 412 names the tier a customer type resolves to as the **"Dealer/Wholesale pricing tier"** — one tier written with both its names, and there is no dealer or corporate CUSTOMER type anywhere in the Blueprint. So `coalesce(price_dealer, price_wholesale, price_retail)`, plus `PUT /catalog/variants/{id}/prices`, which did not exist. 9 tests |
 | B13 | Online orders | **COMPLETE (backend) — re-verified 2026-09-03** | Re-checked bullet by bullet against `0088`. **Stock reservation exists and works**: `stock_reservation` is a SIGNED ledger (positive holds, negative releases) with `held`/`released`/`consumed` reasons and an `expires_at` so an abandoned basket cannot hold the last unit for ever, exposed as `POST/DELETE /stock/reservations` and `GET /stock/availability` (`on_hand` vs `available_to_sell`), and pinned by `TestReservedStockCannotBeSoldTwice`. A reservation deliberately writes no stock movement, so the C13 tie-out is unaffected. Channels are `store/wholesale/online/phone/marketplace`; the delivery pipeline is B13’s exactly (pending → assigned → picked_up → out_for_delivery → delivered → failed → returned) with driver, address, fee and COD. **The one thing absent is a PUBLIC anonymous storefront checkout API** — a signed-in customer orders through the portal and staff record phone and marketplace orders through the authenticated route. That is the web front end the Blueprint calls "own website, PWA storefront", and is out of scope for the backend pass |
@@ -1086,3 +1086,68 @@ GOSI is deducted (780.00 from the employee and 940.00 from the employer on an
 the old assertions would have required mutating a **global** registry rule
 underneath every other test in the package; the guarantee they protected is kept
 by `TestAPlaceholderPayloadIsRefused` and the production verification gate.
+
+---
+
+## B11's last step: invoicing an order, 2026-09-03
+
+Found by forensic audit, not by a failing test — nothing tested it because
+nothing could reach it.
+
+### What was wrong
+
+`sales_order.invoice_id` was a column **nothing in the codebase ever wrote**.
+There was no route to invoice an order, and `orders.Advance` refused the final
+transition with *"Raise the invoice to complete it — an order is finished by
+being invoiced, not by being marked so"*. The product told an owner to do
+something it gave them no way to do, and `TestAnOrderCannotBeCompletedWithoutAnInvoice`
+locked that refusal in as correct behaviour. An order could never leave
+`delivered`.
+
+Worse than an unreachable state: **`internal/orders` touched neither stock nor
+accounting.** `Deliver` calls `recordQuantities`, which writes `qty_delivered`
+and nothing else. There is no stock movement and no journal anywhere in the
+package. So a business using the order flow to sell would mark goods delivered,
+never reduce the shelf, and never see revenue, tax or cost of sale reach the
+ledger.
+
+To be exact about severity: nothing posted, so nothing posted was *wrong*, and
+the reservation ledger stopped the stock being double-sold. It was an
+unreachable workflow rather than bad numbers — but B11's lifecycle
+("Draft → Confirmed → Processing → Packed → Delivered → Completed") could not
+complete, and the Blueprint requires a quotation to be "convertible to a Sales
+Order or directly to an Invoice in one click".
+
+### What it does now
+
+`POST /api/v1/orders/{orderID}/invoice`, gated on `sales.create` because it
+raises a tax document rather than merely managing an order.
+
+It **reuses `sales.Finalize`** — the till's own engine — rather than writing a
+second invoice path. That engine already writes the invoice, moves the stock,
+costs it under the company's method, posts revenue, tax and COGS, records
+loyalty and promotions and writes the audit trail. A second implementation
+would be a second definition of what a sale is worth, and they would drift.
+
+The terminal it builds has no device, no cash session and **no EGS unit**, so
+`Terminal.OnAChain()` is false and the e-invoicing chain is untouched — ZATCA
+stays deferred.
+
+Everything commits in **one transaction**: the invoice, the order's completion,
+and the release of its stock hold. Any split leaves a state somebody has to
+reconcile by hand — an invoice with no order pointing at it can be raised
+twice, and an order marked completed with no invoice is a sale nobody can find.
+
+Prices come from the order, not from today's price list: a customer who
+negotiated a price in March must not find the invoice charging April's. With no
+tenders supplied the sale goes on account as `customer_due`, which needs a
+customer to owe it; without one the caller is asked how it was paid rather than
+having a method guessed for them.
+
+### Tests (7)
+
+Completes the order and links the invoice · **moves stock and posts revenue
+200.00, tax 30.00 and a non-zero COGS**, having first proved delivery alone
+moved nothing · billing twice yields one invoice · an undelivered order is
+refused by name · invoicing releases the stock hold · the route is
+permission-gated · one tenant cannot invoice another's order.

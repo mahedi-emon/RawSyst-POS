@@ -64,7 +64,7 @@ func recordRate(
 		"/api/v1/platform/jurisdictions/"+jurisdictionID+"/rates", admin,
 		map[string]any{
 			"treatment": "taxable", "rate": rate, "effective_from": from,
-			"source_authority": "us_state",
+			"source_authority": "test",
 			"source_document":  "State revenue department rate schedule",
 			"source_url":       "https://example.invalid/rates",
 			"verified":         verified,
@@ -202,6 +202,7 @@ func TestARuleRecordedWithoutVerificationStaysUnverified(t *testing.T) {
 			"effective_from":   "2020-01-01",
 			"source_authority": "nbr",
 			"source_document":  "Draft circular pending confirmation",
+			"notes":            "Staged for confirmation against the NBR.",
 		})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
@@ -366,7 +367,7 @@ func TestAJurisdictionRateNeedsItsSource(t *testing.T) {
 		"/api/v1/platform/jurisdictions/"+id+"/rates", admin,
 		map[string]any{
 			"treatment": "taxable", "rate": "0.0625",
-			"effective_from": "2020-01-01", "source_authority": "us_state",
+			"effective_from": "2020-01-01", "source_authority": "test",
 		})
 	defer bad.Body.Close()
 	if bad.StatusCode == http.StatusNoContent || bad.StatusCode == http.StatusOK {
@@ -521,4 +522,197 @@ func stateUnderACountry(t *testing.T, h *harness, admin, prefix string) string {
 		"C"+suffix, "Testland", "")
 	return newJurisdiction(t, h, admin, "us", "state",
 		prefix+suffix, "Test State", country)
+}
+
+// --- bulk ingestion -------------------------------------------------------
+
+// A published schedule loads whole, and the shop it covers can then trade.
+//
+// California is the worked example because CDTFA publishes a real one: a 7.25%
+// statewide rate plus district taxes of 0.10% to 2.00%, issued as a quarterly
+// spreadsheet. The figures below are the SHAPE of that schedule with fixture
+// codes, not California's actual districts — those are loaded from CDTFA's own
+// file, and inventing them here would put made-up tax in a test that looks
+// authoritative.
+func TestAPublishedScheduleLoadsWholeAndLetsAShopTrade(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+	suffix := upperSuffix(5)
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/platform/jurisdictions/import", admin, map[string]any{
+			"country": "us", "treatment": "taxable",
+			"effective_from":   "2020-01-01",
+			"source_authority": "test",
+			"source_document":  "State schedule, first quarter",
+			"verified":         true,
+			"rows": []map[string]any{
+				{"level": "country", "code": "C" + suffix, "name": "Testland",
+					"rate": "0"},
+				{"level": "state", "code": "S" + suffix, "name": "Test State",
+					"parent_code": "C" + suffix, "rate": "0.0625"},
+				{"level": "city", "code": "T" + suffix, "name": "Test City",
+					"parent_code": "S" + suffix, "rate": "0.0200"},
+			},
+		})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("import: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	result, _ := decodeJSON(t, resp)["result"].(map[string]any)
+	if n, _ := result["rates"].(float64); int(n) != 3 {
+		t.Errorf("the import recorded %v rates, want 3", result["rates"])
+	}
+
+	// The whole point: a shop in the loaded city can now be taxed.
+	city := jurisdictionByCode(t, h, admin, "T"+suffix)
+	f := usShop(t, h, &city)
+	if got := taxOf(t, h, f, usSale(f, "100.00")); got != "8.25" && got != "8.2500" {
+		t.Errorf("tax = %s, want 8.25 — the imported schedule is not what "+
+			"the till charged", got)
+	}
+}
+
+// A row whose parent is not on file is skipped and named, not reparented.
+//
+// A district silently attached to the country root would charge the state's
+// tax and not the county's, and nothing downstream could tell.
+func TestAnImportedRowWithAnUnknownParentIsSkippedAndNamed(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+	suffix := upperSuffix(5)
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/platform/jurisdictions/import", admin, map[string]any{
+			"country": "us", "effective_from": "2020-01-01",
+			"source_authority": "test",
+			"source_document":  "State schedule",
+			"rows": []map[string]any{
+				{"level": "country", "code": "C" + suffix, "name": "Testland",
+					"rate": "0"},
+				{"level": "city", "code": "X" + suffix, "name": "Orphan City",
+					"parent_code": "NOSUCH" + suffix, "rate": "0.02"},
+			},
+		})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("import: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	result, _ := decodeJSON(t, resp)["result"].(map[string]any)
+	skipped, _ := result["skipped"].([]any)
+	if len(skipped) != 1 {
+		t.Fatalf("the import skipped %d rows, want 1: %v", len(skipped),
+			result)
+	}
+	if s, _ := skipped[0].(string); !containsFold(s, "parent") {
+		t.Errorf("the skip does not say why: %q", s)
+	}
+}
+
+// A schedule must name the document it came from.
+func TestAnImportWithoutItsSourceDocumentIsRefused(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/platform/jurisdictions/import", admin, map[string]any{
+			"country": "us", "effective_from": "2020-01-01",
+			"source_authority": "test",
+			"rows": []map[string]any{
+				{"level": "country", "code": "C" + upperSuffix(5),
+					"name": "Testland", "rate": "0"},
+			},
+		})
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Error("a rate schedule was loaded with no document behind it")
+	}
+}
+
+// Loading next quarter's schedule closes the one before it.
+//
+// The exclusion constraint forbids overlapping ranges, so a reload that did not
+// close the old rates would simply be rejected — and closing them is what keeps
+// last quarter's invoices explainable by last quarter's rate.
+func TestReloadingAScheduleSupersedesTheRatesBeforeIt(t *testing.T) {
+	h := newHarness(t)
+	admin := platformAdmin(t, h)
+	suffix := upperSuffix(5)
+
+	load := func(rate, from string) *http.Response {
+		return h.do(t, http.MethodPost,
+			"/api/v1/platform/jurisdictions/import", admin, map[string]any{
+				"country": "us", "effective_from": from,
+				"source_authority": "test",
+				"source_document":  "State schedule for " + from,
+				"verified":         true,
+				"rows": []map[string]any{
+					{"level": "country", "code": "C" + suffix,
+						"name": "Testland", "rate": "0"},
+					{"level": "state", "code": "S" + suffix,
+						"name": "Test State", "parent_code": "C" + suffix,
+						"rate": rate},
+				},
+			})
+	}
+
+	first := load("0.0600", "2020-01-01")
+	first.Body.Close()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first load: %d", first.StatusCode)
+	}
+	second := load("0.0700", "2026-01-01")
+	defer second.Body.Close()
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("reload was rejected, so a quarterly update is impossible: "+
+			"%d %s", second.StatusCode, readBody(t, second))
+	}
+
+	state := jurisdictionByCode(t, h, admin, "S"+suffix)
+	var open int
+	if err := h.pool.TxAsPlatform(t.Context(), func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), `
+			SELECT count(*) FROM tax_jurisdiction_rate
+			WHERE jurisdiction_id = $1 AND effective_to IS NULL`,
+			state).Scan(&open)
+	}); err != nil {
+		t.Fatalf("read the rates: %v", err)
+	}
+	if open != 1 {
+		t.Errorf("%d rates are open-ended after a reload, want 1", open)
+	}
+}
+
+// Only the Platform Owner may load a schedule.
+func TestOnlyThePlatformOwnerMayImportASchedule(t *testing.T) {
+	h := newHarness(t)
+	owner := h.seedShop(t, "owner")
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/platform/jurisdictions/import", owner.token,
+		map[string]any{"country": "us"})
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Error("a business owner loaded a tax schedule")
+	}
+}
+
+// jurisdictionByCode finds a loaded authority's id.
+func jurisdictionByCode(
+	t *testing.T, h *harness, admin, code string,
+) uuid.UUID {
+	t.Helper()
+	resp := h.do(t, http.MethodGet,
+		"/api/v1/platform/jurisdictions?country=us", admin, nil)
+	defer resp.Body.Close()
+	rows, _ := decodeJSON(t, resp)["data"].([]any)
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		if row["code"] == code {
+			id, _ := uuid.Parse(row["id"].(string))
+			return id
+		}
+	}
+	t.Fatalf("no jurisdiction with code %s", code)
+	return uuid.Nil
 }

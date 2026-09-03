@@ -20,6 +20,7 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -152,6 +153,22 @@ func (s *Service) RecordRule(
 			WithField("effective_from",
 				"A legal value applies from a date, and the product resolves "+
 					"it at the date of the document being processed.")
+	}
+	// An unverified rule must explain itself.
+	//
+	// The registry's whole discipline is that a reader can tell a confirmed
+	// figure from a starting one, and `TestUnverifiedRulesAreNotDisguised`
+	// holds the database to it. Recording an unchecked value with nothing
+	// beside it would let this path create exactly what that invariant
+	// forbids — a number sitting in the registry with no indication that
+	// nobody has stood behind it.
+	if !in.Verified && strings.TrimSpace(in.Notes) == "" {
+		return RuleRow{}, errs.Validation(
+			"Say why this value is not verified yet.").
+			WithField("notes",
+				"An unverified figure has to carry a note, or a reader of the "+
+					"registry cannot tell it from a confirmed one. Say where "+
+					"it came from and what still has to be checked.")
 	}
 
 	var out RuleRow
@@ -366,4 +383,197 @@ func (s *Service) RecordJurisdictionRate(
 		return e
 	})
 	return db.Translate(err, "That tax rate could not be recorded.")
+}
+
+// --- Bulk ingestion -------------------------------------------------------
+
+// ImportRow is one authority and its rate, as an official dataset states them.
+//
+// Parent is named by CODE rather than by id because that is what a published
+// dataset carries: CDTFA's schedule says a district belongs to a county, not to
+// a uuid this database happens to have assigned.
+type ImportRow struct {
+	Level      string
+	Code       string
+	Name       string
+	ParentCode string
+	Rate       decimal.Decimal
+}
+
+// Import is one authority's published schedule, applied as a whole.
+type Import struct {
+	Country   string
+	Treatment string
+	From      time.Time
+	Authority string
+	Document  string
+	URL       string
+	Notes     string
+	Verified  bool
+	Rows      []ImportRow
+}
+
+// ImportResult says what a load actually did.
+type ImportResult struct {
+	Jurisdictions int      `json:"jurisdictions"`
+	Rates         int      `json:"rates"`
+	Skipped       []string `json:"skipped,omitempty"`
+}
+
+// ImportRates loads a published rate schedule in one transaction.
+//
+// # Why this exists
+//
+// Recording rates one at a time is correct and unusable at scale: California
+// alone has hundreds of districts, and a state publishes a fresh schedule every
+// quarter. Loading them through a screen one row at a time is how a shop ends
+// up trading on a half-loaded chain, which the resolver refuses — correctly,
+// and after somebody has spent an afternoon.
+//
+// # All or nothing
+//
+// One transaction. A schedule that fails halfway would leave some authorities
+// on the new rates and some on the old, which is worse than not loading at all:
+// every combined rate in that state would be wrong in a way no single row looks
+// wrong.
+//
+// # It does not decide anything
+//
+// Every rate carries the source and date the caller supplies, supersedes rather
+// than overwrites, and is verified only if the caller says they checked it.
+// This is a faster way to record facts, not a way to skip establishing them.
+func (s *Service) ImportRates(
+	ctx context.Context, in Import, by uuid.UUID,
+) (ImportResult, error) {
+	if len(in.Rows) == 0 {
+		return ImportResult{}, errs.New(errs.CodeInvalidInput,
+			"That import has no rows.")
+	}
+	if strings.TrimSpace(in.Document) == "" {
+		return ImportResult{}, errs.Validation(
+			"Name the official document this schedule came from.").
+			WithField("source_document",
+				"The authority's own publication and its date, so a rate can "+
+					"be traced back without asking whoever loaded it.")
+	}
+	if in.From.IsZero() {
+		return ImportResult{}, errs.Validation(
+			"Say when this schedule takes effect.").
+			WithField("effective_from",
+				"A published schedule applies from a date, and a sale is "+
+					"taxed at the rate in force on the day it was made.")
+	}
+	treatment := strings.TrimSpace(in.Treatment)
+	if treatment == "" {
+		treatment = "taxable"
+	}
+	country := strings.ToLower(strings.TrimSpace(in.Country))
+
+	var out ImportResult
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// Codes already on file, so a parent named by code resolves whether it
+		// arrived in this batch or last quarter's.
+		known := map[string]uuid.UUID{}
+		rows, e := tx.Query(ctx,
+			`SELECT code, id FROM tax_jurisdiction WHERE country = $1`, country)
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var code string
+			var id uuid.UUID
+			if e := rows.Scan(&code, &id); e != nil {
+				rows.Close()
+				return e
+			}
+			known[code] = id
+		}
+		rows.Close()
+		if e := rows.Err(); e != nil {
+			return e
+		}
+
+		for i, r := range in.Rows {
+			code := strings.ToUpper(strings.TrimSpace(r.Code))
+			name := strings.TrimSpace(r.Name)
+			if code == "" || name == "" || strings.TrimSpace(r.Level) == "" {
+				out.Skipped = append(out.Skipped, fmt.Sprintf(
+					"row %d: a level, a code and a name are all required", i+1))
+				continue
+			}
+			if r.Rate.IsNegative() {
+				out.Skipped = append(out.Skipped, fmt.Sprintf(
+					"row %d (%s): a tax rate is not negative", i+1, code))
+				continue
+			}
+
+			var parent *uuid.UUID
+			if pc := strings.ToUpper(strings.TrimSpace(r.ParentCode)); pc != "" {
+				id, ok := known[pc]
+				if !ok {
+					// Refused rather than attached to the country root: a
+					// district silently reparented would charge the wrong
+					// county's tax, and nothing downstream could tell.
+					out.Skipped = append(out.Skipped, fmt.Sprintf(
+						"row %d (%s): its parent %s is not on file", i+1,
+						code, pc))
+					continue
+				}
+				parent = &id
+			}
+
+			var id uuid.UUID
+			if e := tx.QueryRow(ctx, `
+				INSERT INTO tax_jurisdiction
+				  (parent_id, country, level, code, name)
+				VALUES ($1,$2,$3,$4,$5)
+				ON CONFLICT (country, level, code)
+				DO UPDATE SET name = excluded.name,
+				              parent_id = excluded.parent_id
+				RETURNING id`,
+				parent, country, r.Level, code, name).Scan(&id); e != nil {
+				return db.Translate(e, fmt.Sprintf(
+					"Row %d (%s) could not be saved.", i+1, code))
+			}
+			known[code] = id
+			out.Jurisdictions++
+
+			if _, e := tx.Exec(ctx, `
+				UPDATE tax_jurisdiction_rate
+				SET effective_to = $3::date
+				WHERE jurisdiction_id = $1 AND treatment = $2
+				  AND effective_from < $3::date
+				  AND (effective_to IS NULL OR effective_to > $3::date)`,
+				id, treatment, in.From); e != nil {
+				return db.Translate(e, "")
+			}
+
+			var verified, verifier any
+			if in.Verified {
+				verified = in.From
+				verifier = by
+			}
+			if _, e := tx.Exec(ctx, `
+				INSERT INTO tax_jurisdiction_rate
+				  (jurisdiction_id, treatment, rate, effective_from,
+				   source_authority, source_document, source_url, notes,
+				   verified_on, verified_by)
+				VALUES ($1,$2,$3,$4,$5,$6,nullif($7,''),nullif($8,''),
+				        $9::date,$10)
+				ON CONFLICT DO NOTHING`,
+				id, treatment, r.Rate, in.From, in.Authority,
+				strings.TrimSpace(in.Document), strings.TrimSpace(in.URL),
+				strings.TrimSpace(in.Notes), verified, verifier); e != nil {
+				return db.Translate(e, fmt.Sprintf(
+					"The rate for row %d (%s) could not be recorded.",
+					i+1, code))
+			}
+			out.Rates++
+		}
+		return nil
+	})
+	if err != nil {
+		return ImportResult{}, err
+	}
+	return out, nil
 }

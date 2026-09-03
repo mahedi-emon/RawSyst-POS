@@ -316,6 +316,20 @@ func (s *Service) AdvanceDelivery(
 	return out, nil
 }
 
+// ReleaseOrderInTx closes out an order's holds inside a caller's transaction.
+//
+// Exported so invoicing an order can consume its reservation in the SAME
+// transaction that writes the invoice. Releasing afterwards, in a transaction
+// of its own, would leave a window in which the goods had been sold and were
+// still being held — and if that second call failed, the hold would never be
+// let go at all.
+func ReleaseOrderInTx(
+	ctx context.Context, tx pgx.Tx, scope Scope, orderID uuid.UUID,
+	reason string,
+) error {
+	return releaseOrderHolds(ctx, tx, scope, orderID, reason)
+}
+
 // releaseForOrderInTx closes out the reservations a delivery's order held.
 func (s *Service) releaseForOrderInTx(
 	ctx context.Context, tx pgx.Tx, scope Scope, deliveryID uuid.UUID,

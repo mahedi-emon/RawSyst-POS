@@ -1182,6 +1182,10 @@ func (s *Server) Routes() []Route {
 			s.handleGetOrder, ""},
 		{http.MethodPost, "/api/v1/orders/{orderID}/advance", AccessPermission, "order.manage",
 			s.handleAdvanceOrder, ""},
+		{http.MethodPost, "/api/v1/orders/{orderID}/invoice", AccessPermission, "sales.create",
+			s.handleInvoiceOrder,
+			"bills a delivered order and completes it: B11's last step, which " +
+				"had no route at all, so an order could never leave delivered"},
 		{http.MethodPost, "/api/v1/orders/{orderID}/cancel", AccessPermission, "order.manage",
 			s.handleCancelOrder, ""},
 		{http.MethodPost, "/api/v1/orders/{orderID}/pick", AccessPermission, "order.manage",
@@ -2166,6 +2170,10 @@ func (s *Server) Routes() []Route {
 			"the tax authorities on file for a country"},
 		{http.MethodPost, "/api/v1/platform/jurisdictions", AccessSuperAdmin, "",
 			s.handleSaveJurisdiction, "adds or corrects a tax authority"},
+		{http.MethodPost, "/api/v1/platform/jurisdictions/import",
+			AccessSuperAdmin, "", s.handleImportRates,
+			"loads a published rate schedule in one transaction, so a state's " +
+				"quarterly file lands whole or not at all"},
 		{http.MethodPost, "/api/v1/platform/jurisdictions/{jurisdictionID}/rates",
 			AccessSuperAdmin, "", s.handleRecordJurisdictionRate,
 			"puts one authority's rate on file with its source; this is what " +
