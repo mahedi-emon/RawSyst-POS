@@ -56,6 +56,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/settlement"
@@ -146,6 +147,7 @@ type Server struct {
 	privacy      *privacy.Service
 	compliance   *compliance.Service
 	fx           *fx.Service
+	rules        *registry.Service
 	people       *people.Service
 	audit        *audit.Service
 
@@ -304,6 +306,7 @@ func NewServer(
 	complianceSvc *compliance.Service,
 	peopleSvc *people.Service,
 	fxSvc *fx.Service,
+	rulesSvc *registry.Service,
 	auditSvc *audit.Service,
 	health func() error,
 	version string,
@@ -351,6 +354,7 @@ func NewServer(
 		compliance:   complianceSvc,
 		people:       peopleSvc,
 		fx:           fxSvc,
+		rules:        rulesSvc,
 		audit:        auditSvc,
 		health:       health,
 		version:      version,
@@ -2140,6 +2144,32 @@ func (s *Server) Routes() []Route {
 			s.handleSaveSubprocessor,
 			"the platform's own PDPL posture, which is the platform owner's " +
 				"to keep and every tenant's to read"},
+
+		// --- A4: the legal values the product computes with (E8) ---
+		//
+		// Super Admin only, and global rather than per tenant: a tax rate and a
+		// contribution schedule are the law, not one business's settings. Until
+		// these existed the registry could only be filled with a SQL client,
+		// which is why every unverified value was described as an "operations
+		// task" nobody could actually perform.
+		{http.MethodGet, "/api/v1/platform/rules", AccessSuperAdmin, "",
+			s.handleListRules,
+			"every legal value the product holds, with its source and whether " +
+				"anybody has verified it"},
+		{http.MethodPost, "/api/v1/platform/rules", AccessSuperAdmin, "",
+			s.handleRecordRule,
+			"records a legal value against the document it came from; a " +
+				"correction supersedes by date rather than overwriting, so an " +
+				"old period still resolves to the figure that governed it"},
+		{http.MethodGet, "/api/v1/platform/jurisdictions", AccessSuperAdmin, "",
+			s.handleListJurisdictions,
+			"the tax authorities on file for a country"},
+		{http.MethodPost, "/api/v1/platform/jurisdictions", AccessSuperAdmin, "",
+			s.handleSaveJurisdiction, "adds or corrects a tax authority"},
+		{http.MethodPost, "/api/v1/platform/jurisdictions/{jurisdictionID}/rates",
+			AccessSuperAdmin, "", s.handleRecordJurisdictionRate,
+			"puts one authority's rate on file with its source; this is what " +
+				"lets a shop in that jurisdiction trade"},
 
 		{http.MethodGet, "/api/v1/platform/health", AccessSuperAdmin, "",
 			s.handlePlatformHealth,

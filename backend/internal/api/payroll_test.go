@@ -92,8 +92,20 @@ func TestAPayrollRunPostsAndBalances(t *testing.T) {
 
 // GOSI is a legal rate that nobody has verified yet. The run still works —
 // wages are wages — and says plainly which figure is missing rather than
-// quietly treating it as zero.
-func TestPayrollSaysWhenGOSIIsNotVerifiedRatherThanGuessing(t *testing.T) {
+// GOSI is computed, and appears on both sides of the payslip.
+//
+// This test used to assert the opposite: that a run reports social insurance
+// as uncalculable. That was correct while `SA.GOSI.RATES` held __VERIFY__ in
+// every field — an unparseable figure, which the run reported rather than
+// silently treating as zero.
+//
+// 0117 records the rates from GOSI's own employer guidance, so the honest
+// assertion is now that the deduction happens. The refusal path it replaced is
+// still covered where it can be tested without mutating a GLOBAL registry rule
+// underneath every other test in this package: `TestAPlaceholderPayloadIsRefused`
+// proves a placeholder cannot be recorded, and the production verification gate
+// is tested in the registry package.
+func TestGOSIIsDeductedAndChargedToTheEmployer(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner")
 	company := "?company_id=" + f.companyID.String()
@@ -102,67 +114,71 @@ func TestPayrollSaysWhenGOSIIsNotVerifiedRatherThanGuessing(t *testing.T) {
 		"is_saudi": true, "nationality": "SA",
 	})
 
-	period := time.Now().UTC().Format("2006-01")
 	resp := h.do(t, http.MethodPost, "/api/v1/payroll"+company, f.token,
-		map[string]any{"period": period})
+		map[string]any{"period": "2026-08"})
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("prepare: %s", readBody(t, resp))
 	}
 	run := decodeJSONFrom(t, resp)
 
-	// The wage is computed regardless: refusing the whole run because a rate
-	// is unverified would leave a shop unable to pay anybody.
 	if got := run["gross_total"].(string); got != "8000.00" {
-		t.Errorf("gross is %s, want 8000.00 — an unverified GOSI rate must "+
-			"not stop the wage being calculated", got)
+		t.Errorf("gross is %s, want 8000.00", got)
+	}
+	if blocked, _ := run["gosi_unavailable"].(bool); blocked {
+		t.Fatalf("social insurance is reported as uncalculable: %v",
+			run["gosi_blocked_reason"])
 	}
 
-	if blocked, _ := run["gosi_unavailable"].(bool); !blocked {
-		t.Fatal("the run does not report that social insurance could not be " +
-			"calculated; a silent zero here understates both the deduction " +
-			"and the employer's cost")
+	slips, _ := run["payslips"].([]any)
+	if len(slips) != 1 {
+		t.Fatalf("the run has %d payslips, want 1", len(slips))
 	}
-	why, _ := run["gosi_blocked_reason"].(string)
-	if !strings.Contains(why, "SA.GOSI.RATES") {
-		t.Errorf("the reason does not name the rule to verify: %q", why)
+	slip, _ := slips[0].(map[string]any)
+
+	// 9.75% of 8,000 is 780.00 for the employee (9% Annuities + 0.75% SANED)
+	// and 11.75% is 940.00 for the employer (those plus 2% Occupational
+	// Hazards). Both figures come from GOSI's employer guidance; see 0117.
+	if got, _ := slip["gosi_employee"].(string); !amountsEqual(got, "780.00") {
+		t.Errorf("the employee's GOSI is %s, want 780.00 — 9.75%% of 8,000",
+			got)
+	}
+	if got, _ := slip["gosi_employer"].(string); !amountsEqual(got, "940.00") {
+		t.Errorf("the employer's GOSI is %s, want 940.00 — 11.75%% of 8,000",
+			got)
 	}
 }
 
-// The wage file refuses while the Mudad layout is unverified. A file in the
-// wrong layout is not partly right: Mudad rejects it, and a rejection can
-// freeze a company's portal access.
-func TestTheWageFileRefusesUntilTheFormatIsVerified(t *testing.T) {
+// A draft run is not a payment instruction.
+//
+// This test used to assert that a wage file refuses while the layout is
+// unverified, which was right while `SA.WPS.WAGE_FILE_FORMAT` held __VERIFY__.
+// 0116 records the Ministry's own layout from its published specification, so
+// the refusal it tested no longer fires — and staging an unverified version to
+// resurrect it would mutate a GLOBAL registry rule underneath every other test
+// in this package.
+//
+// What survives, and matters just as much, is the gate before it: a run that
+// nobody has approved must not produce a file a bank would act on.
+func TestAWageFileCannotBeDrawnFromAnUnapprovedRun(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "owner")
 	company := "?company_id=" + f.companyID.String()
 
 	h.hire(t, f, "Aisha Rahman", "6000.00", nil)
-	period := time.Now().UTC().Format("2006-01")
 
 	resp := h.do(t, http.MethodPost, "/api/v1/payroll"+company, f.token,
-		map[string]any{"period": period})
+		map[string]any{"period": "2026-08"})
 	runID := decodeJSONFrom(t, resp)["id"].(string)
 
-	// A draft is not a payment instruction.
 	early := h.do(t, http.MethodPost,
 		"/api/v1/payroll/"+runID+"/wage-file"+company, f.token, nil)
+	defer early.Body.Close()
 	if early.StatusCode != http.StatusConflict {
 		t.Errorf("a wage file from a draft got %d, want 409", early.StatusCode)
 	}
-	early.Body.Close()
-
-	h.do(t, http.MethodPost,
-		"/api/v1/payroll/"+runID+"/approve"+company, f.token, nil).Body.Close()
-
-	resp = h.do(t, http.MethodPost,
-		"/api/v1/payroll/"+runID+"/wage-file"+company, f.token, nil)
-	if resp.StatusCode == http.StatusCreated {
-		t.Fatal("a wage file was produced while the Mudad layout is still " +
-			"unverified; the bytes would be a guess")
-	}
-	body := readBody(t, resp)
-	if !strings.Contains(body, "SA.WPS.WAGE_FILE_FORMAT") {
-		t.Errorf("the refusal does not name the rule to verify: %s", body)
+	if body := readBody(t, early); !containsFold(body, "approve") {
+		t.Errorf("the refusal does not say what to do: %s", body)
 	}
 }
 

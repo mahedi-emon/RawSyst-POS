@@ -1147,7 +1147,20 @@ func (s *Service) GenerateWageFile(
 					"verified format in Super Admin > Regulatory Registry.")
 		}
 
-		content, e := buildWageFile(ctx, tx, runID, spec.Format)
+		// The Ministry's own layout is built whole rather than row by row:
+		// its Header Group carries a total the receiving bank validates
+		// against the sum of the rows, so the file cannot be assembled one
+		// line at a time. See wpsfile.go.
+		var content string
+		if spec.Format == FormatWPSTab {
+			// [FILE-REF] must be unique for the establishment across every
+			// file it ever sends — a duplicate rejects the whole file — so it
+			// is the run's own id, which is unique by construction.
+			content, e = buildWPSFile(ctx, tx, runID, scope.CompanyID,
+				period, "RUN"+strings.ReplaceAll(runID.String(), "-", "")[:13])
+		} else {
+			content, e = buildWageFile(ctx, tx, runID, spec.Format)
+		}
 		if e != nil {
 			return e
 		}

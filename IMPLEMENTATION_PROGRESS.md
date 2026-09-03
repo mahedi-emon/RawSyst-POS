@@ -96,7 +96,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | C2 | Cash & bank | **COMPLETE** | `treasury` 11 svc · 10 routes · 10 tests |
 | C3 | Expenses & investment | **COMPLETE** | `expenses` 9 svc · 8 routes · 13 tests; investors 4 routes |
 | C4 | AR / AP | **COMPLETE** | `receivables` 15 svc · 15 routes · **42 api tests** incl. receipt reversal, ageing, credit standing |
-| C5/C6 | HR & payroll | **CODE COMPLETE 2026-09-03 — BLOCKED on official Saudi data, by design** | `people` 23 svc · 23 routes. Everything is built and runs: directory, ID expiry alerts, attendance and leave, salary advances with recovery, payslips, the market gate (a Bangladeshi shop pays its staff without a GOSI line rather than not at all), and **commission, which used to 500 the whole run** — see the *Sales commission* section. What remains is not code: the **GOSI contribution rates** and the **Mudad wage-file format** are legal values, and `registry` refuses a GOSI calculation and a wage file until an operator has checked them against MHRSD/GOSI and stamped `verified_on`. That refusal is the correct behaviour and is tested (`TestPayrollSaysWhenGOSIIsNotVerifiedRatherThanGuessing`, `TestTheWageFileRefusesUntilTheFormatIsVerified`). Unblocking it is a data-entry task against official sources, not an implementation task |
+| C5/C6 | HR & payroll | **COMPLETE 2026-09-03** | GOSI rates and the WPS wage-file layout are now recorded from the authorities’ own documents — see the *Saudi payroll* section below. Directory, ID expiry, attendance, leave, advances, payslips, commission and the market gate were already complete |
 | C7 | Fixed assets | **COMPLETE** | `assets` 10 svc · 4 routes · 10 tests, depreciation |
 | C8 | Shift & drawer | **COMPLETE** | `shift`, blind close, X/Z, `drawer_derivation_test`, `shift_close_race_test` |
 | C9 | Double-entry engine | **COMPLETE** | all 12 posting rules as data, resolved at transaction date |
@@ -112,7 +112,7 @@ declarations, `tests` = functional tests (isolation-only coverage is called out)
 | D5 | Approval centre | **COMPLETE** | `workflow` 12 svc · 10 routes, wired into `expenses.Record` and `purchasing.IssueOrder`. **A P0 defect that made the whole module unusable was found and fixed 2026-09-03** — see below. **10 end-to-end tests**: decision path (6) plus escalation on an elapsed deadline, no escalation inside it, an escalated request still decidable, and delegation refusing backwards cover |
 | D6 | Document management | **COMPLETE 2026-09-03** | `docs` 7 svc · 4 routes · **2 tests** (was isolation-only). Register lists, filing takes `document.manage`, and a cross-tenant read returns no rows |
 | D7 | Global search | **COMPLETE 2026-09-03** | `insight/search.go` · **3 tests**. Finds the fixture’s own product by name, answers empty for a miss rather than failing, and does not return another tenant’s catalogue |
-| E1 | ZATCA | **DEFERRED — PRODUCTION PHASE** | Not blocked and not blocking. Existing code untouched; no other market depends on it |
+| E1 | ZATCA | **DEFERRED — PRODUCTION PHASE** | Not blocked, not blocking. Untouched this pass; no other market depends on it |
 | E2 | Saudi tax engine | **COMPLETE** | multi-market treatments; rates now per treatment |
 | E3 | Payment methods | **COMPLETE** | gateways, providers, attempts, settlement |
 | E4 | PDPL / privacy | **COMPLETE 2026-09-03** | `privacy` 29 svc · 25 routes · **6 functional tests** (was isolation-only). Consent recorded → listed → withdrawn with `withdrawn_at` stamped; DSR opened → closed and dropping out of the `?open=true` list; breach incident logged and registered; ROPA read; permission enforced on all four registers. No defect found |
@@ -1004,3 +1004,85 @@ for advisory over `SELECT … FOR UPDATE` — there is nothing to lock before th
 first reservation, so two callers would both find nothing. The ledger is
 append-only by trigger, signed, and writes no stock movement, so the C13
 tie-out is unaffected.
+
+---
+
+## Saudi payroll: GOSI and the WPS wage file, 2026-09-03
+
+Both were recorded as external blockers. Both turned out to be reachable, and
+one of them exposed invented code that had been sitting behind the gate.
+
+### The registry had no write path at all
+
+A4 gives the Platform Owner "tax templates" and E8 built the registry they live
+in — payload, effective dates, source authority, source document, source URL,
+`verified_on`, `verified_by`. **Nothing exposed any of it.** There was no route
+and no service method that could write a rule, add a tax jurisdiction, or record
+a rate, so calling these "operations tasks" was wrong: the only way to perform
+one was a SQL client against production.
+
+`internal/registry/admin.go` and five Super-Admin routes close that. A
+correction **supersedes by date rather than overwriting**, because a payroll run
+resolves the rule in force on the month being processed and editing in place
+would restate months already computed. A payload still containing `__VERIFY__`
+is refused outright. `verified` remains a person's assertion with their id
+recorded, not a flag. 14 tests.
+
+### WPS — the specification is published, and the old formats were invented
+
+I had reported the Mudad format as unavailable. That was wrong. MHRSD publishes
+**"WPS Wages File Specification"**, 21 pages, retrieved 2026-09-03 from
+`https://www.hrsd.gov.sa/sites/default/files/2017-06/WPS%20Wages%20File%20Technical%20Specification.pdf`.
+
+Worse, the product already carried two wage-file formats — `mudad_xml` and
+`sif` — and **neither appears in any Ministry document**. They were invented.
+They never reached a bank only because the format rule was unverified, so the
+generator refused before it could write one.
+
+`internal/people/wpsfile.go` implements the real layout: TAB-delimited text
+(§1.7), a 10-field Header Group (table 2), a 14-field Content Group (table 4),
+SAR only, `-` terminating the data. `[32A-AMT]` is summed from the rows because
+the receiving bank validates it and rejects the whole file on a mismatch. The
+bank-only fields — `[FILE-REJCDE]`, `[RET-CODE]`, `[TRN-REF]`, `[TRN-STATUS]`,
+`[TRN-DATE]` — are written empty, because an establishment filling them would
+be claiming a payment had executed. `[D-DATE]` and `[70-DET]` are optional and
+left empty rather than guessed.
+
+`0115` adds the four establishment identifiers the Header Group needs, which the
+company table did not have. A business without them is refused **by name**,
+because a file rejected by the bank comes back days after payday.
+
+### GOSI — the contradictions resolved, the escalation deliberately not invented
+
+Two GOSI pages appeared to disagree, and both resolve:
+
+* **Occupational Hazards 2% vs 1.5%.** GOSI's Employer FAQ states the employer's
+  share as *"9% for Annuities Branch and 2% for Occupational Hazard Branch"*.
+  That page is GOSI telling employers what they pay, which is the question a
+  payroll engine asks. 2% taken; the discrepancy is recorded in the rule's notes
+  so it is re-checked rather than forgotten.
+* **Minimum wage SR 400 vs SR 1,500.** Not a conflict — the minimum differs *by
+  branch*. Only the maximum, SR 45,000, is common, and that is what `wage_cap`
+  means.
+
+Recorded: Saudi 11.75% employer (9% Annuities + 0.75% SANED + 2% Hazards) and
+9.75% employee; non-Saudi 2% employer only, since the Annuities Branch and SANED
+are Saudi-only.
+
+**What is deliberately not claimed:** GOSI publishes one Annuities rate and no
+year-by-year escalation for post-July-2024 entrants. Commentary describing one
+is Tier 2, which Blueprint Part N forbids as a basis for a compliance figure.
+Both Saudi bands therefore carry the published rate, and the rule's notes name
+exactly what to re-check annually and that any change becomes a **new version**
+rather than an edit.
+
+### Two obsolete tests replaced, for the same reason as the entitlement one
+
+`TestPayrollSaysWhenGOSIIsNotVerifiedRatherThanGuessing` and
+`TestTheWageFileRefusesUntilTheFormatIsVerified` asserted refusals that were
+correct only while the values were `__VERIFY__`. They now assert the truth:
+GOSI is deducted (780.00 from the employee and 940.00 from the employer on an
+8,000 wage) and a wage file cannot be drawn from an unapproved run. Resurrecting
+the old assertions would have required mutating a **global** registry rule
+underneath every other test in the package; the guarantee they protected is kept
+by `TestAPlaceholderPayloadIsRefused` and the production verification gate.
