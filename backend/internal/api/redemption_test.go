@@ -13,6 +13,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -224,5 +225,140 @@ func TestAnOrdinarySaleRecordsNoRedemption(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("an ordinary sale wrote %d redemptions", n)
+	}
+}
+
+// cappedPromotion creates a coupon campaign with a total use limit.
+func cappedPromotion(t *testing.T, h *harness, f *shopFixture, maxUses int) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), `
+			INSERT INTO promotion
+			  (tenant_id, company_id, code, name, kind, value,
+			   starts_on, ends_on, is_active, max_uses, coupon_code)
+			VALUES ($1,$2,$3,'Ten per cent off','percentage',10,
+			        current_date - 1, current_date + 30, true, $4, $5)
+			RETURNING id`,
+			f.tenantID, f.companyID, "P"+uuid.NewString()[:8], maxUses,
+			"CPN"+uuid.NewString()[:6]).Scan(&id)
+	}); err != nil {
+		t.Fatalf("create capped promotion: %v", err)
+	}
+	return id
+}
+
+// A coupon issued for one use cannot be redeemed twice.
+//
+// `Quote` filtered on the cap by counting redemptions, which is right for
+// deciding what to show a cashier and is not a control on anything: the count
+// is taken outside the transaction that spends against it. The cap is now
+// enforced where the redemption is written.
+func TestACouponIssuedForOneUseIsRefusedTheSecondTime(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+	promo := cappedPromotion(t, h, f, 1)
+
+	first := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token,
+		saleWithPromotion(f, promo, nil))
+	first.Body.Close()
+	if first.StatusCode != http.StatusCreated {
+		t.Fatalf("the first use was refused: %d", first.StatusCode)
+	}
+
+	second := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token,
+		saleWithPromotion(f, promo, nil))
+	defer second.Body.Close()
+	if second.StatusCode == http.StatusCreated {
+		t.Fatal("a coupon issued for one use was redeemed twice")
+	}
+
+	if n := redemptionCount(t, h, f, promo); n != 1 {
+		t.Errorf("the campaign was redeemed %d times, want 1", n)
+	}
+}
+
+// Concurrent tills cannot both spend the last use of a coupon.
+//
+// The race the cap fix exists for: eight counters quoting the same last-use
+// coupon a moment apart all see it as available. Exactly one may keep it.
+func TestConcurrentTillsCannotBothSpendTheLastUseOfACoupon(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+	promo := cappedPromotion(t, h, f, 1)
+	topUpStock(t, h, f, 40)
+
+	const tills = 8
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	created := 0
+	for i := 0; i < tills; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token,
+				saleWithPromotion(f, promo, nil))
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusCreated {
+				mu.Lock()
+				created++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if created != 1 {
+		t.Errorf("%d of %d concurrent tills redeemed a one-use coupon, want "+
+			"exactly 1", created, tills)
+	}
+	if n := redemptionCount(t, h, f, promo); n != 1 {
+		t.Errorf("the campaign records %d redemptions, want 1 — the cap did "+
+			"not hold under concurrency", n)
+	}
+}
+
+// A per-customer cap holds at redemption too, not only at quote time.
+func TestAPerCustomerCapIsEnforcedWhenTheRedemptionIsWritten(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+	once := 1
+	promo, _ := livePromotion(t, h, f, &once)
+	customer := customerOfType(t, h, f, "retail")
+
+	first := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token,
+		saleWithPromotion(f, promo, &customer))
+	first.Body.Close()
+	if first.StatusCode != http.StatusCreated {
+		t.Fatalf("the first use was refused: %d", first.StatusCode)
+	}
+
+	second := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token,
+		saleWithPromotion(f, promo, &customer))
+	defer second.Body.Close()
+	if second.StatusCode == http.StatusCreated {
+		t.Error("one customer used a one-per-customer coupon twice")
+	}
+
+	if n := redemptionCount(t, h, f, promo); n != 1 {
+		t.Errorf("redemptions = %d, want 1", n)
+	}
+}
+
+// A campaign a till names but this company does not own is refused.
+//
+// The sale claimed a discount from it, so skipping the redemption would let a
+// till grant itself a discount that belongs to nobody and is counted nowhere.
+func TestASaleNamingAnotherCompanysCampaignIsRefused(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+	other := h.seedShop(t, "cashier")
+	foreign := cappedPromotion(t, h, other, 100)
+
+	resp := h.do(t, http.MethodPost, "/api/v1/pos/sales", f.token,
+		saleWithPromotion(f, foreign, nil))
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusCreated {
+		t.Error("a sale redeemed another company's campaign")
 	}
 }

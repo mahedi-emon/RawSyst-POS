@@ -291,6 +291,25 @@ type Redemption struct {
 // audit writer is: a redemption that commits without its invoice, or an invoice
 // whose redemptions rolled back, both make the campaign figures wrong in a way
 // nobody would notice until somebody asked what a campaign cost.
+//
+// # The caps are enforced HERE, not only in Quote
+//
+// `Quote` filters campaigns whose `max_uses` is already spent by counting this
+// table, which is right for showing a cashier what applies and is not a control
+// on anything. Two tills quoting the same last-use coupon a moment apart both
+// see it as available, and both used to redeem it: a coupon good for one use
+// was good for as many as there were counters. Nothing failed and nothing was
+// logged — the campaign simply cost more than it was authorised to.
+//
+// So the campaign row is locked before its redemptions are counted. Anything
+// else racing on the same campaign waits for this transaction, sees the
+// redemption this one wrote, and is refused. The lock is per campaign, so tills
+// selling under different campaigns never queue behind each other, and a sale
+// with no promotion — nearly all of them — never reaches this code at all.
+//
+// This is the same shape as the credit limit in receivables, and for the same
+// reason: a limit checked outside the transaction that spends against it is a
+// suggestion.
 func (s *Service) Redeem(
 	ctx context.Context, tx pgx.Tx, scope Scope, given []Redemption,
 ) error {
@@ -298,6 +317,56 @@ func (s *Service) Redeem(
 		if !r.Discount.IsPositive() {
 			continue
 		}
+
+		var maxUses, maxPerCustomer *int
+		var label string
+		err := tx.QueryRow(ctx, `
+			SELECT max_uses, max_uses_per_customer,
+			       coalesce(nullif(coupon_code, ''), name)
+			FROM promotion
+			WHERE id = $1 AND company_id = $2
+			FOR UPDATE`, r.PromotionID, scope.CompanyID).
+			Scan(&maxUses, &maxPerCustomer, &label)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Named by a till but not this company's. Refused rather than
+			// skipped: the sale claimed a discount from it.
+			return errs.New(errs.CodeNotFound,
+				"That campaign is not this business's.")
+		}
+		if err != nil {
+			return db.Translate(err, "")
+		}
+
+		if maxUses != nil {
+			var used int
+			if e := tx.QueryRow(ctx, `
+				SELECT count(*) FROM promotion_redemption
+				WHERE promotion_id = $1`, r.PromotionID).Scan(&used); e != nil {
+				return db.Translate(e, "")
+			}
+			if used >= *maxUses {
+				return errs.Newf(errs.CodeConflict,
+					"%q has been used %d times, which is all it was issued "+
+						"for. Ring the sale up without it.", label, used)
+			}
+		}
+
+		if maxPerCustomer != nil && r.CustomerID != nil {
+			var used int
+			if e := tx.QueryRow(ctx, `
+				SELECT count(*) FROM promotion_redemption
+				WHERE promotion_id = $1 AND customer_id = $2`,
+				r.PromotionID, *r.CustomerID).Scan(&used); e != nil {
+				return db.Translate(e, "")
+			}
+			if used >= *maxPerCustomer {
+				return errs.Newf(errs.CodeConflict,
+					"This customer has already used %q %d times, which is "+
+						"all they may. Ring the sale up without it.",
+					label, used)
+			}
+		}
+
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO promotion_redemption
 			  (tenant_id, company_id, promotion_id, invoice_id, customer_id,

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
@@ -481,4 +482,97 @@ func seedStudio(t *testing.T, h *harness, f *shopFixture) {
 	}); err != nil {
 		t.Fatalf("seed the label studio: %v", err)
 	}
+}
+
+// A barcode can be set by hand, and the till then scans it.
+//
+// B3's manual override, for goods that arrive carrying a code somebody else
+// assigned — a manufacturer's EAN on a bought-in product. The bulk generator
+// has three tests and this route had none, which left the half of B3 that
+// deals with the outside world unproven: a code that saves but does not scan
+// is worse than no code, because the shelf ticket looks right.
+func TestABarcodeSetByHandIsWhatTheTillScans(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	variantID := f.variantID.String()
+	code := "5901234123457" // a manufacturer's EAN-13
+
+	set := h.do(t, http.MethodPut,
+		adminPath(f, "/api/v1/labels/barcodes/"+variantID), f.token,
+		map[string]any{"barcode": code})
+	set.Body.Close()
+	if set.StatusCode != http.StatusOK && set.StatusCode != http.StatusNoContent {
+		t.Fatalf("set barcode: %d", set.StatusCode)
+	}
+
+	if got := barcodeOf(t, h, f, variantID); got != code {
+		t.Fatalf("the stored barcode is %q, want the assigned %q", got, code)
+	}
+
+	// The point of a barcode is the scan, so the till has to find it.
+	scan := h.do(t, http.MethodGet, "/api/v1/catalog/scan?barcode="+code,
+		f.token, nil)
+	defer scan.Body.Close()
+	if scan.StatusCode != http.StatusOK {
+		t.Errorf("a hand-assigned barcode does not scan: %d %s",
+			scan.StatusCode, readBody(t, scan))
+	}
+}
+
+// Two products cannot share a scan code.
+//
+// The one rule a barcode has to keep. If a code could be assigned twice the
+// till would ring up whichever row the database happened to return, and the
+// wrong item would leave the shop against the wrong price and the wrong stock.
+func TestABarcodeCannotBeAssignedToTwoProducts(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	other := h.seedShop(t, "owner")
+	code := "4006381333931"
+
+	first := h.do(t, http.MethodPut,
+		adminPath(f, "/api/v1/labels/barcodes/"+f.variantID.String()),
+		f.token, map[string]any{"barcode": code})
+	first.Body.Close()
+	if first.StatusCode != http.StatusOK && first.StatusCode != http.StatusNoContent {
+		t.Fatalf("set the first barcode: %d", first.StatusCode)
+	}
+
+	// The same code, on another product in the same shop.
+	clash := h.do(t, http.MethodPut,
+		adminPath(f, "/api/v1/labels/barcodes/"+secondVariant(t, h, f)),
+		f.token, map[string]any{"barcode": code})
+	defer clash.Body.Close()
+	if clash.StatusCode == http.StatusOK || clash.StatusCode == http.StatusNoContent {
+		t.Error("one barcode was assigned to two products in the same shop")
+	}
+	if clash.StatusCode >= 500 {
+		t.Errorf("a duplicate barcode answered %d, blaming the server for "+
+			"what is a correctable mistake at the keyboard", clash.StatusCode)
+	}
+	_ = other
+}
+
+// secondVariant adds another product to the shop and returns its variant id.
+func secondVariant(t *testing.T, h *harness, f *shopFixture) string {
+	t.Helper()
+	var id uuid.UUID
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		var productID uuid.UUID
+		if e := tx.QueryRow(t.Context(), `
+			INSERT INTO product (tenant_id, company_id, sku, name, tax_treatment)
+			VALUES ($1,$2,$3,'Second Product','standard') RETURNING id`,
+			f.tenantID, f.companyID, "SKU"+uuid.NewString()[:8]).
+			Scan(&productID); e != nil {
+			return e
+		}
+		return tx.QueryRow(t.Context(), `
+			INSERT INTO variant (tenant_id, company_id, product_id, sku, price_retail)
+			VALUES ($1,$2,$3,$4,100) RETURNING id`,
+			f.tenantID, f.companyID, productID, "V"+uuid.NewString()[:8]).
+			Scan(&id)
+	}); err != nil {
+		t.Fatalf("add a second product: %v", err)
+	}
+	return id.String()
 }
