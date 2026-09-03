@@ -870,3 +870,83 @@ settlement realises only its share**, **four settlements do not double-recognise
 **the journal balances** at 3,800 debits against 3,800 credits, **eight
 concurrent payments of one bill settle it once**, a foreign bill needs its own
 tenant's rate, and a currency with no rate is refused by name.
+
+---
+
+## Business and financial management — verified audit, 2026-09-03
+
+Driven against the ledger rather than against route counts. The headline is
+that this area was **already substantially built and correct**; what it lacked
+was proof, and one genuine gap (multi-currency) which is now closed.
+
+### What an owner can already answer, and where it comes from
+
+| Question | Route | Tied out by |
+|---|---|---|
+| How much came from sales | `/dashboard/sales`, `/reports/profit-and-loss` | dashboard revenue proven equal to P&L revenue |
+| Revenue, COGS, gross profit | `/dashboard/overview` | `gross = revenue − cost` asserted |
+| Net profit / loss | `/reports/profit-and-loss` | balance sheet's current earnings |
+| Financial position | `/reports/balance-sheet` | **assets = liabilities + equity + current earnings** |
+| Cash flow and cash position | `/reports/cash-flow` (direct method) | **opening + net = closing**, and closing = the cash account |
+| Every account's balance | `/reports/trial-balance` | **each row equals that account's net in the journal** |
+| Who owes the business | `/receivables/ageing` | already tied to the AR control account |
+| What the business owes | `/purchasing/ageing` | **now tied to the AP control account** |
+| What was spent, and on what | `/expenses` with `/expenses/heads` | expense heads map to accounts |
+| Owner capital and withdrawals | `/investors`, `/investors/movements` | **capital never reaches the P&L** |
+| Inventory value and movement | stock valuation, `stock_movement` | C13 tie-out, four end-of-day tests |
+| Payroll cost | `/payroll` | commission now feeds it correctly |
+| Product and shop performance | `/analytics/*`, `/reports/*` | analytics reads proven to answer |
+
+### Money in and money out
+
+Every inflow and outflow named in the brief resolves to a posting rule and a
+journal entry: sales receipts and customer collections (rule 8), supplier
+payments (rule 7, now with realised FX), expenses (rule 6), payroll, asset
+purchases and disposals, refunds and credit notes (rule 4), owner capital in
+and out (rule 12 and its mirror), and cash/bank transfers through treasury.
+There is no operational module that moves money without a journal entry, and
+the drawer, the bank and the ledger reconcile through the cash session and
+bank-reconciliation modules.
+
+**Investment is not revenue, and this is enforced rather than intended.**
+`assets/investors.go` posts capital through `equity.contribution` /
+`equity.withdrawal`, neither of which touches a revenue or expense account, and
+`TestCapitalNeverReachesTheProfitAndLoss` and
+`TestAWithdrawalReducesCapitalAndNotProfit` hold it there.
+
+### What was actually missing
+
+* **Multi-currency** — see the *Multi-currency and realised FX* section. This
+  was the one real hole in the financial model: no foreign-currency document
+  could exist and every rate was 1.
+* **The three financial statements had no functional tests.** Trial balance,
+  balance sheet and cash flow were reachable only from the permission walks —
+  tests that check who may call a route and never look at the answer. They are
+  now tied out against the journal, per account. All three were already
+  correct; nobody had shown it.
+* **The payables ageing was not tied to its control account.** Receivables
+  already was. C9.3 makes both hard invariants.
+
+### Deliberately not attempted, with the reason
+
+* **Unrealised FX revaluation at period end** — a distinct period-close routine
+  with its own posting and reversal. Doing it alongside realised recognition is
+  how a movement gets counted twice.
+* **Indirect-method cash flow** — needs every account classified as operating,
+  investing or financing, which this chart of accounts does not carry.
+  `reports.go` says so in place: inventing the classification would produce a
+  statement that looks authoritative and is wrong. The direct method needs no
+  classification and is what ships.
+* **Budgeting and cost centres** — the Blueprint does not define a budget model
+  or a cost-centre dimension, and `store_id` on every journal line already
+  answers "which shop spent it". Inventing a budgeting module would be
+  inventing product.
+
+### Tests added (6)
+
+`internal/api/statements_test.go` — the trial balance balances, is not empty,
+and every row equals its account's net in the journal; the balance sheet
+balances including current earnings; cash flow's opening plus movement is its
+closing, and that closing is the cash account; the payables ageing agrees with
+the AP control account; statements are drawn from the journal rather than from
+document state; and all four statements take `accounting.view`.
