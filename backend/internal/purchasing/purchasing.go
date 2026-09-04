@@ -281,9 +281,14 @@ type OrderLineView struct {
 	QtyBilled      string    `json:"qty_billed"`
 	UnitCost       string    `json:"unit_cost"`
 	TaxTreatment   string    `json:"tax_treatment"`
-	NetAmount      string    `json:"net_amount"`
-	TaxAmount      string    `json:"tax_amount"`
-	GrossAmount    string    `json:"gross_amount"`
+	// TaxRate is a FRACTION, like everywhere else: 0.15 is fifteen per cent,
+	// matching sales_line_rate_sane. Returned because PUT rewrites a draft's
+	// lines wholesale, so an editor has to send back what it read -- and
+	// without this it would send nothing and reset the line to zero.
+	TaxRate     string `json:"tax_rate"`
+	NetAmount   string `json:"net_amount"`
+	TaxAmount   string `json:"tax_amount"`
+	GrossAmount string `json:"gross_amount"`
 }
 
 // CreateOrder raises a purchase order.
@@ -534,6 +539,7 @@ func outstandingLines(
 		SELECT po_line_id, line_no, variant_id, description,
 		       qty_ordered::text, qty_received::text, qty_outstanding::text,
 		       qty_billed::text, unit_cost::text,
+		       tax_treatment, tax_rate::text,
 		       net_amount::text, tax_amount::text, gross_amount::text
 		FROM po_outstanding($1)`, poID)
 	if err != nil {
@@ -546,7 +552,8 @@ func outstandingLines(
 		var l OrderLineView
 		if err := rows.Scan(&l.ID, &l.LineNo, &l.VariantID, &l.Description,
 			&l.QtyOrdered, &l.QtyReceived, &l.QtyOutstanding, &l.QtyBilled,
-			&l.UnitCost, &l.NetAmount, &l.TaxAmount, &l.GrossAmount); err != nil {
+			&l.UnitCost, &l.TaxTreatment, &l.TaxRate,
+			&l.NetAmount, &l.TaxAmount, &l.GrossAmount); err != nil {
 			return nil, err
 		}
 		out = append(out, l)

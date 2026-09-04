@@ -222,6 +222,9 @@ func parseOrderLine(i int, line orderLineRequest) (purchasing.OrderLine, error) 
 		if err != nil {
 			return purchasing.OrderLine{}, err
 		}
+		if err = checkTaxRate(rate, i); err != nil {
+			return purchasing.OrderLine{}, err
+		}
 	}
 
 	return purchasing.OrderLine{
@@ -529,6 +532,9 @@ func parseBillLine(i int, line billLineRequest) (purchasing.BillLine, error) {
 	if line.TaxRate != "" {
 		rate, err = parseAmount(line.TaxRate, "tax_rate", i)
 		if err != nil {
+			return purchasing.BillLine{}, err
+		}
+		if err = checkTaxRate(rate, i); err != nil {
 			return purchasing.BillLine{}, err
 		}
 	}
@@ -965,4 +971,30 @@ func (s *Server) handleReverseSupplierPayment(w http.ResponseWriter, r *http.Req
 		status = http.StatusOK
 	}
 	httpx.JSON(w, status, out)
+}
+
+// checkTaxRate refuses a rate that is not a fraction.
+//
+// Every rate in this system is one: sales_line_rate_sane has constrained a
+// sales line to [0, 1) since 0018, and every purchasing test sends "0.15". The
+// purchasing tables carry no such constraint, so "15" — the obvious thing to
+// type for fifteen per cent — was accepted and multiplied, and a 948 order came
+// back as 15,168 with a tax line of 14,220. Nothing refused it and nothing said
+// anything; the buyer's next sight of the number is on a purchase order the
+// supplier can hold them to.
+//
+// Refused at the boundary rather than by a CHECK constraint, because a
+// constraint would have to be validated against rows that already exist and
+// this is about what the API accepts from here on.
+func checkTaxRate(rate decimal.Decimal, index int) error {
+	if rate.IsNegative() {
+		return errs.Newf(errs.CodeInvalidInput,
+			"A tax rate%s cannot be negative.", atIndex(index))
+	}
+	if rate.GreaterThanOrEqual(decimal.NewFromInt(1)) {
+		return errs.Newf(errs.CodeInvalidInput,
+			"A tax rate%s is a fraction, not a percentage: send 0.15 for "+
+				"fifteen per cent.", atIndex(index))
+	}
+	return nil
 }
