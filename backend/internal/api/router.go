@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
@@ -125,6 +126,7 @@ type Server struct {
 	expenses     *expenses.Service
 	stock        *stockops.Service
 	fiscal       *fiscal.Service
+	journals     *accounting.JournalService
 	treasury     *treasury.Service
 	assets       *assets.Service
 	promotions   *promotions.Service
@@ -377,6 +379,16 @@ func NewServer(
 // start and serve. The recovery routes report that they cannot send.
 func (s *Server) WithQueue(q identity.Enqueuer) *Server {
 	s.queue = q
+	return s
+}
+
+// WithJournals attaches the hand-written journal service (blueprint C10).
+//
+// Optional in the same way the queue is: the rest of the ledger posts from
+// documents and works without it, so an installation that has not wired it
+// still starts and serves.
+func (s *Server) WithJournals(j *accounting.JournalService) *Server {
+	s.journals = j
 	return s
 }
 
@@ -1067,6 +1079,22 @@ func (s *Server) Routes() []Route {
 				"locks every month in it beyond reopening, so it takes the more " +
 				"restricted of the two period permissions rather than the one that " +
 				"closes a month"},
+		// --- hand-written journals (C10) ---
+		//
+		// `accounting.create` has meant "Write a journal entry by hand" since
+		// 0101 and guarded nothing that did. C10 asks for permission, a reason
+		// and an audit record, and not for an approval workflow — so there is
+		// no approve route here, and `accounting.approve` stays unused.
+		{http.MethodGet, "/api/v1/accounting/journals", AccessPermission, "accounting.view",
+			s.handleListJournals, "the adjustment register, newest first"},
+		{http.MethodPost, "/api/v1/accounting/journals", AccessPermission, "accounting.create",
+			s.handleRecordJournal,
+			"posts an adjustment straight to the ledger; balances or is refused, and needs a reason"},
+		{http.MethodGet, "/api/v1/accounting/journals/{journalID}", AccessPermission, "accounting.view",
+			s.handleReadJournal, ""},
+		{http.MethodPost, "/api/v1/accounting/journals/{journalID}/reverse", AccessPermission, "accounting.create",
+			s.handleReverseJournal,
+			"posts the opposite of what was written, read from the entry rather than rebuilt"},
 
 		// --- cash and bank (C2), and the reconciliation (C11) ---
 		//

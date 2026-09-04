@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
@@ -200,6 +201,7 @@ func newHarness(t *testing.T) *harness {
 
 	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotionsSvc, orders.NewService(pool).WithSales(salesSvc), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), fx.New(pool), rules, audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, "test").
+		WithJournals(accounting.NewJournalService(pool)).
 		// The card providers, sealed with the same test keyring the
 		// integrations use. Without this the payment routes report that the
 		// installation cannot hold a credential, which is true but not what

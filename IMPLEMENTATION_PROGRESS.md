@@ -1864,3 +1864,93 @@ roles behind `identity.manage_roles`; a user changes their own password through
 `/api/v1/auth/change-password` and an owner resets an employee's through
 `/api/v1/people/{userID}/reset-password`. The model the product is sold on is
 present end to end.
+
+---
+
+# C10 — Manual journal entries: COMPLETE
+
+The one entry in this ledger that a person types. Every other is posted by a
+rule from a document, which is the safer design and the reason it was built that
+way — but C10 asks for the exception and names what it is for: "accounting
+adjustments / manual journal entries — permission-gated, reason-required, fully
+audit-logged". Without it, C10's own year-end instruction to "post adjusting
+entries" had nowhere to go: an accountant needing to accrue a bill that had not
+arrived, write off a balance, or correct a misposting could not.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend; no frontend in this pass) |
+| **Migration** | `0121_manual_journals.sql` |
+| **Permission** | `accounting.create` — **existing**, not new |
+| **Tenant isolation** | RLS + FORCE + policy on `manual_journal`; company from the authenticated caller |
+| **Accounting** | Posts through `accounting.Post` like every other entry |
+| **Inventory** | None — an adjustment moves money, not stock |
+| **Audit** | `manual_journal_posted`, `manual_journal_reversed` |
+| **Tests** | 14 |
+
+## No new permission, and no approval workflow
+
+`accounting.create` has been defined since 0101 as *"Write a journal entry by
+hand"*, described there as posting "straight to the ledger, past every other
+screen", and held by the Owner and the Accountant. It guarded transfers,
+settlement batches and exchange rates — and nothing that wrote a journal by
+hand. The verb was accurate and the thing it named did not exist. Minting
+`accounting.record_journal` beside it would have left two verbs for one act.
+
+**No approve route was added.** C10 asks for permission, a reason and an audit
+record; it does not ask for a second person to sign an adjustment off, and
+inventing one would be inventing a control the Blueprint never specified.
+`accounting.approve` therefore stays unused, and stays recorded as unused.
+
+## The lines live in the ledger
+
+A manual journal is a *reason attached to an ordinary entry*. Its debits and
+credits go into `journal_line` like everything else, so the trial balance, the
+statements, the period lock and the tie-out see them without knowing they were
+typed. A second line table would have been a second ledger.
+
+`manual_journal` carries only what the ledger does not: who asked, why, and
+under which number (`JV-000001`, from `claim_journal_no`).
+
+## What it does not relax
+
+Everything goes through `Post`, so nothing here is a private path into the
+books:
+
+* **It balances or it is refused.** `Post` already enforces that, but it reports
+  an unbalanced entry as an internal error — correct when a posting rule
+  produced it, since a rule that does not balance is a bug. When a person typed
+  it the same fact is a validation failure, so it is checked first and reported
+  as *"debits come to X and credits to Y, a difference of Z"*. The difference is
+  the number they have to go and find.
+* **The period lock holds.** An adjustment dated inside a closed period is
+  refused with 409, and leaves no `manual_journal` row behind — the entry and
+  the row are written in one transaction or neither is. This is the entry a
+  person would most want to slip in after a close, so it is the one the lock
+  most needs to catch.
+* **Accounts are checked against the company.** `resolveAccounts` already does
+  it, and it matters more here than anywhere: a journal names accounts directly,
+  and another company's account sits in the same tenant where RLS sees nothing
+  wrong with it.
+* **A retry posts once.** The client's `uuid` is the idempotency key, and a
+  second arrival returns the journal already written rather than a conflict.
+
+## Corrections are reversals
+
+`reject_delete` and `reject_column_change` freeze the reason, the date, the
+entry it posted and who wrote it. A wrong journal is corrected by reversing it,
+and the reversal reads its lines from the **entry** via `LinesOf` +
+`FlipSides` — never rebuilt from the original request, which is the mistake the
+customer-receipt reversal carried until this session. A unique partial index
+allows one reversal per journal, and a second attempt returns the one that
+exists.
+
+Reversals are dated today rather than on the original's date, because the
+correction happens now and the original's period may be closed.
+
+## Remaining
+
+Frontend: an adjustment form and the register screen. The API contract is
+`GET/POST /api/v1/accounting/journals`,
+`GET /api/v1/accounting/journals/{journalID}` and
+`POST /api/v1/accounting/journals/{journalID}/reverse`.
