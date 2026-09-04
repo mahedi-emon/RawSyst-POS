@@ -1752,3 +1752,115 @@ successful run, because the second is a more comforting number and a less true
 one, and a failed verification does not stamp `verified_at`.
 
 Restore is not implemented in-product and is not claimed to be.
+
+---
+
+# Gap closure: what is actually left
+
+No defects were found in this pass and no code changed. What it produced is a
+list of remaining work that is checked rather than assumed, and two corrections
+to things previously believed.
+
+## Manual journal entries are Blueprint-required, not optional
+
+C10 asks for them by name: *"Accounting adjustments / manual journal entries —
+permission-gated, reason-required, fully audit-logged."* The Phase 3 feature list
+repeats it. So this is a **genuine remaining feature**, not a future nicety.
+
+Two things worth being precise about:
+
+* **The Blueprint asks for permission, reason and audit — not an approval
+  workflow.** `accounting.approve` is recorded in the permission ledger as
+  "awaited — Phase 2, journal approval workflow", which is a guess about a
+  workflow the Blueprint never asks for. Nothing depends on that permission:
+  it appears nowhere in the codebase except the ledger entry itself, so no
+  workflow is broken by its absence.
+* **The one thing their absence actually blocks** is C10's year-end step
+  "post adjusting entries". `fiscal.CloseYear` closes revenue and expense into
+  Retained Earnings and does that correctly, but an accountant who needs to
+  accrue something before closing has nowhere to put it.
+
+## Two beliefs corrected
+
+**Opening balances ARE implemented**, and an earlier read of this session said
+otherwise. Every occurrence of "opening" in the accounting and fiscal packages
+is about opening a *period*, which is what made it look missing. They live in
+`internal/portability` as an import kind taking `account_code`, `debit`,
+`credit` and a memo, and `writeOpeningBalance` resolves the account by code and
+writes real journal lines. A CSV of account/debit/credit is a legitimate way to
+carry a migrating business's starting position, and it posts.
+
+**Coupons are not missing either.** They are a promotion mechanic and live under
+`/api/v1/promotions`, which is why searching the routes for "coupon" finds
+nothing.
+
+## Declared gaps, still declared
+
+Migration 0071 records what it deliberately did not build, and the list is still
+accurate:
+
+> Blueprint C3.1 also asks for recurring expenses, an approval workflow with
+> configurable thresholds, receipt-photo attachments, departments, and
+> per-production-batch cost allocation. None of them are here.
+
+Of those, the **approval workflow has since been built** (0079/0080) and is
+wired into expenses and purchase-order issue, so that line is stale. The other
+four are genuinely outstanding:
+
+* recurring expenses
+* expense receipt-photo attachments
+* expense departments
+* per-production-batch cost allocation
+
+Each is a feature in its own right. None is half-built, which is the property
+that matters: the migration's own argument was that a half-built approval chain
+"would look like a control", and the same reasoning keeps these out until they
+are done properly.
+
+## Verified again, with evidence
+
+**GOSI.** Re-checked GOSI's contributor FAQ. Annuities 18% split 9/9,
+Occupational Hazards 2% employer (4% for a non-compliant employer), SANED 1.5%
+shared — which is 0117's 11.75% / 9.75%. **No escalation schedule, no
+hire-date cohort, no transitional rates are published.** The rules stand and the
+dependency is external.
+
+**Market gating.** All five gates — e-invoicing, social insurance, wage
+protection, end of service, privacy — are wired, each to the one path it
+guards. No Saudi regulatory code runs for a Bangladeshi or American tenant.
+
+**Hard-coded currency.** Six literals, all correct: the WPS file is SAR-only by
+the Ministry's specification, ZATCA is Saudi, a currency-name lookup names all
+three, and HyperPay's credential probe sends a 1.00 SAR checkout that is
+deliberately refused so no money moves.
+
+**Caller-supplied `company_id`.** Checked against the actor's permitted
+companies by `CanAccessCompany`, with row-level security enforcing the tenant
+boundary underneath. Two independent layers.
+
+**SQL injection.** 316 SQL literals across the money, stock, registry and
+payroll packages were prepared against the live schema; every one is valid. The
+single query built with `Sprintf` interpolates a table name, and all ten call
+sites pass a string constant — verified rather than taken from the comment
+saying so.
+
+**Secrets.** No literal credentials in production code. A JWT secret under 32
+bytes is a hard startup failure everywhere, not a production-only check, and a
+ZATCA production environment in a non-production deployment is refused outright.
+ZATCA credentials are sealed, and there is no `private_key` column at all —
+0064 says its absence is the design.
+
+**`SigningAvailable` is hard-coded false**, and correctly so: reporting it true
+would tell an owner that submission to ZATCA is working while production
+onboarding is still open. It becomes a derived value when a taxpayer completes
+Fatoora onboarding, which is the external dependency it is waiting on.
+
+**Migrations.** 120 files, 0001–0120, no duplicates, no gaps, strictly
+increasing.
+
+**The SaaS chain.** Platform Owner provisions a tenant with its market;
+`/api/v1/people` creates users behind `identity.create`; `/api/v1/roles` assigns
+roles behind `identity.manage_roles`; a user changes their own password through
+`/api/v1/auth/change-password` and an owner resets an employee's through
+`/api/v1/people/{userID}/reset-password`. The model the product is sold on is
+present end to end.
