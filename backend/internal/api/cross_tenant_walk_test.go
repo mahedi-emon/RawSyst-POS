@@ -170,6 +170,21 @@ func seedTheOtherShop(t *testing.T, h *harness) *otherShop {
 		paid.Body.Close()
 	}
 
+	// A production batch, so the cross-tenant walk has one to aim at. Labour
+	// only: a batch needs something in it, and money is enough — no component
+	// stock has to be arranged for the walk's purposes.
+	prod := h.do(t, http.MethodPost,
+		"/api/v1/stock/production?company_id="+f.companyID.String(), f.token,
+		map[string]any{
+			"uuid": newUUID(), "variant_id": f.variantID.String(),
+			"warehouse_id": f.warehouseID.String(), "qty_produced": "1",
+			"labour_cost": "10.00", "paid_from": "cash",
+		})
+	if prod.StatusCode == http.StatusCreated {
+		o.ids["productionID"], _ = decodeJSON(t, prod)["id"].(string)
+	}
+	prod.Body.Close()
+
 	// An approval request, a support ticket, a webhook and a staged import:
 	// the record-naming reads the workflow, support and admin modules added.
 	// Seeded here rather than left uncovered, because a route absent from this
@@ -405,7 +420,7 @@ func seedTheOtherShop(t *testing.T, h *harness) *otherShop {
 // rather than identifiers, so substituting another tenant's value is not a
 // thing that can be done and a walk over them would prove nothing.
 var crossTenantParams = map[string]bool{
-	"batchID": true, "billID": true, "companyID": true, "customerID": true,
+	"batchID": true, "productionID": true, "billID": true, "companyID": true, "customerID": true,
 	"deviceID": true, "invoiceID": true, "paymentID": true, "poID": true,
 	"productID": true, "receiptID": true, "sessionID": true,
 	"supplierID": true, "unitID": true, "userID": true, "variantID": true,

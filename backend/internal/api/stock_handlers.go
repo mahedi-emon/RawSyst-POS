@@ -854,7 +854,7 @@ func (s *Server) handleListProduction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReadProduction(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "batchID"), "batchID")
+	id, err := parseUUID(chi.URLParam(r, "productionID"), "productionID")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

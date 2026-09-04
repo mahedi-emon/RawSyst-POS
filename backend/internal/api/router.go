@@ -1069,7 +1069,7 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/stock/production", AccessPermission, "inventory.adjust_stock",
 			s.handleRecordProduction,
 			"costs a finished batch: components out at what they cost, labour and packaging in, finished units into stock"},
-		{http.MethodGet, "/api/v1/stock/production/{batchID}", AccessPermission, "inventory.view",
+		{http.MethodGet, "/api/v1/stock/production/{productionID}", AccessPermission, "inventory.view",
 			s.handleReadProduction, ""},
 
 		{http.MethodGet, "/api/v1/stock/transfers", AccessPermission, "inventory.view",

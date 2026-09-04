@@ -2120,3 +2120,19 @@ valuation rather than with the arithmetic that preceded it.
 Frontend: a batch form and the register. The contract is
 `GET/POST /api/v1/stock/production` and
 `GET /api/v1/stock/production/{batchID}`.
+
+## A route-parameter collision the cross-tenant walk caught
+
+`/api/v1/stock/production/{batchID}` was added beside the existing
+`/api/v1/settlement/batches/{batchID}`, and the two shared a parameter name. The
+cross-tenant walk aims each record-naming route at a seeded id chosen by
+parameter name, so it fed a *settlement* batch id to the production route, which
+correctly answered 404 — and the positive control that exists precisely to catch
+a route answering 404 for the wrong reason failed, as designed.
+
+Renamed to `{productionID}`, and the walk now seeds a real production batch so
+the isolation of that route is genuinely exercised rather than skipped.
+
+Worth recording because the near-miss was mine: the rename was first applied too
+widely and briefly renamed the existing lot-recall handler's parameter as well.
+The build caught nothing — both compile — and it was found by reading the diff.
