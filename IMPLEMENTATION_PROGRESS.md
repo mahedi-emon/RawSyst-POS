@@ -372,6 +372,91 @@ marked N/A or mapped, rather than dropping them.)
 | 9 — Responsive | ✅ for built screens; not yet exercised on a real device |
 | — | **`npm run verify:api`** now checks every endpoint the screens call, and the FIELDS each reads, against a running server |
 | 10 — Customers → Sales | ✅ **DONE** — both built on real APIs and verified live |
+| 16 — Platform Admin | 🟡 three screens live-verified as an operator (§0.86); onboarding, billing and the regulatory group remain |
+
+### 0.86 Platform Admin, validated as an operator
+
+Three screens, built and then checked against a running server as a user with
+no tenant. Every design decision below was a live finding, not a reading of the
+Go source -- the source said most of it, and the source was checked, but four
+things were only visible with the thing running.
+
+**`/platform/businesses`** -- `GET /platform/tenants`. The route takes no
+search parameter and no cursor: it answers with every tenant, up to 500,
+ordered newest first. So the search box filters in the browser, through a new
+`filterRow` prop on `ResourceList`. A box that typed and did nothing would be
+worse than no box, and since every row is already there, filtering locally is
+not a shortcut -- it is where the data is. `last_activity` and
+`backup_verified_at` are `omitempty` and genuinely absent on a fresh seed,
+which is why those columns say "Never" in words rather than showing an empty
+cell somebody has to interpret.
+
+**`/platform/jobs`** -- `GET /platform/jobs/failed`, `POST .../retry`.
+Verified both halves against seeded rows: retrying a `failed` job answers 204
+and the row leaves the list; retrying a `dead` one answers **409** with "a dead
+job exhausted its attempts on something retrying will not fix". The screen
+therefore has no retry button on a dead row rather than one that gets refused.
+Three corrections came out of running it:
+
+- The kind is shown **verbatim**. Real kinds are `zatca.submit`,
+  `stock.low_sweep`, `accounting.tie_out`. Opening the underscores rendered
+  `stock.low sweep`, a string that appears in no log and cannot be searched
+  for. An identifier is more useful accurate than pretty.
+- `tenant_id` is null for the platform's own sweeps, and the row said "--".
+  It now says so, because whose job it is decides who fixes it.
+- A retry had no error path. The dead rows are excluded, but a job the worker
+  has just picked up, or one another operator already queued, still fails --
+  and the button looked pressed and did nothing. It now reports.
+
+**`/platform/support`** -- `GET /platform/support`, `POST .../reply`. Four
+findings, all of which changed the screen:
+
+- The queue carries **no messages**. `Queue` selects the ticket columns only;
+  `readMessages` runs in `PlatformTicket`, and the platform side has no route
+  for one ticket. The screen had a message count that could never render. The
+  reply response *is* the updated ticket with its thread, so the thread appears
+  after replying, and the screen says why it was not there before.
+- Replying is a **state change**. With no status in the body the ticket moves to
+  `waiting_on_customer`; with `"status":"resolved"` it closes and stamps
+  `resolved_at`. Confirmed both. That is not a side effect to discover
+  afterwards, so there are two buttons and a line saying what each does.
+- `include_closed=true` exists and was not offered. Open queue 3, with the flag
+  4. It is a checkbox now.
+- Priorities are `low | normal | high | urgent` -- there is no `critical`, which
+  the screen had a branch for, and `normal` was falling through to the default.
+  All four now map explicitly, as do the five statuses and five kinds, from the
+  table's own CHECK constraints.
+
+**A platform operator holds zero permissions.** `/auth/me` answers
+`{"is_super_admin":true,"permissions":[]}`. This is the whole reason
+`PLATFORM_NAV` names no permission strings and `RequireWorkspace` gates on the
+claim: a sidebar that asked for a permission here would render empty for the
+person who runs the service. `verify:api` now asserts it.
+
+**`cmd/devseed` gained `-platform-email`.** A platform operator is a user with
+`tenant_id IS NULL` -- that is the entire model, per `identity.Login`. No
+screen can create one, because every route that could is itself behind the
+guard it would be needed to pass. Without this flag the platform workspace was
+unreachable in development and the screens above could not have been checked at
+all. Idempotent by email, reuses the owner's password when one was given.
+
+**`verify:api` now signs in twice** -- as the owner for the business contracts,
+then as the operator for the platform ones -- and asserts the fields each
+platform screen reads. A database with no operator is reported loudly rather
+than skipped, with the command to fix it.
+
+Two things it learned to survive on the way:
+
+- A **login challenge is not a crash.** `owner@example.test` in more than one
+  business answers 200 with no token and `tenant_choice_required`; the script
+  died on `undefined`. It now prints each business and the
+  `RAWSYST_DEV_TENANT=` line that picks it.
+- Which surfaced a **real defect in the sign-in screen**: the picker rendered
+  `name` alone, and three businesses called "Demo Retail" were three identical
+  buttons. The choice payload carries only an id and a name, so the id is the
+  only thing that separates them -- eight characters of it now show under the
+  rows that collide, and only those, with the reference in the accessible name
+  too. Found by running the product, not by reading it.
 
 ### 0.8 Exact next task
 
@@ -437,13 +522,24 @@ export RAWSYST_METRICS_ENABLED=false
 
 cd backend
 go run ./cmd/migrate
-go run ./cmd/devseed -email owner@example.test -password 'DevPassw0rd!2026'
+# -platform-email creates the operator as well. Without it the whole Platform
+# workspace is unreachable: an operator is a user with no tenant, and no screen
+# in the product can make one.
+go run ./cmd/devseed -email owner@example.test -password 'DevPassw0rd!2026' \
+  -platform-email ops@example.test
 go run ./cmd/api                      # :8080
 
 cd ../web-next
 npm run dev                           # :3001, proxying /api/v1 to :8080
 npm run verify:api                    # every screen contract, against the server
+                                      # signs in twice: owner, then operator
 ```
+
+**Run `devseed` once per owner email.** A second run with the same
+`-email` creates a SECOND business rather than reusing the first, and sign-in
+then stops on the picker for every tool that expects a token straight back.
+`verify:api` reports the choices and the `RAWSYST_DEV_TENANT=` line that picks
+one, rather than failing on an undefined.
 
 The same environment runs the Go integration tests:
 `go test -tags integration ./internal/...`. Without `RAWSYST_DB_DSN` every

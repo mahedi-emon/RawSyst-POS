@@ -48,6 +48,17 @@ export interface ResourceListProps<Row> {
   query?: Record<string, string | number | boolean | undefined | null>;
   /** The query parameter this endpoint searches on -- `search` or `q`. */
   searchParam?: string;
+  /**
+   * Filters in the browser instead of sending the search term to the server.
+   *
+   * For the endpoints that take no search parameter and return the whole set
+   * anyway -- `GET /platform/tenants` is one. The alternative is a search box
+   * that types and does nothing, which is worse than no search box; and since
+   * every row is already in the browser, filtering here is not a shortcut, it
+   * is where the data is. An endpoint that DOES search should always search
+   * server-side, because the rows it did not send cannot be filtered.
+   */
+  filterRow?: (row: Row, term: string) => boolean;
   columns: readonly Column<Row>[];
   rowKey: (row: Row) => string;
   /** Cursor value for the next page, read off the last row. */
@@ -70,6 +81,7 @@ export function ResourceList<Row>({
   path,
   query,
   searchParam = 'search',
+  filterRow,
   columns,
   rowKey,
   cursorOf,
@@ -83,6 +95,9 @@ export function ResourceList<Row>({
   pageSize = 50,
 }: ResourceListProps<Row>) {
   const [urlSearch, setUrlSearch] = useUrlState('q');
+  // When the filtering happens here, the term never reaches the request -- so
+  // it must not reset the loaded pages or refetch on every keystroke either.
+  const serverTerm = filterRow ? '' : urlSearch;
   // Seeded from the URL, so a shared link arrives with the box already filled.
   const [typed, setTyped] = useState(urlSearch);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -103,11 +118,11 @@ export function ResourceList<Row>({
   useEffect(() => {
     setCursor(null);
     setAccumulated([]);
-  }, [urlSearch, path, filterKey]);
+  }, [serverTerm, path, filterKey]);
 
   const { data, isLoading, isFetching, error, refetch } = useApiList<Row>(path, {
     ...query,
-    [searchParam]: urlSearch,
+    [searchParam]: serverTerm,
     limit: pageSize,
     after: cursor,
   });
@@ -132,6 +147,12 @@ export function ResourceList<Row>({
         ? accumulated
         : data.data
       : accumulated;
+
+  // Filtering the loaded rows, for the endpoints that do not filter themselves.
+  // An empty term means every row, without walking the list to prove it.
+  const term = urlSearch.trim().toLowerCase();
+  const visible =
+    filterRow && term !== '' ? rows.filter((row) => filterRow(row, term)) : rows;
 
   // Absent means "this is all of it", not "unknown". `cursorOf` is what makes
   // a next page reachable at all, so an endpoint that cannot supply one has no
@@ -166,28 +187,30 @@ export function ResourceList<Row>({
         <TableSkeleton columns={columns.length} />
       ) : null}
 
-      {!error && !isLoading && rows.length === 0 && urlSearch === ''
+      {!error && !isLoading && visible.length === 0 && urlSearch === ''
         ? emptyState
         : null}
 
-      {!error && !isLoading && rows.length === 0 && urlSearch !== '' ? (
+      {!error && !isLoading && visible.length === 0 && urlSearch !== '' ? (
         <NoMatches what={noun} onClear={clear} />
       ) : null}
 
-      {rows.length > 0 ? (
+      {visible.length > 0 ? (
         <>
           <DataTable
             caption={caption}
             columns={columns}
-            rows={rows}
+            rows={visible}
             rowKey={(r) => rowKey(r)}
             onOpenRow={onOpenRow}
           />
           <LoadMore
             hasMore={hasMore}
             loading={isFetching}
-            loadedCount={rows.length}
+            loadedCount={visible.length}
             onLoadMore={() => {
+              // The cursor comes off the last row the SERVER sent, not the last
+              // one on screen -- a filtered view would ask for the wrong page.
               const last = rows[rows.length - 1];
               if (last && cursorOf) setCursor(cursorOf(last));
             }}

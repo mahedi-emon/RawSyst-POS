@@ -43,15 +43,22 @@ func main() {
 	// belongs to two businesses with the SAME password, which is the case the
 	// tenant picker exists for and which cannot be set up otherwise.
 	password := flag.String("password", "", "reuse a known password instead of generating one")
+	// The platform workspace is unreachable without one of these, and there is
+	// no screen that can create one: a platform operator is a user with no
+	// tenant, and every route that could make one sits behind the guard it
+	// would be needed to pass. So the seeder makes it, or nobody in
+	// development ever sees Platform Admin at all.
+	operator := flag.String("platform-email", "",
+		"also create a platform operator with this email (no tenant, super admin)")
 	flag.Parse()
 
-	if err := run(*email, *name, *password); err != nil {
+	if err := run(*email, *name, *password, *operator); err != nil {
 		fmt.Fprintf(os.Stderr, "devseed: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(email, name, password string) error {
+func run(email, name, password, operator string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -119,7 +126,56 @@ func run(email, name, password string) error {
 	fmt.Printf("    email     %s\n", out.OwnerEmail)
 	fmt.Printf("    password  %s\n", out.TemporaryPassword)
 	fmt.Printf("    tenant    %s\n\n", out.TenantID)
+
+	if operator != "" {
+		pw, oErr := seedOperator(ctx, pool, operator, password)
+		if oErr != nil {
+			return fmt.Errorf("seed platform operator: %w", oErr)
+		}
+		fmt.Printf("  Platform operator\n\n")
+		fmt.Printf("    email     %s\n", operator)
+		fmt.Printf("    password  %s\n\n", pw)
+	}
 	return nil
+}
+
+// seedOperator creates the platform's own login.
+//
+// A NULL tenant_id is the whole model: identity.Login sets IsSuperAdmin for a
+// user who belongs to no tenant, and migration 0006 bounds what that reaches.
+// There is no role to grant and no permission to seed -- /auth/me answers an
+// empty permission list for one of these, which is correct, because the
+// platform routes are gated on the claim rather than on the catalogue.
+//
+// Idempotent by email, like the rest of this seeder, and it reuses the owner's
+// password when one was given so a developer has one password to remember.
+func seedOperator(
+	ctx context.Context, pool *db.Pool, email, password string,
+) (string, error) {
+	var err error
+	if password == "" {
+		password, err = identity.GenerateTemporaryPassword()
+		if err != nil {
+			return "", err
+		}
+	}
+	hash, err := identity.HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx, `
+			INSERT INTO app_user
+			  (tenant_id, email, full_name, password_hash,
+			   must_change_password, status)
+			VALUES (NULL, $1, 'Platform Operator', $2, false, 'active')
+			ON CONFLICT (email) WHERE tenant_id IS NULL
+			DO UPDATE SET password_hash = EXCLUDED.password_hash,
+			              must_change_password = false,
+			              status = 'active'`, email, hash)
+		return e
+	})
+	return password, err
 }
 
 // seedShop gives the tenant a company that can actually trade: a chart of

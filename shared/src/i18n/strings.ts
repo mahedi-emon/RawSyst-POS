@@ -4401,6 +4401,109 @@ export const en = {
   'nx.ret.outstanding': 'This return has not yet done: {items}. Somebody will need to put that right separately.',
   'nx.pos.backToTill': 'Back to the till',
   'nx.pos.returns': 'Returns',
+
+  // --- platform operations (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.bizTitle': 'Businesses',
+  'nx.plat.bizSubtitle': 'Every business on the platform. Trading means it sold something in the last thirty days — a signup is not a customer.',
+  'nx.plat.colBusiness': 'Business',
+  'nx.plat.colPlan': 'Plan',
+  'nx.plat.colMarket': 'Market',
+  'nx.plat.colCompanies': 'Companies',
+  'nx.plat.colUsers': 'Users',
+  'nx.plat.colLastSold': 'Last sold',
+  'nx.plat.colBackup': 'Backup verified',
+  'nx.plat.bizCaption': 'Businesses on the platform, with what each is on and when it last traded',
+  'nx.plat.neverTraded': 'Never',
+  'nx.plat.neverVerified': 'Never',
+  'nx.plat.bizEmptyTitle': 'No businesses yet',
+  'nx.plat.bizEmptyDesc': 'Nothing has been onboarded. The first business and its owner are created together.',
+  'nx.plat.businesses2': 'businesses',
+  'nx.plat.bizSearch': 'Search by name',
+  'nx.plat.bizSearchLabel': 'Search businesses',
+  'nx.plat.jobsTitle': 'Failed jobs',
+  'nx.plat.jobsSubtitle': 'Background work that did not finish. A dead job has exhausted its attempts on something retrying cannot fix, so it has no retry.',
+  'nx.plat.colJob': 'Job',
+  'nx.plat.colOwner': 'Business',
+  'nx.plat.colAttempts': 'Tries',
+  'nx.plat.colFailedAt': 'Failed',
+  'nx.plat.colWhy': 'Why',
+  'nx.plat.jobsCaption': 'Background jobs that failed, newest first, with the error each stopped on',
+  'nx.plat.retry': 'Try again',
+  'nx.plat.retried': 'Queued again',
+  'nx.plat.deadNoRetry': 'Dead — retrying will not fix this',
+  'nx.plat.jobsEmptyTitle': 'Nothing has failed',
+  'nx.plat.jobsEmptyDesc': 'Every background job on the platform has completed. This is the state you want it in.',
+  'nx.plat.supportTitle': 'Support queue',
+  'nx.plat.supportSubtitle': 'Tickets raised by businesses, most urgent first.',
+  'nx.plat.colTicket': 'Ticket',
+  'nx.plat.colSubject': 'Subject',
+  'nx.plat.colPriority': 'Priority',
+  'nx.plat.colRaised': 'Raised',
+  'nx.plat.supportCaption': 'Open support tickets, with who raised each and how urgent it is',
+  'nx.plat.reply': 'Reply',
+  'nx.plat.replyPlaceholder': 'What the business needs to know',
+  'nx.plat.sendReply': 'Send the reply',
+  'nx.plat.replySent': 'Reply sent',
+  'nx.plat.replyAuthor': 'Sent as support. The author comes from your session, never from the message.',
+  'nx.plat.supportEmptyTitle': 'Nothing is waiting',
+  'nx.plat.supportEmptyDesc': 'No business has an open ticket. Closed ones are not shown here.',
+  'nx.plat.messages': '{count} messages',
+  'nx.plat.openTicket': 'Open',
+
+  // --- support queue, corrected against the live route (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.replyEffect': 'Sending marks this waiting on the business. Resolving closes it and stamps the time.',
+  'nx.plat.replyResolve': 'Reply and resolve',
+  'nx.plat.resolvedNow': 'Resolved',
+  'nx.plat.showResolved': 'Include resolved and closed',
+  'nx.plat.threadSoFar': 'What has been said',
+  'nx.plat.fromSupport': 'Support',
+  'nx.plat.fromBusiness': 'The business',
+  'nx.plat.threadAfterReply': 'The queue does not carry earlier replies. This is the thread as it stands after yours.',
+  'nx.plat.prLow': 'Low',
+  'nx.plat.prNormal': 'Normal',
+  'nx.plat.prHigh': 'High',
+  'nx.plat.prUrgent': 'Urgent',
+  'nx.plat.stOpen': 'Open',
+  'nx.plat.stWaitingCustomer': 'Waiting on them',
+  'nx.plat.stWaitingSupport': 'Waiting on us',
+  'nx.plat.stResolved': 'Resolved',
+  'nx.plat.stClosed': 'Closed',
+  'nx.plat.kQuestion': 'Question',
+  'nx.plat.kBug': 'Something is broken',
+  'nx.plat.kFeature': 'Request',
+  'nx.plat.kBilling': 'Billing',
+  'nx.plat.kOutage': 'Outage',
+
+  // --- failed jobs, corrected against the live route (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.platformJob': 'RawSyst itself',
+
+  // --- telling same-named businesses apart at sign-in (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.auth.sameName': 'Two of these are named the same. The reference is what tells them apart.',
+  'nx.auth.businessRef': 'Reference {ref}',
 } as const;
 
 /** Every string the interface can show. */
@@ -8830,6 +8933,109 @@ export const ar: Record<Key, string> = {
   'nx.ret.outstanding': 'لم يقم هذا الإرجاع بعد بما يلي: {items}. سيحتاج أحدهم إلى معالجته بشكل منفصل.',
   'nx.pos.backToTill': 'العودة إلى الصندوق',
   'nx.pos.returns': 'المرتجعات',
+
+  // --- platform operations (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.bizTitle': 'الأنشطة',
+  'nx.plat.bizSubtitle': 'كل نشاط على المنصة. «يتاجر» تعني أنه باع شيئًا خلال آخر ثلاثين يومًا؛ التسجيل ليس عميلًا.',
+  'nx.plat.colBusiness': 'النشاط',
+  'nx.plat.colPlan': 'الباقة',
+  'nx.plat.colMarket': 'السوق',
+  'nx.plat.colCompanies': 'الشركات',
+  'nx.plat.colUsers': 'المستخدمون',
+  'nx.plat.colLastSold': 'آخر بيع',
+  'nx.plat.colBackup': 'التحقق من النسخة',
+  'nx.plat.bizCaption': 'الأنشطة على المنصة، مع باقة كل منها وآخر تعامل له',
+  'nx.plat.neverTraded': 'لم يتاجر',
+  'nx.plat.neverVerified': 'لم يُتحقق',
+  'nx.plat.bizEmptyTitle': 'لا توجد أنشطة بعد',
+  'nx.plat.bizEmptyDesc': 'لم يتم إدخال أي نشاط. يُنشأ النشاط الأول ومالكه معًا.',
+  'nx.plat.businesses2': 'أنشطة',
+  'nx.plat.bizSearch': 'ابحث بالاسم',
+  'nx.plat.bizSearchLabel': 'البحث في الأنشطة',
+  'nx.plat.jobsTitle': 'المهام الفاشلة',
+  'nx.plat.jobsSubtitle': 'أعمال خلفية لم تكتمل. المهمة الميتة استنفدت محاولاتها على أمر لا تصلحه إعادة المحاولة، لذا لا يوجد لها زر إعادة.',
+  'nx.plat.colJob': 'المهمة',
+  'nx.plat.colOwner': 'النشاط',
+  'nx.plat.colAttempts': 'المحاولات',
+  'nx.plat.colFailedAt': 'وقت الفشل',
+  'nx.plat.colWhy': 'السبب',
+  'nx.plat.jobsCaption': 'المهام الخلفية التي أخفقت، الأحدث أولًا، مع الخطأ الذي توقفت عنده',
+  'nx.plat.retry': 'إعادة المحاولة',
+  'nx.plat.retried': 'أُعيدت إلى القائمة',
+  'nx.plat.deadNoRetry': 'ميتة — إعادة المحاولة لن تصلحها',
+  'nx.plat.jobsEmptyTitle': 'لم تفشل أي مهمة',
+  'nx.plat.jobsEmptyDesc': 'اكتملت كل المهام الخلفية على المنصة. هذه هي الحالة المطلوبة.',
+  'nx.plat.supportTitle': 'قائمة الدعم',
+  'nx.plat.supportSubtitle': 'تذاكر من الأنشطة، الأكثر إلحاحًا أولًا.',
+  'nx.plat.colTicket': 'التذكرة',
+  'nx.plat.colSubject': 'الموضوع',
+  'nx.plat.colPriority': 'الأولوية',
+  'nx.plat.colRaised': 'تاريخ الفتح',
+  'nx.plat.supportCaption': 'تذاكر الدعم المفتوحة، مع من فتحها ومدى إلحاحها',
+  'nx.plat.reply': 'رد',
+  'nx.plat.replyPlaceholder': 'ما يحتاج النشاط إلى معرفته',
+  'nx.plat.sendReply': 'إرسال الرد',
+  'nx.plat.replySent': 'تم إرسال الرد',
+  'nx.plat.replyAuthor': 'يُرسل باسم الدعم. يُؤخذ المرسل من جلستك، لا من نص الرسالة.',
+  'nx.plat.supportEmptyTitle': 'لا شيء في الانتظار',
+  'nx.plat.supportEmptyDesc': 'لا يوجد نشاط لديه تذكرة مفتوحة. التذاكر المغلقة لا تظهر هنا.',
+  'nx.plat.messages': '{count} رسالة',
+  'nx.plat.openTicket': 'فتح',
+
+  // --- support queue, corrected against the live route (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.replyEffect': 'الإرسال يجعلها في انتظار النشاط. الحل يغلقها ويسجّل وقت الإغلاق.',
+  'nx.plat.replyResolve': 'الرد والإغلاق',
+  'nx.plat.resolvedNow': 'تم الحل',
+  'nx.plat.showResolved': 'إظهار المحلولة والمغلقة',
+  'nx.plat.threadSoFar': 'ما قيل حتى الآن',
+  'nx.plat.fromSupport': 'الدعم',
+  'nx.plat.fromBusiness': 'النشاط',
+  'nx.plat.threadAfterReply': 'قائمة الانتظار لا تحمل الردود السابقة. هذا هو الحوار بعد ردك.',
+  'nx.plat.prLow': 'منخفضة',
+  'nx.plat.prNormal': 'عادية',
+  'nx.plat.prHigh': 'عالية',
+  'nx.plat.prUrgent': 'عاجلة',
+  'nx.plat.stOpen': 'مفتوحة',
+  'nx.plat.stWaitingCustomer': 'بانتظار النشاط',
+  'nx.plat.stWaitingSupport': 'بانتظارنا',
+  'nx.plat.stResolved': 'محلولة',
+  'nx.plat.stClosed': 'مغلقة',
+  'nx.plat.kQuestion': 'سؤال',
+  'nx.plat.kBug': 'خلل',
+  'nx.plat.kFeature': 'طلب ميزة',
+  'nx.plat.kBilling': 'الفوترة',
+  'nx.plat.kOutage': 'انقطاع',
+
+  // --- failed jobs, corrected against the live route (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.platformJob': 'روسيست نفسها',
+
+  // --- telling same-named businesses apart at sign-in (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.auth.sameName': 'اثنان منها يحملان الاسم نفسه. الرقم المرجعي هو ما يميزهما.',
+  'nx.auth.businessRef': 'المرجع {ref}',
 };
 
 /**
@@ -13055,6 +13261,109 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.ret.outstanding': 'এই ফেরত এখনো যা করেনি: {items}। কাউকে তা আলাদাভাবে ঠিক করতে হবে।',
   'nx.pos.backToTill': 'কাউন্টারে ফিরুন',
   'nx.pos.returns': 'ফেরত',
+
+  // --- platform operations (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.bizTitle': 'ব্যবসা',
+  'nx.plat.bizSubtitle': 'প্ল্যাটফর্মের প্রতিটি ব্যবসা। "সক্রিয়" মানে গত ত্রিশ দিনে কিছু বিক্রি করেছে — নিবন্ধন মানেই গ্রাহক নয়।',
+  'nx.plat.colBusiness': 'ব্যবসা',
+  'nx.plat.colPlan': 'প্ল্যান',
+  'nx.plat.colMarket': 'বাজার',
+  'nx.plat.colCompanies': 'কোম্পানি',
+  'nx.plat.colUsers': 'ব্যবহারকারী',
+  'nx.plat.colLastSold': 'সর্বশেষ বিক্রি',
+  'nx.plat.colBackup': 'ব্যাকআপ যাচাই',
+  'nx.plat.bizCaption': 'প্ল্যাটফর্মের ব্যবসা, প্রত্যেকের প্ল্যান ও সর্বশেষ লেনদেনসহ',
+  'nx.plat.neverTraded': 'কখনো নয়',
+  'nx.plat.neverVerified': 'কখনো নয়',
+  'nx.plat.bizEmptyTitle': 'এখনো কোনো ব্যবসা নেই',
+  'nx.plat.bizEmptyDesc': 'কিছুই যুক্ত হয়নি। প্রথম ব্যবসা আর তার মালিক একসঙ্গে তৈরি হয়।',
+  'nx.plat.businesses2': 'ব্যবসা',
+  'nx.plat.bizSearch': 'নাম দিয়ে খুঁজুন',
+  'nx.plat.bizSearchLabel': 'ব্যবসা খুঁজুন',
+  'nx.plat.jobsTitle': 'ব্যর্থ কাজ',
+  'nx.plat.jobsSubtitle': 'যে পটভূমির কাজ শেষ হয়নি। মৃত কাজ এমন কিছুতে চেষ্টা ফুরিয়েছে যা আবার চালালে ঠিক হয় না, তাই তার পুনরায় চেষ্টা নেই।',
+  'nx.plat.colJob': 'কাজ',
+  'nx.plat.colOwner': 'ব্যবসা',
+  'nx.plat.colAttempts': 'চেষ্টা',
+  'nx.plat.colFailedAt': 'ব্যর্থ হয়েছে',
+  'nx.plat.colWhy': 'কারণ',
+  'nx.plat.jobsCaption': 'ব্যর্থ পটভূমির কাজ, নতুনগুলো আগে, প্রতিটি যে ত্রুটিতে থেমেছে সহ',
+  'nx.plat.retry': 'আবার চেষ্টা',
+  'nx.plat.retried': 'আবার সারিতে',
+  'nx.plat.deadNoRetry': 'মৃত — আবার চালালে ঠিক হবে না',
+  'nx.plat.jobsEmptyTitle': 'কিছুই ব্যর্থ হয়নি',
+  'nx.plat.jobsEmptyDesc': 'প্ল্যাটফর্মের সব পটভূমির কাজ শেষ হয়েছে। এটাই কাঙ্ক্ষিত অবস্থা।',
+  'nx.plat.supportTitle': 'সহায়তার সারি',
+  'nx.plat.supportSubtitle': 'ব্যবসাগুলোর টিকিট, জরুরিগুলো আগে।',
+  'nx.plat.colTicket': 'টিকিট',
+  'nx.plat.colSubject': 'বিষয়',
+  'nx.plat.colPriority': 'অগ্রাধিকার',
+  'nx.plat.colRaised': 'খোলা হয়েছে',
+  'nx.plat.supportCaption': 'খোলা সহায়তা টিকিট, কে খুলেছে ও কতটা জরুরি সহ',
+  'nx.plat.reply': 'উত্তর',
+  'nx.plat.replyPlaceholder': 'ব্যবসাটির যা জানা দরকার',
+  'nx.plat.sendReply': 'উত্তর পাঠান',
+  'nx.plat.replySent': 'উত্তর পাঠানো হয়েছে',
+  'nx.plat.replyAuthor': 'সহায়তার নামে যায়। প্রেরক আপনার সেশন থেকে আসে, বার্তা থেকে নয়।',
+  'nx.plat.supportEmptyTitle': 'কিছুই অপেক্ষা করছে না',
+  'nx.plat.supportEmptyDesc': 'কোনো ব্যবসার খোলা টিকিট নেই। বন্ধ টিকিট এখানে দেখানো হয় না।',
+  'nx.plat.messages': '{count}টি বার্তা',
+  'nx.plat.openTicket': 'খুলুন',
+
+  // --- support queue, corrected against the live route (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.replyEffect': 'পাঠালে এটি ব্যবসার উত্তরের অপেক্ষায় যাবে। সমাধান করলে বন্ধ হবে ও সময় লেখা থাকবে।',
+  'nx.plat.replyResolve': 'উত্তর দিয়ে সমাধান',
+  'nx.plat.resolvedNow': 'সমাধান হয়েছে',
+  'nx.plat.showResolved': 'সমাধান ও বন্ধগুলোও দেখান',
+  'nx.plat.threadSoFar': 'এ পর্যন্ত যা বলা হয়েছে',
+  'nx.plat.fromSupport': 'সহায়তা',
+  'nx.plat.fromBusiness': 'ব্যবসা',
+  'nx.plat.threadAfterReply': 'সারিতে আগের উত্তরগুলো থাকে না। আপনার উত্তরের পরে কথোপকথন এখানে।',
+  'nx.plat.prLow': 'কম',
+  'nx.plat.prNormal': 'সাধারণ',
+  'nx.plat.prHigh': 'বেশি',
+  'nx.plat.prUrgent': 'জরুরি',
+  'nx.plat.stOpen': 'খোলা',
+  'nx.plat.stWaitingCustomer': 'তাদের অপেক্ষায়',
+  'nx.plat.stWaitingSupport': 'আমাদের অপেক্ষায়',
+  'nx.plat.stResolved': 'সমাধান',
+  'nx.plat.stClosed': 'বন্ধ',
+  'nx.plat.kQuestion': 'প্রশ্ন',
+  'nx.plat.kBug': 'কিছু ভাঙা',
+  'nx.plat.kFeature': 'অনুরোধ',
+  'nx.plat.kBilling': 'বিলিং',
+  'nx.plat.kOutage': 'সেবা বন্ধ',
+
+  // --- failed jobs, corrected against the live route (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.plat.platformJob': 'RawSyst নিজে',
+
+  // --- telling same-named businesses apart at sign-in (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.auth.sameName': 'এদের দুটির নাম এক। রেফারেন্সই আলাদা করে চেনায়।',
+  'nx.auth.businessRef': 'রেফারেন্স {ref}',
 };
 
 /**
