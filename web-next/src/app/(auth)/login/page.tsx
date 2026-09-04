@@ -10,6 +10,15 @@
 // classify themselves at the door asks them to know something the system
 // already knows, and gets it wrong the first time somebody is promoted.
 //
+// # Two businesses can carry the same name
+//
+// The choice payload is a tenant id and a name, and nothing else -- so when a
+// group trades under one brand in two places, the list is the same word twice
+// and the person cannot pick. The id is then the only thing that separates
+// them, and a short leading fragment of it is shown for exactly the rows that
+// collide. Shown on every row it would be noise; shown on none, the screen is
+// a coin toss.
+//
 // # Two challenges, not two errors
 //
 // The API can answer 200 with no token twice: once because the email opens
@@ -139,41 +148,72 @@ function SignInForm() {
         </>
       )}
 
-      {step.kind === 'choose_business' && (
-        <>
-          <div>
-            <h2 className="text-card-title font-semibold text-fg">
-              {t('nx.auth.chooseBusiness')}
-            </h2>
-            <p className="mt-1 text-body text-muted">
-              {t('nx.auth.chooseBusinessBody')}
-            </p>
-          </div>
+      {step.kind === 'choose_business' &&
+        (() => {
+          const duplicated = new Set(
+            step.businesses
+              .map((b) => b.name)
+              .filter((name, i, all) => all.indexOf(name) !== i),
+          );
+          return (
+            <>
+              <div>
+                <h2 className="text-card-title font-semibold text-fg">
+                  {t('nx.auth.chooseBusiness')}
+                </h2>
+                <p className="mt-1 text-body text-muted">
+                  {t('nx.auth.chooseBusinessBody')}
+                </p>
+                {duplicated.size > 0 && (
+                  <p className="mt-2 text-caption text-muted">
+                    {t('nx.auth.sameName')}
+                  </p>
+                )}
+              </div>
 
-          <ul className="flex flex-col gap-2">
-            {step.businesses.map((b) => (
-              <li key={b.tenant_id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBusinessId(b.tenant_id);
-                    void attempt({ tenant_id: b.tenant_id });
-                  }}
-                  disabled={busy}
-                  className={cn(
-                    'flex min-h-11 w-full items-center rounded-sm border border-line-strong',
-                    'bg-surface px-3 text-start text-body font-medium',
-                    'hover:border-primary hover:bg-surface-selected',
-                    'disabled:pointer-events-none disabled:opacity-55',
-                  )}
-                >
-                  {b.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+              <ul className="flex flex-col gap-2">
+                {step.businesses.map((b) => {
+                  // Eight characters of a v4 uuid: enough to separate the rows
+                  // on this screen, short enough to read aloud down a phone.
+                  const ref = b.tenant_id.slice(0, 8);
+                  const ambiguous = duplicated.has(b.name);
+                  return (
+                    <li key={b.tenant_id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBusinessId(b.tenant_id);
+                          void attempt({ tenant_id: b.tenant_id });
+                        }}
+                        disabled={busy}
+                        // The name alone would be the same string twice, so the
+                        // accessible name carries the reference as well.
+                        aria-label={
+                          ambiguous
+                            ? `${b.name} — ${t('nx.auth.businessRef', { ref })}`
+                            : undefined
+                        }
+                        className={cn(
+                          'flex min-h-11 w-full flex-col justify-center rounded-sm border border-line-strong',
+                          'bg-surface px-3 py-2 text-start text-body font-medium',
+                          'hover:border-primary hover:bg-surface-selected',
+                          'disabled:pointer-events-none disabled:opacity-55',
+                        )}
+                      >
+                        <span>{b.name}</span>
+                        {ambiguous && (
+                          <span className="num text-caption font-normal text-muted">
+                            {t('nx.auth.businessRef', { ref })}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          );
+        })()}
 
       {step.kind === 'need_code' && (
         <>
