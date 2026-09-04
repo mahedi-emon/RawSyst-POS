@@ -103,7 +103,11 @@ export const BUSINESS_NAV: readonly NavSection[] = [
       {
         id: 'returns',
         labelKey: 'nx.nav.biz.selling.returns',
-        href: '/sales/returns',
+        // Inside the POS, not the back office. `POST /pos/returns` goes
+        // through `resolveTerminal` and refuses a session not bound to a
+        // counter -- a credit note joins that terminal's own invoice chain.
+        // A link to /sales/returns would always have failed.
+        href: '/pos/returns',
         permissions: ['sales.refund', 'sales.exchange'],
         descriptionKey: 'nx.navd.biz.selling.returns',
       },

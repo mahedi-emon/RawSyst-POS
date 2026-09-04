@@ -774,6 +774,12 @@ function TillFrame({
             <span className="ms-2 font-normal text-muted">{shiftLabel}</span>
           )}
         </p>
+        <a
+          href="/pos/returns"
+          className="h-9 rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg"
+        >
+          {t('nx.pos.returns')}
+        </a>
         {onMoveCash ? (
           <button
             type="button"

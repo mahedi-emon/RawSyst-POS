@@ -4390,6 +4390,17 @@ export const en = {
   'nx.shift.expectedInDrawer': 'Expected in the drawer',
   'nx.shift.closed': 'Session closed',
   'nx.shift.backToTill': 'Back to the counter',
+
+  // --- the returns screen (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.ret.outstanding': 'This return has not yet done: {items}. Somebody will need to put that right separately.',
+  'nx.pos.backToTill': 'Back to the till',
+  'nx.pos.returns': 'Returns',
 } as const;
 
 /** Every string the interface can show. */
@@ -8808,6 +8819,17 @@ export const ar: Record<Key, string> = {
   'nx.shift.expectedInDrawer': 'المتوقع في الدرج',
   'nx.shift.closed': 'تم إقفال الوردية',
   'nx.shift.backToTill': 'العودة إلى الصندوق',
+
+  // --- the returns screen (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.ret.outstanding': 'لم يقم هذا الإرجاع بعد بما يلي: {items}. سيحتاج أحدهم إلى معالجته بشكل منفصل.',
+  'nx.pos.backToTill': 'العودة إلى الصندوق',
+  'nx.pos.returns': 'المرتجعات',
 };
 
 /**
@@ -13022,6 +13044,17 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.shift.expectedInDrawer': 'ড্রয়ারে প্রত্যাশিত',
   'nx.shift.closed': 'সেশন বন্ধ হয়েছে',
   'nx.shift.backToTill': 'কাউন্টারে ফিরুন',
+
+  // --- the returns screen (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.ret.outstanding': 'এই ফেরত এখনো যা করেনি: {items}। কাউকে তা আলাদাভাবে ঠিক করতে হবে।',
+  'nx.pos.backToTill': 'কাউন্টারে ফিরুন',
+  'nx.pos.returns': 'ফেরত',
 };
 
 /**
