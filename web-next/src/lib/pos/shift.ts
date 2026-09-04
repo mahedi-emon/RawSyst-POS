@@ -85,5 +85,52 @@ export function useShift() {
     [],
   );
 
-  return { state, open, opening, refresh };
+  /**
+   * The cashier's own view of the session, for the close screen.
+   *
+   * `GET /shifts/{id}` and not `/x-report`. The X report is gated on
+   * `report.view`, which a Cashier deliberately does not hold: somebody who can
+   * read the expected drawer before counting it can make the drawer agree, and
+   * the variance then reads zero on every shift. Peek withholds the expected
+   * figure on a blind-close till and is reachable with `sales.receive_payment`,
+   * which is exactly the right pairing for this screen.
+   */
+  const peek = useCallback(async (sessionID: string) => {
+    return api.get<ShiftReport>(`/shifts/${sessionID}`);
+  }, []);
+
+  /** Moves cash out to the safe, or a float back in. Signed; zero is refused. */
+  const drop = useCallback(
+    async (sessionID: string, amount: string, reason: string, note: string) => {
+      await api.post(`/shifts/${sessionID}/cash-drop`, {
+        amount,
+        reason,
+        note,
+      });
+    },
+    [],
+  );
+
+  return { state, open, opening, refresh, peek, drop, setState };
+}
+
+/** The X or Z reckoning of a session. The same shape serves both. */
+export interface ShiftReport {
+  session_no: number;
+  state: string;
+  opened_at: string;
+  closed_at?: string;
+  opening_float: string;
+  invoice_count: number;
+  gross_sales: string;
+  net_sales: string;
+  tax_total: string;
+  refund_total: string;
+  /** Withheld on a blind close, along with the figures it derives from. */
+  cash_takings?: string;
+  non_cash_takings?: string;
+  cash_movements?: string;
+  expected_cash?: string;
+  counted_cash?: string;
+  variance?: string;
 }

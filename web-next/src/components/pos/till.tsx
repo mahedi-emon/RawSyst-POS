@@ -75,10 +75,12 @@ import {
 } from '@/lib/pos/cart';
 import { Catalogue, type Sellable } from '@/lib/pos/catalogue';
 import { useCounter } from '@/lib/pos/counter';
-import { useShift } from '@/lib/pos/shift';
+import { useShift, type ShiftReport } from '@/lib/pos/shift';
 import { cn } from '@/lib/utils';
 
+import { CloseShift } from './close-shift';
 import { CustomerPicker, type PosCustomer } from './customer-picker';
+import { MoveCash } from './move-cash';
 import { OpenShift } from './open-shift';
 
 interface Tender {
@@ -143,6 +145,10 @@ export function Till() {
   const [paying, setPaying] = useState(false);
   const [completed, setCompleted] = useState<CompletedSale | null>(null);
   const [pickingCustomer, setPickingCustomer] = useState(false);
+  // Two things a counter does besides sell, both reached from its own header.
+  const [closing, setClosing] = useState<ShiftReport | null | 'loading'>(null);
+  const [movingCash, setMovingCash] = useState(false);
+  const [closed, setClosed] = useState<ShiftReport | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -344,11 +350,46 @@ export function Till() {
     );
   }
 
+  if (closed) {
+    return (
+      <TillFrame counterName={counterName} onLeave={leave}>
+        <SessionClosed report={closed} onLeave={leave} />
+      </TillFrame>
+    );
+  }
+
+  if (closing !== null) {
+    return (
+      <TillFrame counterName={counterName} onLeave={leave}>
+        <CloseShift
+          shift={shift.state.shift}
+          report={closing === 'loading' ? null : closing}
+          onClosed={(final) => {
+            setClosing(null);
+            setClosed(final);
+          }}
+          onCancel={() => setClosing(null)}
+        />
+      </TillFrame>
+    );
+  }
+
   return (
     <TillFrame
       counterName={counterName}
       onLeave={leave}
       shiftLabel={t('nx.pos.session', { no: shift.state.shift.session_no })}
+      onMoveCash={() => setMovingCash(true)}
+      onClose={() => {
+        // The reading is fetched, not required: a Cashier can reach
+        // `GET /shifts/{id}` but the figures it carries are withheld on a
+        // blind close, and the screen works either way.
+        setClosing('loading');
+        void shift
+          .peek(shift.state.kind === 'open' ? shift.state.shift.id : '')
+          .then((r) => setClosing(r))
+          .catch(() => setClosing('loading'));
+      }}
     >
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* ---- cart ----------------------------------------------------- */}
@@ -669,6 +710,23 @@ export function Till() {
         />
       )}
 
+      {movingCash && shift.state.kind === 'open' && (
+        <MoveCash
+          onClose={() => {
+            setMovingCash(false);
+            refocus();
+          }}
+          onMove={(amount, reason, note) =>
+            shift.drop(
+              shift.state.kind === 'open' ? shift.state.shift.id : '',
+              amount,
+              reason,
+              note,
+            )
+          }
+        />
+      )}
+
       {completed && (
         <SaleComplete
           sale={completed}
@@ -687,11 +745,15 @@ function TillFrame({
   counterName,
   shiftLabel,
   onLeave,
+  onMoveCash,
+  onClose,
   children,
 }: {
   counterName: string;
   shiftLabel?: string;
   onLeave: () => void;
+  onMoveCash?: () => void;
+  onClose?: () => void;
   children: React.ReactNode;
 }) {
   const t = useT();
@@ -712,6 +774,24 @@ function TillFrame({
             <span className="ms-2 font-normal text-muted">{shiftLabel}</span>
           )}
         </p>
+        {onMoveCash ? (
+          <button
+            type="button"
+            onClick={onMoveCash}
+            className="h-9 rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg"
+          >
+            {t('nx.shift.cashDrop')}
+          </button>
+        ) : null}
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-sm border border-line-strong px-2.5 text-label font-medium hover:bg-surface-hover"
+          >
+            {t('nx.shift.closeIt')}
+          </button>
+        ) : null}
         <a
           href="/dashboard"
           className="hidden h-9 items-center rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg sm:flex"
@@ -817,6 +897,79 @@ function SaleComplete({
           {t('nx.pos.nextSale')}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The Z reckoning, after the session is closed.
+ *
+ * Shown once and not navigable back into: a closed session is immutable, and a
+ * screen that let somebody return to the count would imply otherwise.
+ */
+function SessionClosed({
+  report,
+  onLeave,
+}: {
+  report: ShiftReport;
+  onLeave: () => void;
+}) {
+  const t = useT();
+  const { currency, market } = useCompany();
+  const money = (v: string | null | undefined) =>
+    formatMoney(v ?? null, { currency, market, bare: true });
+
+  const variance = report.variance ?? '0';
+  const exact = /^[+-]?0*(\.0*)?$/.test(variance);
+
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col gap-4 p-6 text-center">
+      <p className="text-label text-muted">{t('nx.shift.closed')}</p>
+      <p className="text-page font-semibold text-fg">
+        {t('nx.pos.session', { no: report.session_no })}
+      </p>
+
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line">
+        <div className="bg-surface p-4">
+          <dt className="text-label text-muted">{t('nx.shift.countedTotal')}</dt>
+          <dd className="num mt-1 text-section font-semibold tabular-nums">
+            {money(report.counted_cash)}
+          </dd>
+        </div>
+        <div className="bg-surface p-4">
+          <dt className="text-label text-muted">{t('nx.shift.expectedInDrawer')}</dt>
+          <dd className="num mt-1 text-section font-semibold tabular-nums">
+            {money(report.expected_cash)}
+          </dd>
+        </div>
+      </dl>
+
+      <div>
+        <p className="text-label text-muted">{t('nx.shift.variance')}</p>
+        <p
+          className={cn(
+            'num mt-1 text-figure font-semibold tabular-nums',
+            exact
+              ? 'text-positive-fg'
+              : variance.startsWith('-')
+                ? 'text-critical-fg'
+                : 'text-caution-fg',
+          )}
+        >
+          {money(variance.replace('-', ''))}
+        </p>
+        <p className="mt-1 text-caption text-subtle">
+          {exact
+            ? t('nx.shift.exact')
+            : variance.startsWith('-')
+              ? t('nx.shift.short')
+              : t('nx.shift.over')}
+        </p>
+      </div>
+
+      <Button variant="primary" size="lg" block className="mt-2" onClick={onLeave}>
+        {t('nx.pos.leaveCounter')}
+      </Button>
     </div>
   );
 }
