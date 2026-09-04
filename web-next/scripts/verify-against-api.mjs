@@ -376,6 +376,73 @@ if (day?.rows?.[0]) {
   console.log('  -  no sales on this day; the row shape was not exercised');
 }
 
+console.log('\nORDERS');
+{
+  const orders = await check(
+    'GET /orders',
+    `/orders?company_id=${CO}&limit=5`,
+    ['id', 'order_no', 'state', 'channel', 'currency', 'subtotal', 'discount', 'total', 'created_at'],
+    (j) => j.data[0],
+  );
+
+  const orderID = orders?.data?.[0]?.id;
+  if (!orderID) {
+    console.log('  -  no orders; the line and document shapes were not exercised');
+  } else {
+    const one = await check(
+      'GET /orders/{id}',
+      `/orders/${orderID}?company_id=${CO}`,
+      ['id', 'order_no', 'state', 'total', 'lines'],
+    );
+    if (one?.lines?.[0]) {
+      // qty_picked and qty_delivered are what the screen puts beside the
+      // ordered quantity: how far along each line is, which is a different
+      // question from how far along the order is.
+      expectFields('  order line', one.lines[0], [
+        'id',
+        'line_no',
+        'sku',
+        'product',
+        'qty',
+        'unit_price',
+        'discount',
+        'line_total',
+        'qty_picked',
+        'qty_delivered',
+      ]);
+    }
+
+    // B11 draws three, and they are three different jobs. The delivery note
+    // carries no prices AT ALL -- the type it is built from has no fields
+    // for them -- and the screen depends on that being true.
+    for (const kind of ['picking', 'packing', 'delivery']) {
+      const doc = await call(`/orders/${orderID}/documents/${kind}?company_id=${CO}`);
+      if (doc.status !== 200) {
+        console.log(`  x GET /orders/{id}/documents/${kind}: HTTP ${doc.status}`);
+        failures += 1;
+        continue;
+      }
+      expectFields(`  ${kind} slip`, doc.json, ['kind', 'order_no', 'printed_at', 'lines']);
+      const priced = (doc.json.lines ?? []).some(
+        (l) => 'unit_price' in l || 'line_total' in l || 'price' in l,
+      );
+      if (priced) {
+        console.log(`  x the ${kind} document carries prices, which B11 forbids`);
+        failures += 1;
+      }
+    }
+
+    // Anything else is refused by name rather than drawn as something else.
+    const odd = await call(`/orders/${orderID}/documents/invoice?company_id=${CO}`);
+    if (odd.status === 400) {
+      console.log('  ok a document kind this product does not print is refused');
+    } else {
+      console.log(`  x an unknown document kind came back ${odd.status}, want 400`);
+      failures += 1;
+    }
+  }
+}
+
 console.log('\nPOS');
 await check(
   'GET /pos/counters',

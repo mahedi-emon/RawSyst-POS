@@ -137,6 +137,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'orders',
         labelKey: 'nx.nav.biz.selling.orders',
         href: '/orders',
+        built: true,
         permissions: ['order.view'],
         feature: 'online_orders',
         descriptionKey: 'nx.navd.biz.selling.orders',

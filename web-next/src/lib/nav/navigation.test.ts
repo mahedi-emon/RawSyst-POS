@@ -215,6 +215,7 @@ const PRIMARY_READ: Record<string, string> = {
   batches: '/api/v1/stock/batches',
   locations: '/api/v1/stock/locations',
   production: '/api/v1/stock/production',
+  orders: '/api/v1/orders',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',

@@ -84,6 +84,9 @@ describe('the sidebar offers only what exists', () => {
       '/stock/transfers/[transferID]', // a row on /stock/transfers
       '/stock/transfers/new', // an action on /stock/transfers
       '/stock/production/[productionID]', // a row on /stock/production
+      '/orders/[orderID]', // a row on /orders
+      '/orders/new', // an action on /orders
+      '/orders/[orderID]/documents/[kind]', // printed from one order
     ]);
 
     const orphans = [...ROUTES].filter(

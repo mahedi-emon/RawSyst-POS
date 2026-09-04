@@ -1119,6 +1119,65 @@ exists for.
 **Transfers** listed `inventory.view` OR `inventory.transfer_stock`. The list
 route is the first; holding only the second reached a link the list refuses.
 
+### 0.97 Orders — quotation to invoice, and the three warehouse documents
+
+Five screens: the list, raising one, one order with every step on it, and the
+three documents B11 draws.
+
+**It always starts as a quotation.** There is no route that creates a confirmed
+order, and the reason is on the route: *"confirming is the customer’s decision,
+and a route that could skip it would put ‘the customer agreed’ in the hands of
+whoever typed the order."* So the button says quotation, and the line above the
+confirm button says what pressing it claims.
+
+**Seven states, one path.** `forward` in the Go is a map rather than a switch
+"so the whole graph is one thing a reader can see, and so Advance cannot grow a
+branch that quietly allows a step backwards". The same map is in
+`lib/orders/orders.ts` for the same reason, and the screen offers the one step
+that is live rather than three with two greyed out.
+
+**Picking holds the stock**, and the screen says so: it is the difference
+between picking as paperwork and picking as a promise that another channel
+cannot sell the same unit.
+
+**A quotation past its date is not cancelled.** `expired` is derived rather
+than stored — "a quote does not become a different row at midnight" — so it
+reads as out of date, and the price simply stops being one the shop has
+promised.
+
+**No tax on the draft, and the screen says why.** An order is taxed when it is
+INVOICED, at the rate on file for that date; a quotation raised in March and
+invoiced in April is taxed in April. An estimate here would be a number the
+customer reads on the quotation and does not find on their invoice. Nine tests
+on `orderTotals`, including that a discount larger than the line shows as a
+negative rather than being clamped — that is how somebody sees they typed it
+into the wrong box, and the server is the one that refuses it.
+
+#### The three documents
+
+A picking slip says what to take off the shelves and where each is kept; a
+packing slip is what to check before the box is sealed; a delivery note goes in
+the box. Three jobs, not three names for one printout, so each says which.
+
+They render as a page rather than linking at the route, because the route
+answers JSON and a link straight to it shows a customer raw JSON. Printing is
+handed to the browser, which is also what makes it work on a warehouse tablet
+with no printer driver. `order.view` rather than `order.manage`, per the route:
+a picker and a driver both need one and neither should be able to change a
+price.
+
+`verify:api` fetches all three and **fails if any line carries a price** — B11
+forbids it and the type has no fields for it, and that is the kind of invariant
+that stops being true the day somebody adds a convenience field. It also checks
+that a kind this product does not print is refused by name rather than drawn as
+something else.
+
+#### What driving it first found
+
+The document kinds are `picking`, `packing`, `delivery` — the screen had
+`delivery_note`, which the route refuses by name. And `advance` takes no body
+at all; the 400 that looked like a body problem turned out to be a state I had
+put an order into by picking it while it was still a quotation.
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1129,8 +1188,10 @@ thirty-one routes, `verify:api` and `verify:rbac` both green.
 Inventory is done (§0.96): movements, adjustments, counts, transfers and
 batches, nine screens with the contracts pinned in `verify:api`.
 
-Next: **stock locations and production**, which complete the stock section,
-then reservations, orders, delivery, returns, and the money modules.
+Stock and orders are done (§0.96, §0.97).
+
+Next: **returns**, then the money modules — expenses, income, cash, bank — and
+then accounting and journals.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and
