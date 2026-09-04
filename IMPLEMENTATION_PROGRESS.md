@@ -936,16 +936,62 @@ Bills are priced from the register too, at the **bill date** rather than the
 order date: a supplier invoicing in March for goods ordered in January is taxed
 at March’s rate, and that is the rate the shop reclaims. Same rule as §0.92,
 same assertion check on a stated rate.
+### 0.94 Paying a supplier
+
+`/buying/payments`. There is no route that LISTS payments — `POST /payments`
+and `POST .../reverse` are the only two — so this is not a ledger of payments.
+It is the act of making one, and it starts where the money is owed.
+
+**The allocation is explicit, and the Go comment says why:** *"a shop paying a
+supplier is usually paying specific invoices they have agreed, and guessing
+which ones would produce a remittance the supplier disputes — which is the
+thing that turns a payment into a week of emails."* So the screen offers
+"settle everything" as one press and leaves every figure editable, rather than
+quietly applying oldest-first.
+
+**A held-back invoice takes no amount.** A blocked bill is deliberately outside
+the ledger; its row says so instead of accepting a figure the server refuses,
+and "settle everything" skips it.
+
+**Over-allocation is caught beside the box.** It is the one mistake somebody
+makes with a keyboard rather than with intent — a digit too many — and the
+whole payment is refused for it. Under-paying is not flagged: a part payment is
+an ordinary thing to make. Ten tests in `allocate.test.ts`, all in decimal.js,
+because this figure gets reconciled against a bank statement.
+
+**The method is a select, from the product’s own vocabulary.** The column has
+no enum, so a free box would have been defensible — and a method typed four
+ways is four methods in a report. The four offered are drawn from
+`sales_tender_method_valid`, narrowed to what a business paying a supplier
+uses; mada and Apple Pay are retail tenders.
+
+Verified live: 446.7750 paid in full produced `PAY-2026-000001`, the bill went
+to `paid` with `0.00` outstanding, and replaying the uuid returned the same
+payment with `already_paid: true` — pressing the button twice on a bad
+connection pays once. `verify:api` now drives all of it and fails if a replay
+creates a second payment.
+
+**A blocked bill DOES appear in ageing, and that is deliberate.** The
+`supplier_ageing` function names three statuses explicitly — `matched`,
+`blocked`, `approved` — so somebody decided a disputed invoice still belongs in
+a cash-planning figure even though it carries no ledger liability. Verified and
+left alone rather than changed; the ageing row carries no blocked breakdown, so
+the screen does not invent a distinction the data cannot support.
 ### 0.8 Exact next task
 
-**FE-25 purchasing, continued.** Suppliers, orders, one order, raising one,
-receiving, ageing and now bills with the three-way match are built and verified
-(§0.88 – §0.93). The tax-rate architecture is resolved (§0.92).
+**FE-25 purchasing — the spine is complete and verified.** Suppliers, orders,
+one order, raising one, receiving, bills with the three-way match, paying a
+supplier and ageing (§0.88 – §0.94). The tax-rate architecture is resolved
+(§0.92) and R6 is closed (§0.91).
 
-Next: **supplier payments and reversals**, then the sourcing half —
-requisitions, RFQs, the comparison and the award. FE-25 is not complete until
-somebody can pay a supplier from the screen, because an invoice that cannot be
-paid is a workflow that stops halfway.
+Remaining in FE-25: the **sourcing half** — requisitions, RFQs, the side-by-side
+comparison and the award. Eleven routes, and a genuinely different job from the
+rest of the module: B5.1 separates asking, approving, comparing and awarding
+into four permissions precisely so the person who ran the comparison is not the
+one who signed it off.
+
+Then, in the order the brief gives: inventory and stock movements, transfers,
+batch/expiry, orders, delivery, returns, reservations, and the money modules.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

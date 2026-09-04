@@ -497,6 +497,62 @@ console.log('\nBUYING');
       }
     }
 
+    // Paying a supplier. The route is idempotent on a client-assigned uuid --
+    // "a payment must carry an identifier so a retry does not pay twice" -- and
+    // the screen mints one per payment for exactly that reason.
+    const payable = bills?.data?.find(
+      (b) => b.status !== 'blocked' && !/^0(.0*)?$/.test(b.outstanding ?? '0'),
+    );
+    if (!payable) {
+      console.log('  -  nothing is payable; paying a supplier was not exercised');
+    } else {
+      const uuid = crypto.randomUUID();
+      const body = {
+        uuid,
+        supplier_id: payable.supplier_id,
+        method: 'bank_transfer',
+        reference: 'verify:api',
+        allocations: [{ bill_id: payable.id, amount: payable.outstanding }],
+      };
+      const first = await post(`/purchasing/payments?company_id=${CO}`, body);
+      if (first.status !== 200 && first.status !== 201) {
+        console.log(`  x POST /purchasing/payments: HTTP ${first.status}`);
+        failures += 1;
+      } else {
+        expectFields('POST /purchasing/payments', first.json, [
+          'id',
+          'payment_number',
+          'supplier',
+          'amount',
+          'currency',
+          'settled',
+          'already_paid',
+        ]);
+        if (first.json.settled?.[0]) {
+          // The screen shows what each invoice was left owing, so a part
+          // payment reads differently from a settlement.
+          expectFields('  settled bill', first.json.settled[0], [
+            'bill_id',
+            'amount',
+            'outstanding',
+            'status',
+          ]);
+        }
+        const again = await post(`/purchasing/payments?company_id=${CO}`, body);
+        if (
+          again.json?.already_paid === true &&
+          again.json.payment_number === first.json.payment_number
+        ) {
+          console.log('  ok the same uuid pays once, not twice');
+        } else {
+          console.log(
+            `  x replaying the uuid made ${again.json?.payment_number} beside ${first.json.payment_number}`,
+          );
+          failures += 1;
+        }
+      }
+    }
+
     const ageing = await check(
       'GET /purchasing/ageing',
       `/purchasing/ageing?company_id=${CO}`,

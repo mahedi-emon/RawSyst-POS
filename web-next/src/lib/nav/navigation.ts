@@ -298,6 +298,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'supplier-payments',
         labelKey: 'nx.nav.biz.buying.supplier-payments',
         href: '/buying/payments',
+        built: true,
         // Paying is the action; finding the bill to pay is purchasing.view.
         permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.supplier-payments',

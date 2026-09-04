@@ -4833,6 +4833,57 @@ export const en = {
   'nx.bill.moneyTotal': 'Invoice total',
   'nx.bill.moneyPaid': 'Paid so far',
   'nx.bill.moneyOwed': 'Still owed',
+
+  // --- paying a supplier (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pay.title': 'Pay a supplier',
+  'nx.pay.subtitle': 'Choose which invoices this payment settles. RawSyst will not guess, because a remittance the supplier disputes turns one payment into a week of emails.',
+  'nx.pay.whichSupplier': 'Which supplier?',
+  'nx.pay.chooseSupplier': 'Choose a supplier',
+  'nx.pay.owedTotal': 'Owed to them: {amount}',
+  'nx.pay.nothingOwed': 'Nothing is owed to this supplier.',
+  'nx.pay.pickFirst': 'Choose a supplier to see what is owed to them.',
+  'nx.pay.whichBills': 'Which invoices',
+  'nx.pay.colInvoice': 'Invoice',
+  'nx.pay.colDue': 'Due',
+  'nx.pay.colOwed': 'Owed',
+  'nx.pay.colPaying': 'Paying now',
+  'nx.pay.payAll': 'Settle everything',
+  'nx.pay.payNone': 'Clear',
+  'nx.pay.overAllocated': 'More than is owed on this invoice.',
+  'nx.pay.blockedNotPayable': 'Held back — accept the difference before paying it.',
+  'nx.pay.howPaid': 'How they were paid',
+  'nx.pay.method': 'Method',
+  'nx.pay.mBank': 'Bank transfer',
+  'nx.pay.mCheque': 'Cheque',
+  'nx.pay.mCash': 'Cash',
+  'nx.pay.mSadad': 'SADAD',
+  'nx.pay.reference': 'Reference',
+  'nx.pay.referenceHint': 'The transfer or cheque number, so this payment can be found again on a bank statement.',
+  'nx.pay.paidOn': 'Paid on',
+  'nx.pay.total': 'This payment',
+  'nx.pay.send': 'Record the payment',
+  'nx.pay.needBills': 'Enter an amount against at least one invoice.',
+  'nx.pay.needMethod': 'Say how the supplier was paid.',
+  'nx.pay.doneTitle': 'Payment {number} recorded',
+  'nx.pay.doneAgain': 'This payment was already recorded. Nothing was paid twice.',
+  'nx.pay.settled': 'What it settled',
+  'nx.pay.payAnother': 'Pay another supplier',
+  'nx.pay.viewBills': 'Back to invoices',
+
+  // --- nothing owed (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pay.nothingOwedDesc': 'Every invoice from this supplier has been settled. Choose another, or record one on the invoices screen.',
 } as const;
 
 /** Every string the interface can show. */
@@ -9694,6 +9745,57 @@ export const ar: Record<Key, string> = {
   'nx.bill.moneyTotal': 'إجمالي الفاتورة',
   'nx.bill.moneyPaid': 'المدفوع',
   'nx.bill.moneyOwed': 'المتبقي',
+
+  // --- paying a supplier (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pay.title': 'سداد مورد',
+  'nx.pay.subtitle': 'اختر الفواتير التي يسددها هذا الدفع. لا يخمّن النظام، لأن إشعار سداد يعترض عليه المورد يحوّل دفعة واحدة إلى أسبوع من الرسائل.',
+  'nx.pay.whichSupplier': 'أي مورد؟',
+  'nx.pay.chooseSupplier': 'اختر موردًا',
+  'nx.pay.owedTotal': 'المستحق لهم: {amount}',
+  'nx.pay.nothingOwed': 'لا يوجد مستحق لهذا المورد.',
+  'nx.pay.pickFirst': 'اختر موردًا لعرض المستحق له.',
+  'nx.pay.whichBills': 'أي فواتير',
+  'nx.pay.colInvoice': 'الفاتورة',
+  'nx.pay.colDue': 'الاستحقاق',
+  'nx.pay.colOwed': 'المستحق',
+  'nx.pay.colPaying': 'يُدفع الآن',
+  'nx.pay.payAll': 'سداد الكل',
+  'nx.pay.payNone': 'مسح',
+  'nx.pay.overAllocated': 'أكثر من المستحق على هذه الفاتورة.',
+  'nx.pay.blockedNotPayable': 'موقوفة — اقبل الفرق قبل السداد.',
+  'nx.pay.howPaid': 'طريقة السداد',
+  'nx.pay.method': 'الطريقة',
+  'nx.pay.mBank': 'تحويل بنكي',
+  'nx.pay.mCheque': 'شيك',
+  'nx.pay.mCash': 'نقدًا',
+  'nx.pay.mSadad': 'سداد',
+  'nx.pay.reference': 'المرجع',
+  'nx.pay.referenceHint': 'رقم التحويل أو الشيك، ليمكن العثور على الدفعة في كشف الحساب.',
+  'nx.pay.paidOn': 'تاريخ السداد',
+  'nx.pay.total': 'قيمة هذه الدفعة',
+  'nx.pay.send': 'تسجيل الدفعة',
+  'nx.pay.needBills': 'أدخل مبلغًا مقابل فاتورة واحدة على الأقل.',
+  'nx.pay.needMethod': 'حدد طريقة السداد.',
+  'nx.pay.doneTitle': 'تم تسجيل الدفعة {number}',
+  'nx.pay.doneAgain': 'هذه الدفعة مسجّلة بالفعل. لم يُدفع شيء مرتين.',
+  'nx.pay.settled': 'ما تم سداده',
+  'nx.pay.payAnother': 'سداد مورد آخر',
+  'nx.pay.viewBills': 'العودة إلى الفواتير',
+
+  // --- nothing owed (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pay.nothingOwedDesc': 'سُددت كل فواتير هذا المورد. اختر موردًا آخر أو سجّل فاتورة من شاشة الفواتير.',
 };
 
 /**
@@ -14351,6 +14453,57 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.bill.moneyTotal': 'চালানের মোট',
   'nx.bill.moneyPaid': 'এ পর্যন্ত পরিশোধ',
   'nx.bill.moneyOwed': 'বাকি',
+
+  // --- paying a supplier (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pay.title': 'সরবরাহকারীকে পরিশোধ',
+  'nx.pay.subtitle': 'এই পরিশোধ কোন চালানগুলো মেটাবে তা বাছুন। RawSyst অনুমান করে না, কারণ সরবরাহকারী দ্বিমত করলে একটি পরিশোধ এক সপ্তাহের ইমেইলে পরিণত হয়।',
+  'nx.pay.whichSupplier': 'কোন সরবরাহকারী?',
+  'nx.pay.chooseSupplier': 'সরবরাহকারী বাছুন',
+  'nx.pay.owedTotal': 'তাদের পাওনা: {amount}',
+  'nx.pay.nothingOwed': 'এই সরবরাহকারীর কোনো পাওনা নেই।',
+  'nx.pay.pickFirst': 'পাওনা দেখতে একজন সরবরাহকারী বাছুন।',
+  'nx.pay.whichBills': 'কোন চালান',
+  'nx.pay.colInvoice': 'চালান',
+  'nx.pay.colDue': 'পরিশোধ',
+  'nx.pay.colOwed': 'পাওনা',
+  'nx.pay.colPaying': 'এখন দিচ্ছেন',
+  'nx.pay.payAll': 'সব মেটান',
+  'nx.pay.payNone': 'মুছুন',
+  'nx.pay.overAllocated': 'এই চালানে যা পাওনা তার চেয়ে বেশি।',
+  'nx.pay.blockedNotPayable': 'আটকে আছে — পরিশোধের আগে পার্থক্য মেনে নিন।',
+  'nx.pay.howPaid': 'যেভাবে পরিশোধ',
+  'nx.pay.method': 'পদ্ধতি',
+  'nx.pay.mBank': 'ব্যাংক ট্রান্সফার',
+  'nx.pay.mCheque': 'চেক',
+  'nx.pay.mCash': 'নগদ',
+  'nx.pay.mSadad': 'সাদাদ',
+  'nx.pay.reference': 'রেফারেন্স',
+  'nx.pay.referenceHint': 'ট্রান্সফার বা চেক নম্বর, যাতে ব্যাংক বিবরণীতে এই পরিশোধ খুঁজে পাওয়া যায়।',
+  'nx.pay.paidOn': 'পরিশোধের তারিখ',
+  'nx.pay.total': 'এই পরিশোধ',
+  'nx.pay.send': 'পরিশোধ নথিভুক্ত করুন',
+  'nx.pay.needBills': 'অন্তত একটি চালানের বিপরীতে একটি অঙ্ক লিখুন।',
+  'nx.pay.needMethod': 'সরবরাহকারীকে কীভাবে দেওয়া হয়েছে বলুন।',
+  'nx.pay.doneTitle': 'পরিশোধ {number} নথিভুক্ত',
+  'nx.pay.doneAgain': 'এই পরিশোধ আগেই লেখা হয়েছে। কিছু দুবার দেওয়া হয়নি।',
+  'nx.pay.settled': 'যা মেটানো হয়েছে',
+  'nx.pay.payAnother': 'আরেকজনকে পরিশোধ',
+  'nx.pay.viewBills': 'চালানে ফিরুন',
+
+  // --- nothing owed (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pay.nothingOwedDesc': 'এই সরবরাহকারীর সব চালান মেটানো হয়েছে। অন্য কাউকে বাছুন, বা চালান পাতায় একটি লিখুন।',
 };
 
 /**
