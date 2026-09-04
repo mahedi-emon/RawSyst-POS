@@ -200,12 +200,12 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-13 | Web POS — counter session | ✅ | IN PROGRESS | `/pos` | `sales.create` | Verified live; `company_id` fixed (M1). i18n pending |
 | FE-14 | Web POS — till | ✅ | IN PROGRESS | `/pos` | `sales.create` | **A real sale posted end to end.** Local scanning, shift gate, idempotent replay. i18n pending |
 | FE-15 | Platform — service health | ✅ | IN PROGRESS | `/platform` | super-admin | Built; not yet exercised with a super-admin account. i18n pending |
-| FE-16 | Product detail / variant matrix | ✅ | ⬜ NOT STARTED | `/products/{id}` | `catalog.view` | |
+| FE-16 | Product detail / variant matrix | ✅ | IN PROGRESS | `/products/{id}` | `catalog.view` | The matrix, with price, on-hand and reorder level per variant, and out/low marked. Verified live. Editing a variant not started |
 | FE-17 | Sales — the trading day | ✅ | IN PROGRESS | `/sales` | `sales.view` | **A day, not an all-time list** — that is the capability the backend has (`GET /dashboard/sales?date=`) and the way a shop reconciles. Day totals, retail/wholesale split, ZATCA state per row, date stepper. Verified against two real invoices. Invoice DETAIL not started |
 | FE-18 | Returns / exchanges | ✅ | ⬜ NOT STARTED | `/sales/returns` | `sales.refund` | |
 | FE-19 | Shifts, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/shifts` | `sales.receive_payment` | Opening is done inside the till |
 | FE-20 | Customers + ledger | ✅ | IN PROGRESS | `/customers`, `/customers/{id}` | `customers.view` | List and statement built and verified live. The khata carries a running balance and a double-ruled closing row; unpaid invoices flag overdue. Create/edit and the credit-limit control (its own permission, `customers.set_credit_limit`) not started |
-| FE-21 | Stock: on-hand, movements, counts | ✅ | ⬜ NOT STARTED | `/stock/*` | `inventory.view` | |
+| FE-21 | Stock on hand | ✅ | IN PROGRESS | `/stock` | `inventory.view` | Search, location filter, and the server's `low` filter. **Closes the dashboard's dead link.** Movements and counts not started |
 | FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | ⬜ NOT STARTED | `/stock/transfers` | `inventory.approve_transfer` | **No frontend caller** |
 | FE-23 | Batch / expiry / recall | ✅ | ⬜ NOT STARTED | `/stock/batches` | `inventory.recall_batch` | **No frontend caller** |
 | FE-24 | Production orders | ✅ | ⬜ NOT STARTED | `/stock/production` | `inventory.adjust_stock` | **No frontend caller** |
@@ -277,7 +277,7 @@ marked N/A or mapped, rather than dropping them.)
 | A7 | Multi-Platform Client Access | FE-08 | (all) | — | — | COMPLETE | One responsive web app; POS is a module inside it. |
 | A8 | Dashboard & KPI Center | FE-11 | /dashboard | GET /dashboard/overview | sales.view ∪ accounting.view ∪ inventory.view | COMPLETE | Attention list first, four drill-through figures. Verified live. |
 | B1 | Product & Catalog Management | FE-12 | /products | GET/POST /catalog/products | catalog.view / catalog.create | IN PROGRESS | List verified live and on the shared list component. Create/edit not started. |
-| B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | NOT STARTED |  |
+| B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | IN PROGRESS | The grid is built and verified live; generating a matrix is not |  |
 | B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | NOT STARTED | Plan-gated: label_studio. |
 | B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | NOT STARTED | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
 | B5 | Purchase & Procurement Management | FE-25 | /buying/orders | 31 /purchasing/* routes | purchasing.* | NOT STARTED |  |
@@ -375,23 +375,28 @@ marked N/A or mapped, rather than dropping them.)
 
 ### 0.8 Exact next task
 
-**FE-16 product detail, then FE-18 returns, then FE-21 stock.**
+**FE-18 returns, then FE-19 shift close, then FE-25 purchasing.**
 
-Gates 1 to 5 and 10 are done. The next three are chosen because each unblocks
-the one after it:
+FE-16 and FE-21 are done: both closed links the product was already offering
+-- the products list opened a row at `/products/{id}` that did not exist, and
+the dashboard has been pointing at `/stock` since it was built. A dead link in
+the one place the product says what needs attention is worse than a module that
+has not started, which is why those two came before larger modules.
 
-1. **FE-16 — product detail and the variant matrix** (`GET /catalog/products/{id}/matrix`).
-   The list already opens a row at `/products/{id}` and that route does not
-   exist yet, so this closes a link the product already offers.
-2. **FE-18 — returns and exchanges** (`/pos/returns`, `/pos/exchanges`,
-   `GET /pos/sales/{id}/returnable`). The sales day view now lists invoices; a
-   return is what somebody does with one, and `returnable` says what may go
-   back.
-3. **FE-21 — stock on hand and movements.** The dashboard already links to
-   `/stock` from its out-of-stock row, so that link is dead today.
+The next three, in order, each for a reason:
 
-Before any of them, run `npm run verify:api` against a seeded server and add
-the new endpoints' field checks to it, the way the existing screens are covered.
+1. **FE-18 — returns and exchanges** (`/pos/returns`, `/pos/exchanges`,
+   `GET /pos/sales/{id}/returnable`). The sales day now lists invoices; a return
+   is what somebody does with one, and `returnable` says what may go back.
+2. **FE-19 — closing a shift** (`/shifts/{id}/close`, `/cash-drop`, `/x-report`).
+   The till can open a session and cannot close one, so a counter opened in the
+   product cannot be reconciled in it.
+3. **FE-25 — purchasing.** 31 routes and the largest module with nothing at all;
+   stock on hand now shows what is running out and offers no way to order more.
+
+Before each, add its endpoints to `npm run verify:api` the way the built
+screens are covered. And the largest untested claim in the product remains R6:
+nothing has been checked against a live non-owner account.
 
 ### 0.9 Risks
 

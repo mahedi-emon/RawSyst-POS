@@ -4262,6 +4262,51 @@ export const en = {
   'nx.sales.stateCleared': 'Cleared',
   'nx.sales.statePending': 'Waiting to report',
   'nx.sales.stateFailed': 'Not accepted',
+
+  // --- product detail and stock (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.prod.backToList': 'Products',
+  'nx.prod.variantsTitle': 'Variants',
+  'nx.prod.variantsDesc': 'The sizes and colours that are actually scanned. A product is not sold; a variant is.',
+  'nx.prod.colVariant': 'Variant',
+  'nx.prod.colSku': 'Code',
+  'nx.prod.colPrice': 'Price',
+  'nx.prod.colOnHand': 'On hand',
+  'nx.prod.colReorder': 'Reorder at',
+  'nx.prod.colLastSold': 'Last sold',
+  'nx.prod.matrixCaption': 'Every variant of this product, with its price and what is on the shelf',
+  'nx.prod.noVariantsTitle': 'This product has no variants yet',
+  'nx.prod.noVariantsDesc': 'A variant is what carries a barcode, a price and a stock figure — so nothing can be sold until there is at least one.',
+  'nx.prod.neverSold': 'Never',
+  'nx.prod.inactive': 'Not for sale',
+  'nx.prod.taxTreatment': 'Tax treatment',
+  'nx.prod.variantCount': '{count} variants',
+  'nx.prod.variantCountOne': '1 variant',
+  'nx.stock.title': 'Stock on hand',
+  'nx.stock.subtitle': 'What is on the shelves, where it is, and what is running out.',
+  'nx.stock.searchPlaceholder': 'Search by product, code or barcode',
+  'nx.stock.searchLabel': 'Search stock',
+  'nx.stock.caption': 'Every line the shop holds, with where it is and how much is left',
+  'nx.stock.colProduct': 'Product',
+  'nx.stock.colSku': 'Code',
+  'nx.stock.colBarcode': 'Barcode',
+  'nx.stock.colLocation': 'Where',
+  'nx.stock.colOnHand': 'On hand',
+  'nx.stock.colReorder': 'Reorder at',
+  'nx.stock.onlyLow': 'Only what is running out',
+  'nx.stock.allLocations': 'Everywhere',
+  'nx.stock.locationLabel': 'Location',
+  'nx.stock.out': 'Out of stock',
+  'nx.stock.low': 'Running out',
+  'nx.stock.emptyTitle': 'Nothing in stock yet',
+  'nx.stock.emptyDesc': 'Stock appears here once goods are received against a purchase order, or counted onto the shelf with an adjustment.',
+  'nx.stock.goToCounts': 'Count stock onto the shelf',
+  'nx.stock.lines': 'stock lines',
 } as const;
 
 /** Every string the interface can show. */
@@ -8552,6 +8597,51 @@ export const ar: Record<Key, string> = {
   'nx.sales.stateCleared': 'مُصدَّقة',
   'nx.sales.statePending': 'بانتظار الإبلاغ',
   'nx.sales.stateFailed': 'غير مقبولة',
+
+  // --- product detail and stock (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.prod.backToList': 'المنتجات',
+  'nx.prod.variantsTitle': 'المتغيرات',
+  'nx.prod.variantsDesc': 'المقاسات والألوان التي تُمسح فعليًا. المنتج لا يُباع، بل يُباع المتغير.',
+  'nx.prod.colVariant': 'المتغير',
+  'nx.prod.colSku': 'الرمز',
+  'nx.prod.colPrice': 'السعر',
+  'nx.prod.colOnHand': 'المتاح',
+  'nx.prod.colReorder': 'حد إعادة الطلب',
+  'nx.prod.colLastSold': 'آخر بيع',
+  'nx.prod.matrixCaption': 'كل متغيرات هذا المنتج، مع سعره وما هو على الرف',
+  'nx.prod.noVariantsTitle': 'لا توجد متغيرات لهذا المنتج بعد',
+  'nx.prod.noVariantsDesc': 'المتغير هو ما يحمل الباركود والسعر ورصيد المخزون، فلا يمكن بيع شيء قبل وجود متغير واحد على الأقل.',
+  'nx.prod.neverSold': 'لم يُبع',
+  'nx.prod.inactive': 'غير معروض للبيع',
+  'nx.prod.taxTreatment': 'المعالجة الضريبية',
+  'nx.prod.variantCount': '{count} متغير',
+  'nx.prod.variantCountOne': 'متغير واحد',
+  'nx.stock.title': 'المخزون المتاح',
+  'nx.stock.subtitle': 'ما هو على الرفوف، وأين، وما الذي أوشك على النفاد.',
+  'nx.stock.searchPlaceholder': 'ابحث بالمنتج أو الرمز أو الباركود',
+  'nx.stock.searchLabel': 'البحث في المخزون',
+  'nx.stock.caption': 'كل صنف يحتفظ به المتجر، مع مكانه والكمية المتبقية',
+  'nx.stock.colProduct': 'المنتج',
+  'nx.stock.colSku': 'الرمز',
+  'nx.stock.colBarcode': 'الباركود',
+  'nx.stock.colLocation': 'المكان',
+  'nx.stock.colOnHand': 'المتاح',
+  'nx.stock.colReorder': 'حد إعادة الطلب',
+  'nx.stock.onlyLow': 'ما أوشك على النفاد فقط',
+  'nx.stock.allLocations': 'كل المواقع',
+  'nx.stock.locationLabel': 'الموقع',
+  'nx.stock.out': 'نفد',
+  'nx.stock.low': 'يوشك على النفاد',
+  'nx.stock.emptyTitle': 'لا يوجد مخزون بعد',
+  'nx.stock.emptyDesc': 'يظهر المخزون هنا بعد استلام البضاعة مقابل أمر شراء، أو بعد جرده على الرف بتسوية.',
+  'nx.stock.goToCounts': 'جرد المخزون على الرف',
+  'nx.stock.lines': 'أصناف المخزون',
 };
 
 /**
@@ -12638,6 +12728,51 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.sales.stateCleared': 'ছাড়পত্র পেয়েছে',
   'nx.sales.statePending': 'রিপোর্টের অপেক্ষায়',
   'nx.sales.stateFailed': 'গৃহীত হয়নি',
+
+  // --- product detail and stock (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.prod.backToList': 'পণ্য',
+  'nx.prod.variantsTitle': 'ভ্যারিয়েন্ট',
+  'nx.prod.variantsDesc': 'যে মাপ ও রং আসলে স্ক্যান হয়। পণ্য বিক্রি হয় না, ভ্যারিয়েন্ট হয়।',
+  'nx.prod.colVariant': 'ভ্যারিয়েন্ট',
+  'nx.prod.colSku': 'কোড',
+  'nx.prod.colPrice': 'দাম',
+  'nx.prod.colOnHand': 'হাতে আছে',
+  'nx.prod.colReorder': 'পুনরায় অর্ডার',
+  'nx.prod.colLastSold': 'সর্বশেষ বিক্রি',
+  'nx.prod.matrixCaption': 'এই পণ্যের প্রতিটি ভ্যারিয়েন্ট, দাম ও তাকে যা আছে সহ',
+  'nx.prod.noVariantsTitle': 'এই পণ্যের এখনো ভ্যারিয়েন্ট নেই',
+  'nx.prod.noVariantsDesc': 'বারকোড, দাম ও স্টক থাকে ভ্যারিয়েন্টে — তাই অন্তত একটি না থাকলে কিছুই বিক্রি করা যায় না।',
+  'nx.prod.neverSold': 'কখনো নয়',
+  'nx.prod.inactive': 'বিক্রির জন্য নয়',
+  'nx.prod.taxTreatment': 'কর প্রয়োগ',
+  'nx.prod.variantCount': '{count}টি ভ্যারিয়েন্ট',
+  'nx.prod.variantCountOne': '১টি ভ্যারিয়েন্ট',
+  'nx.stock.title': 'হাতে থাকা স্টক',
+  'nx.stock.subtitle': 'তাকে কী আছে, কোথায় আছে, আর কী ফুরিয়ে আসছে।',
+  'nx.stock.searchPlaceholder': 'পণ্য, কোড বা বারকোড দিয়ে খুঁজুন',
+  'nx.stock.searchLabel': 'স্টক খুঁজুন',
+  'nx.stock.caption': 'দোকানে থাকা প্রতিটি আইটেম, কোথায় ও কত অবশিষ্ট',
+  'nx.stock.colProduct': 'পণ্য',
+  'nx.stock.colSku': 'কোড',
+  'nx.stock.colBarcode': 'বারকোড',
+  'nx.stock.colLocation': 'কোথায়',
+  'nx.stock.colOnHand': 'হাতে আছে',
+  'nx.stock.colReorder': 'পুনরায় অর্ডার',
+  'nx.stock.onlyLow': 'শুধু যা ফুরিয়ে আসছে',
+  'nx.stock.allLocations': 'সব জায়গা',
+  'nx.stock.locationLabel': 'অবস্থান',
+  'nx.stock.out': 'শেষ',
+  'nx.stock.low': 'ফুরিয়ে আসছে',
+  'nx.stock.emptyTitle': 'এখনো কোনো স্টক নেই',
+  'nx.stock.emptyDesc': 'ক্রয় আদেশের বিপরীতে পণ্য গ্রহণ করলে, বা সমন্বয় দিয়ে তাকে গুনে তুললে স্টক এখানে আসে।',
+  'nx.stock.goToCounts': 'তাকে স্টক গুনে তুলুন',
+  'nx.stock.lines': 'স্টক আইটেম',
 };
 
 /**

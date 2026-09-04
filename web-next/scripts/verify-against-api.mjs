@@ -122,6 +122,36 @@ if (products?.page) {
   expectFields('  page envelope', products.page, ['cursor', 'has_more', 'limit']);
 }
 
+const productId = products?.data?.[0]?.id;
+if (productId) {
+  await check(
+    'GET /catalog/products/{id}/matrix',
+    `/catalog/products/${productId}/matrix?company_id=${CO}`,
+    // The matrix screen shows stock beside the price, so it reads both.
+    ['id', 'sku', 'attributes', 'price', 'is_active', 'on_hand', 'reorder_level'],
+    (j) => j.data[0],
+  );
+}
+
+console.log('\nSTOCK');
+await check(
+  'GET /stock/on-hand',
+  `/stock/on-hand?company_id=${CO}&limit=5`,
+  ['variant_id', 'sku', 'product', 'barcode', 'location', 'on_hand', 'reorder_level'],
+  (j) => j.data[0],
+);
+await check(
+  'GET /stock/on-hand?low=true',
+  `/stock/on-hand?company_id=${CO}&low=true&limit=5`,
+  null,
+);
+await check(
+  'GET /stock/locations',
+  `/stock/locations?company_id=${CO}`,
+  ['id', 'code', 'name', 'is_active'],
+  (j) => j.data[0],
+);
+
 console.log('\nCUSTOMERS');
 const customers = await check(
   'GET /customers',
