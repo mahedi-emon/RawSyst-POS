@@ -116,6 +116,24 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 
 ## 4. shadcn/ui — the decision, and why
 
+> **Reopened 2026-09-04, for `web-next/` only.** The frontend rebuild brief
+> mandates Tailwind and shadcn primitives, so §4 was reopened deliberately.
+> What follows is now the reasoning for the two *frozen* front ends rather
+> than for the whole repository.
+>
+> **What changed:** `web-next/` uses Tailwind 4 and a `components.json`, and
+> takes `@radix-ui/react-slot` plus the CVA variant pattern from shadcn. It
+> still does **not** run `shadcn add`: every primitive in
+> `web-next/src/components/ui/` is written for RawSyst against RawSyst tokens
+> in `web-next/src/styles/globals.css`. The point of §4.2 — that this product
+> must not look like a default shadcn application — is unchanged, and is why
+> the palette, the type scale and the table conventions are its own.
+>
+> **What did not change:** `web/`, `pos/` and `shared/src/design-system.css`
+> have no Tailwind and are not to acquire any. §4.1 below is still true of
+> them, and the `rawsyst-design-system` skill (§9) remains the authority for
+> work in those trees. See `IMPLEMENTATION_PROGRESS.md` §0.2, decision F6.
+
 ### 4.1 What was found
 
 There is no Tailwind anywhere in this repository. `grep -rn "tailwind"` across
@@ -380,7 +398,9 @@ yours to make, not theirs.
 
 ### Things that must not happen
 
-- No Tailwind, and no `shadcn add`, without a deliberate decision to reopen §4.
+- No Tailwind, and no `shadcn add`, in `web/`, `pos/` or `shared/`. That rule
+  was reopened for `web-next/` on 2026-09-04 and for nothing else — see the note
+  at the top of §4.
 - No Convex in the architecture. The `convex` skill is a reference, not an
   invitation.
 - No React Native dependencies in `web/` or `pos/`. The skill exists for a

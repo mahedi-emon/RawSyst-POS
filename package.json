@@ -4,7 +4,8 @@
   "workspaces": [
     "shared",
     "pos",
-    "web"
+    "web",
+    "web-next"
   ],
   "devDependencies": {
     "playwright": "^1.62.1"

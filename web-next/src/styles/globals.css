@@ -1,0 +1,440 @@
+@import 'tailwindcss';
+
+/* ==========================================================================
+   RawSyst design tokens.
+
+   One colour family, not a palette assembled per screen. Every neutral in this
+   file is the green primary desaturated toward black or white, so a table rule,
+   a disabled label and the primary button belong to each other rather than
+   merely coexisting. #0F1B18 is the darkest value of the green - it is not a
+   tinted near-black chosen to look expensive.
+
+   Green carries meaning here that blue would not. In a ledger it is the colour
+   of a credit; in Saudi Arabia, one of the three markets this product sells
+   into, it is the national colour. It is also the one accent that stays legible
+   under the fluorescent light of a shop floor, which is where these screens are
+   actually read.
+
+   Brass is focus and selection ONLY. It is warm against the cool green so a
+   focus ring can never be mistaken for a state, and it is the metal of ledger
+   clasps and bank signage rather than a decorative gradient.
+   ========================================================================== */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* --- primitives: green ------------------------------------------------ */
+  --color-green-25: #f2f8f6;
+  --color-green-50: #e6f2ee;
+  --color-green-100: #c4e2d9;
+  --color-green-200: #97cbbc;
+  --color-green-300: #63ae9b;
+  --color-green-400: #328d78;
+  --color-green-500: #0b6b58;
+  --color-green-600: #095a4a;
+  --color-green-700: #07463a;
+  --color-green-800: #06332b;
+  --color-green-900: #0f1b18;
+  --color-green-950: #081210;
+
+  /* --- primitives: neutral (the green, desaturated) --------------------- */
+  --color-neutral-0: #ffffff;
+  --color-neutral-25: #fafbfa;
+  --color-neutral-50: #f6f7f6;
+  --color-neutral-100: #eceeed;
+  --color-neutral-200: #dde1df;
+  --color-neutral-300: #c3c9c6;
+  --color-neutral-400: #98a29e;
+  --color-neutral-500: #6f7a76;
+  --color-neutral-600: #545f5b;
+  --color-neutral-700: #3d4744;
+  --color-neutral-800: #28312e;
+  --color-neutral-900: #18201d;
+  --color-neutral-950: #0d1412;
+
+  /* --- primitives: brass (focus + selection only) ----------------------- */
+  --color-brass-100: #f6ecc9;
+  --color-brass-300: #e0c66a;
+  --color-brass-500: #c8a227;
+  --color-brass-700: #916f12;
+
+  /* --- primitives: status ----------------------------------------------- */
+  --color-positive-50: #e7f4ec;
+  --color-positive-500: #157347;
+  --color-positive-700: #0e5433;
+  --color-caution-50: #fdf3e4;
+  --color-caution-500: #b45309;
+  --color-caution-700: #8a3f07;
+  --color-critical-50: #fdecea;
+  --color-critical-500: #b42318;
+  --color-critical-700: #8c1b12;
+  --color-info-50: #e8effc;
+  --color-info-500: #175cd3;
+  --color-info-700: #1145a0;
+
+  /* --- typography -------------------------------------------------------- */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: var(--font-plex-arabic), var(--font-plex-sans), ui-sans-serif,
+    sans-serif;
+  --font-bengali: var(--font-noto-bengali), var(--font-plex-sans),
+    ui-sans-serif, sans-serif;
+
+  /* A deliberately tight scale. An ERP screen holds four or five type sizes;
+     a scale with nine invites a sixth heading nobody needed. */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.0625rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.375rem;
+  --text-lede: 1rem;
+  --text-lede--line-height: 1.5rem;
+  --text-card-title: 1rem;
+  --text-card-title--line-height: 1.5rem;
+  --text-section: 1.125rem;
+  --text-section--line-height: 1.625rem;
+  --text-page: 1.375rem;
+  --text-page--line-height: 1.875rem;
+  --text-display: 1.875rem;
+  --text-display--line-height: 2.25rem;
+  /* Money on a POS screen and on a dashboard headline figure. Reads across a
+     counter, which the body scale does not. */
+  --text-figure: 2.5rem;
+  --text-figure--line-height: 2.75rem;
+
+  /* --- radius ------------------------------------------------------------ */
+  /* Small and consistent. A large radius on a data table reads as a toy. */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+
+  /* --- elevation ---------------------------------------------------------- */
+  /* Two shadows, not five, and both tinted with the green rather than pure
+     black so they sit on the ground colour instead of dirtying it. */
+  --shadow-raised: 0 1px 2px 0 rgb(15 27 24 / 0.06),
+    0 1px 3px 0 rgb(15 27 24 / 0.04);
+  --shadow-overlay: 0 8px 24px -4px rgb(15 27 24 / 0.14),
+    0 3px 8px -3px rgb(15 27 24 / 0.08);
+}
+
+/* ==========================================================================
+   Semantic tokens.
+
+   Components reference ONLY these. A screen that reaches for --color-green-500
+   directly is a screen that will not follow the palette when it changes.
+   ========================================================================== */
+
+:root {
+  --ry-ground: var(--color-neutral-50);
+  --ry-surface: var(--color-neutral-0);
+  --ry-surface-raised: var(--color-neutral-0);
+  --ry-surface-sunken: var(--color-neutral-100);
+  --ry-surface-hover: var(--color-neutral-50);
+  --ry-surface-selected: var(--color-green-50);
+
+  --ry-text: var(--color-neutral-900);
+  --ry-text-muted: var(--color-neutral-600);
+  --ry-text-subtle: var(--color-neutral-500);
+  --ry-text-disabled: var(--color-neutral-400);
+  --ry-text-inverse: var(--color-neutral-0);
+
+  --ry-border: var(--color-neutral-200);
+  --ry-border-strong: var(--color-neutral-300);
+  --ry-input: var(--color-neutral-300);
+  --ry-input-bg: var(--color-neutral-0);
+
+  --ry-primary: var(--color-green-500);
+  --ry-primary-hover: var(--color-green-600);
+  --ry-primary-active: var(--color-green-700);
+  --ry-primary-fg: var(--color-neutral-0);
+  --ry-primary-subtle: var(--color-green-50);
+  --ry-primary-subtle-fg: var(--color-green-700);
+
+  --ry-secondary: var(--color-neutral-0);
+  --ry-secondary-fg: var(--color-neutral-800);
+  --ry-secondary-hover: var(--color-neutral-50);
+
+  --ry-focus: var(--color-brass-500);
+  --ry-selection: var(--color-brass-100);
+
+  --ry-positive: var(--color-positive-500);
+  --ry-positive-fg: var(--color-positive-700);
+  --ry-positive-subtle: var(--color-positive-50);
+  --ry-caution: var(--color-caution-500);
+  --ry-caution-fg: var(--color-caution-700);
+  --ry-caution-subtle: var(--color-caution-50);
+  --ry-critical: var(--color-critical-500);
+  --ry-critical-fg: var(--color-critical-700);
+  --ry-critical-subtle: var(--color-critical-50);
+  --ry-info: var(--color-info-500);
+  --ry-info-fg: var(--color-info-700);
+  --ry-info-subtle: var(--color-info-50);
+
+  /* Destructive is critical, named separately because a delete button and a
+     failed-payment badge change independently. */
+  --ry-destructive: var(--color-critical-500);
+  --ry-destructive-hover: var(--color-critical-700);
+  --ry-destructive-fg: var(--color-neutral-0);
+
+  --ry-shell-bg: var(--color-green-900);
+  --ry-shell-fg: var(--color-green-100);
+  --ry-shell-fg-strong: var(--color-neutral-0);
+  --ry-shell-hover: var(--color-green-800);
+  --ry-shell-active: var(--color-green-700);
+  --ry-shell-border: var(--color-green-800);
+
+  color-scheme: light;
+}
+
+/* Dark mode exists for a night shift and for a warehouse screen, not as a
+   showpiece. Light is the product. */
+.dark {
+  --ry-ground: var(--color-neutral-950);
+  --ry-surface: var(--color-neutral-900);
+  --ry-surface-raised: var(--color-neutral-800);
+  --ry-surface-sunken: var(--color-neutral-950);
+  --ry-surface-hover: var(--color-neutral-800);
+  --ry-surface-selected: var(--color-green-800);
+
+  --ry-text: var(--color-neutral-100);
+  --ry-text-muted: var(--color-neutral-400);
+  --ry-text-subtle: var(--color-neutral-500);
+  --ry-text-disabled: var(--color-neutral-600);
+  --ry-text-inverse: var(--color-neutral-900);
+
+  --ry-border: var(--color-neutral-800);
+  --ry-border-strong: var(--color-neutral-700);
+  --ry-input: var(--color-neutral-700);
+  --ry-input-bg: var(--color-neutral-950);
+
+  --ry-primary: var(--color-green-300);
+  --ry-primary-hover: var(--color-green-200);
+  --ry-primary-active: var(--color-green-100);
+  --ry-primary-fg: var(--color-green-950);
+  --ry-primary-subtle: var(--color-green-800);
+  --ry-primary-subtle-fg: var(--color-green-100);
+
+  --ry-secondary: var(--color-neutral-800);
+  --ry-secondary-fg: var(--color-neutral-100);
+  --ry-secondary-hover: var(--color-neutral-700);
+
+  --ry-focus: var(--color-brass-300);
+  --ry-selection: var(--color-brass-700);
+
+  --ry-positive: #4ade80;
+  --ry-positive-fg: #86efac;
+  --ry-positive-subtle: #0e2b1c;
+  --ry-caution: #fbbf24;
+  --ry-caution-fg: #fcd34d;
+  --ry-caution-subtle: #35240a;
+  --ry-critical: #f87171;
+  --ry-critical-fg: #fca5a5;
+  --ry-critical-subtle: #3a1512;
+  --ry-info: #60a5fa;
+  --ry-info-fg: #93c5fd;
+  --ry-info-subtle: #10203c;
+
+  --ry-destructive: #dc2626;
+  --ry-destructive-hover: #b91c1c;
+  --ry-destructive-fg: var(--color-neutral-0);
+
+  --ry-shell-bg: var(--color-neutral-950);
+  --ry-shell-fg: var(--color-neutral-400);
+  --ry-shell-fg-strong: var(--color-neutral-0);
+  --ry-shell-hover: var(--color-neutral-900);
+  --ry-shell-active: var(--color-neutral-800);
+  --ry-shell-border: var(--color-neutral-800);
+
+  color-scheme: dark;
+}
+
+/* Expose the semantic layer to Tailwind so bg-surface and text-muted work in
+   markup without a second naming scheme to remember. */
+@theme inline {
+  --color-ground: var(--ry-ground);
+  --color-surface: var(--ry-surface);
+  --color-surface-raised: var(--ry-surface-raised);
+  --color-surface-sunken: var(--ry-surface-sunken);
+  --color-surface-hover: var(--ry-surface-hover);
+  --color-surface-selected: var(--ry-surface-selected);
+
+  --color-fg: var(--ry-text);
+  --color-muted: var(--ry-text-muted);
+  --color-subtle: var(--ry-text-subtle);
+  --color-disabled: var(--ry-text-disabled);
+  --color-inverse: var(--ry-text-inverse);
+
+  --color-line: var(--ry-border);
+  --color-line-strong: var(--ry-border-strong);
+  --color-input: var(--ry-input);
+  --color-input-bg: var(--ry-input-bg);
+
+  --color-primary: var(--ry-primary);
+  --color-primary-hover: var(--ry-primary-hover);
+  --color-primary-active: var(--ry-primary-active);
+  --color-primary-fg: var(--ry-primary-fg);
+  --color-primary-subtle: var(--ry-primary-subtle);
+  --color-primary-subtle-fg: var(--ry-primary-subtle-fg);
+
+  --color-secondary: var(--ry-secondary);
+  --color-secondary-fg: var(--ry-secondary-fg);
+  --color-secondary-hover: var(--ry-secondary-hover);
+
+  --color-focus: var(--ry-focus);
+
+  --color-positive: var(--ry-positive);
+  --color-positive-fg: var(--ry-positive-fg);
+  --color-positive-subtle: var(--ry-positive-subtle);
+  --color-caution: var(--ry-caution);
+  --color-caution-fg: var(--ry-caution-fg);
+  --color-caution-subtle: var(--ry-caution-subtle);
+  --color-critical: var(--ry-critical);
+  --color-critical-fg: var(--ry-critical-fg);
+  --color-critical-subtle: var(--ry-critical-subtle);
+  --color-info: var(--ry-info);
+  --color-info-fg: var(--ry-info-fg);
+  --color-info-subtle: var(--ry-info-subtle);
+
+  --color-destructive: var(--ry-destructive);
+  --color-destructive-hover: var(--ry-destructive-hover);
+  --color-destructive-fg: var(--ry-destructive-fg);
+
+  --color-shell: var(--ry-shell-bg);
+  --color-shell-fg: var(--ry-shell-fg);
+  --color-shell-fg-strong: var(--ry-shell-fg-strong);
+  --color-shell-hover: var(--ry-shell-hover);
+  --color-shell-active: var(--ry-shell-active);
+  --color-shell-border: var(--ry-shell-border);
+}
+
+/* ==========================================================================
+   Base.
+   ========================================================================== */
+
+@layer base {
+  * {
+    border-color: var(--ry-border);
+  }
+
+  html {
+    /* The type scale is set in rem so a shop that has enlarged its browser
+       text gets a larger product, not a broken layout. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--ry-ground);
+    color: var(--ry-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    /* Optical sizing and kerning matter at 14px, which is most of this
+       product. */
+    font-feature-settings: 'kern' 1, 'liga' 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Arabic and Bangla get their own face, applied at the ROOT only.
+     :lang() is inherited and em is parent-relative, so a size bump applied
+     per-element compounds down a table and inverts the type scale. That
+     defect was found once already; it is not repeated here. */
+  html:lang(ar) body {
+    font-family: var(--font-arabic);
+  }
+
+  html:lang(bn) body {
+    font-family: var(--font-bengali);
+  }
+
+  ::selection {
+    background-color: var(--ry-selection);
+    color: var(--ry-text);
+  }
+
+  /* One focus treatment for the whole product. Brass, two pixels, offset so it
+     is visible against both a white field and a dark shell. */
+  :focus-visible {
+    outline: 2px solid var(--ry-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Headings carry weight, not size alone. The scale is tight, so weight and
+     colour do the work that a bigger size would do in a marketing page. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.011em;
+    color: var(--ry-text);
+  }
+
+  /* Money and quantities. Tabular figures are not a nicety in a ledger: a
+     column of totals that does not align cannot be scanned, and scanning is
+     what the column is for. */
+  .num,
+  td.num,
+  th.num,
+  [data-num] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'kern' 1;
+  }
+
+  /* Numbers stay left-to-right inside Arabic text. SAR 1,150.00 reads the same
+     way in both languages; letting bidi reorder it produces figures that are
+     wrong rather than merely mirrored. */
+  html[dir='rtl'] .num,
+  html[dir='rtl'] [data-num],
+  html[dir='rtl'] time {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+}
+
+@layer utilities {
+  /* The accounting double rule under a total. It encodes a real convention -
+     this row is a sum of the rows above it - rather than decorating the table.
+     Used by the table primitive; available directly for one-off summaries. */
+  .rule-total {
+    border-top: 3px double var(--ry-border-strong);
+  }
+
+  /* A single hairline used for row separation everywhere, so a table, a list
+     and a form section separate identically. */
+  .rule {
+    border-block-start: 1px solid var(--ry-border);
+  }
+
+  /* Screen-reader-only, needed by every table caption and icon-only button in
+     the product. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
+
+/* A person who has asked their operating system for less motion gets less
+   motion. This is not negotiable per screen. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

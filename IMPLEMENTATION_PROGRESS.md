@@ -8,10 +8,175 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 
 | | |
 |---|---|
-| **Last verified** | 2026-09-02 |
-| **Branch** | `main` (working tree dirty — nothing committed this session) |
-| **Scale** | 105 migrations · 426 routes · 1,165 Go test functions · 667 front-end tests |
-| **Direction** | Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
+| **Last verified** | 2026-09-04 |
+| **Branch** | `international-markets-and-counters` |
+| **Scale** | 124 migrations · 463 routes · 102 permissions · 1,165 Go test functions |
+| **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
+
+---
+
+## 0. Frontend rebuild — `web-next/` (started 2026-09-04)
+
+The greenfield Next.js 16 front end. `web/` is **frozen**, not deleted: it stays
+as reference until `web-next` reaches parity, and nothing in it is the
+foundation of anything here.
+
+| | |
+|---|---|
+| **Location** | `web-next/` (npm workspace, port 3001) |
+| **Stack** | Next.js 16.3.2 · React 19.2 · TypeScript 5.5 (strict, `noUncheckedIndexedAccess`) · Tailwind 4 · App Router |
+| **Build** | ✅ clean, 7 routes, no warnings |
+| **Typecheck** | ✅ clean |
+| **Tests** | ✅ 49 passing (money 17 · cart 16 · navigation/RBAC 16) |
+| **Backend surface** | **463 routes · 102 permissions · 28 plan-gated groups** (the header's "426 routes" is stale) |
+
+### 0.1 The decision that unblocked everything: the contract is generated
+
+`web-next/src/lib/api/contract.generated.ts` is produced by
+`scripts/generate-api-contract.mjs`, which parses `backend/internal/api/router.go`
+and `entitlement.go`. It emits every route, every permission and the plan-feature
+map.
+
+This exists because a hand-written TypeScript permission list would be a second
+answer to a question the Go route table already answers, and the TypeScript one
+would be wrong first — a route added in Go would simply be missing, and a
+permission renamed in Go would leave a guard checking a string nobody enforces.
+
+```
+npm run gen:contract     # regenerate
+npm run check:contract   # fails when it has drifted from the Go source
+```
+
+`navigation.test.ts` walks the whole business navigation tree and asserts every
+permission it names exists in that generated list. **This is what makes
+"do not invent a frontend permission model" mechanically true rather than a
+promise.**
+
+### 0.2 Architectural decisions taken this session
+
+| # | Decision | Why |
+|---|---|---|
+| F1 | **The API is proxied through Next** (`rewrites` → `RAWSYST_API_ORIGIN`) | The refresh cookie is `SameSite=Strict` and the CSRF cookie must be readable by `document.cookie` on the page that echoes it. Both need the browser to believe the API is this site. Also removes CORS entirely. |
+| F2 | **Data fetching is client-side, not in Server Components** | The access token lives in memory by deliberate backend design (`refresh_cookie.go`); the durable half is httpOnly. A Server Component cannot hold that token, and copying it into a second cookie so it could would undo the protection. Next still renders the whole shell server-side. |
+| F3 | **The company is application state, not a screen filter** | `company_id` is *required* on every dashboard, statement and report route — a business keeps separate books per legal entity. `CompanyProvider` holds it; `useCompanyScope()` returns `null` until it resolves, and `useApi` treats a null path as "not yet", so no screen ever fires a request that would 400. |
+| F4 | **The counter is exchanged for a token, and re-exchanged after reload** | Every POS route reads the till from the signed `did` claim, never from a body. `POST /pos/counter-sessions` returns a counter-bound access token; the counter id is kept in **session** storage and the exchange repeated on load, because an ordinary refresh returns a token *without* the device claim. |
+| F5 | **Money never becomes a `number`** | Amounts are decimal strings end to end. `formatMoney` walks the string to group digits rather than calling `Intl.NumberFormat`, so a value a float64 could not hold survives display. The cart uses `decimal.js`. |
+| F6 | **Tailwind + shadcn primitives adopted** — reopening `FRONTEND_TOOLBOX.md` §4 | The rebuild brief mandates it explicitly. **Scope: `web-next/` only.** `web/`, `pos/` and `shared/src/design-system.css` are untouched, so §4's reasoning still holds for them. |
+| F7 | **`shared/` is reused for data, never for UI** | `@rawsyst/shared/i18n/strings` (≈3,800 keys, complete `en`+`ar`, partial `bn`) is imported. No component, panel or stylesheet from the old front end is. |
+
+### 0.3 Design language
+
+Not a shadcn default and not a restyle of `web/`. Tokens live in
+`src/styles/globals.css`.
+
+- **One colour family.** Deep teal-green primary `#0B6B58`; every neutral is
+  that green desaturated, so a table rule and the primary button belong to each
+  other. Ink `#0F1B18` is the darkest value of the green — not a tinted black.
+  Green is the accounting colour for a credit, reads as trust rather than flash,
+  and is culturally native to the Saudi market.
+- **Brass `#C8A227` is focus and selection only** — warm against the cool green,
+  so a focus ring can never be mistaken for a state.
+- **IBM Plex Sans + IBM Plex Sans Arabic + Noto Sans Bengali**, self-hosted via
+  `next/font`. Plex Arabic is a *designed sibling*, so Arabic is native rather
+  than Latin-with-Arabic-glyphs. Tabular figures on every money column.
+- **Tables are the hero, not cards.** A total row carries `rule-total`, a 3px
+  double border — the accounting convention, so the rule carries information.
+- Anti-patterns explicitly avoided: no gradient washes, no identical rounded
+  cards, no ALL-CAPS eyebrows, no monospace data labels, no `→` in button text,
+  no scroll-triggered animation.
+
+### 0.4 Feature tracker
+
+Frontend **COMPLETE** means: real UI · real API integration · real workflow ·
+correct permissions · loading + empty + error states · responsive · accessible ·
+translatable · RTL-safe. Nothing below is marked complete because a page renders.
+
+| ID | Feature | Backend | Frontend | Route | Permissions | Notes |
+|---|---|---|---|---|---|---|
+| FE-01 | Design tokens + primitives | n/a | **COMPLETE** | — | — | Button, Field/Input/Select/Checkbox, Panel, PageHeader, Badge, Figure, DataTable, TableSkeleton, LoadMore, Empty/NoMatches/Error/AccessDenied/Skeleton |
+| FE-02 | API client (errors, refresh, idempotency) | ✅ | **COMPLETE** | — | — | Single-flight refresh; `ApiError` with 402/403/404/409/422/429/503 remedies |
+| FE-03 | Generated permission contract | ✅ | **COMPLETE** | — | — | 463 routes / 102 permissions; drift check in `check:contract` |
+| FE-04 | Sign-in (one login, no role picker) | ✅ | **COMPLETE** | `/login` | public | Handles both server challenges: multi-business choice and MFA |
+| FE-05 | Session + workspace resolution | ✅ | **COMPLETE** | — | — | `is_super_admin` → platform, `tenant_id` → business; permissions re-read, never decoded from the token |
+| FE-06 | Route + action guards, 403 | ✅ | **COMPLETE** | all | all | `RequireWorkspace`, `RequirePermission`, `Can`. No unauthorised fetch is made |
+| FE-07 | Permission-aware navigation | ✅ | **COMPLETE** | — | all | 11 business sections, 3 platform. Plan-gated items greyed with a distinct reason |
+| FE-08 | App shell (responsive) | n/a | **COMPLETE** | — | — | Persistent sidebar ≥lg, full-height drawer below, 44px targets on touch |
+| FE-09 | Company context + switcher | ✅ | **COMPLETE** | — | `identity.view` | Drives currency and market for every figure |
+| FE-10 | i18n (en/ar/bn) + RTL | ✅ | **PARTIAL** | — | — | Provider, cookie persistence, `dir`/`lang` on `<html>`, logical properties throughout. **Screen copy is not yet routed through `t()`** |
+| FE-11 | Business dashboard | ✅ | **COMPLETE** | `/dashboard` | `sales.view` ∪ `accounting.view` ∪ `inventory.view` | Attention list first, four drill-through figures, tenders, stock. No invented data |
+| FE-12 | Products list | ✅ | **COMPLETE** | `/products` | `catalog.view` | Server search, cursor pagination, four distinct states |
+| FE-13 | Web POS — counter session | ✅ | **COMPLETE** | `/pos` | `sales.create` | Picker → token exchange → re-bind on reload |
+| FE-14 | Web POS — till | ✅ | **COMPLETE** | `/pos` | `sales.create` | Scan, cart, customer, tenders, idempotent completion, change |
+| FE-15 | Platform — service health | ✅ | **COMPLETE** | `/platform` | super-admin | Counts not lists, 30s refresh, honest "active = traded in 30 days" |
+| FE-16 | Product detail / variant matrix | ✅ | ⬜ NOT STARTED | `/products/{id}` | `catalog.view` | `GET /catalog/products/{id}/matrix` |
+| FE-17 | Sales list + invoice detail | ✅ | ⬜ NOT STARTED | `/sales` | `sales.view` | |
+| FE-18 | Returns / exchanges | ✅ | ⬜ NOT STARTED | `/sales/returns` | `sales.refund` | |
+| FE-19 | Shifts / X-Z reports | ✅ | ⬜ NOT STARTED | `/shifts` | `sales.receive_payment` | |
+| FE-20 | Customers + ledger + credit limit | ✅ | ⬜ NOT STARTED | `/customers` | `customers.view` | Picker exists inside POS only |
+| FE-21 | Stock: on-hand, movements, counts | ✅ | ⬜ NOT STARTED | `/stock/*` | `inventory.view` | |
+| FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | ⬜ NOT STARTED | `/stock/transfers` | `inventory.approve_transfer` | **Backend capability with no frontend caller** |
+| FE-23 | Batch / expiry / recall | ✅ | ⬜ NOT STARTED | `/stock/batches` | `inventory.recall_batch` | **No frontend caller** |
+| FE-24 | Production orders | ✅ | ⬜ NOT STARTED | `/stock/production` | `inventory.adjust_stock` | **No frontend caller** |
+| FE-25 | Purchasing (31 routes) | ✅ | ⬜ NOT STARTED | `/buying/*` | `purchasing.*` | Largest single module |
+| FE-26 | Expenses + departments + recurring | ✅ | ⬜ NOT STARTED | `/money/expenses` | `expense.view` | Departments and recurring have **no frontend caller** |
+| FE-27 | Manual journals | ✅ | ⬜ NOT STARTED | `/money/journals` | `accounting.create` | **No frontend caller** |
+| FE-28 | Treasury / reconciliation | ✅ | ⬜ NOT STARTED | `/money/accounts` | `accounting.reconcile` | |
+| FE-29 | Payroll / employees / EOSB | ✅ | ⬜ NOT STARTED | `/people/*` | `payroll.*`, `hr.*` | Plan-gated `payroll` |
+| FE-30 | Users, roles, permission builder | ✅ | ⬜ NOT STARTED | `/people/users` | `identity.manage_roles` | `GET /permissions` returns the catalogue with `holds` per row |
+| FE-31 | Financial statements + VAT return | ✅ | ⬜ NOT STARTED | `/reports/*` | `accounting.view` | |
+| FE-32 | Orders → invoice | ✅ | ⬜ NOT STARTED | `/orders` | `order.view` | `POST /orders/{id}/invoice` has **no frontend caller** |
+| FE-33 | ZATCA / e-invoicing onboarding | ✅ | ⬜ NOT STARTED | `/settings/einvoicing` | `einvoicing.onboard` | See risk R2 |
+| FE-34 | Platform: businesses, billing, dunning | ✅ | ⬜ NOT STARTED | `/platform/businesses` | super-admin | |
+| FE-35 | Platform: rules, jurisdictions, tax rates | ✅ | ⬜ NOT STARTED | `/platform/rules` etc. | super-admin | Includes the review → activate → verify path |
+| FE-36 | Global search | ✅ | ⬜ NOT STARTED | — | authenticated | `GET /search` |
+| FE-37 | Approvals | ✅ | ⬜ NOT STARTED | `/approvals` | `approval.view` | Plan-gated |
+| FE-38 | Privacy (24 routes) | ✅ | ⬜ NOT STARTED | `/oversight/privacy` | `privacy.view` | |
+
+### 0.5 Exact next task
+
+**FE-20 Customers, then FE-17 Sales.** Both reuse the list pattern proved by
+FE-12 (`products/page.tsx`) — server search, cursor pagination, four states — and
+both are prerequisites for the screens after them: the customer ledger is what
+FE-28 drills into, and the invoice detail is what FE-18 returns against.
+
+Do them in this order, and lift the shared list machinery out of
+`products/page.tsx` into a `ResourceList` component on the second one, not the
+first — the second use is where the real shape becomes visible.
+
+### 0.6 Blockers and risks
+
+| | |
+|---|---|
+| **R1 — no live backend was exercised** | Every payload type here was read from the Go source (`Overview`, `Health`, `Terminal`, `VariantSummary`, `Customer`, `Product`, `Entitlement`), not from a running server. Field names should be confirmed against a live API before FE-16 onward. **Nothing has been smoke-tested end to end.** |
+| **R2 — ZATCA is deliberately isolated** | The direction line says ZATCA is skipped and isolated. FE-33 is listed for completeness; do not start it without confirming that decision has changed. The only genuinely external dependency remains the taxpayer's own Fatoora OTP, which software must not fabricate. |
+| **R3 — `bn` catalogue is partial** | `shared/i18n/strings.ts` has complete `en` and `ar`, partial `bn`. The provider falls back to English per key, which is the honest behaviour, but Bangla is not finished. |
+| **R4 — FE-10 is the largest piece of debt** | Screen copy is currently English literals. The provider and the catalogue are in place; routing the strings through `t()` is mechanical but touches every screen, and gets harder the more screens exist. **Do it before the screen count doubles.** |
+| **R5 — React types are pinned by `paths`** | The workspace root hoists `@types/react` 18 for `web/` and `pos/`. `web-next/tsconfig.json` maps `react`/`react-dom` to its own copies; without that every component is "not a valid JSX element type". Remove the mapping only when `web/` is gone. |
+
+### 0.7 Tools actually used
+
+Used, not merely listed:
+
+- **Serena** — `initial_instructions`, `find_symbol` on `Overview`/`Company`/
+  `VariantSummary`/`Entitlements`/`Terminal`, `get_symbols_overview`, and five
+  project memories (`code/module-status`, `design/index`,
+  `architecture/decisions`, `audit/security-and-frontend-2026-08-28`). The route
+  table and every payload shape came from source, not from guessing.
+- **`frontend-design` skill** — loaded before any visual decision; its
+  calibration list is why the palette is not cream-and-terracotta and why there
+  are no ALL-CAPS eyebrows or `→` suffixes.
+- **shadcn** — `@radix-ui/react-slot` for `asChild`, and the CVA variant pattern.
+  Nothing was installed with `shadcn add`; the primitives are RawSyst's own.
+- **Deliberately not used, with the reason:** 21st.dev / Skiper / Magic UI (would
+  drag another idiom into a system that now has its own), Stitch (the design
+  direction came from the product's own subject matter and the backend's
+  vocabulary, not from generated comps), GSAP / Motion (this is an ERP; the only
+  motion is a 120ms colour transition and a spinner), Convex (the Go service is
+  the backend), React Native (no native surface).
+
+**`FRONTEND_TOOLBOX.md` §4 and §7 need updating**: they state "no Tailwind and no
+`shadcn add` without a deliberate decision to reopen §4". That decision has now
+been taken for `web-next/` only — see F6 above.
 
 ---
 
