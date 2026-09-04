@@ -214,6 +214,11 @@ func (s *Service) RecordBill(
 					"a shop loses money to its own paperwork, so it is refused.")
 		}
 
+		country, e := countryOf(ctx, tx, scope.CompanyID)
+		if e != nil {
+			return e
+		}
+
 		subtotal, tax, total := decimal.Zero, decimal.Zero, decimal.Zero
 		for i, line := range in.Lines {
 			if !line.Qty.IsPositive() {
@@ -225,14 +230,22 @@ func (s *Service) RecordBill(
 					"Line %d has a negative cost.", i+1)
 			}
 
-			net := line.Qty.Mul(line.UnitCost).Round(4)
-			lineTax := net.Mul(line.TaxRate).Round(4)
-			gross := net.Add(lineTax)
-
-			treatment := line.TaxTreatment
-			if treatment == "" {
-				treatment = "standard"
+			// From the register at the BILL date, not the order date and not
+			// the request. A supplier invoicing in March for goods ordered in
+			// January is taxed at March's rate, and that is the rate the shop
+			// reclaims -- so it is read at the date on their paperwork.
+			treatment, taxRate, e := s.taxRateFor(ctx, tx, scope, country,
+				line.TaxTreatment, billDate)
+			if e != nil {
+				return e
 			}
+			if e := agreesOnRate(line.TaxRate, taxRate, i); e != nil {
+				return e
+			}
+
+			net := line.Qty.Mul(line.UnitCost).Round(4)
+			lineTax := net.Mul(taxRate).Round(4)
+			gross := net.Add(lineTax)
 
 			if _, e := tx.Exec(ctx, `
 				INSERT INTO bill_line
@@ -242,7 +255,7 @@ func (s *Service) RecordBill(
 				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 				scope.TenantID, billID, line.POLineID, line.VariantID, i+1,
 				line.Description, line.Qty, line.UnitCost, treatment,
-				line.TaxRate, net, lineTax, gross); e != nil {
+				taxRate, net, lineTax, gross); e != nil {
 				return e
 			}
 

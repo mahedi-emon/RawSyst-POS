@@ -894,15 +894,58 @@ tax would be worse than showing none, because it is a number the buyer reads,
 remembers, and then finds different on the order they just raised. The full
 breakdown is on the order the moment it exists, one redirect away.
 
+### 0.93 Bills and the three-way match
+
+`/buying/bills` and `/buying/bills/{id}`. The match is the best-designed
+control in the module and the screen’s job was to get out of its way.
+
+**The evidence is the screen.** The backend KEEPS what the match found rather
+than recomputing it — "a control that leaves no record cannot be audited, and
+recomputing later would give a different answer once someone amends the order,
+which is exactly when somebody would want to check what it originally said." So
+all four dimensions are rendered, **including the ones that passed**. A table of
+only the breaches answers "what is wrong" and not "what was checked", and the
+second is the question an auditor asks.
+
+**The server explains itself and the screen does not paraphrase.** Each
+comparison carries a `detail` written by the backend — *"Earlier invoices have
+already billed 21 of what was received on this line, so only 3 is still
+outstanding."* Rewriting that here would be two explanations of one control,
+drifting apart. Shown as sent, under the table rather than squeezed into a
+numeric column, because these are sentences.
+
+**Accepting is somebody putting their name to it.** `ApproveBill` refuses an
+empty reason — "Say why this discrepancy is being accepted. It is recorded
+against your name" — and only a `blocked` bill can be accepted at all; anything
+else answers 409. So the reason is required in the form, the button says what
+pressing it does to the ledger and that it cannot be undone, and the panel does
+not appear on a bill that has nothing to accept.
+
+**Held back is not the same as unpaid, and the screen says which.** A blocked
+bill is recorded and deliberately outside the ledger, so `posted` is a badge of
+its own beside the status — nothing is owed on it until the difference is
+accepted.
+
+Verified live against a bill deliberately made to fail. Billing 40 against 24
+received (21 already invoiced) at 24.00 against 18.50 agreed produced four
+comparisons: quantity **breach**, price **breach** at 29.73%, tax **pass**
+("charged less than agreed, which is in your favour"), total **breach**. Status
+`blocked`, `posted: false`.
+
+Bills are priced from the register too, at the **bill date** rather than the
+order date: a supplier invoicing in March for goods ordered in January is taxed
+at March’s rate, and that is the rate the shop reclaims. Same rule as §0.92,
+same assertion check on a stated rate.
 ### 0.8 Exact next task
 
-**FE-25 purchasing, continued.** Suppliers, orders, one order, raising one
-and receiving are built and verified (§0.88 – §0.90). Next: bills and the
-three-way match, supplier payments and reversals, the ageing screen, and the
-sourcing half — requisitions, RFQs, the comparison and the award.
+**FE-25 purchasing, continued.** Suppliers, orders, one order, raising one,
+receiving, ageing and now bills with the three-way match are built and verified
+(§0.88 – §0.93). The tax-rate architecture is resolved (§0.92).
 
-Before the bills screen, read §0.90's open finding: a bill takes a tax rate the
-same way an order does, and the same argument applies to it.
+Next: **supplier payments and reversals**, then the sourcing half —
+requisitions, RFQs, the comparison and the award. FE-25 is not complete until
+somebody can pay a supplier from the screen, because an invoice that cannot be
+paid is a workflow that stops halfway.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

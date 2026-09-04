@@ -71,6 +71,7 @@ describe('the sidebar offers only what exists', () => {
       '/products/[productId]', // a row on /products
       '/customers/[customerId]', // a row on /customers
       '/buying/orders/[poID]', // a row on /buying/orders
+      '/buying/bills/[billID]', // a row on /buying/bills
       '/buying/orders/new', // an action on /buying/orders
     ]);
 

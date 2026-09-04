@@ -290,6 +290,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'bills',
         labelKey: 'nx.nav.biz.buying.bills',
         href: '/buying/bills',
+        built: true,
         permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.bills',
       },

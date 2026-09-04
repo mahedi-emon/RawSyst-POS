@@ -454,6 +454,49 @@ console.log('\nBUYING');
       }
     }
 
+    const bills = await check(
+      'GET /purchasing/bills',
+      `/purchasing/bills?company_id=${CO}`,
+      [
+        'id',
+        'supplier',
+        'supplier_ref',
+        'bill_date',
+        'due_date',
+        'currency',
+        'total_inclusive',
+        'amount_paid',
+        'outstanding',
+        'status',
+        // A held-back bill is recorded and deliberately NOT in the ledger, so
+        // the list has to be able to say which is which.
+        'posted',
+      ],
+      (j) => j.data[0],
+    );
+
+    const billID = bills?.data?.[0]?.id;
+    if (billID) {
+      const one = await check(
+        'GET /purchasing/bills/{id}',
+        `/purchasing/bills/${billID}?company_id=${CO}`,
+        ['id', 'supplier_ref', 'status', 'posted', 'subtotal_net', 'tax_total'],
+      );
+      if (one?.match?.[0]) {
+        // The evidence the match KEPT, which is what the bill screen renders.
+        // Recomputing it later would give a different answer once somebody
+        // amends the order -- which is exactly when anyone would want to
+        // check what it originally said.
+        expectFields('  match line', one.match[0], [
+          'dimension',
+          'variance',
+          'outcome',
+        ]);
+      } else {
+        console.log('  -  no match evidence on that bill; the shape was not exercised');
+      }
+    }
+
     const ageing = await check(
       'GET /purchasing/ageing',
       `/purchasing/ageing?company_id=${CO}`,
