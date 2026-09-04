@@ -27,7 +27,7 @@ foundation of anything here.
 | **Stack** | Next.js 16.3.2 · React 19.2 · TypeScript 5.5 (strict, `noUncheckedIndexedAccess`) · Tailwind 4 · App Router |
 | **Build** | ✅ clean, no warnings |
 | **Typecheck** | ✅ clean |
-| **Tests** | ✅ 53 passing (money 17 · cart 18 · navigation/RBAC 18) |
+| **Tests** | ✅ 57 frontend (money 17 · cart 18 · navigation/RBAC 18 · i18n/RTL 4) + 6 i18n coverage checks |
 | **Contract** | ✅ 463 routes · **109 permissions** (102 route-gated + 7 action-level) · 28 plan-gated groups |
 | **Live backend** | ✅ **validated** — see §0.2 |
 
@@ -127,6 +127,16 @@ written. `POST /stock/adjustments` now returns 201.
 - ZATCA onboarding beyond status — needs an `environment` query parameter, and a
   real CSID needs a Fatoora OTP, which must never be fabricated.
 
+#### Found in the second pass (Customers and Sales)
+
+| # | Finding |
+|---|---|
+| M11 | **There is no "list every invoice" route.** The sales surface is `GET /dashboard/sales?company_id&date&limit`, which answers with one day's invoices AND that day's totals. Building a scrolling all-time list would have meant inventing an endpoint. The screen is a day view with a date stepper, which is also how a shop reconciles. |
+| M12 | `/customers` answers `{data}` with **no `page` envelope**, unlike `/catalog/products`. The shared list treats a missing envelope as "this is all of it" rather than as a fault. |
+| M13 | A sale row's `issued_at` is the **time of day only** (`"13:22"`) — the date is the page's subject. |
+| M14 | `/platform/*` answers **404, not 403**, to a business user. Deliberate: confirming a platform endpoint exists tells an attacker where to aim. An earlier expectation of 403 in the verification harness was wrong, not the product. |
+| M15 | `cmd/devseed` leaves its EGS unit with an **empty VAT number**, so every Saudi sale fails the compliance gate until it is amended. Fixture data, not a product defect — but it is why a fresh dev database cannot sell until `PUT /einvoicing/units/{id}` is called. |
+
 #### Other live findings that are UI requirements
 
 - A **Saudi terminal requires an EGS unit** to register. A session-bound counter
@@ -184,17 +194,17 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-07 | Permission-aware navigation | ✅ | IN PROGRESS | — | all | 11 business sections, 3 platform; plan-gated items greyed. i18n pending |
 | FE-08 | App shell (responsive) | n/a | IN PROGRESS | — | — | Sidebar ≥lg, drawer below, 44px touch targets. i18n pending |
 | FE-09 | Company context + switcher | ✅ | **COMPLETE** | — | `identity.view` | Drives currency and market for every figure; verified live |
-| FE-10 | i18n (en/ar/bn) + RTL | ✅ | IN PROGRESS | — | — | Provider, cookie, `dir`/`lang`, logical properties. **Screen copy not yet routed through `t()`** |
+| FE-10 | i18n (en/ar/bn) + RTL | ✅ | **COMPLETE** | — | — | 480 `nx.*` keys in all three languages; every built screen through `t()`; navigation holds keys, not prose. Guarded by the shared coverage check and a physical-property check |
 | FE-11 | Business dashboard | ✅ | IN PROGRESS | `/dashboard` | `sales.view` ∪ `accounting.view` ∪ `inventory.view` | Verified live. Attention links fixed (M5). i18n pending |
-| FE-12 | Products list | ✅ | IN PROGRESS | `/products` | `catalog.view` | Verified live. Create/edit not started |
+| FE-12 | Products list | ✅ | IN PROGRESS | `/products` | `catalog.view` | Verified live; now on the shared `ResourceList`. Create/edit not started |
 | FE-13 | Web POS — counter session | ✅ | IN PROGRESS | `/pos` | `sales.create` | Verified live; `company_id` fixed (M1). i18n pending |
 | FE-14 | Web POS — till | ✅ | IN PROGRESS | `/pos` | `sales.create` | **A real sale posted end to end.** Local scanning, shift gate, idempotent replay. i18n pending |
 | FE-15 | Platform — service health | ✅ | IN PROGRESS | `/platform` | super-admin | Built; not yet exercised with a super-admin account. i18n pending |
 | FE-16 | Product detail / variant matrix | ✅ | ⬜ NOT STARTED | `/products/{id}` | `catalog.view` | |
-| FE-17 | Sales list + invoice detail | ✅ | ⬜ NOT STARTED | `/sales` | `sales.view` | |
+| FE-17 | Sales — the trading day | ✅ | IN PROGRESS | `/sales` | `sales.view` | **A day, not an all-time list** — that is the capability the backend has (`GET /dashboard/sales?date=`) and the way a shop reconciles. Day totals, retail/wholesale split, ZATCA state per row, date stepper. Verified against two real invoices. Invoice DETAIL not started |
 | FE-18 | Returns / exchanges | ✅ | ⬜ NOT STARTED | `/sales/returns` | `sales.refund` | |
 | FE-19 | Shifts, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/shifts` | `sales.receive_payment` | Opening is done inside the till |
-| FE-20 | Customers + ledger + credit limit | ✅ | ⬜ NOT STARTED | `/customers` | `customers.view` | Picker exists inside the POS only |
+| FE-20 | Customers + ledger | ✅ | IN PROGRESS | `/customers`, `/customers/{id}` | `customers.view` | List and statement built and verified live. The khata carries a running balance and a double-ruled closing row; unpaid invoices flag overdue. Create/edit and the credit-limit control (its own permission, `customers.set_credit_limit`) not started |
 | FE-21 | Stock: on-hand, movements, counts | ✅ | ⬜ NOT STARTED | `/stock/*` | `inventory.view` | |
 | FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | ⬜ NOT STARTED | `/stock/transfers` | `inventory.approve_transfer` | **No frontend caller** |
 | FE-23 | Batch / expiry / recall | ✅ | ⬜ NOT STARTED | `/stock/batches` | `inventory.recall_batch` | **No frontend caller** |
@@ -266,7 +276,7 @@ marked N/A or mapped, rather than dropping them.)
 | A6 | Role & Permission Management (RBAC) | FE-06, FE-07, FE-30 | /people/users | GET /permissions, /roles, /people | identity.manage_roles | IN PROGRESS | Guards and permission-aware nav COMPLETE. The role builder screen is not started. |
 | A7 | Multi-Platform Client Access | FE-08 | (all) | — | — | COMPLETE | One responsive web app; POS is a module inside it. |
 | A8 | Dashboard & KPI Center | FE-11 | /dashboard | GET /dashboard/overview | sales.view ∪ accounting.view ∪ inventory.view | COMPLETE | Attention list first, four drill-through figures. Verified live. |
-| B1 | Product & Catalog Management | FE-12 | /products | GET/POST /catalog/products | catalog.view / catalog.create | IN PROGRESS | List COMPLETE and verified live. Create/edit not started. |
+| B1 | Product & Catalog Management | FE-12 | /products | GET/POST /catalog/products | catalog.view / catalog.create | IN PROGRESS | List verified live and on the shared list component. Create/edit not started. |
 | B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | NOT STARTED |  |
 | B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | NOT STARTED | Plan-gated: label_studio. |
 | B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | NOT STARTED | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
@@ -279,15 +289,15 @@ marked N/A or mapped, rather than dropping them.)
 | B9 | Promotions, Discounts & Pricing Engine | FE-42 | /promotions | /promotions/*, /promotions/quote | promotion.view / promotion.manage | NOT STARTED | Cart carries promotion_id so redemption is recorded; the quote call is not wired yet. |
 | B10 | Sales Returns, Exchange & Replacement | FE-18 | /sales/returns | /pos/returns, /pos/exchanges | sales.refund, sales.exchange | NOT STARTED |  |
 | B11 | Sales Quotation, Sales Order & Delivery Documentation | FE-32 | /orders | 9 /orders/* routes | order.view / order.manage | NOT STARTED | POST /orders/{id}/invoice still has no frontend caller. |
-| B12 | Wholesale / B2B Module | FE-20 | /customers | /customers, /catalog/scan?customer_id | customers.view | IN PROGRESS | Wholesale pricing already flows: naming a customer changes the price the till is quoted. |
+| B12 | Wholesale / B2B Module | FE-20 | /customers | /customers, /dashboard/sales | customers.view | IN PROGRESS | Wholesale pricing flows at the till, the customer list marks wholesale accounts, and the sales day splits retail from wholesale so bulk orders do not distort retail figures. |
 | B13 | Online Order & Delivery Management | FE-32, FE-43 | /orders, /deliveries | /orders/*, /deliveries/* | order.view, delivery.view | NOT STARTED | Plan-gated: online_orders. |
 | B14 | Installment / EMI (কিস্তি) System | FE-44 | /money/installments | 7 /installments/* routes | installment.view / installment.manage | NOT STARTED | Plan-gated: installments. |
 | B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | NOT STARTED | Plan-gated: warranty. |
-| B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS |  |
+| B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS | List and statement built. Loyalty not started |  |
 | C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/journals | /accounting/journals/* | accounting.view / accounting.create | NOT STARTED | Manual journals still have no frontend caller. |
 | C2 | Cash & Bank Management | FE-28 | /money/accounts | 10 /treasury/* routes | accounting.view / manage_accounts | NOT STARTED |  |
 | C3 | Expense & Investment Management | FE-26 | /money/expenses | 16 /expenses/* routes | expense.view / expense.record | NOT STARTED |  |
-| C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/ageing, /buying/ageing | /receivables/ageing, /purchasing/ageing | accounting.view | NOT STARTED |  |
+| C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/{id}, /customers/ageing | /customers/{id}/ledger, /open-invoices | customers.view | IN PROGRESS | The customer statement and unpaid-invoice list are built; the ageing reports are not |  |
 | C5 | Employee / HR Management | FE-29 | /people/employees | /employees/*, /attendance, /leave | hr.view / hr.manage | NOT STARTED | Plan-gated: payroll. |
 | C6 | Payroll, Commission & Saudi WPS Compliance | FE-29 | /people/payroll | /payroll/*, /commission-rules, /eosb | payroll.view / run / approve | NOT STARTED | Includes the Saudi WPS wage file. |
 | C7 | Fixed Asset Management | FE-48 | /money/assets | /assets/* | asset.view / asset.manage | NOT STARTED |  |
@@ -319,7 +329,7 @@ marked N/A or mapped, rather than dropping them.)
 | F4 | Multi-Company / Group Consolidation | FE-59 | /oversight/groups | 10 /groups/* routes | group.view / group.manage | NOT STARTED | Plan-gated: consolidation. |
 | G1 | Country Configuration Engine | FE-09 | (all) | GET /companies | — | COMPLETE | country + base_currency drive market, grouping and precision. Validated live: country arrives lowercase. |
 | G2 | Multi-Currency | FE-09, FE-49 | (all) | /exchange-rates | accounting.view | IN PROGRESS | Per-company currency COMPLETE. FX rate management not started. |
-| G3 | Multi-Language & RTL/LTR | FE-10 | (all) | — | — | IN PROGRESS | Provider, cookie, dir/lang and logical properties in place. Screen copy still English literals. |
+| G3 | Multi-Language & RTL/LTR | FE-10 | (all) | — | — | **COMPLETE** | 480 keys in en/ar/bn, every built screen translated, navigation holds keys. Two RTL defects fixed. Two tests keep it true. |
 | G4 | Tax Templates Library | FE-35 | /platform/rates | /platform/jurisdictions/* | super-admin | NOT STARTED |  |
 | H1 | Security & Authentication | FE-02, FE-04, FE-05 | /login | /auth/* | public | COMPLETE | Refresh rotation, CSRF double-submit and both login challenges verified live. |
 | H2 | Offline-First Architecture & Sync Engine | FE-13 | /pos | /catalog/snapshot, /sync/push | sales.create | IN PROGRESS | The till holds the catalogue in memory. Queued offline sales are a desktop-till concern. |
@@ -352,7 +362,7 @@ marked N/A or mapped, rather than dropping them.)
 | Gate | Status |
 |---|---|
 | 1 — Live backend validation | ✅ **DONE**. 7 frontend mismatches fixed, 2 backend defects fixed, environment corrected for RLS |
-| 2 — i18n application | ⬜ **NOT DONE** — the largest remaining piece of debt |
+| 2 — i18n application | ✅ **DONE** — 480 keys in en/ar/bn, every screen through `t()`, two real RTL defects fixed, guarded by two tests |
 | 3 — Blueprint traceability | ✅ **DONE** — §0.6, all 88 IDs mapped |
 | 4 — RBAC integrity | ✅ **DONE** — contract widened to 109, `ROUTE_PERMISSIONS` separated, two tests pin it |
 | 5 — Business context | ✅ **DONE** — `useCompanyScope()`; no request fires before it resolves |
@@ -360,31 +370,40 @@ marked N/A or mapped, rather than dropping them.)
 | 7 — Design quality | ✅ own identity, not shadcn default |
 | 8 — Real UX | ✅ for built screens |
 | 9 — Responsive | ✅ for built screens; not yet exercised on a real device |
-| 10 — Customers → Sales | ⬜ **NEXT** |
+| — | **`npm run verify:api`** now checks every endpoint the screens call, and the FIELDS each reads, against a running server |
+| 10 — Customers → Sales | ✅ **DONE** — both built on real APIs and verified live |
 
 ### 0.8 Exact next task
 
-**Gate 2 (i18n) first, then FE-20 Customers, then FE-17 Sales.**
+**FE-16 product detail, then FE-18 returns, then FE-21 stock.**
 
-i18n comes first because it is mechanical, touches every screen, and gets
-strictly harder with each screen added — and because no screen can be honestly
-marked COMPLETE until it is done.
+Gates 1 to 5 and 10 are done. The next three are chosen because each unblocks
+the one after it:
 
-Then Customers, then Sales: both reuse the list pattern proved by FE-12, and
-both are prerequisites for what follows (the customer ledger is what FE-28
-drills into; the invoice detail is what FE-18 returns against). Lift the shared
-list machinery out of `products/page.tsx` on the **second** use, not the first.
+1. **FE-16 — product detail and the variant matrix** (`GET /catalog/products/{id}/matrix`).
+   The list already opens a row at `/products/{id}` and that route does not
+   exist yet, so this closes a link the product already offers.
+2. **FE-18 — returns and exchanges** (`/pos/returns`, `/pos/exchanges`,
+   `GET /pos/sales/{id}/returnable`). The sales day view now lists invoices; a
+   return is what somebody does with one, and `returnable` says what may go
+   back.
+3. **FE-21 — stock on hand and movements.** The dashboard already links to
+   `/stock` from its out-of-stock row, so that link is dead today.
+
+Before any of them, run `npm run verify:api` against a seeded server and add
+the new endpoints' field checks to it, the way the existing screens are covered.
 
 ### 0.9 Risks
 
 | | |
 |---|---|
-| **R1 — i18n debt** | Screen copy is English literals. The provider and catalogue exist; routing the strings through `t()` touches every screen. **Do it before the screen count doubles.** |
+| **R1 — i18n, now guarded rather than owed** | Every built screen is translated, and two tests keep it that way: the shared coverage check reads the components rather than the catalogue, and a physical-property check refuses `ml-`/`text-right` so Arabic keeps mirroring from `dir` alone. A new screen that skips `t()` fails CI. |
 | **R2 — ZATCA is deliberately isolated** | FE-33 is listed for completeness. The only genuinely external dependency is the taxpayer's own Fatoora OTP, which must never be fabricated. |
 | **R3 — `bn` catalogue is partial** | Complete `en` and `ar`, partial `bn`; the provider falls back per key to English, which is honest but not finished. |
 | **R4 — React types pinned by `paths`** | The workspace root hoists `@types/react` 18 for `web/` and `pos/`. Remove the mapping only when `web/` is gone. |
 | **R5 — RLS depends on the connection role** | A superuser connection silently disables every tenant policy. Development must use a `NOSUPERUSER NOBYPASSRLS` role; `TestConnectionCannotBypassRowLevelSecurity` is the guard. |
-| **R6 — Not validated with a non-owner account** | Every live check used the seeded Owner. The cashier/employee experience is proven by unit tests over the navigation tree, not against a live 403. |
+| **R6 — Not validated with a non-owner account** | Every live check used the seeded Owner. The cashier/employee experience is proven by unit tests over the navigation tree, not against a live 403. **This is now the largest untested claim in the product** and should be the next thing added to `verify:api`: seed a Cashier, sign in as them, and assert the refusals. |
+| **R7 — A fresh dev database cannot sell** | `cmd/devseed` creates an EGS unit with an empty VAT number, so the Saudi compliance gate refuses every sale until it is amended and the branch National Address is filled in. Worth fixing in devseed; recorded here so the next person does not lose an hour to it. |
 
 ### 0.10 Tools actually used
 

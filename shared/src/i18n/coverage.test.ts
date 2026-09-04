@@ -370,8 +370,18 @@ function untranslatedBesideAnExpressionIn(
   // A generic in a type position — `): Promise<`, `function SelectInput<` —
   // ends with a `<` too, and the run before it can look like a short sentence.
   // Excluded by the words only code uses, which no interface string contains.
+  //
+  // `useApi<SalesDay>(scope ? '/dashboard/sales' : null, …)` is the same shape
+  // and matched none of the keywords, so three more markers were added. Each
+  // is something prose does not contain:
+  //
+  //   a straight-quoted literal — a sentence uses the typographic ’, which the
+  //     catalogue's own values do throughout;
+  //   `null` / `undefined` / `true` / `false`, which are not English words in
+  //     any sentence a shop reads;
+  //   a ternary, which is punctuation no sentence arranges that way.
   const isCode =
-    /\b(function|const|let|export|import|return|async|await|interface|type|extends|Promise|Record|React|typeof|instanceof|catch|else|if|switch|case|new)\b|=>|\/\//;
+    /\b(function|const|let|export|import|return|async|await|interface|type|extends|Promise|Record|React|typeof|instanceof|catch|else|if|switch|case|new)\b|=>|\/\/|'[^']*'|\b(null|undefined|true|false)\b|\?[^?]*:/;
 
   // Both sides of the expression. `{money(x)} not yet settled` puts the words
   // after it and `The items on this {title}` puts them before, and a check

@@ -10,7 +10,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "gen:contract": "node scripts/generate-api-contract.mjs",
-    "check:contract": "node scripts/generate-api-contract.mjs --check"
+    "check:contract": "node scripts/generate-api-contract.mjs --check",
+    "verify:api": "node scripts/verify-against-api.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
