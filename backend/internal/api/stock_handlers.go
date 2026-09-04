@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -720,6 +721,150 @@ func (s *Server) handleRecallBatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := s.stock.Recall(r.Context(), scope, batchID, req.Reason)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// --- light production cost tracking (C3.1) ----------------------------------
+
+type productionInputRequest struct {
+	VariantID string `json:"variant_id"`
+	Qty       string `json:"qty"`
+}
+
+type productionRequest struct {
+	UUID        string                   `json:"uuid"`
+	VariantID   string                   `json:"variant_id"`
+	WarehouseID string                   `json:"warehouse_id"`
+	Qty         string                   `json:"qty_produced"`
+	Inputs      []productionInputRequest `json:"inputs"`
+	Labour      string                   `json:"labour_cost"`
+	Packaging   string                   `json:"packaging_cost"`
+	PaidFrom    string                   `json:"paid_from"`
+	ProducedOn  string                   `json:"produced_on"`
+	Note        string                   `json:"note"`
+}
+
+// handleRecordProduction costs a finished batch and puts it into stock.
+//
+// Behind `inventory.adjust_stock`: a batch moves stock and posts to the ledger,
+// which is the same authority an adjustment needs. C3.1 is cost tracking rather
+// than manufacturing, so there is no work order to approve and no state machine
+// to advance — a batch is recorded when it is finished.
+func (s *Server) handleRecordProduction(w http.ResponseWriter, r *http.Request) {
+	var req productionRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := s.stockScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	in := stockops.NewProductionBatch{PaidFrom: req.PaidFrom, Note: req.Note}
+	if in.UUID, err = parseUUID(req.UUID, "uuid"); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if in.VariantID, err = parseUUID(req.VariantID, "variant_id"); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if in.WarehouseID, err = parseUUID(req.WarehouseID, "warehouse_id"); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if in.Qty, err = decimal.NewFromString(req.Qty); err != nil {
+		httpx.Error(w, r, errs.Validation("That quantity is not a number.").
+			WithField("qty_produced", "How many finished units the batch made."))
+		return
+	}
+	if in.Labour, err = amountOrZero(req.Labour, "labour_cost"); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if in.Packaging, err = amountOrZero(req.Packaging, "packaging_cost"); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	on, err := optionalDate(req.ProducedOn, "produced_on")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if on == nil {
+		now := time.Now().UTC()
+		on = &now
+	}
+	in.ProducedOn = *on
+
+	for i, c := range req.Inputs {
+		var use stockops.ProductionInput
+		if use.VariantID, err = parseUUID(c.VariantID, "variant_id"); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		if use.Qty, err = decimal.NewFromString(c.Qty); err != nil {
+			httpx.Error(w, r, errs.Newf(errs.CodeInvalidInput,
+				"Component %d has a quantity that is not a number.", i+1))
+			return
+		}
+		in.Inputs = append(in.Inputs, use)
+	}
+
+	out, err := s.stock.RecordProduction(r.Context(), scope, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, out)
+}
+
+// amountOrZero reads an optional money field. Empty means none was spent.
+func amountOrZero(raw, field string) (decimal.Decimal, error) {
+	if raw == "" {
+		return decimal.Zero, nil
+	}
+	d, err := decimal.NewFromString(raw)
+	if err != nil {
+		return decimal.Zero, errs.Validation("That amount is not a number.").
+			WithField(field, "Leave it out if nothing was spent.")
+	}
+	return d, nil
+}
+
+func (s *Server) handleListProduction(w http.ResponseWriter, r *http.Request) {
+	scope, err := s.stockScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.stock.ProductionBatches(r.Context(), scope,
+		atoiOr(r.URL.Query().Get("limit"), 0))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+func (s *Server) handleReadProduction(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "batchID"), "batchID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := s.stockScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.stock.ProductionBatchByID(r.Context(), scope, id)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

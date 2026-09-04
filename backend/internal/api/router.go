@@ -1057,6 +1057,21 @@ func (s *Server) Routes() []Route {
 			"withdraws a lot from sale and answers who bought from it; the " +
 				"lot keeps its history, which is the point of recording it"},
 
+		// --- light production cost tracking (C3.1) ---
+		//
+		// Cost tracking, not manufacturing: C3.1 puts bills of materials, work
+		// orders, WIP and variance analysis explicitly out of scope for v1. A
+		// batch is recorded when it is finished, so there is no state machine
+		// and nothing to approve — which is why this is one POST and not five.
+		{http.MethodGet, "/api/v1/stock/production", AccessPermission, "inventory.view",
+			s.handleListProduction,
+			"finished batches and what each one cost to make"},
+		{http.MethodPost, "/api/v1/stock/production", AccessPermission, "inventory.adjust_stock",
+			s.handleRecordProduction,
+			"costs a finished batch: components out at what they cost, labour and packaging in, finished units into stock"},
+		{http.MethodGet, "/api/v1/stock/production/{batchID}", AccessPermission, "inventory.view",
+			s.handleReadProduction, ""},
+
 		{http.MethodGet, "/api/v1/stock/transfers", AccessPermission, "inventory.view",
 			s.handleListStockTransfers, ""},
 		{http.MethodPost, "/api/v1/stock/transfers", AccessPermission, "inventory.transfer_stock",

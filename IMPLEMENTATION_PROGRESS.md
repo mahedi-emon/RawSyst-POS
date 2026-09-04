@@ -2041,3 +2041,82 @@ and `/api/v1/expenses/recurring` (list, create, activate, generate).
 A timed job for `Generate` is not wired: the route runs on demand, and running
 it twice is safe, so an overnight schedule is a deployment choice rather than a
 missing capability.
+
+---
+
+# C3.1 — Light production cost tracking: COMPLETE
+
+The last of the five gaps. A garment retailer buys cloth, has it stitched, packs
+it, and sells a shirt — and without this the cloth left stock as a write-off,
+the stitching and packaging were two unrelated expenses, and the shirt appeared
+in stock at a cost somebody guessed. The margin on every locally-made item was
+wrong and nobody could say by how much.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend) |
+| **Migration** | `0123_production_batches.sql` |
+| **Permission** | `inventory.view` / `inventory.adjust_stock` — existing |
+| **Tenant isolation** | RLS + FORCE + policy on both tables |
+| **Accounting** | New posting rule `production.batch` |
+| **Inventory** | `Consume` for components, `Receive` for output, `LockStock` up front |
+| **Audit** | `production_batch_recorded` |
+| **Tests** | 10 |
+
+## The scope boundary is the design
+
+C3.1 is emphatic, and it is quoted in the migration because it decides
+everything: *"this is cost tracking, not a manufacturing module. Full
+manufacturing ERP — Bill of Materials, Production Orders, Work Orders, Material
+Issue, WIP tracking, by-products, routing, capacity planning, production
+variance analysis — is deliberately OUT OF SCOPE for v1."*
+
+So there is no BOM, no work order, no routing, and **no work-in-progress
+account** — a batch is recorded when it is finished, so nothing is ever in
+progress. One POST, not five, and no state machine.
+
+## The arithmetic, and the one thing a caller may not state
+
+    unit cost = (material cost + labour + packaging) / quantity produced
+
+The **material cost never comes from the request.** It comes back from the
+costing engine as each component is consumed, under FIFO, weighted average or
+standard cost — whichever the company uses — so the value leaving inventory is
+the value inventory says it held. A caller who could state the material cost
+could state a margin.
+
+## What the ledger says
+
+Three legs, and their shape is the whole claim:
+
+    debit  Inventory   finished value      (materials + labour + packaging)
+    credit Inventory   material cost       (the cloth left raw stock)
+    credit cash/bank   labour + packaging  (the stitching was paid for)
+
+**Inventory therefore rises by exactly the work done.** The shop owns the same
+cloth, now worth more because somebody worked on it — and it is not richer by
+the cloth's value a second time. `TestProductionAddsOnlyTheWorkToInventory`
+asserts that rise is 200 on a batch of 200 cloth + 150 labour + 50 packaging,
+and `assertInventoryTiesToTheLedger` holds C13's invariant afterwards.
+
+The debit uses the value `Receive` **actually posted**, not the value the unit
+cost multiplies back to. Valuation rounds, and the ledger has to agree with the
+valuation rather than with the arithmetic that preceded it.
+
+## Two bugs found while building it
+
+* **`production` was not a valid stock movement reason.** 0020's list has no
+  word for it, so the service would have failed at runtime on its first batch.
+  Components leaving to become something else are not `wastage` and not
+  `internal_use`; finished units arriving are not `grn`, because nobody
+  delivered them. 0123 adds `production_in` and `production_out`, which is also
+  what makes a stock card readable — *"20 m cloth out — production PRD-000001"*.
+* **The input rows were written before the batch they reference.** A foreign key
+  caught it. They are now held in memory through the costing loop and written
+  after the header, which is the only order in which the batch's costs are known.
+
+## Remaining
+
+Frontend: a batch form and the register. The contract is
+`GET/POST /api/v1/stock/production` and
+`GET /api/v1/stock/production/{batchID}`.
