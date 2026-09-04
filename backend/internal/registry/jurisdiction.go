@@ -107,7 +107,7 @@ func (s *Service) JurisdictionRate(
 			  FROM   tax_jurisdiction j
 			  JOIN   chain c ON c.parent_id = j.id
 			)
-			SELECT c.id, c.level, c.code, c.name, r.rate, r.verified_on IS NOT NULL
+			SELECT c.id, c.level, c.code, c.name, r.rate, (r.verified_on IS NOT NULL OR r.activated_on IS NOT NULL)
 			FROM   chain c
 			LEFT JOIN tax_jurisdiction_rate r
 			       ON r.jurisdiction_id = c.id
@@ -127,9 +127,9 @@ func (s *Service) JurisdictionRate(
 		for rows.Next() {
 			var sh JurisdictionShare
 			var rate *decimal.Decimal
-			var verified *bool
+			var usable *bool
 			if err := rows.Scan(&sh.JurisdictionID, &sh.Level, &sh.Code, &sh.Name,
-				&rate, &verified); err != nil {
+				&rate, &usable); err != nil {
 				return CombinedRate{}, db.Translate(err, "")
 			}
 			found = true
@@ -140,12 +140,23 @@ func (s *Service) JurisdictionRate(
 				silent = append(silent, fmt.Sprintf("%s (%s)", sh.Name, sh.Level))
 				continue
 			}
-			if s.requireVerified && (verified == nil || !*verified) {
+			// Usable means ACTIVATED or verified, not verified alone.
+			//
+			// Activation is what software can honestly assert about a rate
+			// imported from an authority's own publication: it carries its
+			// provenance, its chain resolves, and no two rates for one
+			// authority overlap. Verification is the stronger, optional
+			// statement that a named person checked the figure by hand.
+			//
+			// Requiring the second made 541 lawfully published Californian
+			// rates unusable and closed a market over an internal preference.
+			// CDTFA asks nobody's permission to publish a rate.
+			if s.requireVerified && (usable == nil || !*usable) {
 				return CombinedRate{}, errs.Newf(errs.CodeUnverifiedRule,
-					"The %s tax rate for %s (%s) has not been verified against "+
-						"its authority, so this sale cannot be priced. A "+
-						"combined rate is only as sound as its least checked "+
-						"part.", treatment, sh.Name, sh.Code)
+					"The %s tax rate for %s (%s) has not been activated, so "+
+						"this sale cannot be priced. A combined rate is only "+
+						"as sound as its least checked part.",
+					treatment, sh.Name, sh.Code)
 			}
 			sh.Rate = *rate
 			total = total.Add(sh.Rate)

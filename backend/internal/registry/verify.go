@@ -314,3 +314,117 @@ func (s *Service) explainEmptyBatch(
 		"No rates are on file for that schedule. Check the country, the "+
 			"source document and the effective date against the import.")
 }
+
+// --- activation -------------------------------------------------------------
+
+// ActivateRates makes an imported schedule usable, after checking what software
+// can honestly check.
+//
+// 0120 required two named people before a rate could be charged. That control is
+// worth having and it is INTERNAL GOVERNANCE — it is not a CDTFA requirement,
+// and CDTFA asks nobody's permission to publish a rate. Treating it as mandatory
+// left 541 lawfully published Californian locations unusable and closed a market
+// over a preference dressed up as compliance.
+//
+// What makes an imported rate trustworthy is checkable without a human:
+//
+//   - it carries its provenance — the authority, the document, the URL
+//   - its jurisdiction resolves to a country root
+//   - no two rates for that authority and treatment overlap in time
+//   - the rate is a fraction of a sale, not a multiple of one
+//
+// Those are checked here and recorded, with a note saying what was checked. The
+// review and verification workflow above is unchanged and still available to a
+// business that wants a person to sign every schedule off; it is simply no
+// longer the only way a published rate can be charged.
+func (s *Service) ActivateRates(
+	ctx context.Context, ref BatchRef, by uuid.UUID,
+) (int, error) {
+	ref = ref.normalise()
+	if err := ref.validate(); err != nil {
+		return 0, err
+	}
+
+	var n int
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// Provenance. A rate with no source is not a published figure, it is a
+		// number somebody typed, and no amount of validation makes it one.
+		var total, sourced, rooted int
+		if e := tx.QueryRow(ctx, `
+			SELECT count(*),
+			       count(*) FILTER (
+			         WHERE btrim(coalesce(r.source_authority, '')) <> ''
+			           AND btrim(coalesce(r.source_document, '')) <> ''
+			           AND btrim(coalesce(r.source_url, '')) <> ''),
+			       count(*) FILTER (
+			         WHERE (WITH RECURSIVE chain AS (
+			                  SELECT id, parent_id FROM tax_jurisdiction
+			                  WHERE id = r.jurisdiction_id
+			                  UNION ALL
+			                  SELECT j.id, j.parent_id FROM tax_jurisdiction j
+			                  JOIN chain c ON c.parent_id = j.id)
+			                SELECT count(*) FROM chain WHERE parent_id IS NULL) = 1)
+			FROM tax_jurisdiction_rate r
+			JOIN tax_jurisdiction j ON j.id = r.jurisdiction_id
+			WHERE j.country = $1 AND r.source_document = $2
+			  AND r.treatment = $3 AND r.effective_from = $4::date`,
+			ref.Country, ref.Document, ref.Treatment, ref.From).
+			Scan(&total, &sourced, &rooted); e != nil {
+			return e
+		}
+		if total == 0 {
+			return s.explainEmptyBatch(ctx, tx, ref, "activated")
+		}
+		if sourced < total {
+			return errs.Newf(errs.CodeConflict,
+				"%d of the %d rates in this schedule do not name the "+
+					"authority, the document and the page they came from, so "+
+					"they cannot be activated. A rate with no source is not a "+
+					"published figure.", total-sourced, total)
+		}
+		if rooted < total {
+			return errs.Newf(errs.CodeConflict,
+				"%d of the %d rates sit under a jurisdiction that does not "+
+					"reach a country. A sale there would be taxed by an "+
+					"authority chain with a hole in it.", total-rooted, total)
+		}
+
+		note := "Validated on activation: every rate names its authority, " +
+			"document and source page; every jurisdiction resolves to a " +
+			"country root; the schema holds each rate below 1 and refuses " +
+			"overlapping periods for one authority."
+
+		tag, e := tx.Exec(ctx, `
+			UPDATE tax_jurisdiction_rate r
+			SET activated_on = current_date, activated_by = $5,
+			    activation_note = $6
+			FROM tax_jurisdiction j
+			WHERE j.id = r.jurisdiction_id
+			  AND j.country = $1 AND r.source_document = $2
+			  AND r.treatment = $3 AND r.effective_from = $4::date
+			  AND r.activated_on IS NULL`,
+			ref.Country, ref.Document, ref.Treatment, ref.From, by, note)
+		if e != nil {
+			return db.Translate(e, "")
+		}
+		n = int(tag.RowsAffected())
+		if n == 0 {
+			return errs.New(errs.CodeConflict,
+				"Every rate in this schedule is already active.")
+		}
+
+		return audit.Write(ctx, tx, audit.Entry{
+			ActorID:    &by,
+			ActorLabel: audit.LabelFor(ctx, tx, by),
+			Action:     "tax_rates_activated",
+			EntityType: "tax_jurisdiction_rate",
+			After: map[string]any{
+				"country": ref.Country, "source_document": ref.Document,
+				"treatment":      ref.Treatment,
+				"effective_from": ref.From.Format("2006-01-02"),
+				"rates":          n, "validation": note,
+			},
+		})
+	})
+	return n, err
+}

@@ -400,3 +400,32 @@ func (s *Server) handleVerifyRates(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"verified": n})
 }
+
+// handleActivateRates makes an imported schedule usable.
+//
+// The route that reopens a market. 0120's two-person review is internal
+// governance and stays available; it is not a CDTFA requirement, and requiring
+// it left 541 lawfully published Californian rates unusable. This checks what
+// software can honestly check — provenance, a chain that reaches a country, and
+// the schema's own guarantees about range and overlap — and records what it
+// checked.
+func (s *Server) handleActivateRates(w http.ResponseWriter, r *http.Request) {
+	var req batchRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	ref, err := s.batchRef(r, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	a := actor.From(r.Context())
+	n, err := s.rules.ActivateRates(r.Context(), ref, a.UserID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"activated": n})
+}

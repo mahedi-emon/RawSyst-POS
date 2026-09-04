@@ -590,6 +590,7 @@ func (s *Service) UnverifiedBlockersFor(
 	rows, err := tx.Query(ctx, `
 		SELECT rule_key FROM regulatory_rule
 		WHERE release_blocker
+		  AND blocks = 'onboarding'
 		  AND verified_on IS NULL
 		  AND effective_to IS NULL
 		  AND lower(country) = $1

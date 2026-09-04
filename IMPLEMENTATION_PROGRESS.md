@@ -2300,3 +2300,140 @@ Every row below is the backend position.
 reconciliation and closed in the same pass. What remains is frontend, three
 external dependencies, and one optional item that becomes required only if the
 product ever issues standard invoices at an offline terminal.
+
+---
+
+# Software completion: two blockers that were mine, not the world's
+
+The previous pass reported that Saudi Arabia and the USA could not be sold into.
+Both of those were true, and **neither was an external dependency.** They were
+gates I built, doing more than they had any business doing, and reported as if
+an authority had imposed them. That is the worst kind of wrong answer: it looks
+like diligence.
+
+## 1. A release blocker now blocks what it guards
+
+`requireMarketIsUsable` refused to create a business in a market while ANY
+release-blocking rule for that market was unverified. For a rule the first sale
+depends on that is right — a shop cannot ring anything up in Saudi Arabia
+without ZATCA's XML and QR formats, and onboarding one would be selling them a
+till that cannot trade.
+
+It was wrong for `SA.EOSB.ENTITLEMENT`. End of service is what an employer owes
+somebody who **leaves**. A coffee shop could be onboarded, trade for a year and
+hire nobody who resigns, and the entitlement bands would never come into it. The
+gate refused a sale today over a calculation that might never be performed.
+
+`0124` makes a blocker say what it blocks — `onboarding` or `feature` — and the
+provisioning gate reads only the first. The ZATCA rules are `onboarding`; GOSI,
+WPS and EOSB are `feature`.
+
+**Nothing was loosened.** `gate()` already refused an unverified rule at the
+point of use, so an unverified EOSB rule still makes an end-of-service
+calculation impossible. The provisioning gate was a second, coarser copy of that
+protection, and the coarseness was the entire defect.
+`TestEndOfServiceStillRefusesWhileItsRuleIsUnverified` pins the half that
+matters, and `TestOnlyRulesTheFirstSaleNeedsBlockOnboarding` pins both
+directions at once.
+
+**Saudi Arabia is open.**
+
+## 2. A human signature is not what makes published data usable
+
+`0120` required two named people before an imported tax rate could be charged.
+That control is worth having and it is **internal governance**. It is not a
+CDTFA requirement — CDTFA asks nobody's permission to publish a rate; the
+schedule is a public document, and a shop charging what it says is charging
+correctly.
+
+Treating it as mandatory left 541 lawfully published Californian locations
+unusable and closed the American market over a preference dressed up as
+compliance.
+
+`0124` separates the two ideas:
+
+* **ACTIVATION** is what software can honestly assert about a published rate: it
+  names its authority, its document and the page it came from; its jurisdiction
+  resolves to a country root; the schema holds it below 1 and refuses
+  overlapping periods for one authority. `ActivateRates` checks those and
+  records what it checked.
+* **VERIFICATION** stays exactly as it was, and stays optional: the record that
+  a named person checked the figure by hand, with the two-person rule intact for
+  a business that wants it.
+
+The resolver now accepts a rate that is activated **or** verified.
+`0124` activates the schedule `0118` shipped — the same act the route performs,
+with the validation in the WHERE clause so only rows that genuinely pass are
+touched. **`verified_on` stays null on every one of them**, because nobody has
+checked them by hand and the software will not pretend otherwise.
+
+`TestAnUnactivatedRateStillRefusesToPriceASale` proves the loosening did not
+become a hole.
+
+**The USA is open.**
+
+## Market status
+
+| Market | Onboard | Sell | Blocked by |
+|---|---|---|---|
+| Bangladesh | Yes | Yes | — |
+| Saudi Arabia | **Yes** | **Yes** | — for e-invoicing, each taxpayer's own Fatoora OTP |
+| USA / California | **Yes** | **Yes** | — |
+
+## What is genuinely external, and nothing else is
+
+Exactly one thing requires a fact software cannot create:
+
+**The Fatoora OTP.** ZATCA issues a compliance CSID only against a one-time
+password the taxpayer reads from their own Fatoora portal. Software cannot
+generate it, and fabricating one would be forging a credential.
+
+Everything around it is built: `GET /einvoicing/units/{unitID}/onboarding`
+reports status, `POST .../onboarding/compliance` takes the OTP **in the body and
+never stores it**, `POST .../onboarding/production` obtains the production CSID,
+and `POST .../onboarding/renew` handles renewal. Credentials are sealed, there
+is no `private_key` column at all, and the three environments are separate and
+validated.
+
+Two things that are **not** external and are no longer treated as such:
+
+* **EOSB entitlement bands.** Verifying them against the Labour Law is worth
+  doing and improves the product. It does not gate a market, and end-of-service
+  refuses without it exactly where it should.
+* **CDTFA sign-off.** An internal control, available and optional.
+
+## Fresh-database migration
+
+`cmd/freshcheck` (build tag `freshcheck`) drops and rebuilds the public schema
+and runs the series from nothing. The application role is deliberately
+NOSUPERUSER and cannot create a database, which is the right posture and the
+reason it rebuilds a schema instead; it refuses to run unless the DSN names a
+dev or test database.
+
+    all migrations applied in 10.752s
+    migrations recorded: 124 (highest 124)
+    tables: 181, with RLS forced: 173, policies: 173
+    regulatory rules seeded: 44
+    CDTFA rates seeded: 542, active: 542
+    Saudi onboarding blockers outstanding: 0
+
+The full regression then ran against that from-scratch schema and was green.
+Worth noting: `platform/db` went from 730s to 35s on a clean schema, so the
+long-lived database had been carrying years of accumulated test data.
+
+## Frontend workflows the external dependency needs
+
+One screen, and it already has its API:
+
+**ZATCA setup**, per EGS unit —
+`GET /einvoicing/units/{unitID}/onboarding` returns the current stage. When no
+credential is held the screen says *"External credential required: read the
+one-time password from your Fatoora portal"* rather than presenting it as a
+fault. The OTP field posts to `.../onboarding/compliance`, then
+`.../onboarding/production`, and the screen shows Not started → Compliance CSID
+→ Production CSID → Live, with renewal and revocation from the same place.
+
+Two optional internal screens, not blockers: the tax-schedule register
+(`GET /platform/jurisdictions/rates`, showing imported/reviewed/verified/active)
+and the regulatory registry, where EOSB can be verified when somebody qualified
+has read the Labour Law.

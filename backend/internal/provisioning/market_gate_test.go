@@ -12,6 +12,7 @@ package provisioning
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -23,7 +24,6 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 )
 
@@ -67,34 +67,89 @@ func newTenantIn(market string) NewTenant {
 	}
 }
 
-// A production deployment refuses a Saudi business while Saudi rules are
-// placeholders.
+// A Saudi business can be taken on, because the rules its first sale depends
+// on are verified.
 //
-// SA.EOSB.ENTITLEMENT is seeded unverified and is a release blocker: the
-// entitlement is days of wage per year of service and nobody has confirmed the
-// bands against the Labour Law. Taking on a Saudi client now would mean
-// computing that client's end-of-service figures from a guess.
+// This test used to assert the opposite, and the assertion was wrong in a way
+// that cost a market. `requireMarketIsUsable` refused a business while ANY
+// release-blocking rule was unverified, and the only one left was
+// SA.EOSB.ENTITLEMENT — end of service, which is what an employer owes somebody
+// who LEAVES. A coffee shop could be onboarded, trade for a year and hire
+// nobody who resigns, and the entitlement bands would never come into it. The
+// gate refused a sale today over a calculation that might never be performed.
 //
-// GOSI and the WPS wage-file layout were the other two, and 0117 and 0116
-// recorded both from their authorities' own publications, verified. The gate
-// is unchanged; there is simply one rule left to confirm rather than three.
-func TestASaudiBusinessIsRefusedWhileItsRulesAreUnverified(t *testing.T) {
+// 0124 makes a blocker say what it blocks. The ZATCA rules are 'onboarding' —
+// without them nothing can be issued at all, so selling a shop that till would
+// be selling them a till that cannot trade. EOSB is 'feature', and is enforced
+// where it is used rather than where a business is created.
+func TestASaudiBusinessCanBeTakenOn(t *testing.T) {
 	svc, _ := newProvisioning(t, true)
 
-	_, err := svc.CreateTenant(superAdmin(), newTenantIn("sa"))
-	if err == nil {
-		t.Fatal("a Saudi business was created on placeholder legal values")
+	out, err := svc.CreateTenant(superAdmin(), newTenantIn("sa"))
+	if err != nil {
+		t.Fatalf("a Saudi business could not be created: %v", err)
 	}
-	if errs.CodeOf(err) != errs.CodeUnverifiedRule {
-		t.Errorf("code = %v, want %v: %v",
-			errs.CodeOf(err), errs.CodeUnverifiedRule, err)
+	if out.TenantID == uuid.Nil {
+		t.Error("no tenant came back")
 	}
-	// The message has to name the rules. "Cannot create" without saying which
-	// value is missing leaves the operator with nothing to act on.
-	for _, key := range []string{"SA.EOSB.ENTITLEMENT"} {
-		if !strings.Contains(err.Error(), key) {
-			t.Errorf("the refusal does not name %s: %v", key, err)
+}
+
+// The gate still refuses a market that cannot issue an invoice, and no longer
+// refuses one that merely cannot compute a leaving payment.
+//
+// Both halves matter and they pull in opposite directions, which is why they
+// are asserted together. Loosening "any unverified blocker" to "an unverified
+// ONBOARDING blocker" must not loosen it to "nothing": a shop that cannot issue
+// an invoice must not be sold a till.
+//
+// Staged inside a transaction that is rolled back, and the predicate is queried
+// directly because UnverifiedBlockersFor opens its own transaction and would
+// not see an uncommitted change.
+func TestOnlyRulesTheFirstSaleNeedsBlockOnboarding(t *testing.T) {
+	_, pool := newProvisioning(t, true)
+	ctx := context.Background()
+
+	// The query the gate runs.
+	const blockers = `
+		SELECT count(*) FROM regulatory_rule
+		WHERE release_blocker AND blocks = 'onboarding'
+		  AND verified_on IS NULL AND effective_to IS NULL
+		  AND lower(country) = 'sa'`
+
+	rollback := errors.New("rollback: this test must not unverify a rule")
+	err := pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// As things stand: end of service is unverified and Saudi onboarding
+		// is open, because a leaving payment is not what a first sale needs.
+		var n int
+		if e := tx.QueryRow(ctx, blockers).Scan(&n); e != nil {
+			return e
 		}
+		if n != 0 {
+			t.Errorf("%d onboarding blockers stand while only end of service "+
+				"is unverified; a shop that can issue an invoice should be "+
+				"able to trade", n)
+		}
+
+		// Take away a rule the invoice itself depends on, and the market
+		// closes again.
+		if _, e := tx.Exec(ctx, `
+			UPDATE regulatory_rule SET verified_on = NULL, verified_by = NULL
+			WHERE country = 'sa' AND blocks = 'onboarding'
+			  AND effective_to IS NULL`); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx, blockers).Scan(&n); e != nil {
+			return e
+		}
+		if n == 0 {
+			t.Error("no onboarding blocker stands for a market whose invoice " +
+				"rules are unverified; a shop would be sold a till that " +
+				"cannot issue anything")
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("stage an unverified invoice rule: %v", err)
 	}
 }
 

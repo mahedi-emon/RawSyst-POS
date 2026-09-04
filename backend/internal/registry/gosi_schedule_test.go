@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
 
 // stageGOSIVersion closes the rule in force and inserts a successor, exactly as
@@ -197,5 +199,35 @@ func TestTheGOSIWageCeilingComesFromTheRule(t *testing.T) {
 	})
 	if !errors.Is(err, rollback) {
 		t.Fatalf("stage a ceiling change: %v", err)
+	}
+}
+
+// End of service still cannot be computed from a placeholder.
+//
+// This is the property that makes 0124's change safe. The provisioning gate
+// used to refuse a Saudi business outright while SA.EOSB.ENTITLEMENT was
+// unverified — a coffee shop turned away over a leaving payment it might never
+// have to make. 0124 lets the business be created and leaves the rule enforced
+// where it is actually used.
+//
+// If this ever passes, the loosening became a hole: a shop would be told what
+// it owes a departing employee on the strength of a number nobody confirmed.
+func TestEndOfServiceStillRefusesWhileItsRuleIsUnverified(t *testing.T) {
+	s := newRegistry(t)
+	s.requireVerified = true
+
+	_, err := s.Decimal(context.Background(), Query{
+		Key:     "SA.EOSB.ENTITLEMENT",
+		Country: "sa",
+		AsOf:    time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+	}, "days_per_year_first_five")
+
+	if err == nil {
+		t.Fatal("an end-of-service entitlement was resolved from a rule " +
+			"nobody has verified against the Labour Law")
+	}
+	if errs.CodeOf(err) != errs.CodeUnverifiedRule {
+		t.Errorf("code = %v, want %v: %v", errs.CodeOf(err),
+			errs.CodeUnverifiedRule, err)
 	}
 }

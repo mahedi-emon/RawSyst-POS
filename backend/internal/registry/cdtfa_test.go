@@ -15,7 +15,6 @@ package registry
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -46,33 +45,65 @@ func alamedaID(t *testing.T, s *Service) uuid.UUID {
 // saleDate is after the 2026-07-01 schedule takes effect.
 var saleDate = time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC)
 
-// A production deployment refuses to price a sale on the shipped schedule.
+// The shipped schedule prices a Californian sale, because it is active.
 //
-// 0118 loads CDTFA's figures but marks none of them verified: the rates are the
-// authority's, the conversion from combined rates to per-authority shares is
-// this product's arithmetic, and nobody has yet put their name to it. Until
-// somebody does, a Californian shop must be refused rather than charged a rate
-// that has not been checked.
-func TestTheShippedCaliforniaScheduleRefusesUntilItIsVerified(t *testing.T) {
+// 0120 required two named people before any imported rate could be charged, and
+// that left 541 lawfully published locations unusable — an internal control
+// dressed up as a CDTFA requirement, which it never was. 0124 separates the two
+// ideas: ACTIVATION is what software can honestly assert about a published rate
+// (it names its authority, its document and its page, and its jurisdiction
+// resolves to a country), and VERIFICATION stays as the stronger, optional
+// record that a person checked the figure by hand.
+//
+// So this asserts the market works, and the test below asserts the protection
+// that actually mattered still does.
+func TestTheShippedCaliforniaScheduleIsActiveAndPricesASale(t *testing.T) {
 	s := newRegistry(t)
 	s.requireVerified = true
 
-	_, err := s.JurisdictionRate(context.Background(), nil,
+	got, err := s.JurisdictionRate(context.Background(), nil,
 		alamedaID(t, s), "taxable", saleDate)
-	if err == nil {
-		t.Fatal("the shipped California schedule priced a sale; every rate " +
-			"in it is unverified")
+	if err != nil {
+		t.Fatalf("a Californian sale could not be priced: %v", err)
 	}
-	if errs.CodeOf(err) != errs.CodeUnverifiedRule {
-		t.Errorf("code = %v, want %v: %v", errs.CodeOf(err),
-			errs.CodeUnverifiedRule, err)
+	if want := decimal.RequireFromString("0.1075"); !got.Total.Equal(want) {
+		t.Errorf("Alameda is charged %s; CDTFA publishes %s", got.Total, want)
 	}
-	// The refusal has to be actionable: an operator reading it needs to know
-	// which authority is holding the sale up.
-	if !strings.Contains(err.Error(), "Alameda") &&
-		!strings.Contains(err.Error(), "California") {
-		t.Errorf("the refusal names no authority, so nobody knows what to "+
-			"verify: %v", err)
+}
+
+// An unactivated rate still refuses, which is the protection that mattered.
+//
+// Loosening the gate from "verified" to "activated" must not loosen it to
+// "anything on file". A rate nobody has validated cannot price a sale, and this
+// stages one inside a transaction that is rolled back to prove it.
+func TestAnUnactivatedRateStillRefusesToPriceASale(t *testing.T) {
+	s := newRegistry(t)
+	s.requireVerified = true
+	ctx := context.Background()
+
+	rollback := errors.New("rollback: this test must not deactivate anything")
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		if _, e := tx.Exec(ctx, `
+			UPDATE tax_jurisdiction_rate r
+			SET activated_on = NULL, activation_note = NULL
+			FROM tax_jurisdiction j
+			WHERE j.id = r.jurisdiction_id
+			  AND j.country = 'us' AND j.level = 'city'
+			  AND j.code = 'CA-ALAMEDA'`); e != nil {
+			return e
+		}
+
+		_, e := s.JurisdictionRate(ctx, tx, alamedaID(t, s), "taxable", saleDate)
+		if e == nil {
+			t.Error("a rate nobody validated was used to price a sale")
+		} else if errs.CodeOf(e) != errs.CodeUnverifiedRule {
+			t.Errorf("code = %v, want %v: %v", errs.CodeOf(e),
+				errs.CodeUnverifiedRule, e)
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("stage an unactivated rate: %v", err)
 	}
 }
 
