@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { PERMISSIONS, ROUTE_PERMISSIONS } from '../api/contract.generated';
+import { PERMISSIONS, ROUTE_PERMISSIONS, ROUTES } from '../api/contract.generated';
 import { Grants } from '../auth/permissions';
 import {
   BUSINESS_NAV,
   PLATFORM_NAV,
   findActiveItem,
   flattenNavigation,
+  landingFor,
   resolveNavigation,
 } from './navigation';
 
@@ -192,5 +193,125 @@ describe('route guards may only name a permission that gates a route', () => {
       }
     }
     expect(wrong).toEqual([]);
+  });
+});
+
+/**
+ * The route each built screen reads FIRST.
+ *
+ * Maintained by hand, because a page route and an API route are different
+ * things and nothing in the contract connects them. Add an entry when a screen
+ * is built; the test below then holds it to what the API actually requires.
+ */
+const PRIMARY_READ: Record<string, string> = {
+  dashboard: '/api/v1/dashboard/overview',
+  products: '/api/v1/catalog/products',
+  customers: '/api/v1/customers',
+  sales: '/api/v1/dashboard/sales',
+  'stock-on-hand': '/api/v1/stock/on-hand',
+  suppliers: '/api/v1/purchasing/suppliers',
+  'purchase-orders': '/api/v1/purchasing/orders',
+  'goods-receipts': '/api/v1/purchasing/orders',
+  payables: '/api/v1/purchasing/ageing',
+  bills: '/api/v1/purchasing/bills',
+  'supplier-payments': '/api/v1/purchasing/bills',
+  requisitions: '/api/v1/purchasing/requisitions',
+  rfqs: '/api/v1/purchasing/rfqs',
+};
+
+describe('a link that appears leads somewhere', () => {
+  const permissionOf = new Map<string, string>();
+  for (const route of ROUTES) {
+    if (route.method === 'GET' && route.access === 'Permission') {
+      permissionOf.set(route.pattern, route.permission);
+    }
+  }
+
+  it('never shows a link on a permission the screen behind it is refused', () => {
+    // The failure this catches, found live rather than by reading: the
+    // dashboard was shown to anybody holding sales.view OR accounting.view OR
+    // inventory.view, and GET /dashboard/overview is accounting.view alone. A
+    // seeded Cashier holds two of those three and none of them that one, so
+    // the link appeared and answered 403. Branch Manager and Inventory Keeper
+    // had the same problem, and four buying links had it in the other
+    // direction.
+    //
+    // Nav permissions are ANY-of, so EVERY listed permission has to be enough
+    // on its own. One that is not is a link somebody sees and cannot follow.
+    const wrong: string[] = [];
+    for (const section of BUSINESS_NAV) {
+      for (const item of section.items) {
+        const route = PRIMARY_READ[item.id];
+        if (!route) continue;
+        const needed = permissionOf.get(route);
+        expect(needed, `${route} is not a GET permission route`).toBeDefined();
+        for (const granted of item.permissions) {
+          if (granted !== needed) {
+            wrong.push(`${item.id}: shown on ${granted}, but ${route} needs ${needed}`);
+          }
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('gives every mapped screen a permission at all', () => {
+    for (const section of BUSINESS_NAV) {
+      for (const item of section.items) {
+        if (!PRIMARY_READ[item.id]) continue;
+        expect(item.permissions.length, item.id).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe('where somebody lands after signing in', () => {
+  /** The nineteen a seeded Cashier resolves to, read off a live /auth/me. */
+  const CASHIER = [
+    'catalog.view',
+    'customers.view',
+    'installment.view',
+    'inventory.view',
+    'label.print',
+    'loyalty.view',
+    'order.view',
+    'portal.view',
+    'promotion.view',
+    'sales.create',
+    'sales.discount',
+    'sales.exchange',
+    'sales.hold',
+    'sales.receive_payment',
+    'sales.refund',
+    'sales.view',
+    'serial.view',
+    'service.view',
+    'wallet.view',
+  ];
+
+  it('does not send a cashier to a screen the API refuses them', () => {
+    const where = landingFor(BUSINESS_NAV, new Grants(CASHIER));
+    // The old behaviour sent everybody here, and this account gets a 403 from
+    // the route behind it.
+    expect(where).not.toBe('/dashboard');
+    expect(where).not.toBeNull();
+  });
+
+  it('sends an owner to the dashboard, which is what an owner opens for', () => {
+    expect(landingFor(BUSINESS_NAV, new Grants([...PERMISSIONS]))).toBe('/dashboard');
+  });
+
+  it('says nothing rather than looping when somebody can reach nothing', () => {
+    // A real state: the last role was taken away while they were signed in.
+    expect(landingFor(BUSINESS_NAV, new Grants([]))).toBeNull();
+  });
+
+  it('skips a module the plan does not include', () => {
+    // A link to an upsell is not somewhere to drop somebody who came to work.
+    const grants = new Grants([...PERMISSIONS]);
+    const withoutAnything = landingFor(BUSINESS_NAV, grants, new Set<string>());
+    // Every item that names a feature is excluded, so the answer is either a
+    // featureless item or the first reachable one -- never undefined.
+    expect(withoutAnything).not.toBeNull();
   });
 });

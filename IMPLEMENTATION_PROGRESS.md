@@ -692,6 +692,112 @@ without rewriting them. It is left alone here because it changes what a
 documented endpoint does with a field callers may be sending, and that is a
 decision rather than a defect fix.
 
+### 0.91 R6 CLOSED — a real cashier, against the real backend
+
+The largest untested claim in the product was that its permission model works.
+It has now been driven with an account created the way the product creates one.
+
+```
+Owner → POST /people (role: Cashier / POS Operator)
+      → one-time password issued
+      → sign in → GET /auth/me → 19 permissions, is_super_admin false
+```
+
+Every boundary, measured rather than reasoned about:
+
+| Request | Answer |
+|---|---|
+| `GET /catalog/products` | 200 |
+| `GET /customers` | 200 |
+| `GET /catalog/snapshot` | 200 |
+| `GET /pos/counters` | 200 |
+| `GET /purchasing/suppliers` | **403** |
+| `GET /purchasing/orders` | **403** |
+| `GET /purchasing/ageing` | **403** |
+| `GET /people` | **403** |
+| `GET /employees` | **403** |
+| `GET /permissions` | **403** |
+| `GET /dashboard/overview` | **403** |
+| `GET /reports/vat-return` | **403** |
+| `GET /platform/health` | **404**, by design — confirming a platform route exists is itself a leak |
+
+The backend is the boundary and it holds. Thirteen refusals, no leaks, and the
+platform routes answer 404 rather than 403 to the same account.
+
+#### Four frontend defects, all found by doing it rather than reading it
+
+**1. A cashier landed on a screen the API refuses them.** Every signed-in
+person was sent to `/dashboard`, and that screen reads
+`GET /dashboard/overview` — which is `accounting.view`. A Cashier holds
+`sales.view` and `inventory.view` and not that one. So did Branch / Store
+Manager and Inventory / Warehouse Keeper: **three of thirteen seeded roles
+signed in and hit a 403 on the first screen they saw.**
+
+Fixed twice over. The dashboard nav item now names `accounting.view` alone,
+and `landingFor()` sends somebody to the first item they can actually open. A
+cashier now lands on **`/pos`**, which is where a cashier should start anyway.
+
+**2. Five nav links led to a 403.** Nav permissions are ANY-of, so every
+permission listed has to be sufficient on its own. The dashboard listed three
+where one was required; `/buying/receipts`, `/buying/payments`,
+`/buying/requisitions` and `/buying/quotes` each listed an action permission
+beside the list permission their screen actually reads. Two were reachable by
+seeded roles today (dashboard, requisitions); three needed a custom role.
+
+Now pinned: `navigation.test.ts` maps each built screen to the route it reads
+first and fails if any listed permission is not the one that route requires.
+Reverting the dashboard fix fails two tests.
+
+**3. A one-time password was permanent.** `POST /people` issues one and
+sign-in answers `must_change_password: true`. The client parsed that flag —
+`mustChangePassword` in `client.ts` — and **no screen acted on it.** An
+employee signed in with the password their manager had just read off a screen,
+went straight to work, and it stayed valid. The person who issued it could sign
+in as them indefinitely, and every sale that account rang up carried their name.
+
+`/change-password` now stands between them and the product. Verified live: the
+change succeeds, the old password answers 401, the new sign-in reports
+`must_change_password: false`.
+
+**4. Fifty-six links to screens that do not exist.** The architecture describes
+73 items and 15 are built. A cashier's sidebar offered 23 links and 17 of them
+went to a not-found page, which reads as a broken product rather than an
+unfinished one. `visibleNavigation()` offers what exists;
+`navigation.built.test.ts` reads the app directory and fails if a `built` flag
+is wrong **in either direction** — a flag on a missing page is a dead link, and
+a page missing its flag is work nobody can reach, which is worse for being
+silent.
+
+Kept separate from `resolveNavigation` on purpose: a permission mistake shows
+somebody a screen they are refused, an unbuilt link shows them a not-found
+page, and folding the two together made six unrelated tests fail for a reason
+that had nothing to do with what they check.
+
+#### What each person now gets
+
+| | lands on | sidebar |
+|---|---|---|
+| Owner | `/dashboard` | 11 screens |
+| Cashier | `/pos` | 6 screens |
+
+Every link leads somewhere that exists, and to something that account can open.
+
+#### One characteristic, recorded rather than changed
+
+An access token issued before a password change **keeps working until it
+expires**. `ChangePassword` revokes every `user_session` row, and the handler
+says "Please sign in again on all your devices" — but access tokens are
+stateless JWTs and the middleware does not read the session row per request.
+Measured: `/auth/me` on the old token answered 200 after the change.
+
+That is a deliberate trade-off, not a defect: checking revocation per request
+is a database read per request, which is the cost stateless tokens exist to
+avoid, and `RAWSYST_ACCESS_TOKEN_TTL` bounds the window at 15 minutes. The
+frontend closes its own half — `/change-password` calls `signOut()` before
+redirecting, so the browser holds nothing. The residual is a token captured
+elsewhere, for at most fifteen minutes. Recorded so nobody reads the handler's
+message as a stronger promise than the system makes.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing, continued.** Suppliers, orders, one order, raising one
@@ -720,8 +826,8 @@ The next three, in order, each for a reason:
    stock on hand now shows what is running out and offers no way to order more.
 
 Before each, add its endpoints to `npm run verify:api` the way the built
-screens are covered. And the largest untested claim in the product remains R6:
-nothing has been checked against a live non-owner account.
+screens are covered. R6 is closed: see §0.91. A live Cashier account now proves the boundary, and
+closing it found four frontend defects.
 
 ### 0.85 Running it locally
 
@@ -802,7 +908,7 @@ address. See risk R7.
 | **R3 — `bn` catalogue is partial** | Complete `en` and `ar`, partial `bn`; the provider falls back per key to English, which is honest but not finished. |
 | **R4 — React types pinned by `paths`** | The workspace root hoists `@types/react` 18 for `web/` and `pos/`. Remove the mapping only when `web/` is gone. |
 | **R5 — RLS depends on the connection role** | A superuser connection silently disables every tenant policy. Development must use a `NOSUPERUSER NOBYPASSRLS` role; `TestConnectionCannotBypassRowLevelSecurity` is the guard. |
-| **R6 — Not validated with a non-owner account** | Every live check used the seeded Owner. The cashier/employee experience is proven by unit tests over the navigation tree, not against a live 403. **This is now the largest untested claim in the product** and should be the next thing added to `verify:api`: seed a Cashier, sign in as them, and assert the refusals. |
+| ~~**R6 — Not validated with a non-owner account**~~ **CLOSED, §0.91.** A Cashier was created through `POST /people`, signed in with the one-time password it issued, and driven against the real API: 4 authorised routes answered 200, 9 unauthorised answered 403, and `/platform/health` answered 404. Closing it found four frontend defects, three of which a seeded role hit on sign-in. |
 | **R7 — A fresh dev database cannot sell** | `cmd/devseed` creates an EGS unit with an empty VAT number, so the Saudi compliance gate refuses every sale until it is amended and the branch National Address is filled in. Worth fixing in devseed; recorded here so the next person does not lose an hour to it. |
 
 ### 0.10 Tool and skill decision log

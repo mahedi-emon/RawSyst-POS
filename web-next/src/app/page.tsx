@@ -13,6 +13,7 @@ import { useEffect } from 'react';
 
 import { useSession } from '@/lib/auth/session';
 import { useT } from '@/lib/i18n/locale';
+import { BUSINESS_NAV, landingFor } from '@/lib/nav/navigation';
 
 export default function Root() {
   const t = useT();
@@ -25,7 +26,18 @@ export default function Root() {
       return;
     }
     if (status === 'signed-in' && identity) {
-      router.replace(identity.workspace === 'platform' ? '/platform' : '/dashboard');
+      if (identity.workspace === 'platform') {
+        router.replace('/platform');
+        return;
+      }
+      // NOT /dashboard for everybody. That screen reads GET
+      // /dashboard/overview, which is accounting.view -- and a Cashier, a
+      // Branch Manager and an Inventory Keeper all hold none of it. Verified
+      // against a live cashier account, which resolves to nineteen permissions
+      // and gets a 403 from that route. So: the first thing this person can
+      // actually open, which for a cashier is the till.
+      const home = landingFor(BUSINESS_NAV, identity.grants);
+      router.replace(home ?? '/nowhere');
     }
   }, [status, identity, router]);
 

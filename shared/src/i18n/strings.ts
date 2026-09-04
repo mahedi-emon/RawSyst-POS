@@ -4738,6 +4738,26 @@ export const en = {
   'nx.age.emptyTitle': 'You owe nothing',
   'nx.age.emptyDesc': 'No supplier bill is outstanding. This is the state you want it in.',
   'nx.age.dueBasis': 'A 60-day bill raised 45 days ago is not late. Ageing from the bill date would say it was, and have you chasing a supplier who is owed nothing yet.',
+
+  // --- forced password change and landing (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pw.title': 'Choose your own password',
+  'nx.pw.body': 'You signed in with a password somebody else issued for you. Pick one only you know before you carry on.',
+  'nx.pw.current': 'The password you were given',
+  'nx.pw.new': 'Your new password',
+  'nx.pw.confirm': 'Type it again',
+  'nx.pw.mismatch': 'The two do not match.',
+  'nx.pw.save': 'Set my password',
+  'nx.pw.signOutWarning': 'Changing it signs you out everywhere, including here. You will sign in again with the new one.',
+  'nx.pw.done': 'Password changed. Sign in with the new one.',
+  'nx.nowhere.title': 'There is nothing here for you yet',
+  'nx.nowhere.body': 'Your account is signed in but holds no permissions, so there is no screen to open. Ask an owner to give you a role.',
+  'nx.nowhere.signOut': 'Sign out',
 } as const;
 
 /** Every string the interface can show. */
@@ -9504,6 +9524,26 @@ export const ar: Record<Key, string> = {
   'nx.age.emptyTitle': 'لا يوجد مستحق عليك',
   'nx.age.emptyDesc': 'لا توجد فاتورة مورد قائمة. هذه هي الحالة المطلوبة.',
   'nx.age.dueBasis': 'فاتورة بمدة 60 يومًا صدرت قبل 45 يومًا ليست متأخرة. الحساب من تاريخ الإصدار سيقول إنها متأخرة، فتطارد موردًا لا يستحق شيئًا بعد.',
+
+  // --- forced password change and landing (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pw.title': 'اختر كلمة مرور خاصة بك',
+  'nx.pw.body': 'دخلت بكلمة مرور أصدرها لك شخص آخر. اختر كلمة تعرفها وحدك قبل المتابعة.',
+  'nx.pw.current': 'كلمة المرور التي أُعطيت لك',
+  'nx.pw.new': 'كلمة المرور الجديدة',
+  'nx.pw.confirm': 'أعد كتابتها',
+  'nx.pw.mismatch': 'الكلمتان غير متطابقتين.',
+  'nx.pw.save': 'حفظ كلمة المرور',
+  'nx.pw.signOutWarning': 'التغيير يسجل خروجك من كل الأجهزة بما فيها هذا. ستدخل مجددًا بالكلمة الجديدة.',
+  'nx.pw.done': 'تم تغيير كلمة المرور. سجّل الدخول بالجديدة.',
+  'nx.nowhere.title': 'لا يوجد شيء لك هنا بعد',
+  'nx.nowhere.body': 'حسابك مسجّل الدخول لكنه لا يحمل أي صلاحيات، فلا توجد شاشة لفتحها. اطلب من المالك منحك دورًا.',
+  'nx.nowhere.signOut': 'تسجيل الخروج',
 };
 
 /**
@@ -14066,6 +14106,26 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.age.emptyTitle': 'আপনার কোনো দেনা নেই',
   'nx.age.emptyDesc': 'কোনো সরবরাহকারীর বিল বকেয়া নেই। এটাই কাঙ্ক্ষিত অবস্থা।',
   'nx.age.dueBasis': '৬০ দিনের একটি বিল ৪৫ দিন আগে তৈরি হলে তা দেরি নয়। বিলের তারিখ থেকে হিসাব করলে দেরি দেখাত, আর আপনি এমন সরবরাহকারীর পেছনে ছুটতেন যার এখনো কিছু পাওনা নেই।',
+
+  // --- forced password change and landing (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.pw.title': 'নিজের পাসওয়ার্ড বাছুন',
+  'nx.pw.body': 'অন্য কেউ আপনার জন্য দেওয়া পাসওয়ার্ড দিয়ে আপনি ঢুকেছেন। এগোনোর আগে এমন একটি বাছুন যা কেবল আপনি জানেন।',
+  'nx.pw.current': 'আপনাকে দেওয়া পাসওয়ার্ড',
+  'nx.pw.new': 'আপনার নতুন পাসওয়ার্ড',
+  'nx.pw.confirm': 'আবার লিখুন',
+  'nx.pw.mismatch': 'দুটি মিলছে না।',
+  'nx.pw.save': 'পাসওয়ার্ড সেট করুন',
+  'nx.pw.signOutWarning': 'পরিবর্তন করলে সব জায়গা থেকে, এখান থেকেও, সাইন আউট হবে। নতুনটি দিয়ে আবার ঢুকবেন।',
+  'nx.pw.done': 'পাসওয়ার্ড বদলেছে। নতুনটি দিয়ে ঢুকুন।',
+  'nx.nowhere.title': 'এখানে এখনো আপনার জন্য কিছু নেই',
+  'nx.nowhere.body': 'আপনার অ্যাকাউন্ট সাইন ইন আছে কিন্তু কোনো অনুমতি নেই, তাই খোলার মতো কোনো পর্দা নেই। মালিককে একটি ভূমিকা দিতে বলুন।',
+  'nx.nowhere.signOut': 'সাইন আউট',
 };
 
 /**

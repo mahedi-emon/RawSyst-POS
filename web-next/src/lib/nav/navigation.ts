@@ -38,6 +38,19 @@ export interface NavItem {
   permissions: readonly Permission[];
   /** The plan feature this needs, when the backend gates the route group. */
   feature?: string;
+  /**
+   * Whether the screen behind this exists yet.
+   *
+   * The architecture below describes the whole product — 73 items — and the
+   * screens arrive over time. Without this, a cashier's sidebar offered
+   * twenty-three links and seventeen of them went to a not-found page, which
+   * reads as a broken product rather than an unfinished one.
+   *
+   * Kept as data rather than derived, because this module is client-side and
+   * cannot read the app directory. `navigation.built.test.ts` reads it instead
+   * and fails when the two disagree, so the flag cannot drift.
+   */
+  built?: true;
   /** Catalogue key for the one-line explanation. */
   descriptionKey?: Key;
 }
@@ -68,7 +81,13 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'dashboard',
         labelKey: 'nx.nav.biz.overview.dashboard',
         href: '/dashboard',
-        permissions: ['sales.view', 'accounting.view', 'inventory.view'],
+        built: true,
+        // GET /dashboard/overview is accounting.view and nothing else. Listing
+        // sales.view and inventory.view here read as generous and was not: a
+        // Cashier holds both, saw the link, and got a 403 -- verified against a
+        // live cashier account. Every figure on that screen is computed from
+        // the journal, which is why the route asks what it asks.
+        permissions: ['accounting.view'],
         descriptionKey: 'nx.navd.biz.overview.dashboard',
       },
       {
@@ -90,6 +109,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'pos',
         labelKey: 'nx.nav.biz.selling.pos',
         href: '/pos',
+        built: true,
         permissions: ['sales.create'],
         descriptionKey: 'nx.navd.biz.selling.pos',
       },
@@ -97,6 +117,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'sales',
         labelKey: 'nx.nav.biz.selling.sales',
         href: '/sales',
+        built: true,
         permissions: ['sales.view'],
         descriptionKey: 'nx.navd.biz.selling.sales',
       },
@@ -108,6 +129,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         // counter -- a credit note joins that terminal's own invoice chain.
         // A link to /sales/returns would always have failed.
         href: '/pos/returns',
+        built: true,
         permissions: ['sales.refund', 'sales.exchange'],
         descriptionKey: 'nx.navd.biz.selling.returns',
       },
@@ -153,6 +175,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'products',
         labelKey: 'nx.nav.biz.catalogue.products',
         href: '/products',
+        built: true,
         permissions: ['catalog.view'],
         descriptionKey: 'nx.navd.biz.catalogue.products',
       },
@@ -175,6 +198,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'on-hand',
         labelKey: 'nx.nav.biz.stock.on-hand',
         href: '/stock',
+        built: true,
         permissions: ['inventory.view'],
         descriptionKey: 'nx.navd.biz.stock.on-hand',
       },
@@ -239,6 +263,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'suppliers',
         labelKey: 'nx.nav.biz.buying.suppliers',
         href: '/buying/suppliers',
+        built: true,
         permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.suppliers',
       },
@@ -246,14 +271,19 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'purchase-orders',
         labelKey: 'nx.nav.biz.buying.purchase-orders',
         href: '/buying/orders',
+        built: true,
         permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.purchase-orders',
       },
       {
-        id: 'receipts',
+        id: 'goods-receipts',
         labelKey: 'nx.nav.biz.buying.receipts',
         href: '/buying/receipts',
-        permissions: ['purchasing.view', 'purchasing.receive_goods'],
+        built: true,
+        // BOTH, not either: the screen books a delivery (receive_goods) against
+        // an order it has to list first (purchasing.view). Held apart, the
+        // link appears and the dropdown behind it is empty with a 403.
+        permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.receipts',
       },
       {
@@ -267,27 +297,34 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'supplier-payments',
         labelKey: 'nx.nav.biz.buying.supplier-payments',
         href: '/buying/payments',
-        permissions: ['purchasing.pay_supplier'],
+        // Paying is the action; finding the bill to pay is purchasing.view.
+        permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.supplier-payments',
       },
       {
         id: 'requisitions',
         labelKey: 'nx.nav.biz.buying.requisitions',
         href: '/buying/requisitions',
-        permissions: ['purchasing.view', 'purchasing.request'],
+        // An Inventory Keeper holds purchasing.request without purchasing.view
+        // -- B5 puts asking for stock in reach of any authorised staff -- and
+        // saw a link to a list they cannot read. Raising a requisition is a
+        // separate act and belongs where a request-only holder can reach it,
+        // not behind a list route they are refused.
+        permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.requisitions',
       },
       {
         id: 'rfqs',
         labelKey: 'nx.nav.biz.buying.rfqs',
         href: '/buying/quotes',
-        permissions: ['purchasing.view', 'purchasing.manage_rfq'],
+        permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.rfqs',
       },
       {
         id: 'payables',
         labelKey: 'nx.nav.biz.buying.payables',
         href: '/buying/ageing',
+        built: true,
         permissions: ['accounting.view'],
         descriptionKey: 'nx.navd.biz.buying.payables',
       },
@@ -302,6 +339,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'customers',
         labelKey: 'nx.nav.biz.customers.customers',
         href: '/customers',
+        built: true,
         permissions: ['customers.view'],
         descriptionKey: 'nx.navd.biz.customers.customers',
       },
@@ -636,6 +674,7 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         id: 'health',
         labelKey: 'nx.nav.plat.operations.health',
         href: '/platform',
+        built: true,
         permissions: [],
         descriptionKey: 'nx.navd.plat.operations.health',
       },
@@ -643,6 +682,7 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         id: 'jobs',
         labelKey: 'nx.nav.plat.operations.jobs',
         href: '/platform/jobs',
+        built: true,
         permissions: [],
         descriptionKey: 'nx.navd.plat.operations.jobs',
       },
@@ -650,6 +690,7 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         id: 'support',
         labelKey: 'nx.nav.plat.operations.support',
         href: '/platform/support',
+        built: true,
         permissions: [],
         descriptionKey: 'nx.navd.plat.operations.support',
       },
@@ -664,6 +705,7 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         id: 'tenants',
         labelKey: 'nx.nav.plat.tenants.tenants',
         href: '/platform/businesses',
+        built: true,
         permissions: [],
         descriptionKey: 'nx.navd.plat.tenants.tenants',
       },
@@ -765,6 +807,61 @@ export function resolveNavigation(
   }
 
   return out;
+}
+
+/**
+ * What to actually put in the sidebar.
+ *
+ * `resolveNavigation` answers "what may this person reach", which is about
+ * permissions and is the same answer whether or not the screen is written yet.
+ * This answers "what can we offer them today", which is that less the screens
+ * that do not exist.
+ *
+ * The two are separate because they fail differently. A permission mistake
+ * shows somebody a screen they are refused; an unbuilt link shows them a
+ * not-found page. The first is a security-adjacent bug and the second is an
+ * unfinished product, and a sidebar should admit to neither.
+ */
+export function visibleNavigation(
+  sections: readonly NavSection[],
+  grants: Grants,
+  features?: ReadonlySet<string>,
+): ResolvedSection[] {
+  const out: ResolvedSection[] = [];
+  for (const section of resolveNavigation(sections, grants, features)) {
+    const items = section.items.filter((item) => item.built);
+    if (items.length > 0) out.push({ ...section, items });
+  }
+  return out;
+}
+
+/**
+ * Where somebody should arrive after signing in.
+ *
+ * Not `/dashboard`, which is what every signed-in person used to get. That
+ * screen reads `GET /dashboard/overview` and the route is `accounting.view`,
+ * so a Cashier, a Branch Manager and an Inventory Keeper all landed on a 403 --
+ * verified against a live cashier account, which resolves to nineteen
+ * permissions and none of them that one.
+ *
+ * The first item this person can actually reach, in the order the architecture
+ * already puts them: overview first, then the day's work. A cashier's first
+ * reachable item is the till, which is where a cashier should start anyway.
+ *
+ * Null when they can reach nothing at all, which is a real state -- somebody
+ * whose last role was removed -- and one the caller has to say something about
+ * rather than redirect into a loop.
+ */
+export function landingFor(
+  sections: readonly NavSection[],
+  grants: Grants,
+  features?: ReadonlySet<string>,
+): string | null {
+  const reachable = flattenNavigation(visibleNavigation(sections, grants, features));
+  // A module the plan does not include is a link that leads to an upsell, not
+  // to work, so it is not where anybody should be dropped.
+  const usable = reachable.find((item) => item.includedInPlan);
+  return usable?.href ?? reachable[0]?.href ?? null;
 }
 
 /** Every item in one flat list, for the command palette and route lookups. */

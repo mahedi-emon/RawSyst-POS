@@ -79,6 +79,16 @@ function SignInForm() {
         return;
       }
 
+      // A password somebody else issued is not a password. POST /people hands
+      // out a one-time one and the sign-in answers must_change_password; until
+      // this branch existed the client parsed that flag and no screen acted on
+      // it, so an employee went straight to work and the manager who issued it
+      // could sign in as them for ever.
+      if (outcome.mustChangePassword) {
+        router.replace('/change-password');
+        return;
+      }
+
       // The session provider re-reads /auth/me, which is what decides the
       // workspace. Redirecting before it has is how somebody lands on a
       // business dashboard for a moment before being moved to the platform.

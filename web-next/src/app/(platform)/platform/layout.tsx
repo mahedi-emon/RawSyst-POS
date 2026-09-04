@@ -16,11 +16,12 @@ import type { ReactNode } from 'react';
 import { RequireWorkspace } from '@/components/auth/guard';
 import { AppShell } from '@/components/shell/app-shell';
 import { useSession } from '@/lib/auth/session';
-import { PLATFORM_NAV, resolveNavigation } from '@/lib/nav/navigation';
+import { PLATFORM_NAV, visibleNavigation } from '@/lib/nav/navigation';
 
 function PlatformShell({ children }: { children: ReactNode }) {
   const { grants } = useSession();
-  const sections = resolveNavigation(PLATFORM_NAV, grants);
+  // Same rule as the business shell: only what exists.
+  const sections = visibleNavigation(PLATFORM_NAV, grants);
 
   return (
     <AppShell

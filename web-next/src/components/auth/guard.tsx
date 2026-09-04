@@ -69,7 +69,10 @@ export function RequireWorkspace({
       return;
     }
     if (status === 'signed-in' && identity && identity.workspace !== workspace) {
-      router.replace(identity.workspace === 'platform' ? '/platform' : '/dashboard');
+      // Through the front door rather than straight to a dashboard, so the
+      // landing rule applies here too -- somebody sent to the wrong workspace
+      // still arrives at a screen they can open.
+      router.replace(identity.workspace === 'platform' ? '/platform' : '/');
     }
   }, [status, identity, workspace, router]);
 

@@ -15,14 +15,16 @@ import { CompanySwitch } from '@/components/shell/company-switch';
 import { usePlanFeatures } from '@/lib/api/hooks';
 import { useSession } from '@/lib/auth/session';
 import { CompanyProvider, useCompany } from '@/lib/company/company-context';
-import { BUSINESS_NAV, resolveNavigation } from '@/lib/nav/navigation';
+import { BUSINESS_NAV, visibleNavigation } from '@/lib/nav/navigation';
 
 function BusinessShell({ children }: { children: ReactNode }) {
   const { grants } = useSession();
   const features = usePlanFeatures();
   const { company } = useCompany();
 
-  const sections = resolveNavigation(BUSINESS_NAV, grants, features);
+  // What we can offer today, not the whole map: an unbuilt link is a
+  // not-found page, which reads as broken rather than unfinished.
+  const sections = visibleNavigation(BUSINESS_NAV, grants, features);
 
   // The trading name if the business has set one, the legal name otherwise. A
   // shop calls itself by its trading name and would not recognise the entity on
