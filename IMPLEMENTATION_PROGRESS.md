@@ -635,13 +635,72 @@ the delivery.
 `verify:api` drives the whole thing — books a delivery, replays the uuid, and
 fails if the replay creates a second receipt.
 
+### 0.90 Raising an order, and a gap that is not mine to close quietly
+
+`/buying/orders/new`. The picker opens on `/stock/on-hand?low=true` rather
+than on an empty search box, because the reason anybody raises an order is that
+something is running out — and the dashboard has been pointing at low stock
+since it was built. This is where that pointing finally leads.
+
+`lib/purchasing/draft-order.ts` computes what the order comes to before the
+server sees it, in `decimal.js`, to four places, summing the ROUNDED lines
+rather than rounding the sum — which is the order `CreateOrder` does it in.
+Ten tests. The first pins the arithmetic against a real answer: 24 at 18.50 at
+fifteen per cent came back from the server as net 444.0000, tax 66.6000, total
+510.6000, and the screen has to agree or a buyer approves one number and commits
+to another. Confirmed again on a two-line order: 544.0000 / 66.6000 / 610.6000,
+line for line.
+
+#### 🟠 OPEN FINDING — purchasing asks the client for a tax rate; sales never does
+
+Not fixed, because fixing it properly changes tax arithmetic, and that is the
+most correctness-sensitive code in the product. Recorded with the evidence so it
+can be decided rather than discovered.
+
+`applyTaxProfile` in `internal/sales/terminal.go` is explicit — it "fills in
+the values the till is not allowed to choose". A sale's rate is resolved from
+the regulatory register at the invoice's issue date, and `pricing.go` **refuses
+the sale** if no rate is on file:
+
+> No tax rate is on file for %q in this market, so this sale cannot be priced.
+
+`CreateOrder` does the opposite. It takes `tax_rate` from the request body and
+defaults it to **zero**. And no business-facing route exposes what the rate
+should be: the register is readable only through
+`GET /platform/jurisdictions/rates`, which is `AccessSuperAdmin`.
+
+So a purchasing screen has three options, and all three are bad:
+
+| | |
+|---|---|
+| Send nothing | Every order is raised at 0% tax, silently |
+| Hardcode 0.15 | A Saudi assumption in a product that sells into SA, BD and US |
+| Ask the buyer | What this screen does |
+
+It asks, converts per cent to the fraction the API wants, carries the previous
+line's rate down the order so it is typed once, and says in a panel why it is
+asking at all. That is honest, and it is still worse than the product already
+knows how to be.
+
+**The fix, when somebody wants it:** resolve the rate in `CreateOrder` and
+`UpdateOrder` from the line's treatment and the company's country at
+`ordered_on`, exactly as `applyTaxProfile` does at `issued_at`, and ignore a
+client-supplied rate. `catalog.TaxRulesFor` already does the lookup and is
+already called from three packages. The existing purchasing tests send
+`"0.15"` and would pass unchanged in a Saudi fixture, so the change is testable
+without rewriting them. It is left alone here because it changes what a
+documented endpoint does with a field callers may be sending, and that is a
+decision rather than a defect fix.
+
 ### 0.8 Exact next task
 
-**FE-25 purchasing, continued.** Suppliers, orders, one order and receiving
-are built and verified (§0.88, §0.89). Next: raising an order from the screen —
-which needs a line editor with product search — then bills and the three-way
-match, supplier payments, ageing, and the sourcing half (requisitions, RFQs,
-comparison, award).
+**FE-25 purchasing, continued.** Suppliers, orders, one order, raising one
+and receiving are built and verified (§0.88 – §0.90). Next: bills and the
+three-way match, supplier payments and reversals, the ageing screen, and the
+sourcing half — requisitions, RFQs, the comparison and the award.
+
+Before the bills screen, read §0.90's open finding: a bill takes a tax rate the
+same way an order does, and the same argument applies to it.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and
@@ -761,11 +820,11 @@ that has one.
 | **`frontend-design`** | Product visual direction | Global shell, tokens, dashboard | Its calibration list of AI-design tells is directly why the palette is not cream-and-terracotta, why there are no ALL-CAPS eyebrows, no `→` in button text and no monospace data labels. The green-family identity and the ledger double-rule came from reasoning about the subject, which is what the skill asks for |
 | **`vercel-react-best-practices`** | Bundle and re-render performance | `nav-tree.tsx`, audit of all screens | Found `import * as icons from 'lucide-react'` — a barrel import that defeats tree-shaking entirely, because the bundler cannot know which of ~1,500 icons a runtime string selects. Replaced with an explicit map (`nav-icons.ts`). Audited the rest against `rendering-conditional-render`, `rerender-no-inline-components` and `js-set-map-lookups`: no other violations |
 | **`web-design-guidelines`** | Interface quality review | Design tokens + every screen | Fetched the live rules and applied seven: `touch-action: manipulation` globally (a 300ms double-tap delay on a till is the difference between immediate and broken), an intentional tap-highlight colour, `text-wrap: balance`/`pretty`, `overscroll-behavior: contain` on every dialog and drawer, `content-visibility` on table rows, and `spellCheck={false}`/`autoCorrect="off"` on the barcode and code fields — autocorrect on a barcode field changes a scan into something not in the catalogue |
-| **`ui-ux-pro-max`** | UX patterns for forms and tables | `form-error.tsx`, table audit | Two targeted `--domain ux` searches, per its own query contract (a design system already exists; regenerating one would have produced a second visual language). Forms returned a genuine gap: a **focusable error summary** — a keyboard or screen-reader user pressed Save, the form refused, and nothing told them. `FormError` now takes focus on the transition into an error and is used by sign-in and the till. The table search returned four rules the product already satisfied, which is a result worth recording rather than a change |
+| **`ui-ux-pro-max`** | UX patterns for forms and tables | `form-error.tsx`, table audit, purchasing | Four `--domain ux` searches across two sessions, per its own query contract (a design system already exists; regenerating one would have produced a second visual language). Forms returned a genuine gap: a **focusable error summary** — a keyboard or screen-reader user pressed Save, the form refused, and nothing told them. `FormError` now takes focus on the transition into an error and is used by sign-in and the till. The table search returned four rules the product already satisfied, which is a result worth recording rather than a change. **Purchasing, third session:** the first query ("editable line items table keyboard entry") came back matching *line* typographically -- line height, line length, line balance -- which is a miss, and the skill’s own contract says retry once, narrower. The retry ("inline validation destructive confirmation data entry") returned four applicable rules: **Confirmation Dialogs** shaped the one confirm step in purchasing, on issuing an order, which is the only irreversible act in the module; **Redundant Entry** ("auto-populate prior values") is why a receiving line carries the ordered quantity into "everything arrived" rather than asking for it again; **Error Placement** and **Focusable Error Summary** the product already satisfied through `Field` and `FormError`, verified rather than changed |
 | **21st.dev MCP** | Interaction research | Cash-drawer count | Searched for a denomination counter. Everything on offer is a generic number pad or an animated currency ticker — nothing for "how many 500 notes, how many 100s", and a rolling animated figure on a number somebody is reconciling would be actively wrong. **Looked, found nothing suitable, built it by hand.** That is the honest outcome of design research, and it is why nothing was installed |
 | **Stitch MCP** | Existing design exploration | Audit only | `list_projects` found "Modern POS Interface" (2026-08-14) carrying a full RawSyst design system: blue primary, Inter, JetBrains Mono for data labels, ALL-CAPS `label-caps`. That is the **superseded** direction — the current brief bans monospace data labels and caps eyebrows, and the identity is now the green family. Recorded so nobody re-imports it. Not used for generation |
 | **shadcn** | Accessible primitives | `button.tsx`, all variants | `@radix-ui/react-slot` for `asChild`, and the CVA variant pattern. `shadcn add` was never run: every primitive in `components/ui/` is written against RawSyst tokens |
-| **Docker · Go toolchain · psql · curl** | Gate 1 | §0.2, §0.85 | A throwaway Postgres, `cmd/migrate`, `cmd/devseed`, `cmd/api`, `go test -tags integration`, and the contract sweep that became `npm run verify:api` |
+| **Docker · Go toolchain · psql · curl** | Gate 1, and every gate since | §0.2, §0.85, §0.86-0.89 | A throwaway Postgres, `cmd/migrate`, `cmd/devseed`, `cmd/api`, `go test -tags integration`, and the contract sweep that became `npm run verify:api` |
 
 #### Inspected and deliberately not used
 
@@ -776,6 +835,20 @@ that has one.
 | **`convex`** | The Go service is the backend and the security boundary. Adding a second one is not a design decision, it is a rewrite |
 | **`vercel-react-native-skills`** | There is no native surface. The brief itself says not to force React Native patterns into the web app |
 | **Skiper UI, Magic UI, UIverse** | Component sources. Importing from any of them brings its own idiom — spacing, radii, motion, colour — into a product whose whole point is that every screen belongs to the same one. Nothing was taken |
+
+#### What running it has cost and returned
+
+Nine defects have now been found by driving the real server rather than reading
+its source, and none of them was visible in the Go: seven payload mismatches in
+Gate 1, two in `estimateUnitCost`, and three in purchasing (`tax_treatment`
+never read back, a tax rate of 15 accepted as 1500%, `tracks_batches` exposed
+nowhere). Two of the three purchasing ones are silent -- an editor would have
+reset a line's tax by changing a delivery date, and a 948 order would have gone
+to a supplier as 15,168. Neither has a UI symptom until somebody is owed money.
+
+That is the argument for `verify:api` being a script rather than a session: it
+asserts the FIELDS each screen reads, it drives the writes as well as the reads,
+and it runs in a minute.
 
 #### The synthesis rule, in practice
 

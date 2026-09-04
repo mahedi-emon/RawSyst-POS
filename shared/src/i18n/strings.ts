@@ -4671,6 +4671,49 @@ export const en = {
   'nx.grn.recostBody': 'This delivery settled {units} units that were sold before they arrived. The cost of those sales moved by {amount}, so the margin already reported on them has changed.',
   'nx.grn.bookAnother': 'Book in another',
   'nx.grn.viewOrder': 'Open the order',
+
+  // --- raising a purchase order (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.npo.title': 'Raise an order',
+  'nx.npo.subtitle': 'Ask a supplier for stock. Nothing is committed until you send it.',
+  'nx.npo.who': 'Who and where',
+  'nx.npo.supplier': 'Supplier',
+  'nx.npo.chooseSupplier': 'Choose a supplier',
+  'nx.npo.warehouse': 'Deliver to',
+  'nx.npo.chooseWarehouse': 'Choose a warehouse',
+  'nx.npo.expected': 'Expected by',
+  'nx.npo.expectedHint': 'What the supplier promised. Leave it empty if nothing was agreed.',
+  'nx.npo.notes': 'Notes for the supplier',
+  'nx.npo.what': 'What to order',
+  'nx.npo.pick': 'Search the catalogue',
+  'nx.npo.pickHint': 'By name, code or barcode.',
+  'nx.npo.lowFirst': 'Show what is running out',
+  'nx.npo.onHand': '{qty} left',
+  'nx.npo.reorderAt': 'reorder at {qty}',
+  'nx.npo.addLine': 'Add',
+  'nx.npo.added': 'Already on the order',
+  'nx.npo.noneYet': 'Nothing on this order yet. Find a product above and add it.',
+  'nx.npo.searchEmpty': 'Nothing matched that.',
+  'nx.npo.colProduct': 'Product',
+  'nx.npo.colQty': 'How many',
+  'nx.npo.colCost': 'Cost each',
+  'nx.npo.colRate': 'Tax %',
+  'nx.npo.colLine': 'Line',
+  'nx.npo.remove': 'Take it off',
+  'nx.npo.rateHint': 'The rate this supplier charges, as a percentage. RawSyst cannot look it up for a purchase yet — see the note below.',
+  'nx.npo.rateNoteTitle': 'Why you are typing a tax rate',
+  'nx.npo.rateNoteBody': 'A sale never asks: the rate is read from the regulatory register at the date of the invoice. Purchasing has no equivalent yet, so the order carries the rate you enter. Check it against the supplier’s own invoice.',
+  'nx.npo.summary': 'What this comes to',
+  'nx.npo.save': 'Save as a draft',
+  'nx.npo.saveHint': 'A draft can still be edited. Sending it is a separate step, on the order itself.',
+  'nx.npo.needSupplier': 'Choose a supplier first.',
+  'nx.npo.needWarehouse': 'Choose where it is being delivered.',
+  'nx.npo.needLines': 'Add at least one product.',
 } as const;
 
 /** Every string the interface can show. */
@@ -9370,6 +9413,49 @@ export const ar: Record<Key, string> = {
   'nx.grn.recostBody': 'سوّى هذا الاستلام {units} وحدة بيعت قبل وصولها. تغيّرت تكلفة تلك المبيعات بمقدار {amount}، وبالتالي تغيّر هامش الربح المُعلن عنها.',
   'nx.grn.bookAnother': 'تسجيل استلام آخر',
   'nx.grn.viewOrder': 'فتح الأمر',
+
+  // --- raising a purchase order (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.npo.title': 'إنشاء أمر شراء',
+  'nx.npo.subtitle': 'اطلب المخزون من مورد. لا شيء ملزم قبل الإرسال.',
+  'nx.npo.who': 'المورد والمستودع',
+  'nx.npo.supplier': 'المورد',
+  'nx.npo.chooseSupplier': 'اختر موردًا',
+  'nx.npo.warehouse': 'يُسلّم إلى',
+  'nx.npo.chooseWarehouse': 'اختر مستودعًا',
+  'nx.npo.expected': 'متوقع بحلول',
+  'nx.npo.expectedHint': 'ما وعد به المورد. اتركه فارغًا إن لم يُتفق على شيء.',
+  'nx.npo.notes': 'ملاحظات للمورد',
+  'nx.npo.what': 'ما سيُطلب',
+  'nx.npo.pick': 'ابحث في الكتالوج',
+  'nx.npo.pickHint': 'بالاسم أو الرمز أو الباركود.',
+  'nx.npo.lowFirst': 'إظهار ما أوشك على النفاد',
+  'nx.npo.onHand': 'المتبقي {qty}',
+  'nx.npo.reorderAt': 'إعادة الطلب عند {qty}',
+  'nx.npo.addLine': 'إضافة',
+  'nx.npo.added': 'مضاف بالفعل',
+  'nx.npo.noneYet': 'لا يوجد شيء في هذا الأمر بعد. ابحث عن منتج أعلاه وأضفه.',
+  'nx.npo.searchEmpty': 'لا توجد نتائج مطابقة.',
+  'nx.npo.colProduct': 'المنتج',
+  'nx.npo.colQty': 'الكمية',
+  'nx.npo.colCost': 'التكلفة للوحدة',
+  'nx.npo.colRate': 'الضريبة %',
+  'nx.npo.colLine': 'قيمة البند',
+  'nx.npo.remove': 'إزالة',
+  'nx.npo.rateHint': 'النسبة التي يفرضها هذا المورد. لا يستطيع النظام استخراجها للشراء بعد — انظر الملاحظة أدناه.',
+  'nx.npo.rateNoteTitle': 'لماذا تُدخل نسبة الضريبة',
+  'nx.npo.rateNoteBody': 'البيع لا يسأل أبدًا: تُقرأ النسبة من السجل التنظيمي بتاريخ الفاتورة. لا يوجد مكافئ للشراء بعد، فيحمل الأمر النسبة التي تُدخلها. تحقق منها مقابل فاتورة المورد.',
+  'nx.npo.summary': 'الإجمالي',
+  'nx.npo.save': 'حفظ كمسودة',
+  'nx.npo.saveHint': 'يمكن تعديل المسودة. الإرسال خطوة منفصلة على الأمر نفسه.',
+  'nx.npo.needSupplier': 'اختر موردًا أولًا.',
+  'nx.npo.needWarehouse': 'اختر مكان التسليم.',
+  'nx.npo.needLines': 'أضف منتجًا واحدًا على الأقل.',
 };
 
 /**
@@ -13865,6 +13951,49 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.grn.recostBody': 'এই ডেলিভারি {units}টি ইউনিট মিটিয়েছে যেগুলো আসার আগেই বিক্রি হয়েছিল। সেই বিক্রির খরচ {amount} বদলেছে, তাই আগে দেখানো মুনাফাও বদলেছে।',
   'nx.grn.bookAnother': 'আরেকটি নথিভুক্ত করুন',
   'nx.grn.viewOrder': 'আদেশ খুলুন',
+
+  // --- raising a purchase order (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.npo.title': 'আদেশ তৈরি করুন',
+  'nx.npo.subtitle': 'সরবরাহকারীর কাছে স্টক চান। পাঠানোর আগে কিছুই চূড়ান্ত নয়।',
+  'nx.npo.who': 'কে ও কোথায়',
+  'nx.npo.supplier': 'সরবরাহকারী',
+  'nx.npo.chooseSupplier': 'সরবরাহকারী বাছুন',
+  'nx.npo.warehouse': 'যেখানে পৌঁছাবে',
+  'nx.npo.chooseWarehouse': 'গুদাম বাছুন',
+  'nx.npo.expected': 'যে তারিখে আশা করছেন',
+  'nx.npo.expectedHint': 'সরবরাহকারী যা কথা দিয়েছে। কিছু ঠিক না হলে খালি রাখুন।',
+  'nx.npo.notes': 'সরবরাহকারীর জন্য নোট',
+  'nx.npo.what': 'যা অর্ডার করবেন',
+  'nx.npo.pick': 'ক্যাটালগে খুঁজুন',
+  'nx.npo.pickHint': 'নাম, কোড বা বারকোড দিয়ে।',
+  'nx.npo.lowFirst': 'যা ফুরিয়ে আসছে দেখান',
+  'nx.npo.onHand': '{qty} বাকি',
+  'nx.npo.reorderAt': '{qty}-এ পুনরায় অর্ডার',
+  'nx.npo.addLine': 'যোগ করুন',
+  'nx.npo.added': 'ইতিমধ্যে আদেশে আছে',
+  'nx.npo.noneYet': 'এই আদেশে এখনো কিছু নেই। উপরে পণ্য খুঁজে যোগ করুন।',
+  'nx.npo.searchEmpty': 'এর সঙ্গে কিছু মেলেনি।',
+  'nx.npo.colProduct': 'পণ্য',
+  'nx.npo.colQty': 'কতগুলো',
+  'nx.npo.colCost': 'প্রতিটির দাম',
+  'nx.npo.colRate': 'কর %',
+  'nx.npo.colLine': 'লাইন',
+  'nx.npo.remove': 'সরান',
+  'nx.npo.rateHint': 'এই সরবরাহকারী যে হার নেয়, শতাংশে। ক্রয়ের জন্য RawSyst এখনো এটি নিজে বের করতে পারে না — নিচের নোট দেখুন।',
+  'nx.npo.rateNoteTitle': 'কেন আপনি কর হার লিখছেন',
+  'nx.npo.rateNoteBody': 'বিক্রিতে কখনো জিজ্ঞেস করা হয় না: চালানের তারিখে নিয়ন্ত্রক নিবন্ধন থেকে হার পড়া হয়। ক্রয়ের জন্য এখনো তেমন কিছু নেই, তাই আপনি যে হার দেবেন আদেশ তাই বহন করবে। সরবরাহকারীর চালানের সঙ্গে মিলিয়ে নিন।',
+  'nx.npo.summary': 'সব মিলিয়ে',
+  'nx.npo.save': 'খসড়া হিসেবে সংরক্ষণ',
+  'nx.npo.saveHint': 'খসড়া এখনো সম্পাদনা করা যায়। পাঠানো আলাদা ধাপ, আদেশের পাতাতেই।',
+  'nx.npo.needSupplier': 'আগে সরবরাহকারী বাছুন।',
+  'nx.npo.needWarehouse': 'কোথায় পৌঁছাবে বাছুন।',
+  'nx.npo.needLines': 'অন্তত একটি পণ্য যোগ করুন।',
 };
 
 /**
