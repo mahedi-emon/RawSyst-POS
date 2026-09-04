@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PERMISSIONS } from '../api/contract.generated';
+import { PERMISSIONS, ROUTE_PERMISSIONS } from '../api/contract.generated';
 import { Grants } from '../auth/permissions';
 import {
   BUSINESS_NAV,
@@ -162,5 +162,35 @@ describe('grants', () => {
   it('keeps the approval ceiling as a string', () => {
     // Never widened through a float on its way to a comparison.
     expect(g.amountLimit).toBe('50.00');
+  });
+});
+
+describe('route guards may only name a permission that gates a route', () => {
+  it('keeps the two kinds of permission apart', () => {
+    // Verified against a live server: an Owner resolves to 109 permissions
+    // where the route table names 102. The other seven are action- and
+    // field-level -- sales.discount, catalog.view_cost_price and so on -- and
+    // are enforced structurally rather than per route.
+    expect(PERMISSIONS.length).toBeGreaterThan(ROUTE_PERMISSIONS.length);
+    const routeSet = new Set<string>(ROUTE_PERMISSIONS);
+    const actionOnly = PERMISSIONS.filter((p) => !routeSet.has(p));
+    expect(actionOnly).toContain('sales.discount');
+    expect(actionOnly).toContain('catalog.view_cost_price');
+  });
+
+  it('navigation never guards a route with a permission no route checks', () => {
+    // The failure this prevents: guarding /products on catalog.view_cost_price
+    // would look right, hide the screen from a cashier, and protect nothing --
+    // because no route checks it, the data would still be one fetch away.
+    const routeSet = new Set<string>(ROUTE_PERMISSIONS);
+    const wrong: string[] = [];
+    for (const section of BUSINESS_NAV) {
+      for (const item of section.items) {
+        for (const p of item.permissions) {
+          if (!routeSet.has(p)) wrong.push(`${item.id}: ${p}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 });

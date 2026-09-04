@@ -19,6 +19,7 @@ const line = (over: Partial<CartLine> = {}): CartLine => ({
   qty: '1',
   unitPrice: '449.00',
   lineDiscount: '0',
+  taxTreatment: 'standard',
   ...over,
 });
 
@@ -88,9 +89,9 @@ describe('tendering', () => {
 
 describe('scanning', () => {
   it('merges a repeat scan into a quantity rather than a second line', () => {
-    let lines = addScanned([], { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00' });
-    lines = addScanned(lines, { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00' });
-    lines = addScanned(lines, { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00' });
+    let lines = addScanned([], { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00', taxTreatment: 'standard' });
+    lines = addScanned(lines, { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00', taxTreatment: 'standard' });
+    lines = addScanned(lines, { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00', taxTreatment: 'standard' });
     expect(lines).toHaveLength(1);
     expect(lines[0]?.qty).toBe('3');
   });
@@ -104,6 +105,7 @@ describe('scanning', () => {
       sku: 'A',
       description: 'A',
       unitPrice: '10.00',
+      taxTreatment: 'standard',
     });
     expect(lines).toHaveLength(2);
     expect(lines[0]?.promotionId).toBe('p1');
@@ -111,8 +113,8 @@ describe('scanning', () => {
   });
 
   it('starts a new line for a different variant', () => {
-    let lines = addScanned([], { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00' });
-    lines = addScanned(lines, { variantId: 'v2', sku: 'B', description: 'B', unitPrice: '20.00' });
+    let lines = addScanned([], { variantId: 'v1', sku: 'A', description: 'A', unitPrice: '10.00', taxTreatment: 'standard' });
+    lines = addScanned(lines, { variantId: 'v2', sku: 'B', description: 'B', unitPrice: '20.00', taxTreatment: 'standard' });
     expect(lines).toHaveLength(2);
   });
 });
@@ -138,5 +140,42 @@ describe('stock awareness', () => {
     // Absent is not zero. A till that has not been told the level must not
     // block a sale by assuming there is none.
     expect(exceedsStock(line({ qty: '5' }))).toBe(false);
+  });
+});
+
+describe('a line always carries the tax treatment the server demands', () => {
+  it('keeps it on a line built by scanning', () => {
+    // Live validation: POST /pos/sales answers 400 "Choose a tax treatment for
+    // this product." without it, and GET /catalog/scan does not return one --
+    // the catalogue snapshot is the only source. A line that reached the tender
+    // screen without it would fail at the worst possible moment.
+    const lines = addScanned([], {
+      variantId: 'v1',
+      sku: 'ABAYA-BLK-L',
+      description: 'Abaya, Black',
+      unitPrice: '125.0000',
+      taxTreatment: 'standard',
+    });
+    expect(lines[0]?.taxTreatment).toBe('standard');
+  });
+
+  it('keeps it when a repeat scan merges into an existing line', () => {
+    let lines = addScanned([], {
+      variantId: 'v1',
+      sku: 'A',
+      description: 'A',
+      unitPrice: '10.00',
+      taxTreatment: 'zero_rated',
+    });
+    lines = addScanned(lines, {
+      variantId: 'v1',
+      sku: 'A',
+      description: 'A',
+      unitPrice: '10.00',
+      taxTreatment: 'zero_rated',
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.qty).toBe('2');
+    expect(lines[0]?.taxTreatment).toBe('zero_rated');
   });
 });

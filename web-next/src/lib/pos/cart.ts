@@ -39,7 +39,16 @@ export interface CartLine {
   lineDiscount: string;
   /** Set when the discount came from a campaign, so redemption is recorded. */
   promotionId?: string;
-  taxTreatment?: string;
+  /**
+   * Required, not optional.
+   *
+   * `POST /pos/sales` refuses a line without one — "Choose a tax treatment for
+   * this product." It is carried on every line from the moment it is rung up so
+   * that a sale cannot be assembled that the server will reject at payment,
+   * which is the worst possible moment to find out. The value comes from the
+   * catalogue snapshot; `GET /catalog/scan` does not return it.
+   */
+  taxTreatment: string;
   /** What the till knew was on hand when the line was added. Display only. */
   onHand?: string;
 }

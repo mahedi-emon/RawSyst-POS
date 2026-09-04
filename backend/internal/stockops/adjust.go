@@ -561,15 +561,32 @@ func estimateUnitCost(
 	}
 
 	// The newest open layer here, then anywhere in the company.
-	for _, q := range []string{
-		`SELECT unit_cost FROM cost_layer
-		 WHERE variant_id = $1 AND warehouse_id = $2 AND qty_remaining > 0
-		 ORDER BY created_at DESC LIMIT 1`,
-		`SELECT unit_cost FROM cost_layer
-		 WHERE variant_id = $1 AND company_id = $3
-		 ORDER BY created_at DESC LIMIT 1`,
+	//
+	// `received_at`, not `created_at`: the column has been called `received_at`
+	// since the table was created, and `cost_layer_fifo_idx` is on
+	// (variant_id, warehouse_id, received_at) precisely so the first of these
+	// two reads an index. The wrong name made every one-step adjustment fail
+	// with a 500 whenever it had to fall back this far to find a cost — which
+	// is exactly the case a shop hits first, because a variant with no receipt
+	// yet has no layer to short-circuit on.
+	// Each query carries its OWN arguments. Sharing one three-argument list
+	// across both meant the first — which has two placeholders — was sent an
+	// extra parameter, and pgx refuses that with "expected 2 arguments, got 3"
+	// before the query ever reaches the database.
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`SELECT unit_cost FROM cost_layer
+		  WHERE variant_id = $1 AND warehouse_id = $2 AND qty_remaining > 0
+		  ORDER BY received_at DESC LIMIT 1`,
+			[]any{variantID, warehouseID}},
+		{`SELECT unit_cost FROM cost_layer
+		  WHERE variant_id = $1 AND company_id = $2
+		  ORDER BY received_at DESC LIMIT 1`,
+			[]any{variantID, companyID}},
 	} {
-		err := tx.QueryRow(ctx, q, variantID, warehouseID, companyID).Scan(&cost)
+		err := tx.QueryRow(ctx, q.sql, q.args...).Scan(&cost)
 		if err == nil && cost.IsPositive() {
 			return cost.Round(4), nil
 		}

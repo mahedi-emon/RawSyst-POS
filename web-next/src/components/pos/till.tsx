@@ -10,19 +10,29 @@
 // the figure the customer is about to be told is the largest thing on screen.
 // Nothing here fades in, and nothing animates on scroll.
 //
+// # Scanning is local
+//
+// The catalogue is downloaded once when the counter opens and every scan is a
+// map lookup. That is not an optimisation: `GET /catalog/scan` does not return
+// `tax_treatment`, and `POST /pos/sales` refuses a line without one — a till
+// built on `scan` rings items up all day and fails at payment. See
+// `lib/pos/catalogue.ts`.
+//
 // # The sale id is minted before the first line
 //
 // `invoice_uuid` is created when the cart starts, not when Pay is pressed. That
 // is what makes a retry after a lost response safe: the same sale carries the
-// same id and the server recognises it rather than ringing it up twice. Minting
-// it at Pay would give a double press two ids and two sales.
+// same id and the server returns the original — verified against the live API,
+// which answers 200 with `Idempotency-Replayed: true` and the same invoice.
 //
 // # What the till computes and what it does not
 //
 // It computes the running total, because a customer standing at a counter is
 // owed a figure before being asked to pay. It does not compute tax, does not
 // allocate the invoice discount across lines and does not decide the invoice
-// number -- the server does all three, and the till shows what comes back.
+// number — the server does all three. Prices are tax-INCLUSIVE by default, so
+// the total the till shows is the total the customer pays; the server returns
+// the split (125 inclusive → 108.70 net + 16.30 tax) on the way back.
 
 import {
   ArrowLeft,
@@ -44,6 +54,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/panel';
+import { ErrorState } from '@/components/ui/states';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useCompany } from '@/lib/company/company-context';
@@ -60,18 +71,13 @@ import {
   totalsFor,
   type CartLine,
 } from '@/lib/pos/cart';
+import { Catalogue, type Sellable } from '@/lib/pos/catalogue';
 import { useCounter } from '@/lib/pos/counter';
+import { useShift } from '@/lib/pos/shift';
 import { cn } from '@/lib/utils';
 
 import { CustomerPicker, type PosCustomer } from './customer-picker';
-
-interface ScannedVariant {
-  id: string;
-  sku: string;
-  attributes: Record<string, string>;
-  price: string;
-  is_active: boolean;
-}
+import { OpenShift } from './open-shift';
 
 interface Tender {
   method: string;
@@ -79,10 +85,31 @@ interface Tender {
   reference?: string;
 }
 
+/**
+ * What the server says when a sale succeeds.
+ *
+ * Read off the live API, not guessed: there is no `human_number` here. The
+ * invoice number is on the invoice record, which the receipt screen reads; what
+ * comes back from the sale is the money split and the ZATCA chain position.
+ */
 interface CompletedSale {
-  human_number?: string;
-  id?: string;
-  total_inclusive?: string;
+  invoice_id: string;
+  subtotal_net: string;
+  tax_total: string;
+  total_inclusive: string;
+  discount_total: string;
+  lines: {
+    line_no: number;
+    description: string;
+    qty: string;
+    unit_price: string;
+    net_amount: string;
+    tax_amount: string;
+    tax_rate: string;
+  }[];
+  /** Lines the shop was short of. Empty when the sale took nothing it lacked. */
+  stock_shortfalls: unknown[];
+  zatca?: { icv: number; pih: string; schema_version: string };
 }
 
 /** The tenders a counter offers. Cash first: it is most of them. */
@@ -94,22 +121,41 @@ const TENDER_METHODS = [
 ] as const;
 
 export function Till() {
-  const { state, leave } = useCounter();
-  const { currency, market } = useCompany();
+  const { state: counterState, leave } = useCounter();
+  const { currency, market, company } = useCompany();
+  const shift = useShift();
+
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [catalogueError, setCatalogueError] = useState<unknown>(null);
 
   const [saleId, setSaleId] = useState(() => newSaleId());
   const [lines, setLines] = useState<CartLine[]>([]);
-  const [invoiceDiscount, setInvoiceDiscount] = useState('0');
+  const [invoiceDiscount] = useState('0');
   const [customer, setCustomer] = useState<PosCustomer | null>(null);
   const [tenders, setTenders] = useState<Tender[]>([]);
-  const [barcode, setBarcode] = useState('');
-  const [scanning, setScanning] = useState(false);
+  const [term, setTerm] = useState('');
+  const [matches, setMatches] = useState<Sellable[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
   const [paying, setPaying] = useState(false);
   const [completed, setCompleted] = useState<CompletedSale | null>(null);
   const [pickingCustomer, setPickingCustomer] = useState(false);
 
   const scanRef = useRef<HTMLInputElement>(null);
+
+  // The catalogue is downloaded once, when the counter opens.
+  useEffect(() => {
+    if (!company) return;
+    const controller = new AbortController();
+    const next = new Catalogue();
+    void next
+      .load(company.id, controller.signal)
+      .then(() => setCatalogue(next))
+      .catch((e: unknown) => {
+        if (!controller.signal.aborted) setCatalogueError(e);
+      });
+    return () => controller.abort();
+  }, [company]);
 
   const totals = useMemo(
     () => totalsFor(lines, invoiceDiscount),
@@ -136,46 +182,48 @@ export function Till() {
     refocus();
   }, [refocus]);
 
-  async function onScan(e: FormEvent) {
-    e.preventDefault();
-    const code = barcode.trim();
-    if (!code || scanning) return;
-
-    setScanning(true);
+  function ring(item: Sellable) {
+    setLines((current) =>
+      addScanned(current, {
+        variantId: item.variantId,
+        sku: item.sku,
+        description: item.description,
+        unitPrice: item.price,
+        taxTreatment: item.taxTreatment,
+      }),
+    );
+    setTerm('');
+    setMatches([]);
     setError(null);
-    try {
-      const variant = await api.get<ScannedVariant>('/catalog/scan', {
-        query: {
-          barcode: code,
-          // Sent so a wholesale customer is charged the wholesale price. It is
-          // the same id that will go on the sale.
-          customer_id: customer?.id,
-        },
-      });
+    refocus();
+  }
 
-      if (!variant.is_active) {
-        setError('That product is not for sale.');
-        return;
-      }
+  function onType(value: string) {
+    setTerm(value);
+    // A scanner types fast and ends with Enter, so nothing is looked up until
+    // there is enough to be a name rather than the first characters of a
+    // barcode arriving.
+    setMatches(value.trim().length >= 2 ? (catalogue?.search(value) ?? []) : []);
+  }
 
-      setLines((current) =>
-        addScanned(current, {
-          variantId: variant.id,
-          sku: variant.sku,
-          description:
-            Object.values(variant.attributes ?? {}).join(' · ') || variant.sku,
-          unitPrice: variant.price,
-        }),
-      );
-      setBarcode('');
-    } catch (err) {
-      // The server's own words. "That barcode is not in this catalogue" is
-      // more useful than anything this screen could substitute.
-      setError(messageFor(err));
-    } finally {
-      setScanning(false);
-      refocus();
+  function onScan(e: FormEvent) {
+    e.preventDefault();
+    const code = term.trim();
+    if (!code || !catalogue) return;
+
+    const hit = catalogue.find(code);
+    if (hit) {
+      ring(hit);
+      return;
     }
+    // One match by name is unambiguous; ring it rather than making somebody
+    // pick from a list of one.
+    if (matches.length === 1 && matches[0]) {
+      ring(matches[0]);
+      return;
+    }
+    setError(`Nothing in this catalogue matches “${code}”.`);
+    refocus();
   }
 
   function addTender(method: string, amount: string) {
@@ -183,7 +231,7 @@ export function Till() {
     refocus();
   }
 
-  /** Tenders the exact balance in one press -- the commonest action there is. */
+  /** Tenders the exact balance in one press — the commonest action there is. */
   function tenderExact(method: string) {
     if (!owing) return;
     addTender(method, balance);
@@ -193,9 +241,9 @@ export function Till() {
     setSaleId(newSaleId());
     setLines([]);
     setTenders([]);
-    setInvoiceDiscount('0');
     setCustomer(null);
     setError(null);
+    setFieldErrors(null);
     setCompleted(null);
     refocus();
   }
@@ -204,6 +252,7 @@ export function Till() {
     if (lines.length === 0 || paying) return;
     setPaying(true);
     setError(null);
+    setFieldErrors(null);
     try {
       const sale = await api.post<CompletedSale>(
         '/pos/sales',
@@ -219,6 +268,9 @@ export function Till() {
             qty: l.qty,
             unit_price: l.unitPrice,
             line_discount: l.lineDiscount,
+            // Required by the server. It comes from the catalogue snapshot;
+            // there is nowhere else the till can learn it.
+            tax_treatment: l.taxTreatment,
             ...(l.promotionId ? { promotion_id: l.promotionId } : {}),
           })),
           tenders: tenders.map((t) => ({
@@ -235,6 +287,9 @@ export function Till() {
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
+        // A compliance refusal names the fields that are wrong — and they are
+        // usually the shop's own address, which nobody can fix at a counter.
+        if (err.isComplianceRefusal && err.fields) setFieldErrors(err.fields);
       } else {
         setError(messageFor(err));
       }
@@ -244,40 +299,61 @@ export function Till() {
   }
 
   const counterName =
-    state.kind === 'open'
-      ? `${state.counter.terminal_label} · ${state.counter.store}`
+    counterState.kind === 'open'
+      ? `${counterState.counter.terminal_label} · ${counterState.counter.store}`
       : '';
 
-  return (
-    <div className="flex h-dvh flex-col bg-ground">
-      {/* ---- counter bar ------------------------------------------------ */}
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
-        <button
-          type="button"
-          onClick={leave}
-          className="flex h-9 items-center gap-1.5 rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg"
-        >
-          <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
-          Leave counter
-        </button>
-        <p className="min-w-0 flex-1 truncate text-label font-medium text-fg">
-          {counterName}
-        </p>
-        <a
-          href="/dashboard"
-          className="hidden h-9 items-center rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg sm:flex"
-        >
-          Back office
-        </a>
-      </header>
+  // --- gates before the till can sell --------------------------------------
 
+  if (catalogueError) {
+    return (
+      <TillFrame counterName={counterName} onLeave={leave}>
+        <div className="p-6">
+          <ErrorState
+            error={catalogueError}
+            onRetry={() => window.location.reload()}
+          />
+        </div>
+      </TillFrame>
+    );
+  }
+
+  if (shift.state.kind === 'checking' || !catalogue) {
+    return (
+      <TillFrame counterName={counterName} onLeave={leave}>
+        <div className="grid flex-1 place-items-center">
+          <p className="text-body text-muted">Opening the counter…</p>
+        </div>
+      </TillFrame>
+    );
+  }
+
+  if (shift.state.kind === 'closed' || shift.state.kind === 'failed') {
+    return (
+      <TillFrame counterName={counterName} onLeave={leave}>
+        <OpenShift
+          currency={currency}
+          busy={shift.opening}
+          error={shift.state.kind === 'failed' ? shift.state.error : null}
+          onOpen={(float, blind) => void shift.open(float, blind)}
+        />
+      </TillFrame>
+    );
+  }
+
+  return (
+    <TillFrame
+      counterName={counterName}
+      onLeave={leave}
+      shiftLabel={`Session ${shift.state.shift.session_no}`}
+    >
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* ---- cart ----------------------------------------------------- */}
         <section
           aria-label="This sale"
           className="flex min-h-0 flex-1 flex-col border-line lg:border-e"
         >
-          <form onSubmit={onScan} className="shrink-0 border-b border-line p-3">
+          <form onSubmit={onScan} className="relative shrink-0 border-b border-line p-3">
             <div className="relative flex items-center">
               <ScanLine
                 className="pointer-events-none absolute start-3 size-5 text-muted"
@@ -285,12 +361,10 @@ export function Till() {
               />
               <input
                 ref={scanRef}
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                // A physical scanner types the code and presses Enter, so this
-                // is an ordinary text input and needs no special handling.
-                placeholder="Scan a barcode, or type one and press Enter"
-                aria-label="Barcode"
+                value={term}
+                onChange={(e) => onType(e.target.value)}
+                placeholder="Scan a barcode, or type a name and press Enter"
+                aria-label="Scan or search"
                 autoComplete="off"
                 enterKeyHint="enter"
                 className={cn(
@@ -298,17 +372,54 @@ export function Till() {
                   'text-lede text-fg placeholder:text-disabled',
                 )}
               />
-              {scanning && (
-                <Loader2
-                  className="absolute end-3 size-4 animate-spin text-muted"
-                  aria-hidden="true"
-                />
-              )}
             </div>
+
+            {matches.length > 0 && (
+              <ul className="absolute inset-x-3 top-16 z-20 max-h-72 overflow-y-auto rounded-sm border border-line bg-surface shadow-overlay">
+                {matches.map((m) => (
+                  <li key={m.variantId}>
+                    <button
+                      type="button"
+                      onClick={() => ring(m)}
+                      className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-line px-3 text-start last:border-b-0 hover:bg-surface-hover"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-body text-fg">
+                          {m.description}
+                        </span>
+                        <span className="block text-caption text-muted">{m.sku}</span>
+                      </span>
+                      <span className="num shrink-0 text-body tabular-nums">
+                        {money(m.price)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {error && (
               <p role="alert" className="mt-2 text-body text-critical-fg">
                 {error}
               </p>
+            )}
+            {fieldErrors && (
+              <div className="mt-2 rounded-sm border border-caution/25 bg-caution-subtle p-2.5">
+                <p className="text-label font-medium text-caution-fg">
+                  This has to be put right in Settings, not here.
+                </p>
+                <ul className="mt-1 list-disc ps-4 text-caption text-caution-fg">
+                  {Object.entries(fieldErrors).map(([field, message]) => (
+                    <li key={field}>{message}</li>
+                  ))}
+                </ul>
+                <a
+                  href="/settings/business"
+                  className="mt-1.5 inline-block text-caption font-medium underline underline-offset-2"
+                >
+                  Open business details
+                </a>
+              </div>
             )}
           </form>
 
@@ -319,6 +430,11 @@ export function Till() {
                   <p className="text-lede font-medium text-fg">Ready</p>
                   <p className="mt-1 text-body text-muted">
                     Scan the first item to start a sale.
+                  </p>
+                  <p className="mt-3 text-caption text-subtle">
+                    {catalogue.size === 1
+                      ? '1 line ready to scan'
+                      : `${catalogue.size} lines ready to scan`}
                   </p>
                 </div>
               </div>
@@ -349,9 +465,7 @@ export function Till() {
                         <input
                           value={line.qty}
                           onChange={(e) =>
-                            setLines((c) =>
-                              setQty(c, line.variantId, e.target.value),
-                            )
+                            setLines((c) => setQty(c, line.variantId, e.target.value))
                           }
                           onBlur={refocus}
                           inputMode="decimal"
@@ -423,18 +537,19 @@ export function Till() {
               <Row label="Gross" value={money(totals.gross)} />
               <Row
                 label="Discount"
-                value={totals.discount === '0.00' ? '—' : `-${money(totals.discount)}`}
+                value={
+                  totals.discount === '0.00' ? '—' : `-${money(totals.discount)}`
+                }
               />
             </dl>
 
             {/* The figure the customer is about to be told. Largest thing on
-                the screen, and the only place the currency is spelled out. */}
+                the screen, and the only place the currency is spelled out.
+                Prices include tax, so this is what they pay. */}
             <div className="rule-total mt-3 pt-3">
               <p className="text-label text-muted">To pay</p>
               <p className="num mt-0.5 flex items-baseline gap-2 text-figure font-semibold tabular-nums tracking-tight">
-                <span className="text-section font-medium text-muted">
-                  {currency}
-                </span>
+                <span className="text-section font-medium text-muted">{currency}</span>
                 {money(totals.net)}
               </p>
             </div>
@@ -467,12 +582,7 @@ export function Till() {
                 ))}
                 <li className="mt-1 flex items-center justify-between border-t border-line pt-1.5 text-body font-medium">
                   <span>{change ? 'Change' : 'Still to pay'}</span>
-                  <span
-                    className={cn(
-                      'num tabular-nums',
-                      change && 'text-positive-fg',
-                    )}
-                  >
+                  <span className={cn('num tabular-nums', change && 'text-positive-fg')}>
                     {money(change ? balance.slice(1) : balance)}
                   </span>
                 </li>
@@ -493,8 +603,6 @@ export function Till() {
                     (m.id === 'customer_due' && !customer)
                   }
                   onClick={() => tenderExact(m.id)}
-                  // The commonest action at a till is "the customer is paying
-                  // the exact amount, by this method". One press does it.
                   title={
                     m.id === 'customer_due' && !customer
                       ? 'Choose a customer before putting a sale on account'
@@ -542,11 +650,52 @@ export function Till() {
         <SaleComplete
           sale={completed}
           currency={currency}
-          tendered={money(tenderedTotal(tenders))}
+          market={market}
           change={change ? money(balance.slice(1)) : null}
+          tendered={money(tenderedTotal(tenders))}
           onNext={reset}
         />
       )}
+    </TillFrame>
+  );
+}
+
+function TillFrame({
+  counterName,
+  shiftLabel,
+  onLeave,
+  children,
+}: {
+  counterName: string;
+  shiftLabel?: string;
+  onLeave: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-dvh flex-col bg-ground">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
+        <button
+          type="button"
+          onClick={onLeave}
+          className="flex h-9 items-center gap-1.5 rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg"
+        >
+          <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
+          Leave counter
+        </button>
+        <p className="min-w-0 flex-1 truncate text-label font-medium text-fg">
+          {counterName}
+          {shiftLabel && (
+            <span className="ms-2 font-normal text-muted">{shiftLabel}</span>
+          )}
+        </p>
+        <a
+          href="/dashboard"
+          className="hidden h-9 items-center rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg sm:flex"
+        >
+          Back office
+        </a>
+      </header>
+      {children}
     </div>
   );
 }
@@ -563,22 +712,23 @@ function Row({ label, value }: { label: string; value: string }) {
 /**
  * The moment after the sale.
  *
- * Says the number, says the change, and gets out of the way. The one action is
- * to start the next sale, because there is a queue -- printing and emailing are
- * on the invoice screen, which is where somebody goes when a customer asks
- * afterwards.
+ * Says the change, shows what the tax came to, and gets out of the way. The one
+ * action is to start the next sale, because there is a queue — printing and
+ * emailing live on the invoice screen, which is where somebody goes when a
+ * customer asks afterwards.
  */
 function SaleComplete({
   sale,
   currency,
-  tendered,
   change,
+  tendered,
   onNext,
 }: {
   sale: CompletedSale;
   currency: string;
-  tendered: string;
+  market: string;
   change: string | null;
+  tendered: string;
   onNext: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -595,19 +745,12 @@ function SaleComplete({
     >
       <div className="w-full max-w-sm rounded-lg bg-surface p-6 text-center shadow-overlay">
         <p className="text-label text-muted">Sale complete</p>
-        {sale.human_number && (
-          <p className="mt-1 text-section font-semibold text-fg">
-            {sale.human_number}
-          </p>
-        )}
 
         {change && change !== '0.00' ? (
           <>
             <p className="mt-4 text-label text-muted">Change</p>
             <p className="num text-figure font-semibold tabular-nums text-positive-fg">
-              <span className="text-section font-medium text-muted">
-                {currency}{' '}
-              </span>
+              <span className="text-section font-medium text-muted">{currency} </span>
               {change}
             </p>
           </>
@@ -615,13 +758,28 @@ function SaleComplete({
           <>
             <p className="mt-4 text-label text-muted">Paid</p>
             <p className="num text-figure font-semibold tabular-nums">
-              <span className="text-section font-medium text-muted">
-                {currency}{' '}
-              </span>
+              <span className="text-section font-medium text-muted">{currency} </span>
               {tendered}
             </p>
           </>
         )}
+
+        {/* The split the server computed, so the cashier can answer "how much
+            was the VAT?" without opening anything. */}
+        <dl className="mt-4 flex justify-center gap-5 text-caption text-muted">
+          <div>
+            <dt>Net</dt>
+            <dd className="num tabular-nums text-fg">{sale.subtotal_net}</dd>
+          </div>
+          <div>
+            <dt>Tax</dt>
+            <dd className="num tabular-nums text-fg">{sale.tax_total}</dd>
+          </div>
+          <div>
+            <dt>Total</dt>
+            <dd className="num tabular-nums text-fg">{sale.total_inclusive}</dd>
+          </div>
+        </dl>
 
         <Button
           ref={ref}

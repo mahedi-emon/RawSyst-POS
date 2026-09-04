@@ -809,3 +809,55 @@ func postStockEntry(
 		f.tenantID, entryID, otherID, credit, debit)
 	return e
 }
+
+// The first adjustment a new shop ever posts.
+//
+// `estimateUnitCost` walks a chain of fallbacks to price found stock: the
+// weighted-average pool, then the newest open cost layer here, then anywhere in
+// the company, then the variant's standard cost, then zero. Every earlier test
+// in this file receives stock first, so the pool answers and the layer queries
+// are never reached.
+//
+// A variant that has NEVER been received has no pool and no layer, so the walk
+// runs to the end -- and that path carried two defects that made it a 500:
+//
+//   - `ORDER BY created_at` on `cost_layer`, whose column is `received_at`
+//     (SQLSTATE 42703). `cost_layer_fifo_idx` is built on `received_at`.
+//   - one three-argument list shared by a two-placeholder query and a
+//     three-placeholder one, which pgx refuses with "expected 2 arguments,
+//     got 3" before the query reaches the database.
+//
+// Both were found by pointing the new front end at a real server and adding
+// opening stock, which is the first thing anybody does. This test stands where
+// that walk finishes, so neither can come back.
+func TestFoundStockIsPricedForAVariantThatWasNeverReceived(t *testing.T) {
+	h := newHarness(t)
+	f := seedStock(t, h)
+
+	// No receipt, no pool, no cost layer -- the whole point.
+	fresh := f.secondVariant(t, h)
+
+	resp := h.do(t, http.MethodPost, f.path("/api/v1/stock/adjustments"), f.token,
+		map[string]any{
+			"uuid": newUUID(), "location_id": f.warehouseID.String(),
+			"kind": "adjustment", "reason": "found",
+			"note":  "Opening stock, counted onto the shelf.",
+			"lines": []map[string]any{{"variant_id": fresh.String(), "delta": "20"}},
+		})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("a variant with no cost history must still be adjustable; "+
+			"got %d — %s", resp.StatusCode, readBody(t, resp))
+	}
+
+	body := decodeJSON(t, resp)
+	if body["status"] != "posted" {
+		t.Errorf("the voucher should be posted, not %v", body["status"])
+	}
+	// Zero is the honest answer and the documented last resort: nothing in the
+	// company has ever priced this variant, so the voucher is worth nothing
+	// until a real receipt says otherwise. What matters is that it POSTS.
+	if got := body["value"]; got != "0.00" {
+		t.Errorf("with no cost known anywhere the voucher should be worth "+
+			"0.00, not %v", got)
+	}
+}

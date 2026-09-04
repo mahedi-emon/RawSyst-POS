@@ -86,6 +86,36 @@ interface Overview {
   unbuilt: string[];
 }
 
+/**
+ * Where an attention row actually goes.
+ *
+ * The server returns links written for the OLD back office -- `/inventory`,
+ * `/compliance` -- because it was built against it. Rendering them verbatim
+ * sends somebody to a 404, which live validation showed on the very first
+ * dashboard load.
+ *
+ * Mapped here rather than changed in Go on purpose: the API is shared with the
+ * Tauri till and the old web app, both of which still resolve those paths. A
+ * translation on this side is the change that breaks nothing. Anything the map
+ * does not recognise falls through to the dashboard rather than to a dead URL.
+ */
+function routeFor(link: string): string {
+  const [path = '', query] = link.split('?');
+  const suffix = query ? `?${query}` : '';
+  const map: Record<string, string> = {
+    '/inventory': '/stock',
+    '/stock': '/stock',
+    '/compliance': '/oversight/compliance',
+    '/customers': '/customers',
+    '/sales': '/sales',
+    '/purchasing': '/buying/orders',
+    '/expenses': '/money/expenses',
+    '/approvals': '/approvals',
+  };
+  const mapped = map[path];
+  return mapped ? `${mapped}${suffix}` : '/dashboard';
+}
+
 export default function DashboardPage() {
   const scope = useCompanyScope();
   const { currency, market, company } = useCompany();
@@ -315,7 +345,7 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
           return (
             <li key={`${item.kind}-${item.title}`}>
               <Link
-                href={item.link}
+                href={routeFor(item.link)}
                 className={cn(
                   'flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0',
                   'hover:bg-surface-hover',

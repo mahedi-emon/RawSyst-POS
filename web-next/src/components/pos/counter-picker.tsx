@@ -15,11 +15,20 @@ import { Monitor, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { useApiList } from '@/lib/api/hooks';
+import { useCompanyScope } from '@/lib/company/company-context';
 import { useCounter, type Counter } from '@/lib/pos/counter';
 import { cn } from '@/lib/utils';
 
 export function CounterPicker() {
-  const { data, isLoading, error, refetch } = useApiList<Counter>('/pos/counters');
+  // `company_id` is required. Without it the route answers 400 — "Say which
+  // company to search, or scan from a registered terminal" — which is what this
+  // screen did on every load until it was tried against a real server. The null
+  // path defers the request until the company resolves.
+  const scope = useCompanyScope();
+  const { data, isLoading, error, refetch } = useApiList<Counter>(
+    scope ? '/pos/counters' : null,
+    scope ?? undefined,
+  );
   const { open, state } = useCounter();
 
   const counters = data?.data ?? [];

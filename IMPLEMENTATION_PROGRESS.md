@@ -25,22 +25,21 @@ foundation of anything here.
 |---|---|
 | **Location** | `web-next/` (npm workspace, port 3001) |
 | **Stack** | Next.js 16.3.2 · React 19.2 · TypeScript 5.5 (strict, `noUncheckedIndexedAccess`) · Tailwind 4 · App Router |
-| **Build** | ✅ clean, 7 routes, no warnings |
+| **Build** | ✅ clean, no warnings |
 | **Typecheck** | ✅ clean |
-| **Tests** | ✅ 49 passing (money 17 · cart 16 · navigation/RBAC 16) |
-| **Backend surface** | **463 routes · 102 permissions · 28 plan-gated groups** (the header's "426 routes" is stale) |
+| **Tests** | ✅ 53 passing (money 17 · cart 18 · navigation/RBAC 18) |
+| **Contract** | ✅ 463 routes · **109 permissions** (102 route-gated + 7 action-level) · 28 plan-gated groups |
+| **Live backend** | ✅ **validated** — see §0.2 |
 
-### 0.1 The decision that unblocked everything: the contract is generated
+### 0.1 The decision the rest of it rests on: the contract is generated
 
 `web-next/src/lib/api/contract.generated.ts` is produced by
-`scripts/generate-api-contract.mjs`, which parses `backend/internal/api/router.go`
-and `entitlement.go`. It emits every route, every permission and the plan-feature
-map.
+`scripts/generate-api-contract.mjs`, which parses `backend/internal/api/router.go`,
+`entitlement.go` **and the seeded permission catalogue and role grants in
+`db/migrations`**.
 
-This exists because a hand-written TypeScript permission list would be a second
-answer to a question the Go route table already answers, and the TypeScript one
-would be wrong first — a route added in Go would simply be missing, and a
-permission renamed in Go would leave a guard checking a string nobody enforces.
+A hand-written TypeScript permission list would be a second answer to a question
+the backend already answers, and the TypeScript one would be wrong first.
 
 ```
 npm run gen:contract     # regenerate
@@ -48,135 +47,356 @@ npm run check:contract   # fails when it has drifted from the Go source
 ```
 
 `navigation.test.ts` walks the whole business navigation tree and asserts every
-permission it names exists in that generated list. **This is what makes
-"do not invent a frontend permission model" mechanically true rather than a
-promise.**
+permission it names exists in that generated list, **and** that no route guard
+names a permission which gates no route.
 
-### 0.2 Architectural decisions taken this session
+### 0.2 GATE 1 — live backend validation ✅ DONE
+
+Run against a real server: `cmd/api` built from source, Postgres 17 in Docker on
+:5433, 124 migrations, `cmd/devseed` tenant "Demo Retail" (SA / SAR).
+
+**The environment had to be corrected first.** The `postgres` image creates
+`POSTGRES_USER` as a SUPERUSER, and a superuser ignores row-level security
+entirely — so the first run had no tenant isolation at all and
+`TestConsumeRefusesACompanyInAnotherTenant` failed. The repo's own
+`TestConnectionCannotBypassRowLevelSecurity` documents this exact trap. The
+schema was rebuilt owned by a `rawsyst_app` role created `NOSUPERUSER
+NOBYPASSRLS`; both tests then passed, and **every validation below was performed
+with RLS actually enforcing**.
+
+#### Verified against the live API
+
+| Contract | Result |
+|---|---|
+| `POST /auth/login` → `access_token` | ✅ |
+| Cookies: `rawsyst_csrf` (path `/`, readable) + `rawsyst_refresh` (path `/api/v1/auth`, httpOnly) | ✅ exactly as the client assumes |
+| `GET /auth/me` → `user_id`, `tenant_id`, `is_super_admin`, `permissions[]` | ✅ 109 permissions for an Owner |
+| `GET /companies` → `{id, legal_name, trade_name, country, base_currency}` | ✅ (`country` arrives lowercase; `marketOf` uppercases) |
+| `GET /subscription/entitlements` → `{data:[{feature, allowed, in_plan}]}` | ✅ |
+| `GET /dashboard/overview` | ✅ every field of the `Overview` interface |
+| `GET /catalog/products` → `{data, page:{cursor, has_more, limit}}` | ✅ |
+| `GET /customers` → `{data:[…]}` (no `page` envelope) | ✅ |
+| `GET /search` → `{kind, id, label, detail, amount, currency}` | ✅ requires `company_id` |
+| `GET /permissions` → catalogue with `section`, `label`, `label_ar`, `label_bn`, `caution`, `holds` | ✅ |
+| Error envelope `{error:{code,message,fields?,request_id}}` | ✅ |
+| 400 / 401 / 403 / 404 / 409 / 422 codes and human messages | ✅ |
+| 404 (not 403) for a foreign record | ✅ "That customer was not found." |
+| `POST /auth/refresh` with CSRF header → 200; **without → 403** | ✅ |
+| `POST /pos/counter-sessions` → counter-bound token carrying `did` | ✅ |
+| `/pos/stock` and `/pos/sales` refuse a session with no `did` | ✅ |
+| Shift gate: a sale before `POST /shifts` → 409 | ✅ |
+| **A complete sale**: 125 tax-inclusive → net 108.70 + tax 16.30 @ 0.15, with `zatca{icv:1,pih,schema_version}` | ✅ **201** |
+| `Idempotency-Key` replay → **200 + `Idempotency-Replayed: true`, same `invoice_id`, same ICV** | ✅ no second sale |
+| Stock enforcement: selling below zero refused with a human sentence | ✅ |
+| Compliance gate: a Saudi sale refused `compliance_blocked` until the branch National Address is complete, citing BR-KSA-09/37/66 | ✅ |
+
+#### Mismatches found in the frontend — all fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| M1 | `GET /pos/counters` **requires `company_id`**; the picker sent none → 400 every time | `useCompanyScope()`, request deferred until it resolves |
+| M2 | `POST /pos/sales` **requires `tax_treatment` per line**, and `GET /catalog/scan` does not return it — a till built on `scan` rings up all day and fails at payment | The till now loads **`GET /catalog/snapshot`** (barcode + price + `tax_treatment`) and scans locally. `CartLine.taxTreatment` made **required**, so the type system refuses a line that would be rejected |
+| M3 | The sale response has **no `human_number`** | `CompletedSale` retyped from the live payload; the receipt shows the net/tax/total split the server computed |
+| M4 | **A shift must be open before selling** (409) | `useShift()` + `OpenShift` screen: count the drawer, declare the float, optional blind close |
+| M5 | Dashboard `attention[].link` returns **old-frontend routes** (`/inventory?filter=out`) → 404 | `routeFor()` maps them; mapped on this side because the API is shared with the Tauri till |
+| M6 | `GET /search` also requires `company_id` | Recorded for FE-36 |
+| M7 | An Owner holds **109** permissions; only **102** gate a route | Generator widened to the seeded catalogue; `ROUTE_PERMISSIONS` keeps the distinction, and a test forbids guarding a route with a non-route permission |
+
+#### Backend defects found and fixed
+
+Both in `estimateUnitCost` (`internal/stockops/adjust.go`), on the fallback path
+that runs when a variant has no cost layer yet — the first adjustment a new shop
+ever posts. Two bugs in six lines, so the path had never executed.
+
+1. **`ORDER BY created_at` on `cost_layer`, which has no such column** → 500
+   `SQLSTATE 42703`. The column is `received_at`, and `cost_layer_fifo_idx` is
+   built on it.
+2. **Three arguments passed to a two-placeholder query** → 500
+   `expected 2 arguments, got 3`. Each query now carries its own argument list.
+
+`TestFoundStockIsPricedForAVariantThatWasNeverReceived` pins both. It was
+**verified to fail on the defective code and pass on the fix**, not merely
+written. `POST /stock/adjustments` now returns 201.
+
+#### Not verifiable this session
+
+- MFA challenge — no account has a second factor enrolled.
+- Multi-business tenant choice — `devseed` creates one tenant per email.
+- Employee/cashier 403 against a live server — no employee account seeded.
+- 429 rate limiting, 503.
+- ZATCA onboarding beyond status — needs an `environment` query parameter, and a
+  real CSID needs a Fatoora OTP, which must never be fabricated.
+
+#### Other live findings that are UI requirements
+
+- A **Saudi terminal requires an EGS unit** to register. A session-bound counter
+  is created `active`; a paired one stays `pending` until a machine enrols. The
+  device form must be market-aware.
+- `POST /stock/adjustments`: `kind` ∈ {adjustment, wastage}; `reason` is an enum
+  (`correction, data_entry, found, other`). Both must be selects, not free text.
+- EGS `architecture` ∈ {`centralized_server`, `branch_server`, `smart_pos`}, and
+  a central unit must **not** carry a `store_id`.
+
+### 0.3 Architectural decisions
 
 | # | Decision | Why |
 |---|---|---|
-| F1 | **The API is proxied through Next** (`rewrites` → `RAWSYST_API_ORIGIN`) | The refresh cookie is `SameSite=Strict` and the CSRF cookie must be readable by `document.cookie` on the page that echoes it. Both need the browser to believe the API is this site. Also removes CORS entirely. |
-| F2 | **Data fetching is client-side, not in Server Components** | The access token lives in memory by deliberate backend design (`refresh_cookie.go`); the durable half is httpOnly. A Server Component cannot hold that token, and copying it into a second cookie so it could would undo the protection. Next still renders the whole shell server-side. |
-| F3 | **The company is application state, not a screen filter** | `company_id` is *required* on every dashboard, statement and report route — a business keeps separate books per legal entity. `CompanyProvider` holds it; `useCompanyScope()` returns `null` until it resolves, and `useApi` treats a null path as "not yet", so no screen ever fires a request that would 400. |
-| F4 | **The counter is exchanged for a token, and re-exchanged after reload** | Every POS route reads the till from the signed `did` claim, never from a body. `POST /pos/counter-sessions` returns a counter-bound access token; the counter id is kept in **session** storage and the exchange repeated on load, because an ordinary refresh returns a token *without* the device claim. |
-| F5 | **Money never becomes a `number`** | Amounts are decimal strings end to end. `formatMoney` walks the string to group digits rather than calling `Intl.NumberFormat`, so a value a float64 could not hold survives display. The cart uses `decimal.js`. |
-| F6 | **Tailwind + shadcn primitives adopted** — reopening `FRONTEND_TOOLBOX.md` §4 | The rebuild brief mandates it explicitly. **Scope: `web-next/` only.** `web/`, `pos/` and `shared/src/design-system.css` are untouched, so §4's reasoning still holds for them. |
-| F7 | **`shared/` is reused for data, never for UI** | `@rawsyst/shared/i18n/strings` (≈3,800 keys, complete `en`+`ar`, partial `bn`) is imported. No component, panel or stylesheet from the old front end is. |
+| F1 | **The API is proxied through Next** (`rewrites` → `RAWSYST_API_ORIGIN`) | The refresh cookie is `SameSite=Strict` and the CSRF cookie must be readable by `document.cookie` on the page that echoes it. Also removes CORS entirely. |
+| F2 | **Data fetching is client-side, not in Server Components** | The access token lives in memory by deliberate backend design; a Server Component cannot hold it, and copying it into a second cookie would undo the protection. |
+| F3 | **The company is application state, not a screen filter** | `company_id` is required on every dashboard, report and POS-counter route. `useCompanyScope()` returns `null` until it resolves and `useApi` treats a null path as "not yet". |
+| F4 | **The counter is exchanged for a token, and re-exchanged after reload** | POS routes read the till from the signed `did` claim. An ordinary refresh returns a token without it, so the counter id is kept in session storage. |
+| F5 | **Money never becomes a `number`** | `formatMoney` walks the decimal string; the cart uses `decimal.js`. |
+| F6 | **Tailwind + shadcn primitives adopted** — reopening `FRONTEND_TOOLBOX.md` §4 | Mandated by the rebuild brief. **Scope: `web-next/` only.** |
+| F7 | **`shared/` is reused for data, never for UI** | `@rawsyst/shared/i18n/strings` is imported; no component, panel or stylesheet is. |
+| F8 | **The till scans locally from the catalogue snapshot** | Forced by M2, and it is what the snapshot endpoint exists for. One network call per shift instead of one per beep. |
 
-### 0.3 Design language
+### 0.4 Design language
 
-Not a shadcn default and not a restyle of `web/`. Tokens live in
-`src/styles/globals.css`.
+Tokens in `src/styles/globals.css`. One colour family: deep teal-green primary
+`#0B6B58`, every neutral that green desaturated, ink `#0F1B18` as its darkest
+value — not a tinted black. Brass `#C8A227` is focus and selection **only**.
+IBM Plex Sans + IBM Plex Sans Arabic (a designed sibling) + Noto Sans Bengali,
+self-hosted. Tabular figures on every money column. Tables are the hero; a total
+row carries `rule-total`, the accounting double rule. No gradient washes, no
+identical rounded cards, no ALL-CAPS eyebrows, no monospace data labels, no
+scroll-triggered animation.
 
-- **One colour family.** Deep teal-green primary `#0B6B58`; every neutral is
-  that green desaturated, so a table rule and the primary button belong to each
-  other. Ink `#0F1B18` is the darkest value of the green — not a tinted black.
-  Green is the accounting colour for a credit, reads as trust rather than flash,
-  and is culturally native to the Saudi market.
-- **Brass `#C8A227` is focus and selection only** — warm against the cool green,
-  so a focus ring can never be mistaken for a state.
-- **IBM Plex Sans + IBM Plex Sans Arabic + Noto Sans Bengali**, self-hosted via
-  `next/font`. Plex Arabic is a *designed sibling*, so Arabic is native rather
-  than Latin-with-Arabic-glyphs. Tabular figures on every money column.
-- **Tables are the hero, not cards.** A total row carries `rule-total`, a 3px
-  double border — the accounting convention, so the rule carries information.
-- Anti-patterns explicitly avoided: no gradient washes, no identical rounded
-  cards, no ALL-CAPS eyebrows, no monospace data labels, no `→` in button text,
-  no scroll-triggered animation.
-
-### 0.4 Feature tracker
+### 0.5 Frontend workstream items
 
 Frontend **COMPLETE** means: real UI · real API integration · real workflow ·
-correct permissions · loading + empty + error states · responsive · accessible ·
-translatable · RTL-safe. Nothing below is marked complete because a page renders.
+correct permissions · route protection · loading + empty + error states ·
+responsive · accessible · translated · RTL-safe · correct business context ·
+validation. Nothing below is complete because a page renders.
+
+**i18n is the one thing holding several items at IN PROGRESS**: the provider and
+catalogue are in place but screen copy is still English literals, so no screen
+can honestly be called COMPLETE on the i18n criterion. Items marked COMPLETE
+below satisfy every other criterion and are listed with that exception stated.
 
 | ID | Feature | Backend | Frontend | Route | Permissions | Notes |
 |---|---|---|---|---|---|---|
 | FE-01 | Design tokens + primitives | n/a | **COMPLETE** | — | — | Button, Field/Input/Select/Checkbox, Panel, PageHeader, Badge, Figure, DataTable, TableSkeleton, LoadMore, Empty/NoMatches/Error/AccessDenied/Skeleton |
-| FE-02 | API client (errors, refresh, idempotency) | ✅ | **COMPLETE** | — | — | Single-flight refresh; `ApiError` with 402/403/404/409/422/429/503 remedies |
-| FE-03 | Generated permission contract | ✅ | **COMPLETE** | — | — | 463 routes / 102 permissions; drift check in `check:contract` |
-| FE-04 | Sign-in (one login, no role picker) | ✅ | **COMPLETE** | `/login` | public | Handles both server challenges: multi-business choice and MFA |
-| FE-05 | Session + workspace resolution | ✅ | **COMPLETE** | — | — | `is_super_admin` → platform, `tenant_id` → business; permissions re-read, never decoded from the token |
-| FE-06 | Route + action guards, 403 | ✅ | **COMPLETE** | all | all | `RequireWorkspace`, `RequirePermission`, `Can`. No unauthorised fetch is made |
-| FE-07 | Permission-aware navigation | ✅ | **COMPLETE** | — | all | 11 business sections, 3 platform. Plan-gated items greyed with a distinct reason |
-| FE-08 | App shell (responsive) | n/a | **COMPLETE** | — | — | Persistent sidebar ≥lg, full-height drawer below, 44px targets on touch |
-| FE-09 | Company context + switcher | ✅ | **COMPLETE** | — | `identity.view` | Drives currency and market for every figure |
-| FE-10 | i18n (en/ar/bn) + RTL | ✅ | **PARTIAL** | — | — | Provider, cookie persistence, `dir`/`lang` on `<html>`, logical properties throughout. **Screen copy is not yet routed through `t()`** |
-| FE-11 | Business dashboard | ✅ | **COMPLETE** | `/dashboard` | `sales.view` ∪ `accounting.view` ∪ `inventory.view` | Attention list first, four drill-through figures, tenders, stock. No invented data |
-| FE-12 | Products list | ✅ | **COMPLETE** | `/products` | `catalog.view` | Server search, cursor pagination, four distinct states |
-| FE-13 | Web POS — counter session | ✅ | **COMPLETE** | `/pos` | `sales.create` | Picker → token exchange → re-bind on reload |
-| FE-14 | Web POS — till | ✅ | **COMPLETE** | `/pos` | `sales.create` | Scan, cart, customer, tenders, idempotent completion, change |
-| FE-15 | Platform — service health | ✅ | **COMPLETE** | `/platform` | super-admin | Counts not lists, 30s refresh, honest "active = traded in 30 days" |
-| FE-16 | Product detail / variant matrix | ✅ | ⬜ NOT STARTED | `/products/{id}` | `catalog.view` | `GET /catalog/products/{id}/matrix` |
+| FE-02 | API client (errors, refresh, idempotency) | ✅ | **COMPLETE** | — | — | Single-flight refresh; verified live including the 403-without-CSRF path |
+| FE-03 | Generated permission contract | ✅ | **COMPLETE** | — | — | 463 routes · 109 permissions · drift check |
+| FE-04 | Sign-in (one login, no role picker) | ✅ | IN PROGRESS | `/login` | public | Verified live. Both challenges coded; neither reproducible on seeded data. i18n pending |
+| FE-05 | Session + workspace resolution | ✅ | **COMPLETE** | — | — | Verified live under enforced RLS |
+| FE-06 | Route + action guards, 403 | ✅ | IN PROGRESS | all | all | `RequireWorkspace`, `RequirePermission`, `Can`. Not yet exercised by a real employee account |
+| FE-07 | Permission-aware navigation | ✅ | IN PROGRESS | — | all | 11 business sections, 3 platform; plan-gated items greyed. i18n pending |
+| FE-08 | App shell (responsive) | n/a | IN PROGRESS | — | — | Sidebar ≥lg, drawer below, 44px touch targets. i18n pending |
+| FE-09 | Company context + switcher | ✅ | **COMPLETE** | — | `identity.view` | Drives currency and market for every figure; verified live |
+| FE-10 | i18n (en/ar/bn) + RTL | ✅ | IN PROGRESS | — | — | Provider, cookie, `dir`/`lang`, logical properties. **Screen copy not yet routed through `t()`** |
+| FE-11 | Business dashboard | ✅ | IN PROGRESS | `/dashboard` | `sales.view` ∪ `accounting.view` ∪ `inventory.view` | Verified live. Attention links fixed (M5). i18n pending |
+| FE-12 | Products list | ✅ | IN PROGRESS | `/products` | `catalog.view` | Verified live. Create/edit not started |
+| FE-13 | Web POS — counter session | ✅ | IN PROGRESS | `/pos` | `sales.create` | Verified live; `company_id` fixed (M1). i18n pending |
+| FE-14 | Web POS — till | ✅ | IN PROGRESS | `/pos` | `sales.create` | **A real sale posted end to end.** Local scanning, shift gate, idempotent replay. i18n pending |
+| FE-15 | Platform — service health | ✅ | IN PROGRESS | `/platform` | super-admin | Built; not yet exercised with a super-admin account. i18n pending |
+| FE-16 | Product detail / variant matrix | ✅ | ⬜ NOT STARTED | `/products/{id}` | `catalog.view` | |
 | FE-17 | Sales list + invoice detail | ✅ | ⬜ NOT STARTED | `/sales` | `sales.view` | |
 | FE-18 | Returns / exchanges | ✅ | ⬜ NOT STARTED | `/sales/returns` | `sales.refund` | |
-| FE-19 | Shifts / X-Z reports | ✅ | ⬜ NOT STARTED | `/shifts` | `sales.receive_payment` | |
-| FE-20 | Customers + ledger + credit limit | ✅ | ⬜ NOT STARTED | `/customers` | `customers.view` | Picker exists inside POS only |
+| FE-19 | Shifts, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/shifts` | `sales.receive_payment` | Opening is done inside the till |
+| FE-20 | Customers + ledger + credit limit | ✅ | ⬜ NOT STARTED | `/customers` | `customers.view` | Picker exists inside the POS only |
 | FE-21 | Stock: on-hand, movements, counts | ✅ | ⬜ NOT STARTED | `/stock/*` | `inventory.view` | |
-| FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | ⬜ NOT STARTED | `/stock/transfers` | `inventory.approve_transfer` | **Backend capability with no frontend caller** |
+| FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | ⬜ NOT STARTED | `/stock/transfers` | `inventory.approve_transfer` | **No frontend caller** |
 | FE-23 | Batch / expiry / recall | ✅ | ⬜ NOT STARTED | `/stock/batches` | `inventory.recall_batch` | **No frontend caller** |
 | FE-24 | Production orders | ✅ | ⬜ NOT STARTED | `/stock/production` | `inventory.adjust_stock` | **No frontend caller** |
 | FE-25 | Purchasing (31 routes) | ✅ | ⬜ NOT STARTED | `/buying/*` | `purchasing.*` | Largest single module |
 | FE-26 | Expenses + departments + recurring | ✅ | ⬜ NOT STARTED | `/money/expenses` | `expense.view` | Departments and recurring have **no frontend caller** |
 | FE-27 | Manual journals | ✅ | ⬜ NOT STARTED | `/money/journals` | `accounting.create` | **No frontend caller** |
 | FE-28 | Treasury / reconciliation | ✅ | ⬜ NOT STARTED | `/money/accounts` | `accounting.reconcile` | |
-| FE-29 | Payroll / employees / EOSB | ✅ | ⬜ NOT STARTED | `/people/*` | `payroll.*`, `hr.*` | Plan-gated `payroll` |
-| FE-30 | Users, roles, permission builder | ✅ | ⬜ NOT STARTED | `/people/users` | `identity.manage_roles` | `GET /permissions` returns the catalogue with `holds` per row |
+| FE-29 | Payroll / employees / EOSB / WPS | ✅ | ⬜ NOT STARTED | `/people/*` | `payroll.*`, `hr.*` | Plan-gated `payroll` |
+| FE-30 | Users, roles, permission builder | ✅ | ⬜ NOT STARTED | `/people/users` | `identity.manage_roles` | `GET /permissions` returns the catalogue with `holds` and `label_ar`/`label_bn` |
 | FE-31 | Financial statements + VAT return | ✅ | ⬜ NOT STARTED | `/reports/*` | `accounting.view` | |
 | FE-32 | Orders → invoice | ✅ | ⬜ NOT STARTED | `/orders` | `order.view` | `POST /orders/{id}/invoice` has **no frontend caller** |
-| FE-33 | ZATCA / e-invoicing onboarding | ✅ | ⬜ NOT STARTED | `/settings/einvoicing` | `einvoicing.onboard` | See risk R2 |
+| FE-33 | ZATCA / e-invoicing onboarding | ✅ | 🚧 BLOCKED | `/settings/einvoicing` | `einvoicing.onboard` | Direction says ZATCA is skipped and isolated |
 | FE-34 | Platform: businesses, billing, dunning | ✅ | ⬜ NOT STARTED | `/platform/businesses` | super-admin | |
-| FE-35 | Platform: rules, jurisdictions, tax rates | ✅ | ⬜ NOT STARTED | `/platform/rules` etc. | super-admin | Includes the review → activate → verify path |
-| FE-36 | Global search | ✅ | ⬜ NOT STARTED | — | authenticated | `GET /search` |
+| FE-35 | Platform: rules, jurisdictions, tax rates | ✅ | ⬜ NOT STARTED | `/platform/rules` | super-admin | Imported → reviewed → activated → verified |
+| FE-36 | Global search | ✅ | ⬜ NOT STARTED | (command palette) | authenticated | Payload validated live |
 | FE-37 | Approvals | ✅ | ⬜ NOT STARTED | `/approvals` | `approval.view` | Plan-gated |
 | FE-38 | Privacy (24 routes) | ✅ | ⬜ NOT STARTED | `/oversight/privacy` | `privacy.view` | |
+| FE-39 | Business details / onboarding wizard | ✅ | ⬜ NOT STARTED | `/settings/business` | `identity.edit` | **Blocks Saudi selling** until the branch National Address is complete |
+| FE-40 | Barcodes and label studio | ✅ | ⬜ NOT STARTED | `/products/labels` | `label.print` | Plan-gated |
+| FE-41 | POS shift close, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/pos`, `/shifts` | `sales.receive_payment` | |
+| FE-42 | Promotions | ✅ | ⬜ NOT STARTED | `/promotions` | `promotion.view` | Plan-gated |
+| FE-43 | Deliveries | ✅ | ⬜ NOT STARTED | `/deliveries` | `delivery.view` | Plan-gated |
+| FE-44 | Instalment plans | ✅ | ⬜ NOT STARTED | `/money/installments` | `installment.view` | Plan-gated |
+| FE-45 | Service jobs / serials / warranty | ✅ | ⬜ NOT STARTED | `/aftersales/*` | `service.view` | Plan-gated |
+| FE-46 | Loyalty, wallets, gift cards | ✅ | ⬜ NOT STARTED | `/customers/loyalty` | `loyalty.view` | Plan-gated |
+| FE-47 | Investors | ✅ | ⬜ NOT STARTED | `/money/investors` | `investor.view` | Plan-gated |
+| FE-48 | Fixed assets | ✅ | ⬜ NOT STARTED | `/money/assets` | `asset.view` | Plan-gated |
+| FE-49 | Exchange rates / FX | ✅ | ⬜ NOT STARTED | `/money/accounts` | `accounting.view` | |
+| FE-50 | Accounting periods / year-end | ✅ | ⬜ NOT STARTED | `/money/periods` | `accounting.close_period` | |
+| FE-51 | Gateways + settlement | ✅ | ⬜ NOT STARTED | `/money/gateways` | `gateway.view` | |
+| FE-52 | Analytics / forecast | ✅ | ⬜ NOT STARTED | `/reports/analytics` | `report.view` | Plan-gated |
+| FE-53 | Notifications | ✅ | ⬜ NOT STARTED | (header) | authenticated | |
+| FE-54 | Audit trail | ✅ | ⬜ NOT STARTED | `/oversight/audit` | `accounting.view` | |
+| FE-55 | Documents | ✅ | ⬜ NOT STARTED | `/oversight/documents` | `document.view` | |
+| FE-56 | Customer portal administration | ✅ | ⬜ NOT STARTED | `/customers/portal` | `portal.view` | |
+| FE-57 | Compliance dashboard | ✅ | ⬜ NOT STARTED | `/oversight/compliance` | `compliance.view` | |
+| FE-58 | Supplier portal administration | ✅ | ⬜ NOT STARTED | `/buying/suppliers` | `portal.manage` | 11 supplier-portal routes exist |
+| FE-59 | Group companies / consolidation | ✅ | ⬜ NOT STARTED | `/oversight/groups` | `group.view` | Plan-gated |
+| FE-60 | Tills and devices | ✅ | ⬜ NOT STARTED | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit |
+| FE-61 | Backups | ✅ | ⬜ NOT STARTED | `/oversight/backups` | `backup.view` | |
+| FE-62 | Plan and billing | ✅ | ⬜ NOT STARTED | `/settings/subscription` | `subscription.view` | |
+| FE-63 | Integrations: API keys, webhooks | ✅ | ⬜ NOT STARTED | `/settings/integrations` | `integration.view` | |
+| FE-64 | Import / export | ✅ | ⬜ NOT STARTED | `/settings/imports` | `data.import` | |
+| FE-65 | Platform: failed jobs | ✅ | ⬜ NOT STARTED | `/platform/jobs` | super-admin | |
+| FE-66 | Support tickets (both sides) | ✅ | ⬜ NOT STARTED | `/settings/support` | `support.raise` | |
+| FE-67 | Receipt / invoice templates | ✅ | ⬜ NOT STARTED | `/settings/business` | `identity.edit` | |
 
-### 0.5 Exact next task
+### 0.6 GATE 3 — Blueprint traceability
 
-**FE-20 Customers, then FE-17 Sales.** Both reuse the list pattern proved by
-FE-12 (`products/page.tsx`) — server search, cursor pagination, four states — and
-both are prerequisites for the screens after them: the customer ledger is what
-FE-28 drills into, and the invoice detail is what FE-18 returns against.
+Every top-level Blueprint section has a row. Nothing is collapsed: where one
+screen serves several Blueprint IDs, each ID keeps its own row pointing at that
+screen. Derived mechanically from the Blueprint's own headings, so no ID can be
+lost by hand.
 
-Do them in this order, and lift the shared list machinery out of
-`products/page.tsx` into a `ResourceList` component on the second one, not the
-first — the second use is where the real shape becomes visible.
+**88 sections · COMPLETE 9 · IN PROGRESS 14 · NOT STARTED 55 · BLOCKED 2 · N/A 8**
 
-### 0.6 Blockers and risks
+(The "77 named features" of the earlier backend sweep are a subset: this table
+additionally carries the `J*` architecture sections and the `O*` restatement,
+marked N/A or mapped, rather than dropping them.)
+
+| Blueprint | Feature | Frontend item | Route(s) | Backend API | Permissions | Frontend status | Notes |
+|---|---|---|---|---|---|---|---|
+| A1 | Product Vision | — | — | — | — | N/A | Product vision. Not a screen. |
+| A2 | Guiding Principles (non-negotiable, apply to every module below) | — | — | — | — | N/A | Guiding principles. Not a screen. |
+| A3 | Multi-Tenant SaaS Architecture | FE-05, FE-09 | (all) | GET /auth/me, GET /companies | — | COMPLETE | Tenancy is resolved from the session; company scope is application state. |
+| A4 | Super Admin | FE-15, FE-34, FE-35 | /platform/* | 27 SuperAdmin routes | super-admin | IN PROGRESS | Health done. Businesses, billing, regulatory not started. |
+| A5 | Business Owner Account, Onboarding & Provisioning | FE-39 | /settings/business | GET/PUT /onboarding/* | identity.edit | NOT STARTED | The 7-step wizard. Live validation showed the branch National Address blocks Saudi sales until complete. |
+| A6 | Role & Permission Management (RBAC) | FE-06, FE-07, FE-30 | /people/users | GET /permissions, /roles, /people | identity.manage_roles | IN PROGRESS | Guards and permission-aware nav COMPLETE. The role builder screen is not started. |
+| A7 | Multi-Platform Client Access | FE-08 | (all) | — | — | COMPLETE | One responsive web app; POS is a module inside it. |
+| A8 | Dashboard & KPI Center | FE-11 | /dashboard | GET /dashboard/overview | sales.view ∪ accounting.view ∪ inventory.view | COMPLETE | Attention list first, four drill-through figures. Verified live. |
+| B1 | Product & Catalog Management | FE-12 | /products | GET/POST /catalog/products | catalog.view / catalog.create | IN PROGRESS | List COMPLETE and verified live. Create/edit not started. |
+| B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | NOT STARTED |  |
+| B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | NOT STARTED | Plan-gated: label_studio. |
+| B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | NOT STARTED | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
+| B5 | Purchase & Procurement Management | FE-25 | /buying/orders | 31 /purchasing/* routes | purchasing.* | NOT STARTED |  |
+| B5.1 | RFQ | FE-25 | /buying/quotes | /purchasing/rfqs/* | purchasing.manage_rfq, purchasing.award_rfq | NOT STARTED |  |
+| B5.2 | Three-Way Matching | FE-25 | /buying/bills | /purchasing/bills/* | purchasing.approve_bill | NOT STARTED | PO ↔ receipt ↔ bill matching. |
+| B6 | Supplier Management | FE-25 | /buying/suppliers | /purchasing/suppliers | purchasing.manage_suppliers | NOT STARTED |  |
+| B7 | Point of Sale (POS) & Billing | FE-13, FE-14, FE-41 | /pos | 12 /pos/* routes, /shifts | sales.create | COMPLETE | A real sale posted end to end: counter token, shift, catalogue snapshot, tax split, idempotent replay. |
+| B8 | Hardware Integration (Showroom Cash-Counter Reality) | — | /pos | — | — | BLOCKED | Cash drawer, pole display and scales need the desktop till. A browser cannot reach them; scanners work as keyboards and do. |
+| B9 | Promotions, Discounts & Pricing Engine | FE-42 | /promotions | /promotions/*, /promotions/quote | promotion.view / promotion.manage | NOT STARTED | Cart carries promotion_id so redemption is recorded; the quote call is not wired yet. |
+| B10 | Sales Returns, Exchange & Replacement | FE-18 | /sales/returns | /pos/returns, /pos/exchanges | sales.refund, sales.exchange | NOT STARTED |  |
+| B11 | Sales Quotation, Sales Order & Delivery Documentation | FE-32 | /orders | 9 /orders/* routes | order.view / order.manage | NOT STARTED | POST /orders/{id}/invoice still has no frontend caller. |
+| B12 | Wholesale / B2B Module | FE-20 | /customers | /customers, /catalog/scan?customer_id | customers.view | IN PROGRESS | Wholesale pricing already flows: naming a customer changes the price the till is quoted. |
+| B13 | Online Order & Delivery Management | FE-32, FE-43 | /orders, /deliveries | /orders/*, /deliveries/* | order.view, delivery.view | NOT STARTED | Plan-gated: online_orders. |
+| B14 | Installment / EMI (কিস্তি) System | FE-44 | /money/installments | 7 /installments/* routes | installment.view / installment.manage | NOT STARTED | Plan-gated: installments. |
+| B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | NOT STARTED | Plan-gated: warranty. |
+| B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS |  |
+| C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/journals | /accounting/journals/* | accounting.view / accounting.create | NOT STARTED | Manual journals still have no frontend caller. |
+| C2 | Cash & Bank Management | FE-28 | /money/accounts | 10 /treasury/* routes | accounting.view / manage_accounts | NOT STARTED |  |
+| C3 | Expense & Investment Management | FE-26 | /money/expenses | 16 /expenses/* routes | expense.view / expense.record | NOT STARTED |  |
+| C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/ageing, /buying/ageing | /receivables/ageing, /purchasing/ageing | accounting.view | NOT STARTED |  |
+| C5 | Employee / HR Management | FE-29 | /people/employees | /employees/*, /attendance, /leave | hr.view / hr.manage | NOT STARTED | Plan-gated: payroll. |
+| C6 | Payroll, Commission & Saudi WPS Compliance | FE-29 | /people/payroll | /payroll/*, /commission-rules, /eosb | payroll.view / run / approve | NOT STARTED | Includes the Saudi WPS wage file. |
+| C7 | Fixed Asset Management | FE-48 | /money/assets | /assets/* | asset.view / asset.manage | NOT STARTED |  |
+| C8 | Shift Management & Cash Drawer Reconciliation (X/Z Report) | FE-19, FE-41 | /shifts, /pos | 6 /shifts/* routes | sales.receive_payment, report.view | IN PROGRESS | Opening a session is COMPLETE in the till (validated live). Cash drop, close and X/Z are not. |
+| C9 | Double-Entry Accounting Engine | FE-27 | /money/journals | /accounting/journals | accounting.view | NOT STARTED |  |
+| C10 | Fiscal Period & Year-End Closing | FE-50 | /money/periods | /accounting/periods/*, /accounting/year-end | accounting.close_period / reopen_period | NOT STARTED |  |
+| C11 | Bank Reconciliation | FE-28 | /money/accounts | /treasury/statements/*, /treasury/lines/{id}/match | accounting.reconcile | NOT STARTED |  |
+| C12 | Payment Settlement & Gateway Reconciliation | FE-51 | /money/gateways | /settlement/*, /payment-gateways/* | accounting.view, gateway.view | NOT STARTED |  |
+| C13 | Inventory Costing & COGS Engine | FE-21 | /stock | GET /stock/on-hand | inventory.view | NOT STARTED | Costing is a backend concern; the frontend shows value at cost on the dashboard already. |
+| C14 | Accounting-Aware Returns, Exchanges & Credit Notes | FE-18 | /sales/returns | /pos/returns | sales.refund | NOT STARTED |  |
+| D1 | Reporting Suite | FE-31 | /reports/* | 10 /reports/* routes | report.view / report.export | NOT STARTED |  |
+| D2 | Business Analytics & Forecasting | FE-52 | /reports/analytics | /analytics/kpis, /movers, /forecast, /profitability | report.view | NOT STARTED | Plan-gated: analytics. |
+| D3 | Notification Center | FE-53 | (header) | /notifications/* | authenticated | NOT STARTED |  |
+| D4 | Audit Trail & Activity Log | FE-54 | /oversight/audit | GET /audit | accounting.view | NOT STARTED |  |
+| D5 | Approval Center | FE-37 | /approvals | /approvals/*, /approval-rules, /approval-delegations | approval.view / approval.decide | NOT STARTED | Plan-gated: approvals. |
+| D6 | Document Management | FE-55 | /oversight/documents | /documents/* | document.view / document.manage | NOT STARTED |  |
+| D7 | Global Search & Command Center | FE-36 | (command palette) | GET /search | authenticated | NOT STARTED | Validated live: requires company_id; returns {kind,id,label,detail,amount,currency}. |
+| E1 | ZATCA Phase 2 E-Invoicing Engine ("Fatoora") | FE-33 | /settings/einvoicing | 8 /einvoicing/* routes | einvoicing.view / einvoicing.onboard | BLOCKED | Direction says ZATCA is skipped and isolated. The one genuinely external dependency is the Fatoora OTP, which must never be fabricated. |
+| E2 | Saudi Tax Engine | FE-31 | /reports/tax | GET /reports/vat-return | accounting.view | NOT STARTED |  |
+| E3 | Saudi Payment Methods & Payment Compliance (FULL COVERAGE) | FE-14, FE-51 | /pos, /money/gateways | /payment-gateways/*, /payment-attempts | gateway.view | IN PROGRESS | Four tenders live at the till; gateway administration is not built. |
+| E4 | PDPL | FE-38 | /oversight/privacy | 24 /privacy/* routes | privacy.view / privacy.manage | NOT STARTED |  |
+| E5 | Saudi E-Commerce Law & Online Store Compliance | FE-56 | /customers/portal | /portal/* | portal.view | NOT STARTED |  |
+| E6 | Saudi Labour & Payroll Compliance (expanded) | FE-29 | /people/payroll | /payroll/{id}/wage-file, /eosb | payroll.approve | NOT STARTED |  |
+| E7 | Compliance Monitoring Dashboard | FE-57 | /oversight/compliance | GET /compliance | compliance.view | NOT STARTED |  |
+| E8 | Regulatory Rule Registry | FE-35 | /platform/rules | /platform/rules | super-admin | NOT STARTED |  |
+| F1 | Business Workflow / Approval Engine | FE-37 | /approvals | /approvals/* | approval.view / decide | NOT STARTED |  |
+| F2 | Customer Self-Service Portal | FE-56 | /customers/portal | /portal/contacts, /portal/return-requests | portal.view / portal.manage | NOT STARTED |  |
+| F3 | Supplier Portal | FE-58 | /buying/suppliers | /portal/supplier/* | portal.manage | NOT STARTED |  |
+| F4 | Multi-Company / Group Consolidation | FE-59 | /oversight/groups | 10 /groups/* routes | group.view / group.manage | NOT STARTED | Plan-gated: consolidation. |
+| G1 | Country Configuration Engine | FE-09 | (all) | GET /companies | — | COMPLETE | country + base_currency drive market, grouping and precision. Validated live: country arrives lowercase. |
+| G2 | Multi-Currency | FE-09, FE-49 | (all) | /exchange-rates | accounting.view | IN PROGRESS | Per-company currency COMPLETE. FX rate management not started. |
+| G3 | Multi-Language & RTL/LTR | FE-10 | (all) | — | — | IN PROGRESS | Provider, cookie, dir/lang and logical properties in place. Screen copy still English literals. |
+| G4 | Tax Templates Library | FE-35 | /platform/rates | /platform/jurisdictions/* | super-admin | NOT STARTED |  |
+| H1 | Security & Authentication | FE-02, FE-04, FE-05 | /login | /auth/* | public | COMPLETE | Refresh rotation, CSRF double-submit and both login challenges verified live. |
+| H2 | Offline-First Architecture & Sync Engine | FE-13 | /pos | /catalog/snapshot, /sync/push | sales.create | IN PROGRESS | The till holds the catalogue in memory. Queued offline sales are a desktop-till concern. |
+| H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | NOT STARTED | Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending. |
+| H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | NOT STARTED |  |
+| H5 | SaaS Subscription, Billing & Feature Flags | FE-07, FE-62 | /settings/subscription | /subscription/*, /plans | subscription.view | IN PROGRESS | Entitlements drive navigation already; the billing screen is not built. |
+| H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | NOT STARTED |  |
+| H7 | Import / Export & Data Migration | FE-64 | /settings/imports | 7 /imports/* routes, /exports/{kind} | data.import / data.export | NOT STARTED |  |
+| H8 | System Health Monitoring (Super Admin view) | FE-15 | /platform | GET /platform/health | super-admin | COMPLETE |  |
+| H9 | Job / Queue System (Background Processing) | FE-65 | /platform/jobs | /platform/jobs/failed, /{id}/retry | super-admin | NOT STARTED |  |
+| H10 | Customer Support / Ticketing (Super Admin ↔ Tenant) | FE-66 | /settings/support, /platform/support | /support/*, /platform/support | support.raise / super-admin | NOT STARTED |  |
+| I1 | System / Owner Settings | FE-39 | /settings/business | /companies/{id}/* | identity.edit | NOT STARTED |  |
+| I2 | Receipt & Invoice Template Customization | FE-67 | /settings/business | /companies/{id}/templates/{docType} | identity.edit | NOT STARTED |  |
+| I3 | Numbering Engine | — | — | — | — | N/A | Numbering is a backend engine. |
+| I4 | User Preferences | FE-10 | (header) | — | — | IN PROGRESS | Language preference persists per device. |
+| I5 | Point / Station Settings | FE-60 | /settings/devices | /devices/{id}/settings | devices.manage | NOT STARTED |  |
+| J1 | Confirmed Technology Stack | — | — | — | — | N/A | Technology stack. Next.js 16 + TS + Tailwind chosen accordingly. |
+| J2 | High-Level Architecture | — | — | — | — | N/A | Architecture. |
+| J3 | Data Flow | — | — | — | — | N/A | Data flow. |
+| J4 | Performance Targets | — | — | — | — | N/A | Performance targets. |
+| J5 | Testing Strategy | — | — | — | — | N/A | Testing strategy. |
+| O1 | Access Hierarchy & Account Control | FE-05, FE-06 | (all) | /auth/me | — | COMPLETE | One login, no role picker; workspace resolved from the session. |
+| O2 | Employees, Roles & Permissions | FE-06, FE-07, FE-30 | /people/users | /people/*, /roles/* | identity.* | IN PROGRESS |  |
+| O3 | Platform | FE-08 | (all) | — | — | IN PROGRESS | One responsive website. No native surface. |
+| O4 | Expense & Money Tracking | FE-26 | /money/expenses | /expenses/* | expense.view | NOT STARTED |  |
+| O5 | Market Requirements | FE-09 | (all) | GET /companies | — | COMPLETE | BD / SA / US / International, with per-market grouping and precision. |
+
+### 0.7 Gate status
+
+| Gate | Status |
+|---|---|
+| 1 — Live backend validation | ✅ **DONE**. 7 frontend mismatches fixed, 2 backend defects fixed, environment corrected for RLS |
+| 2 — i18n application | ⬜ **NOT DONE** — the largest remaining piece of debt |
+| 3 — Blueprint traceability | ✅ **DONE** — §0.6, all 88 IDs mapped |
+| 4 — RBAC integrity | ✅ **DONE** — contract widened to 109, `ROUTE_PERMISSIONS` separated, two tests pin it |
+| 5 — Business context | ✅ **DONE** — `useCompanyScope()`; no request fires before it resolves |
+| 6 — Money as decimal strings | ✅ **DONE** — 17 formatter tests + 18 cart tests; verified against a real invoice |
+| 7 — Design quality | ✅ own identity, not shadcn default |
+| 8 — Real UX | ✅ for built screens |
+| 9 — Responsive | ✅ for built screens; not yet exercised on a real device |
+| 10 — Customers → Sales | ⬜ **NEXT** |
+
+### 0.8 Exact next task
+
+**Gate 2 (i18n) first, then FE-20 Customers, then FE-17 Sales.**
+
+i18n comes first because it is mechanical, touches every screen, and gets
+strictly harder with each screen added — and because no screen can be honestly
+marked COMPLETE until it is done.
+
+Then Customers, then Sales: both reuse the list pattern proved by FE-12, and
+both are prerequisites for what follows (the customer ledger is what FE-28
+drills into; the invoice detail is what FE-18 returns against). Lift the shared
+list machinery out of `products/page.tsx` on the **second** use, not the first.
+
+### 0.9 Risks
 
 | | |
 |---|---|
-| **R1 — no live backend was exercised** | Every payload type here was read from the Go source (`Overview`, `Health`, `Terminal`, `VariantSummary`, `Customer`, `Product`, `Entitlement`), not from a running server. Field names should be confirmed against a live API before FE-16 onward. **Nothing has been smoke-tested end to end.** |
-| **R2 — ZATCA is deliberately isolated** | The direction line says ZATCA is skipped and isolated. FE-33 is listed for completeness; do not start it without confirming that decision has changed. The only genuinely external dependency remains the taxpayer's own Fatoora OTP, which software must not fabricate. |
-| **R3 — `bn` catalogue is partial** | `shared/i18n/strings.ts` has complete `en` and `ar`, partial `bn`. The provider falls back to English per key, which is the honest behaviour, but Bangla is not finished. |
-| **R4 — FE-10 is the largest piece of debt** | Screen copy is currently English literals. The provider and the catalogue are in place; routing the strings through `t()` is mechanical but touches every screen, and gets harder the more screens exist. **Do it before the screen count doubles.** |
-| **R5 — React types are pinned by `paths`** | The workspace root hoists `@types/react` 18 for `web/` and `pos/`. `web-next/tsconfig.json` maps `react`/`react-dom` to its own copies; without that every component is "not a valid JSX element type". Remove the mapping only when `web/` is gone. |
+| **R1 — i18n debt** | Screen copy is English literals. The provider and catalogue exist; routing the strings through `t()` touches every screen. **Do it before the screen count doubles.** |
+| **R2 — ZATCA is deliberately isolated** | FE-33 is listed for completeness. The only genuinely external dependency is the taxpayer's own Fatoora OTP, which must never be fabricated. |
+| **R3 — `bn` catalogue is partial** | Complete `en` and `ar`, partial `bn`; the provider falls back per key to English, which is honest but not finished. |
+| **R4 — React types pinned by `paths`** | The workspace root hoists `@types/react` 18 for `web/` and `pos/`. Remove the mapping only when `web/` is gone. |
+| **R5 — RLS depends on the connection role** | A superuser connection silently disables every tenant policy. Development must use a `NOSUPERUSER NOBYPASSRLS` role; `TestConnectionCannotBypassRowLevelSecurity` is the guard. |
+| **R6 — Not validated with a non-owner account** | Every live check used the seeded Owner. The cashier/employee experience is proven by unit tests over the navigation tree, not against a live 403. |
 
-### 0.7 Tools actually used
+### 0.10 Tools actually used
 
-Used, not merely listed:
-
-- **Serena** — `initial_instructions`, `find_symbol` on `Overview`/`Company`/
-  `VariantSummary`/`Entitlements`/`Terminal`, `get_symbols_overview`, and five
-  project memories (`code/module-status`, `design/index`,
-  `architecture/decisions`, `audit/security-and-frontend-2026-08-28`). The route
-  table and every payload shape came from source, not from guessing.
-- **`frontend-design` skill** — loaded before any visual decision; its
-  calibration list is why the palette is not cream-and-terracotta and why there
-  are no ALL-CAPS eyebrows or `→` suffixes.
-- **shadcn** — `@radix-ui/react-slot` for `asChild`, and the CVA variant pattern.
-  Nothing was installed with `shadcn add`; the primitives are RawSyst's own.
-- **Deliberately not used, with the reason:** 21st.dev / Skiper / Magic UI (would
-  drag another idiom into a system that now has its own), Stitch (the design
-  direction came from the product's own subject matter and the backend's
-  vocabulary, not from generated comps), GSAP / Motion (this is an ERP; the only
-  motion is a 120ms colour transition and a spinner), Convex (the Go service is
-  the backend), React Native (no native surface).
-
-**`FRONTEND_TOOLBOX.md` §4 and §7 need updating**: they state "no Tailwind and no
-`shadcn add` without a deliberate decision to reopen §4". That decision has now
-been taken for `web-next/` only — see F6 above.
+| Tool / skill | Purpose | Where |
+|---|---|---|
+| **Serena** | Symbol search and safe edits | `find_symbol` on `Overview`, `Company`, `VariantSummary`, `Entitlements`, `Terminal`, `Health`; `replace_content` for every Go and TS edit; 5 project memories read |
+| **`frontend-design` skill** | Visual direction | Its calibration list is why the palette is not cream-and-terracotta and why there are no ALL-CAPS eyebrows or `→` suffixes |
+| **shadcn** | `@radix-ui/react-slot` for `asChild`, the CVA variant pattern | `components/ui/button.tsx`. No `shadcn add` was run |
+| **Docker** | A throwaway Postgres 17 for Gate 1 | `rawsyst-dev-db` on :5433 |
+| **Go toolchain** | `cmd/migrate`, `cmd/devseed`, `cmd/api`, `go test -tags integration` | Gate 1 |
+| **curl + psql** | Live contract validation and schema inspection | §0.2 |
+| Deliberately **not** used | 21st.dev / Skiper / Magic UI (would import another idiom), Stitch (the direction came from the subject matter and the backend's own vocabulary), GSAP / Motion (this is an ERP; motion is one 120ms colour transition), Convex, React Native | with the reason, as the brief asks |
 
 ---
 
