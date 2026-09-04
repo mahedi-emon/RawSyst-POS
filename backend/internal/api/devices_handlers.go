@@ -328,3 +328,97 @@ func (s *Server) handleListDeviceStores(w http.ResponseWriter, r *http.Request) 
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
+
+// --- per-terminal configuration (I5) ----------------------------------------
+
+// handleTerminalSettings reads how one counter is set up.
+//
+// 0009 built `terminal_setting` for I5 and nothing ever read it, so a jeweller
+// who wanted the customer recorded on every sale had a column describing their
+// situation and no way to reach it. A terminal with no row answers with the
+// defaults it would actually run on rather than a 404 — "not configured" and
+// "configured as standard" are the same thing to the person at the counter.
+func (s *Server) handleTerminalSettings(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "deviceID"), "deviceID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := s.deviceScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.devices.Settings(r.Context(), scope, id)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+type terminalSettingsRequest struct {
+	DefaultWarehouseID  *string `json:"default_warehouse_id"`
+	ReceiptTemplate     *string `json:"receipt_template"`
+	PrinterName         *string `json:"printer_name"`
+	ScannerPrefix       *string `json:"scanner_prefix"`
+	DrawerEnabled       *bool   `json:"drawer_enabled"`
+	RequireCustomer     *bool   `json:"require_customer"`
+	MaxHeldCarts        *int    `json:"max_held_carts"`
+	DefaultDiscountRule *string `json:"default_discount_rule"`
+}
+
+// handleSaveTerminalSettings amends one counter's configuration.
+//
+// Every field is optional. A screen changing the printer should not have to
+// restate the discount rule, and a partial write that blanked the rest is how a
+// counter loses its configuration.
+func (s *Server) handleSaveTerminalSettings(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "deviceID"), "deviceID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req terminalSettingsRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := s.deviceScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	in := devices.SettingsChange{
+		ReceiptTemplate: req.ReceiptTemplate,
+		PrinterName:     req.PrinterName,
+		ScannerPrefix:   req.ScannerPrefix,
+		DrawerEnabled:   req.DrawerEnabled,
+		RequireCustomer: req.RequireCustomer,
+		MaxHeldCarts:    req.MaxHeldCarts,
+
+		DefaultDiscountRule: req.DefaultDiscountRule,
+	}
+	// An explicit empty string clears the default warehouse; leaving the field
+	// out keeps whatever the terminal had.
+	if req.DefaultWarehouseID != nil {
+		if *req.DefaultWarehouseID == "" {
+			in.ClearWarehouse = true
+		} else {
+			wid, e := parseUUID(*req.DefaultWarehouseID, "default_warehouse_id")
+			if e != nil {
+				httpx.Error(w, r, e)
+				return
+			}
+			in.DefaultWarehouseID = &wid
+		}
+	}
+
+	out, err := s.devices.SaveSettings(r.Context(), scope, id, in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}

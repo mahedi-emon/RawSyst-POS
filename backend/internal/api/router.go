@@ -774,6 +774,16 @@ func (s *Server) Routes() []Route {
 		{http.MethodPost, "/api/v1/devices/{deviceID}/enrolment-code", AccessPermission, "devices.manage",
 			s.handleIssueEnrolmentCode,
 			"shows the code once and supersedes any outstanding one"},
+		// Per-terminal configuration (I5). 0009 built `terminal_setting` and
+		// nothing read it: two counters in one shop can have different
+		// printers, different scanners, and one with a drawer and one without,
+		// and none of that was reachable.
+		{http.MethodGet, "/api/v1/devices/{deviceID}/settings", AccessPermission, "devices.view",
+			s.handleTerminalSettings,
+			"how this counter is set up; a terminal never configured answers with the defaults it runs on"},
+		{http.MethodPut, "/api/v1/devices/{deviceID}/settings", AccessPermission, "devices.manage",
+			s.handleSaveTerminalSettings,
+			"amends one counter; every field is optional, so changing the printer does not restate the rest"},
 		{http.MethodPost, "/api/v1/devices/{deviceID}/active", AccessPermission, "devices.manage",
 			s.handleSetTerminalActive, "pauses or resumes a till; takes effect on its next request"},
 		{http.MethodPost, "/api/v1/devices/{deviceID}/revoke", AccessPermission, "devices.manage",

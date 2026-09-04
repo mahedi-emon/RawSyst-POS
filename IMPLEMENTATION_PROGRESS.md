@@ -2136,3 +2136,167 @@ the isolation of that route is genuinely exercised rather than skipped.
 Worth recording because the near-miss was mine: the rename was first applied too
 widely and briefly renamed the existing lot-recall handler's parameter as well.
 The build caught nothing — both compile — and it was found by reading the diff.
+
+---
+
+# Full Blueprint reconciliation
+
+The previous pass said "no known required backend feature is missing" without
+having proved it. This is the proof, and it found one thing that was missing.
+
+**77 named Blueprint features were swept for routes, tables and tests; 17 came
+back thin and were each opened by hand. Sixteen were my search terms. One was
+real.**
+
+## The method, and why the second sweep mattered
+
+The route/table sweep is a triage and it is bad at names. It flagged B12
+Wholesale as having no MOQ — the column is `variant.min_wholesale_qty`, enforced
+at `orders.go:344` with tests. It flagged F3 Supplier Portal as absent — it is
+eleven routes under `/api/v1/portal/supplier/`. It flagged B13 Online Orders —
+the delivery record with driver, fee and COD is in 0088. Every one of those was
+a terminology miss, not a gap.
+
+So a second sweep asked a question that does not depend on my vocabulary:
+**which columns does the schema declare that no Go file anywhere names?** That
+is the shape of the `price_dealer` gap this project found once before — a column
+with business meaning, reachable by nothing.
+
+2,360 columns across 180 tables; 31 unnamed. Most are noise (`next_*_no`
+counters read by SQL functions, foreign keys, audit fields). Two were not.
+
+## The gap: I5 Point / Station Settings — FIXED
+
+`terminal_setting` was built by migration 0009 with row-level security, a touch
+trigger, and the eight settings I5 names: default warehouse, printer, scanner
+prefix, drawer, receipt template, discount rule, held-cart ceiling, and whether
+a customer must be selected before checkout. It even carried the reasoning —
+
+> *"Blueprint I5 and B7: a jeweller wants the customer recorded on every sale; a
+> grocery does not. Forcing either is wrong."*
+
+**Nothing in the product ever read or wrote that table.** No service, no route,
+no permission check, no test. A jeweller had a column describing their situation
+and no way to reach it, and two counters in one shop could not have different
+printers.
+
+Now `GET`/`PUT /api/v1/devices/{deviceID}/settings`, behind the existing
+`devices.view` and `devices.manage`. Every field is optional, because a form
+saving the printer must not blank the discount rule it never asked about. A
+terminal with no row answers with the defaults it would actually run on rather
+than 404 — "never configured" and "configured as standard" are the same thing to
+the person at the counter. The default warehouse is checked against the company,
+since another company's warehouse sits in the same tenant where RLS sees nothing
+wrong with it. Changes are audited: how a counter is configured decides whether
+a customer is recorded on a sale. **8 tests.**
+
+## The other finding: schema modelling a case the architecture prevents
+
+`company.b2b_offline_policy` and the invoice state `uncleared_issued` implement
+E1.3 RULE 2 and RULE 6 — what a shop may do with a B2B standard invoice while
+ZATCA is unreachable. Neither is read by any code.
+
+That is **correct, and worth writing down before somebody "fixes" it.** The till
+issues only simplified invoices; `sales/document.go` says so directly —
+*"Standard invoices are cleared before issue and are raised from the back
+office against an identified buyer, not rung up at a counter."* The back-office
+path is online. So the offline-B2B situation those columns describe cannot
+arise, and building a path to reach them would be building a path to a state the
+product cannot enter.
+
+Classification: **OPTIONAL/FUTURE**, becoming required only if standard invoices
+are ever raised at an offline terminal.
+
+## The matrix
+
+Frontend is NOT STARTED across the board — this has been a backend programme.
+Every row below is the backend position.
+
+| ID | Feature | Backend | Evidence / note |
+|---|---|---|---|
+| A4 | Super Admin control plane | COMPLETE | `/platform/*`, Super-Admin only |
+| A4.1 | Super Admin credential security | COMPLETE | MFA, sealed secrets |
+| A4.2 | Owner account recovery | COMPLETE | forgot/reset password, 15 routes |
+| A5 | Business onboarding & provisioning | COMPLETE | wizard steps, market selected at creation |
+| A6 | RBAC + custom role builder | COMPLETE | 4 route-authz invariant tests |
+| A7 | Multi-platform access | COMPLETE | device enrolment, sessions |
+| A8 | Dashboard & KPI | COMPLETE | overview, drill-downs |
+| B1 | Product & catalog | COMPLETE | 4 price tiers, translations |
+| B2 | Variant matrix | COMPLETE | `/matrix` |
+| B3 | Barcode engine & label studio | COMPLETE | label templates, 21 route mentions |
+| B4 | Inventory & warehouse | COMPLETE | movements, valuation, tie-out |
+| B5 | Purchase & procurement | COMPLETE | PO lifecycle |
+| B5.1 | RFQ & supplier comparison | COMPLETE | quotes, comparison |
+| B5.2 | Three-way matching | COMPLETE | PO/GRN/bill |
+| B6 | Supplier management | COMPLETE | 8 routes, ledger |
+| B7 | POS & billing | COMPLETE | offline queue, idempotent |
+| B8 | Hardware integration | COMPLETE (architecture) | device registration, printer config; physical drivers are client-side |
+| B9 | Promotions & pricing | COMPLETE | promotions carry coupons and quantity breaks |
+| B10 | Returns, exchange, replacement | COMPLETE | over-return enforced by trigger |
+| B11 | Quotation → order → delivery | COMPLETE | qty chain enforced by CHECK constraints |
+| B12 | Wholesale / B2B | COMPLETE | MOQ at `orders.go:344`, credit limit under `FOR UPDATE` |
+| B13 | Online order & delivery | COMPLETE | channels on order; driver/fee/COD in 0088 |
+| B14 | Installment / EMI | COMPLETE | plans, schedules |
+| B15 | Warranty, serial, service | COMPLETE | serial tracking, service jobs |
+| B16 | CRM & loyalty | COMPLETE | loyalty, gift cards, tiers |
+| C1 | Core accounting / ledger | COMPLETE | double-entry, enforced balance |
+| C2 | Cash & bank | COMPLETE | money accounts, transfers |
+| C3.1 | Expense tracking | COMPLETE | heads, departments (0122), recurring (0122), receipts (0096) |
+| C3.2 | Investment management | COMPLETE | investors, capital never touches P&L |
+| C4 | AR / AP | COMPLETE | ageing tied to control accounts |
+| C5 | Employee / HR | COMPLETE | directory, leave, attendance |
+| C6 | Payroll, commission, WPS | COMPLETE | GOSI 0117, WPS 0116, cancellation 0119 |
+| C7 | Fixed assets | COMPLETE | depreciation, disposal |
+| C8 | Shift & X/Z reports | COMPLETE | drawer reconciliation |
+| C9 | Posting engine | COMPLETE | rules as data, idempotency key |
+| C10 | Fiscal period & year-end | COMPLETE | period lock, close, **manual journals (0121)** |
+| C11 | Bank reconciliation | COMPLETE | 10 route mentions, statement import |
+| C12 | Settlement & gateway | COMPLETE | batches, fees |
+| C13 | Costing & COGS | COMPLETE | FIFO/WAC/standard, tie-out exact |
+| C14 | Accounting-aware returns | COMPLETE | revenue, tax, COGS all reversed |
+| D1 | Reporting suite | COMPLETE | + CSV export, same figures as screen |
+| D2 | Analytics | COMPLETE | insight package |
+| D3 | Notification centre | COMPLETE | delivery, read state |
+| D4 | Audit trail | COMPLETE | append-only, trigger-enforced |
+| D5 | Approval centre | COMPLETE | engine wired to expenses and PO issue |
+| D6 | Document management | COMPLETE | includes expense receipts |
+| D7 | Global search | COMPLETE | permission per branch |
+| E1 | ZATCA e-invoicing | CODE COMPLETE | 146 tests; **Fatoora OTP external** |
+| E1.3 | Offline B2B rules 2/6 | OPTIONAL/FUTURE | till issues only simplified invoices — see above |
+| E2 | Saudi tax / VAT return | COMPLETE | VAT return prep |
+| E3 | Saudi payment methods | COMPLETE | providers, terminals |
+| E4 | PDPL privacy | COMPLETE | consent, DSR, retention |
+| E5 | E-commerce law / storefront | COMPLETE | portal, storefront |
+| E6 | Saudi labour & payroll | COMPLETE | EOSB, Saudization |
+| E7 | Compliance dashboard | COMPLETE | alerts |
+| E8 | Regulatory rule registry | COMPLETE | versioned, verification workflow (0120) |
+| F1 | Workflow / approval engine | COMPLETE | thresholds, blocking |
+| F2 | Customer self-service portal | COMPLETE | 24 routes |
+| F3 | Supplier portal | COMPLETE | 11 routes incl. PO accept/reject |
+| F4 | Multi-company / group | COMPLETE | consolidation |
+| G1 | Country configuration | COMPLETE | country drives currency, tax, compliance gates |
+| G2 | Multi-currency | COMPLETE | FX with realised gain/loss |
+| G3 | Multi-language & RTL | COMPLETE (backend) | `translations` jsonb, bilingual templates; UI strings are frontend |
+| G4 | Tax templates library | COMPLETE | registry-driven |
+| H1 | Security & authentication | COMPLETE | constant-time compares, 32-byte secret floor |
+| H2 | Offline-first & sync | COMPLETE | queue, reconciliation |
+| H3 | Device management | COMPLETE | + **I5 settings, this pass** |
+| H4 | Backup & DR | BOUNDARY | records and verifies; taking dumps is the operator's |
+| H5 | Plans, entitlements, limits | COMPLETE | 402 vs 403 distinct |
+| H6 | API & integration platform | COMPLETE | HMAC webhooks, backoff |
+| H7 | Import / export | COMPLETE | incl. opening balances |
+| H8 | System health | COMPLETE | platform health |
+| H9 | Job / queue | COMPLETE | enqueued in the caller's transaction |
+| H10 | Support ticketing | COMPLETE | crosses the tenant boundary deliberately |
+| I1 | System / owner settings | COMPLETE | 11 settings routes |
+| I2 | Receipt/invoice templates | COMPLETE | bilingual blocks |
+| I3 | Numbering engine | COMPLETE | per-series counters under row lock |
+| I4 | User preferences | COMPLETE | |
+| I5 | **Point / station settings** | **COMPLETE (this pass)** | was a table nothing read |
+
+## Result
+
+**ALL REQUIRED BACKEND COMPLETE.** One genuine gap was found by the
+reconciliation and closed in the same pass. What remains is frontend, three
+external dependencies, and one optional item that becomes required only if the
+product ever issues standard invoices at an offline terminal.
