@@ -498,10 +498,81 @@ Two smaller things the run does deliberately:
   alone -- along with a line saying the withholding rule was not exercised,
   because a run that quietly skipped it reads exactly like one that checked it.
 
+### 0.88 Purchasing, first pass — and two defects the source did not show
+
+FE-25 is the largest module in the Blueprint: 31 routes. Three screens are
+built and verified live — suppliers, the order list, and one order.
+
+**`/buying/suppliers`.** There is no `GET /purchasing/suppliers/{id}`. The
+list carries every field the form needs, so a detail route would fetch the
+whole list to render one row of it; the form opens beside the list instead and
+which supplier is open lives in the URL, so a link still opens the right one
+and the back button closes it. That needed one addition to `ResourceList`, an
+`onRows` callback, which is the honest way for a screen to use rows the list
+already has rather than asking again. The code field is disabled when editing,
+because `PUT` says plainly that it is on orders already issued — disabled
+rather than accepted and ignored, which looks like a save that did not stick.
+Deactivating is refused while money is owed, so it is a button with an error
+path rather than a silent toggle, and the amount owed is shown beside it.
+
+**`/buying/orders`** filters on status through the route's own parameter and
+searches in the browser, because `ListOrders` takes a status and a limit and no
+search term. **`/buying/orders/{id}`** shows four quantities per line —
+ordered, arrived, still due, invoiced — because they answer different
+questions: a buyer chasing a delivery reads the third, somebody checking an
+invoice reads the fourth, and "12 of 24" answers neither.
+
+Issuing is the one irreversible act in the module, and the only place in the
+product with a confirmation step. It names the amount and the supplier rather
+than asking "are you sure", because the number is the thing to be sure about.
+After it, `PUT` answers 400 and a second issue answers 409 — both confirmed —
+so the screen offers no edit rather than one that fails.
+
+#### Two backend defects, found by running it
+
+**A purchase line could not say how it was taxed.** `po_line` has stored
+`tax_treatment` and `tax_rate` since 0031 and `CreateOrder` writes both, but
+`po_outstanding` returned neither and it is the only read behind
+`GET /purchasing/orders/{id}`. So `OrderLineView.TaxTreatment` was a field in
+the contract that came back empty on every line of every order.
+
+The display was the smaller half. `PUT` rewrites a draft's lines wholesale, so
+an editor has to send back what it read — and reading an empty treatment and no
+rate, it would send an empty treatment and no rate, and `CreateOrder`'s own
+default would turn every line into a standard one at zero per cent. **Changing
+a delivery date would have changed the tax.** Migration 0125 returns both.
+
+**A tax rate of 15 was accepted as 1500%.** `sales_line_rate_sane` has
+constrained a sales line to `[0, 1)` since 0018 and every purchasing test sends
+`"0.15"`, but the purchasing tables carry no such constraint. Typing `15` for
+fifteen per cent produced this, live:
+
+| | sent 15 | sent 0.15 |
+|---|---|---|
+| net | 948.0000 | 444.0000 |
+| tax | **14,220.0000** | 66.6000 |
+| total | **15,168.0000** | 510.6000 |
+
+Nothing refused it and nothing said anything, and the buyer's next sight of that
+number is on an order the supplier can hold them to. Refused at the API
+boundary rather than by a CHECK constraint: a constraint would have to be
+validated against rows that already exist, and this is about what the API takes
+from here on. Both pinned by tests that fail without the fixes.
+
+#### Still to build in FE-25
+
+Receiving (`POST /purchasing/receipts`, the only route that increases stock
+through a purchase), bills and the three-way match, supplier payments and
+reversals, the ageing screen, and the sourcing half — requisitions, RFQs, the
+comparison and the award. Raising an order from the screen rather than from
+curl is the next one, and it needs a line editor with product search.
+
 ### 0.8 Exact next task
 
-**FE-25 purchasing.** FE-18 and FE-19 are done, and FE-19 is now verified
-live at a counter (§0.87) rather than only built.
+**FE-25 purchasing, continued.** Suppliers, the order list and one order are
+built and verified (§0.88). Next: raising an order from the screen, then
+receiving — which is the route that makes low stock actionable, and the only
+one that increases stock through a purchase.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

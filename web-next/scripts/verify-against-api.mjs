@@ -310,6 +310,109 @@ const snap = await check(
 );
 if (snap) console.log(`  -  ${snap.items.length} sellable lines`);
 
+console.log('\nBUYING');
+{
+  const suppliers = await check(
+    'GET /purchasing/suppliers',
+    `/purchasing/suppliers?company_id=${CO}`,
+    // `outstanding` is what the list is for: a buyer choosing a supplier needs
+    // to know they are already forty thousand behind on that account, and a
+    // figure they have to go and look up is one they will not look up.
+    ['id', 'code', 'legal_name', 'payment_terms_days', 'is_active', 'outstanding'],
+    (j) => j.data[0],
+  );
+  if (!suppliers?.data?.length) {
+    console.log('  -  no suppliers seeded; the rest of buying was not exercised');
+  } else {
+    await check(
+      'GET /purchasing/warehouses',
+      `/purchasing/warehouses?company_id=${CO}`,
+      ['id', 'code', 'name'],
+      (j) => j.data[0],
+    );
+
+    const orders = await check(
+      'GET /purchasing/orders',
+      `/purchasing/orders?company_id=${CO}`,
+      ['id', 'po_number', 'supplier', 'status', 'ordered_on', 'currency', 'total_inclusive'],
+      (j) => j.data[0],
+    );
+    // The list screen shows a total and no items BECAUSE of this. If lines ever
+    // start arriving here, the comment on that screen stops being true.
+    if (orders?.data?.[0] && 'lines' in orders.data[0]) {
+      console.log('  -  the order list now carries lines; the list screen could show them');
+    }
+
+    const poID = orders?.data?.[0]?.id;
+    if (poID) {
+      const one = await check(
+        'GET /purchasing/orders/{id}',
+        `/purchasing/orders/${poID}?company_id=${CO}`,
+        ['id', 'po_number', 'status', 'subtotal_net', 'tax_total', 'total_inclusive', 'lines'],
+      );
+      if (one?.lines?.[0]) {
+        expectFields('  order line', one.lines[0], [
+          'id',
+          'line_no',
+          'qty_ordered',
+          'qty_received',
+          'qty_outstanding',
+          'qty_billed',
+          'unit_cost',
+          // Added by migration 0125. Without them an editor reading a draft
+          // cannot send its lines back unchanged, and PUT rewrites all of
+          // them -- so changing a delivery date would change the tax.
+          'tax_treatment',
+          'tax_rate',
+          'net_amount',
+          'tax_amount',
+          'gross_amount',
+        ]);
+      } else {
+        console.log('  -  the first order has no lines; the line shape was not exercised');
+      }
+
+      await check(
+        'GET /purchasing/orders/{id}/receipts',
+        `/purchasing/orders/${poID}/receipts?company_id=${CO}`,
+        null,
+      );
+    }
+
+    await check(
+      'GET /purchasing/ageing',
+      `/purchasing/ageing?company_id=${CO}`,
+      ['as_of', 'rows', 'total', 'base_currency'],
+    );
+
+    // A rate is a fraction everywhere in this system, and "15" for fifteen per
+    // cent used to be accepted and multiplied -- a 948 order came back as
+    // 15,168. The screens send a fraction; this is what stops the boundary
+    // quietly accepting the other thing again.
+    const badRate = await post(
+      `/purchasing/orders?company_id=${CO}`,
+      {
+        supplier_id: suppliers.data[0].id,
+        warehouse_id: '00000000-0000-0000-0000-000000000000',
+        lines: [
+          {
+            variant_id: '00000000-0000-0000-0000-000000000000',
+            qty: '1',
+            unit_cost: '10.00',
+            tax_rate: '15',
+          },
+        ],
+      },
+    );
+    if (badRate.status === 400) {
+      console.log('  ok a tax rate of 15 is refused as a percentage');
+    } else {
+      console.log(`  x a tax rate of 15 came back ${badRate.status}, want 400`);
+      failures += 1;
+    }
+  }
+}
+
 console.log('\nSHIFT (at a counter, which is the only way these routes answer)');
 {
   // Every shift route refuses a token with no device on it -- "Only a

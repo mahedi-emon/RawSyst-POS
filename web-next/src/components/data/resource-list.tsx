@@ -64,6 +64,16 @@ export interface ResourceListProps<Row> {
   /** Cursor value for the next page, read off the last row. */
   cursorOf?: (row: Row) => string;
   onOpenRow?: (row: Row) => void;
+  /**
+   * The loaded rows, handed back as they change.
+   *
+   * For the screens whose detail view is beside the list rather than behind a
+   * route -- suppliers, because there is no `GET .../{id}` to fetch one with.
+   * The list already holds every field such a form needs, and asking the
+   * server again for a row that is on screen is a round trip to learn what is
+   * already known.
+   */
+  onRows?: (rows: Row[]) => void;
   /** Screen-reader description of the table. Required. */
   caption: string;
   searchPlaceholder: string;
@@ -86,6 +96,7 @@ export function ResourceList<Row>({
   rowKey,
   cursorOf,
   onOpenRow,
+  onRows,
   caption,
   searchPlaceholder,
   searchLabel,
@@ -147,6 +158,15 @@ export function ResourceList<Row>({
         ? accumulated
         : data.data
       : accumulated;
+
+  // In an effect rather than during render: calling a parent's setState while
+  // rendering is what turns a list into an infinite loop.
+  useEffect(() => {
+    onRows?.(rows);
+    // `onRows` is a fresh closure every render, and depending on it would run
+    // this on every render rather than when the rows change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   // Filtering the loaded rows, for the endpoints that do not filter themselves.
   // An empty term means every row, without walking the list to prove it.
