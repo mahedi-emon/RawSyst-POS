@@ -51,7 +51,15 @@ interface Receipt {
   id: string;
   grn_number: string;
   received_on: string;
-  note?: string;
+  /**
+   * What was on this delivery.
+   *
+   * A receipt carries no free-text note of its own -- the fields are id,
+   * grn_number, po_id, po_number, received_on, lines, already_received,
+   * order_status, cost_correction, units_recosted. A "Note" column would have
+   * been an em dash on every row for ever.
+   */
+  lines?: unknown[];
 }
 
 function OrderScreen({ poID }: { poID: string }) {
@@ -149,6 +157,10 @@ function OrderScreen({ poID }: { poID: string }) {
       header: t('nx.po.colArrived'),
       numeric: true,
       width: 'w-24',
+      // Net of what went back: po_outstanding sums qty_received less
+      // qty_rejected, so twenty delivered with two rejected reads eighteen --
+      // and the two rejected stay outstanding, because the shop is still owed
+      // them. "Arrived" would have been the wrong word for that number.
       cell: (l) => <span className="num">{formatQuantity(l.qty_received)}</span>,
     },
     {
@@ -312,11 +324,13 @@ function OrderScreen({ poID }: { poID: string }) {
                   ),
                 },
                 {
-                  key: 'note',
+                  key: 'lines',
                   header: t('nx.po.colNote'),
                   secondary: true,
+                  numeric: true,
+                  width: 'w-24',
                   cell: (r: Receipt) => (
-                    <span className="text-muted">{r.note || '—'}</span>
+                    <span className="num text-muted">{r.lines?.length ?? 0}</span>
                   ),
                 },
               ]}

@@ -567,12 +567,81 @@ reversals, the ageing screen, and the sourcing half — requisitions, RFQs, the
 comparison and the award. Raising an order from the screen rather than from
 curl is the next one, and it needs a line editor with product search.
 
+### 0.89 Receiving — the only screen that puts stock on a shelf
+
+`/buying/receipts`. B5 forbids a purchase order increasing inventory, and
+`POST /purchasing/receipts` is the one route in the product that does it, so
+the counting happens here and nowhere else.
+
+**The delivery id is minted in the browser.** The route takes a client-assigned
+`uuid` and answers with the ORIGINAL receipt and `already_received: true` if it
+has seen it before. Confirmed live: the same uuid twice returned
+`GRN-2026-000001` both times, and the second call created nothing. So the screen
+mints one id when the order is chosen and discards it only when the form is
+cleared — a clerk on a bad connection who presses the button twice books one
+delivery, and is told that is what happened rather than left to wonder.
+
+**Accepted and sent back are two columns.** `qty_received` and `qty_rejected`
+go separately on the wire. A case that arrived broken did arrive: the supplier
+delivered it and will invoice it, and netting them off in the browser would
+lose the argument about who pays for the breakage. A rejected quantity with no
+reason is refused in the form, because the supplier has to be told something.
+
+**`qty_received` is net of rejections, and the column now says so.** Twenty
+delivered with two rejected reads eighteen — `po_outstanding` sums
+`qty_received - qty_rejected` — and the two rejected stay outstanding, because
+the shop is still owed them. The column was labelled "Arrived", which is the
+wrong word for that number; it says **Accepted**. (Migration 0067's own comment
+calls it "the TOTAL that ever arrived", which the SQL beneath it has never
+been. The code is right and the comment is loose.)
+
+**Duty and import VAT are two fields.** Freight, duty and handling are spread
+across the lines and into the cost layers. Import VAT is reclaimed and must
+never touch the cost of the stock (E2.5). One field would invite adding them
+together, which is the mistake the split exists to prevent. The spread defaults
+to value rather than quantity, for the reason the Go comment gives: quantity is
+wrong the moment a carton of scarves and a carton of gold share a container.
+
+**A cost correction is shown when there is one.** The response carries
+`cost_correction` and `units_recosted` — what this delivery put right on sales
+that went out before it arrived, priced on an estimate (C13). Nobody asks for
+it, and somebody reading last week's margin needs to know it moved, so the
+screen says so when it is not zero and stays quiet when it is.
+
+#### The third defect: a clerk could not be told which lines need a lot
+
+`variant.tracks_batches` has existed since 0107 and is read by exactly one
+query, in `internal/inventory/batch.go`. **No API payload carried it.**
+`inventory.Receive` requires a batch number for a tracked variant and refuses
+one for anything else — which is right — but the only way a screen could
+discover which is which was to submit the delivery and read the error. That
+means typing a whole pallet, pressing save, and being told.
+
+Migration 0126 returns `tracks_batches` on the purchase order line, because
+the receiving screen iterates those lines: it is already the one place asking
+"what is still due on this order", and the answer is more useful when it also
+says what has to be recorded about it. The lot, made-on and use-by fields now
+appear on exactly the lines that need them, and nowhere else — where the route
+would refuse them, a field would be a trap.
+
+#### A dead column, removed
+
+The receipts table on one order had a **Note**. A receipt carries no note: the
+fields are `id, grn_number, po_id, po_number, received_on, lines,
+already_received, order_status, cost_correction, units_recosted`. It would
+have been an em dash on every row for ever, and is now the number of lines on
+the delivery.
+
+`verify:api` drives the whole thing — books a delivery, replays the uuid, and
+fails if the replay creates a second receipt.
+
 ### 0.8 Exact next task
 
-**FE-25 purchasing, continued.** Suppliers, the order list and one order are
-built and verified (§0.88). Next: raising an order from the screen, then
-receiving — which is the route that makes low stock actionable, and the only
-one that increases stock through a purchase.
+**FE-25 purchasing, continued.** Suppliers, orders, one order and receiving
+are built and verified (§0.88, §0.89). Next: raising an order from the screen —
+which needs a line editor with product search — then bills and the three-way
+match, supplier payments, ageing, and the sourcing half (requisitions, RFQs,
+comparison, award).
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

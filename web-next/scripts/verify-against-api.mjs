@@ -364,6 +364,10 @@ console.log('\nBUYING');
           // them -- so changing a delivery date would change the tax.
           'tax_treatment',
           'tax_rate',
+          // Added by 0126. Without it a receiving screen can only discover
+          // which lines need a supplier lot by submitting the delivery and
+          // reading the error -- so a clerk types a whole pallet, then is told.
+          'tracks_batches',
           'net_amount',
           'tax_amount',
           'gross_amount',
@@ -377,6 +381,77 @@ console.log('\nBUYING');
         `/purchasing/orders/${poID}/receipts?company_id=${CO}`,
         null,
       );
+    }
+
+    // Receiving, on an order that is open. This is the only route in the
+    // product that increases stock through a purchase, so it is worth driving
+    // rather than reading -- but only on an order this run can safely touch.
+    // Both statuses are open for receiving, which is what canReceive() on
+    // the screen says too: an order part-delivered is still owed the rest.
+    const openOrder =
+      (await call(`/purchasing/orders?company_id=${CO}&status=issued`)).json
+        ?.data?.[0] ??
+      (await call(`/purchasing/orders?company_id=${CO}&status=receiving`)).json
+        ?.data?.[0];
+    if (!openOrder) {
+      console.log('  -  no order is open for receiving; it was not exercised');
+    } else {
+      const detail = (
+        await call(`/purchasing/orders/${openOrder.id}?company_id=${CO}`)
+      ).json;
+      const line = detail?.lines?.[0];
+      if (!line) {
+        console.log('  -  that order has no lines; receiving was not exercised');
+      } else {
+        // The route takes a CLIENT-assigned uuid and answers with the original
+        // receipt if it has seen it before. The screen mints one per delivery
+        // for exactly that reason: a clerk on a bad connection who presses the
+        // button twice books one delivery, not two.
+        const docUUID = crypto.randomUUID();
+        const body = {
+          uuid: docUUID,
+          po_id: openOrder.id,
+          delivery_note_ref: 'verify:api',
+          lines: [{ po_line_id: line.id, qty_received: '1', qty_rejected: '0' }],
+        };
+
+        const first = await post(`/purchasing/receipts?company_id=${CO}`, body);
+        if (first.status !== 200 && first.status !== 201) {
+          console.log(`  x POST /purchasing/receipts: HTTP ${first.status}`);
+          failures += 1;
+        } else {
+          expectFields('POST /purchasing/receipts', first.json, [
+            'id',
+            'grn_number',
+            'po_id',
+            'received_on',
+            'already_received',
+            'order_status',
+            // C13: what this delivery put right on sales that went below zero
+            // before it arrived. The screen shows it only when it is not zero,
+            // and cannot show it at all if it stops being sent.
+            'cost_correction',
+            'units_recosted',
+          ]);
+          if (first.json.already_received !== false) {
+            console.log('  x a new uuid came back already_received');
+            failures += 1;
+          }
+
+          const again = await post(`/purchasing/receipts?company_id=${CO}`, body);
+          if (
+            again.json?.already_received === true &&
+            again.json.grn_number === first.json.grn_number
+          ) {
+            console.log('  ok the same uuid books one delivery, not two');
+          } else {
+            console.log(
+              `  x replaying the uuid made ${again.json?.grn_number} beside ${first.json.grn_number}`,
+            );
+            failures += 1;
+          }
+        }
+      }
     }
 
     await check(

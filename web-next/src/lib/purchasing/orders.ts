@@ -22,6 +22,14 @@ export interface OrderLine {
   tax_treatment: string;
   /** A FRACTION -- "0.150000" is fifteen per cent, as everywhere else. */
   tax_rate: string;
+  /**
+   * Whether booking this line in must name the supplier lot.
+   *
+   * Added by migration 0126. Before it, a receiving screen could only find
+   * out which lines needed one by submitting the delivery and reading the
+   * error -- which means typing a whole pallet and then being told.
+   */
+  tracks_batches: boolean;
   net_amount: string;
   tax_amount: string;
   gross_amount: string;

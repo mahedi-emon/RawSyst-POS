@@ -285,10 +285,15 @@ type OrderLineView struct {
 	// matching sales_line_rate_sane. Returned because PUT rewrites a draft's
 	// lines wholesale, so an editor has to send back what it read -- and
 	// without this it would send nothing and reset the line to zero.
-	TaxRate     string `json:"tax_rate"`
-	NetAmount   string `json:"net_amount"`
-	TaxAmount   string `json:"tax_amount"`
-	GrossAmount string `json:"gross_amount"`
+	TaxRate string `json:"tax_rate"`
+	// TracksBatches is whether receiving this line must name the supplier's
+	// lot. inventory.Receive requires one for a tracked variant and refuses one
+	// for anything else, and without this a receiving screen can only find out
+	// which is which by submitting the delivery and reading the error back.
+	TracksBatches bool   `json:"tracks_batches"`
+	NetAmount     string `json:"net_amount"`
+	TaxAmount     string `json:"tax_amount"`
+	GrossAmount   string `json:"gross_amount"`
 }
 
 // CreateOrder raises a purchase order.
@@ -540,7 +545,8 @@ func outstandingLines(
 		       qty_ordered::text, qty_received::text, qty_outstanding::text,
 		       qty_billed::text, unit_cost::text,
 		       tax_treatment, tax_rate::text,
-		       net_amount::text, tax_amount::text, gross_amount::text
+		       net_amount::text, tax_amount::text, gross_amount::text,
+		       tracks_batches
 		FROM po_outstanding($1)`, poID)
 	if err != nil {
 		return nil, err
@@ -553,7 +559,8 @@ func outstandingLines(
 		if err := rows.Scan(&l.ID, &l.LineNo, &l.VariantID, &l.Description,
 			&l.QtyOrdered, &l.QtyReceived, &l.QtyOutstanding, &l.QtyBilled,
 			&l.UnitCost, &l.TaxTreatment, &l.TaxRate,
-			&l.NetAmount, &l.TaxAmount, &l.GrossAmount); err != nil {
+			&l.NetAmount, &l.TaxAmount, &l.GrossAmount,
+			&l.TracksBatches); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
