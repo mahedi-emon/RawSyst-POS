@@ -11,7 +11,8 @@
     "test": "vitest run",
     "gen:contract": "node scripts/generate-api-contract.mjs",
     "check:contract": "node scripts/generate-api-contract.mjs --check",
-    "verify:api": "node scripts/verify-against-api.mjs"
+    "verify:api": "node scripts/verify-against-api.mjs",
+    "verify:rbac": "node scripts/verify-rbac.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",

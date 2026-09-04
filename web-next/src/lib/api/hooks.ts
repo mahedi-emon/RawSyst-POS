@@ -43,6 +43,33 @@ export function useApiList<T>(
   return useApi<Page<T>>(path, query, options);
 }
 
+/**
+ * A list that answers under its own name rather than under `data`.
+ *
+ * Three sourcing routes do: `{requisitions: []}`, `{rfqs: []}`,
+ * `{quotes: []}`. Everything else in the product answers `{data: []}`, and the
+ * inconsistency is in the API rather than here — but changing three documented
+ * responses to tidy it would break every caller for a cosmetic gain, so the
+ * client reads whichever it is told to and the rest of the app never notices.
+ *
+ * Returns the ordinary `Page` shape, so `ResourceList` and every caller work
+ * unchanged.
+ */
+export function useNamedList<T>(
+  path: string | null,
+  key: string,
+  query?: Record<string, string | number | boolean | undefined | null>,
+  options?: Partial<UseQueryOptions<Page<T>, Error>>,
+) {
+  const result = useApi<Record<string, unknown>>(path, query, options as never);
+  const raw = result.data as Record<string, unknown> | undefined;
+  const rows = (raw?.[key] as T[] | undefined) ?? undefined;
+  return {
+    ...result,
+    data: rows === undefined ? undefined : ({ data: rows } as Page<T>),
+  };
+}
+
 export interface CompanyRecord {
   id: string;
   legal_name: string;

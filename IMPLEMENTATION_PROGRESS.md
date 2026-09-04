@@ -977,21 +977,93 @@ creates a second payment.
 a cash-planning figure even though it carries no ledger liability. Verified and
 left alone rather than changed; the ageing row carries no blocked breakdown, so
 the screen does not invent a distinction the data cannot support.
+### 0.95 Sourcing — FE-25 complete, and the four-way split proved
+
+Requisitions, RFQs, the side-by-side comparison and the award. Six screens,
+eleven routes, and the whole chain driven against the running server before a
+line of UI was written.
+
+#### The split B5.1 exists for, measured
+
+`npm run verify:rbac` is new. It creates staff through `POST /people`, signs in
+as them with the password it issues, and drives the chain. Not a unit test over
+a permission list — real accounts against the real server.
+
+| | ask | approve | compare | award |
+|---|---|---|---|---|
+| Inventory Keeper | **201** | 403 | 403 | — |
+| Purchase Manager | 201 | **403** | **200** | **403** |
+| Owner | 201 | **200** | 200 | **201** |
+
+The seeded Purchase Manager holds eight purchasing permissions and **neither**
+`purchasing.approve_request` **nor** `purchasing.award_rfq`. So the buyer who
+runs the comparison genuinely cannot sign it off, which is the control, and it
+is enforced by the backend rather than by the sidebar.
+
+The same script proves the cashier boundary from §0.91 — four routes at 200,
+eight at 403, `/platform/health` at 404 — so both halves of the RBAC claim are
+now one command.
+
+#### What driving it first found
+
+**An RFQ to one supplier is refused**, and the message is the reasoning: *"A
+quotation from a single supplier is not a comparison. Raise a purchase order
+directly instead."* The screen had asked for at least one. It now asks for two
+and says why while the buyer is choosing, rather than after they press send.
+
+**Three list routes answer under their own name** — `{requisitions: []}`,
+`{rfqs: []}`, `{quotes: []}` — where everything else in the product answers
+`{data: []}`. The inconsistency is in the API, and changing three documented
+responses to tidy it would break every caller for a cosmetic gain.
+`useNamedList` reads whichever it is told to and hands back the ordinary
+shape, so nothing else in the app notices.
+
+#### The comparison
+
+`lowest_quote_id` is documented as *"a convenience for the eye, NOT a
+recommendation"*, so the badge says **Lowest total** and the line under it says
+that lead time and payment terms routinely outweigh price. A screen that said
+"recommended" would be making the decision the control exists to record.
+
+Every quote carries what actually decides it — lead time, payment terms, how
+long the price holds, and whatever the supplier said about the goods — because
+a comparison of totals alone pushes every buyer to the cheapest and makes the
+required reason a formality. Cards side by side rather than a numeric grid, for
+the same reason: those things are durations and sentences. Beneath them, one
+column per supplier line by line, in its own scroll container.
+
+**A supplier who said no is on the screen.** The route records a decline
+because *"a missing quote cannot tell you"* the difference between a supplier
+who refused and one who never replied — three asked with one quote and one
+refusal still has somebody to chase.
+
+**An expired quote cannot be awarded** and says so: the supplier is no longer
+offering that price, and an order raised against it would be a commitment the
+shop has no grounds to expect them to honour.
+
+#### Requisitions
+
+No prices anywhere on the request screens. `purchasing.request` deliberately
+does not carry `catalog.view_cost_price`, and a cost column there would be a
+permission leak wearing a form label. There is no draft either —
+`RaiseRequisition` creates it `submitted`, because *"a draft that nobody can
+see is a request that never reaches an approver, and the shelf stays empty
+while the requester believes they have asked"* — so the button says send.
+
+The decision panel is **absent** without `purchasing.approve_request` rather
+than disabled: a control the requester can see but not move is an invitation to
+ask why. A rejection requires a note and an approval does not, because the
+requester has to be able to act on the answer.
 ### 0.8 Exact next task
 
-**FE-25 purchasing — the spine is complete and verified.** Suppliers, orders,
-one order, raising one, receiving, bills with the three-way match, paying a
-supplier and ageing (§0.88 – §0.94). The tax-rate architecture is resolved
-(§0.92) and R6 is closed (§0.91).
+**FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
+the three-way match, supplier payments, ageing, and the sourcing half with the
+four-way permission split proved live (§0.88 – §0.95). Twelve screens,
+thirty-one routes, `verify:api` and `verify:rbac` both green.
 
-Remaining in FE-25: the **sourcing half** — requisitions, RFQs, the side-by-side
-comparison and the award. Eleven routes, and a genuinely different job from the
-rest of the module: B5.1 separates asking, approving, comparing and awarding
-into four permissions precisely so the person who ran the comparison is not the
-one who signed it off.
-
-Then, in the order the brief gives: inventory and stock movements, transfers,
-batch/expiry, orders, delivery, returns, reservations, and the money modules.
+Next, in the order the brief gives: **inventory and stock movements**, then
+transfers, batch/lot/expiry, reservations, orders, delivery, returns, and the
+money modules.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

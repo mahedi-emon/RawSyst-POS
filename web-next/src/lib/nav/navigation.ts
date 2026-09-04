@@ -307,6 +307,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'requisitions',
         labelKey: 'nx.nav.biz.buying.requisitions',
         href: '/buying/requisitions',
+        built: true,
         // An Inventory Keeper holds purchasing.request without purchasing.view
         // -- B5 puts asking for stock in reach of any authorised staff -- and
         // saw a link to a list they cannot read. Raising a requisition is a
@@ -319,6 +320,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'rfqs',
         labelKey: 'nx.nav.biz.buying.rfqs',
         href: '/buying/quotes',
+        built: true,
         permissions: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.rfqs',
       },

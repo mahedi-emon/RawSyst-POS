@@ -73,6 +73,10 @@ describe('the sidebar offers only what exists', () => {
       '/buying/orders/[poID]', // a row on /buying/orders
       '/buying/bills/[billID]', // a row on /buying/bills
       '/buying/orders/new', // an action on /buying/orders
+      '/buying/requisitions/[requisitionID]', // a row on /buying/requisitions
+      '/buying/requisitions/new', // an action on /buying/requisitions
+      '/buying/quotes/[rfqID]', // a row on /buying/quotes
+      '/buying/quotes/new', // an action on /buying/quotes and on an approved request
     ]);
 
     const orphans = [...ROUTES].filter(
