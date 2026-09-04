@@ -1954,3 +1954,90 @@ Frontend: an adjustment form and the register screen. The API contract is
 `GET/POST /api/v1/accounting/journals`,
 `GET /api/v1/accounting/journals/{journalID}` and
 `POST /api/v1/accounting/journals/{journalID}/reverse`.
+
+---
+
+# C3.1 — Departments and recurring expenses: COMPLETE
+
+Migration 0071 recorded what it deliberately did not build: *"recurring
+expenses, an approval workflow with configurable thresholds, receipt-photo
+attachments, departments, and per-production-batch cost allocation"*. Two of
+those had been built since without the note being updated, and two are built
+here.
+
+| Feature | Status | Migration | Permission | Tests |
+|---|---|---|---|---|
+| Expense departments | COMPLETE | `0122` | `expense.view` / `expense.manage_heads` | 5 |
+| Recurring expenses | COMPLETE | `0122` | `expense.manage_heads` / `expense.record` | 7 |
+| Receipt attachments | **already COMPLETE** (0096) | — | `document.manage` | pre-existing |
+| Approval workflow | **already COMPLETE** (0079/0080) | — | — | pre-existing |
+
+## Receipt attachments were never missing
+
+0096 built document management (D6) and `document.entity_type` lists `'expense'`
+among the things it attaches to — its header names "expense receipts" outright.
+Full CRUD exists at `/api/v1/documents`, the content type is sniffed from the
+bytes rather than trusted from the uploader, there is an 8 MB ceiling, a
+checksum, and E4.1 data classification. 0071's note simply predates it.
+
+## Departments are a table, not free text
+
+`employee.department` is free text, which was the obvious precedent and the
+wrong one. What this serves is D1 — *"see where every cost is going, per day"*,
+filterable by range — and a dimension you group by cannot be free text: "Sales",
+"sales" and "Sales " are three departments to a `GROUP BY` and one to the person
+who typed them.
+
+There is no delete. `expense.department_id` is `ON DELETE RESTRICT`, so a
+department that has been spent against cannot be removed at all; `is_active`
+retires it from new expenses. Last year's report still names the department last
+year's money went to.
+
+A caller-supplied department is checked against the company inside the recording
+transaction, for the same reason an account id is: another company's department
+sits in the same tenant, where RLS sees nothing wrong with it.
+
+## Recurring expenses post nothing themselves
+
+A schedule describes an expense and says when the next is due. `Generate` turns
+a due schedule into an ordinary expense **by calling `Record`** — the same path
+a person typing one takes — so the tax treatment, posting rules, approval
+thresholds, numbering and audit are the ones expenses already have. A second
+posting path would be a second set of rules to keep in step, and they would not
+stay in step.
+
+Three properties are worth stating because each was a decision:
+
+* **Running it twice does not pay the rent twice.** The guard is a UNIQUE index
+  on `(schedule, due date)` in `recurring_expense_run`, not a check the
+  generator performs. Two workers racing for the same period both try to insert
+  that row and exactly one wins. A generator that avoided duplicates by looking
+  first would be correct until the day two of them looked at once.
+* **Missed periods are caught up one at a time.** A schedule dormant for three
+  months produces three expenses, because three months of rent were owed and one
+  entry would understate two of them. Capped at 24 periods per pass so a
+  long-dormant schedule catches up over several runs instead of holding one
+  request open across hundreds of postings.
+* **One bad schedule does not stop the others.** A closed period or a retired
+  head is a problem with *that* schedule; the failure is recorded in the
+  result's `failed` list and the pass continues. Aborting would let one bad row
+  silently stop the rent being booked.
+
+### A drift bug the tests caught
+
+The first implementation advanced the due date from the date the last one
+*landed on*. A schedule anchored on the 31st is clamped to the 28th in February
+— and advancing from the 28th put March on the 28th and left it there for good,
+so the day of month walked backwards every short month. It now advances from the
+schedule's own start day, which never moves. `TestAMonthEndScheduleDoesNotDrift`
+asserts 31 Jan → 28 Feb → **31 Mar**.
+
+## Remaining
+
+Frontend: a department picker on the expense form and a schedule screen. The
+API contract is `/api/v1/expenses/departments` (list, create, rename, activate)
+and `/api/v1/expenses/recurring` (list, create, activate, generate).
+
+A timed job for `Generate` is not wired: the route runs on demand, and running
+it twice is safe, so an overnight schedule is a deployment choice rather than a
+missing capability.

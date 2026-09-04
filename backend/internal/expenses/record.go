@@ -24,9 +24,15 @@ type NewExpense struct {
 	// the electricity bill into the books a second time.
 	UUID uuid.UUID
 
-	Date        time.Time
-	StoreID     *uuid.UUID
-	SupplierID  *uuid.UUID
+	Date       time.Time
+	StoreID    *uuid.UUID
+	SupplierID *uuid.UUID
+
+	// DepartmentID is the cost centre this belongs to (C3.1). Optional: a shop
+	// with one department has no use for the dimension, and demanding it would
+	// make every expense screen ask a question most businesses cannot answer.
+	DepartmentID *uuid.UUID
+
 	Reference   string
 	Description string
 
@@ -188,18 +194,28 @@ func (s *Service) Record(
 		}
 
 		var expenseID uuid.UUID
+		// Caller-supplied, so it is checked against this company: another
+		// company's department sits in the same tenant, where row-level
+		// security sees nothing wrong with it.
+		if in.DepartmentID != nil {
+			if e := requireDepartment(ctx, tx, scope.CompanyID,
+				*in.DepartmentID); e != nil {
+				return e
+			}
+		}
+
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO expense
 			  (tenant_id, company_id, uuid, expense_no, expense_date, store_id,
-			   supplier_id, reference, description, paid_from, currency,
-			   subtotal_net, tax_total, tax_recoverable, tax_absorbed,
+			   supplier_id, department_id, reference, description, paid_from,
+			   currency, subtotal_net, tax_total, tax_recoverable, tax_absorbed,
 			   total_inclusive, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,nullif(btrim($8),''),nullif(btrim($9),''),
-			        $10,$11,$12,$13,$14,$15,$16,$17)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,nullif(btrim($9),''),
+			        nullif(btrim($10),''),$11,$12,$13,$14,$15,$16,$17,$18)
 			RETURNING id`,
 			scope.TenantID, scope.CompanyID, in.UUID, number, in.Date,
-			in.StoreID, in.SupplierID, in.Reference, in.Description,
-			in.PaidFrom, currency,
+			in.StoreID, in.SupplierID, in.DepartmentID, in.Reference,
+			in.Description, in.PaidFrom, currency,
 			priced.net, priced.tax, priced.recoverable, priced.absorbed,
 			priced.total, scope.UserID).Scan(&expenseID); e != nil {
 			return db.Translate(e, "That expense has already been recorded.")

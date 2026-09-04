@@ -179,13 +179,16 @@ func (s *Server) handleListExpenseAccounts(w http.ResponseWriter, r *http.Reques
 // --- expenses -------------------------------------------------------------
 
 type expenseRequest struct {
-	UUID        string `json:"uuid"`
-	Date        string `json:"expense_date"`
-	StoreID     string `json:"store_id"`
-	SupplierID  string `json:"supplier_id"`
-	Reference   string `json:"reference"`
-	Description string `json:"description"`
-	PaidFrom    string `json:"paid_from"`
+	UUID       string `json:"uuid"`
+	Date       string `json:"expense_date"`
+	StoreID    string `json:"store_id"`
+	SupplierID string `json:"supplier_id"`
+	// The cost centre this belongs to (C3.1). Optional: a shop with one
+	// department has no use for the dimension.
+	DepartmentID string `json:"department_id"`
+	Reference    string `json:"reference"`
+	Description  string `json:"description"`
+	PaidFrom     string `json:"paid_from"`
 
 	Lines []struct {
 		HeadID      string `json:"head_id"`
@@ -233,6 +236,14 @@ func (s *Server) handleRecordExpense(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.StoreID = &id
+	}
+	if req.DepartmentID != "" {
+		id, e := parseUUID(req.DepartmentID, "department_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		in.DepartmentID = &id
 	}
 	if req.SupplierID != "" {
 		id, e := parseUUID(req.SupplierID, "supplier_id")

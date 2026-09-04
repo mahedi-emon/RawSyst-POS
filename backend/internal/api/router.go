@@ -955,6 +955,31 @@ func (s *Server) Routes() []Route {
 			s.handleListExpenseAccounts,
 			"the chart accounts a category may post to; only useful to whoever " +
 				"may point one at an account"},
+		// --- departments and recurring expenses (C3.1) ---
+		//
+		// The last two items on the list 0071 recorded as deliberately not
+		// built. Receipt attachments turned out to be built already: 0096's
+		// `document` lists 'expense' among the things it attaches to.
+		{http.MethodGet, "/api/v1/expenses/departments", AccessPermission, "expense.view",
+			s.handleListDepartments, "cost centres an expense can be booked to"},
+		{http.MethodPost, "/api/v1/expenses/departments", AccessPermission, "expense.manage_heads",
+			s.handleCreateDepartment, ""},
+		{http.MethodPut, "/api/v1/expenses/departments/{departmentID}", AccessPermission, "expense.manage_heads",
+			s.handleUpdateDepartment,
+			"renames one; the code stays, because reports already made something of it"},
+		{http.MethodPost, "/api/v1/expenses/departments/{departmentID}/active", AccessPermission, "expense.manage_heads",
+			s.handleSetDepartmentActive,
+			"retires a department or brings it back; there is no delete, because history names it"},
+
+		{http.MethodGet, "/api/v1/expenses/recurring", AccessPermission, "expense.view",
+			s.handleListRecurringExpenses, "schedules and when each is next due"},
+		{http.MethodPost, "/api/v1/expenses/recurring", AccessPermission, "expense.manage_heads",
+			s.handleCreateRecurringExpense, ""},
+		{http.MethodPost, "/api/v1/expenses/recurring/{recurringID}/active", AccessPermission, "expense.manage_heads",
+			s.handleSetRecurringActive, "pauses a schedule or resumes it"},
+		{http.MethodPost, "/api/v1/expenses/recurring/generate", AccessPermission, "expense.record",
+			s.handleGenerateRecurringExpenses,
+			"books every schedule that has fallen due; safe to run twice, which is what the run key is for"},
 		// --- stock operations (B4) ---
 		//
 		// Two verbs seeded in 0005 and unreachable ever since, plus one added by
