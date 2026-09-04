@@ -606,3 +606,104 @@ func mustString(v any) string {
 	s, _ := v.(string)
 	return s
 }
+
+// The reversal mirrors the entry that was actually posted, line for line.
+//
+// TestAReversingReceiptFlipsTheOriginalJournal checks the cash and receivable
+// legs of a plain domestic receipt, and a reversal REBUILT from the posting
+// rule passes it — the rebuild happens to produce the same two lines. That is
+// how the customer side came to rebuild its reversal from
+// `rule.Build(...)` while the supplier side read the posted entry, and the
+// difference only shows on an entry the rule cannot reproduce: one posted under
+// a rule version amended since, or one carrying a realised exchange difference
+// whose size depended on two rates on two days.
+//
+// So this compares the whole line set rather than two named roles. Any leg the
+// rebuild would drop, add, or size differently fails it.
+func TestAReversalMirrorsEveryLineOfTheEntryItUndoes(t *testing.T) {
+	h := newHarness(t)
+	f := seedSelling(t, h, "5000.00")
+
+	invoiceID, status := sellOnAccount(t, h, f, "115.00", "115.00", "0.00")
+	if status != 201 {
+		t.Fatalf("sale: %s", invoiceID)
+	}
+	receiptID := takePaymentReceipt(t, h, f, invoiceID, "115.00")
+
+	resp := reverseReceipt(t, h, f, receiptID, newUUID().String())
+	if resp.StatusCode != 201 {
+		t.Fatalf("reverse: %s", readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	// Every account either entry touched, netted across both. A reversal that
+	// undoes what was posted leaves nothing behind on any of them.
+	type move struct {
+		code string
+		net  string
+	}
+	var moves []move
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(t.Context(), `
+			SELECT a.code, sum(l.debit - l.credit)::text
+			FROM journal_line l
+			JOIN journal_entry e ON e.id = l.entry_id
+			JOIN account a ON a.id = l.account_id
+			WHERE e.source_type = 'customer_receipt'
+			  AND e.source_id IN (
+			    SELECT id FROM customer_receipt
+			    WHERE id = $1 OR reverses_id = $1)
+			GROUP BY a.code
+			ORDER BY a.code`, receiptID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m move
+			if e := rows.Scan(&m.code, &m.net); e != nil {
+				return e
+			}
+			moves = append(moves, m)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatalf("read the receipt's ledger footprint: %v", err)
+	}
+
+	if len(moves) == 0 {
+		t.Fatal("the receipt and its reversal touched no accounts, so this " +
+			"proves nothing")
+	}
+	for _, m := range moves {
+		if !amountsEqual(m.net, "0") {
+			t.Errorf("account %s is left %s out after the reversal; the "+
+				"reversal does not undo what was posted", m.code, m.net)
+		}
+	}
+
+	// And the shapes match: same number of lines, mirrored.
+	var origLines, revLines int
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), `
+			SELECT
+			  (SELECT count(*) FROM journal_line l
+			   JOIN customer_receipt cr ON cr.journal_entry_id = l.entry_id
+			   WHERE cr.id = $1),
+			  (SELECT count(*) FROM journal_line l
+			   JOIN customer_receipt cr ON cr.journal_entry_id = l.entry_id
+			   WHERE cr.reverses_id = $1)`, receiptID).
+			Scan(&origLines, &revLines)
+	}); err != nil {
+		t.Fatalf("count the lines: %v", err)
+	}
+	if origLines == 0 {
+		t.Fatal("the original receipt posted no lines")
+	}
+	if origLines != revLines {
+		t.Errorf("the original posted %d lines and the reversal %d; a "+
+			"reversal rebuilt from the rule rather than read from the entry "+
+			"loses whichever legs the rule cannot reproduce",
+			origLines, revLines)
+	}
+}

@@ -1626,3 +1626,129 @@ decision, not a defect, and it is left as one rather than half-built.
 `compliance.retry_submission` remains deliberately unoffered: submission is
 automatic and ordered, and there is no dead-letter path that discards an
 unreported invoice.
+
+---
+
+# Forensic audit: money, stock, orders, reports, search, integrations
+
+The previous pass said plainly that sections 6–8 and 10–12 had not been audited
+line by line. This is that audit. It found one real defect, disproved one that
+looked real, and confirmed the rest with evidence rather than with the fact that
+tests exist.
+
+## The defect: a receipt reversal rebuilt itself from the rule
+
+`receivables/reversing.go` reversed a customer receipt by resolving the
+`payment.customer` posting rule **at today's date** and rebuilding the lines
+from it:
+
+```go
+rule, _ := accounting.ResolveRule(ctx, tx, "payment.customer", country, receivedOn)
+lines, _ := rule.Build(...)          // ← rebuilt
+Lines: accounting.FlipSides(lines),
+```
+
+The supplier side does the opposite and says why:
+
+```go
+lines, _ := accounting.LinesOf(ctx, tx, *orig.entryID)   // ← read from the entry
+```
+
+Two ways the rebuild is wrong. A rule amended between the receipt and its
+reversal produces a reversal shaped differently from the entry it claims to
+undo, so the receipt's journal never nets to zero. And a receipt that settled a
+foreign-currency invoice carries a realised exchange difference whose size
+depended on two rates on two days — no rule evaluation at reversal time
+recovers it, so the gain would stand while the receipt that produced it was
+undone.
+
+Fixed to read the posted entry, exactly as purchasing does. The two sides of the
+ledger now behave alike.
+
+**Why the existing tests missed it.**
+`TestAReversingReceiptFlipsTheOriginalJournal` checks the cash and receivable
+legs of a plain domestic receipt, and a rebuilt reversal passes it — on that
+entry the rebuild happens to produce the same two lines. The new test compares
+the whole line set and the net footprint across every account touched, so any
+leg the rebuild would drop, add or size differently fails it.
+
+## The one that looked real and was not
+
+The over-return limit is enforced by 0019's `assert_return_within_original()`,
+which sums what has already gone back. That aggregate cannot see a credit-note
+line another transaction has inserted and not committed, and the application
+check in `ComputeReturn` reads the same figures a moment earlier. Neither is a
+lock. On paper, six cashiers returning the same item at once each see nothing
+returned and all six succeed.
+
+They do not. `claim_invoice_number` takes the credit note's number with an
+`INSERT ... ON CONFLICT DO UPDATE` on the per-store counter — which holds a row
+lock until commit — and it runs **before** the invoice and its lines are
+written. Every document in a store's series queues there, so by the time the
+second return reaches the trigger the first is committed and visible. Six
+concurrent returns of one item produce one credit note.
+
+A migration adding an explicit lock was written, tested, and then **deleted**:
+it fixed nothing, and shipping a migration on a false premise is worse than
+shipping none. The test is kept, because the protection is real but
+*incidental* — it comes from document numbering rather than from the rule being
+enforced, and would disappear quietly if numbering moved to a sequence or
+claimed its number after the lines were written.
+
+## What was verified, and how
+
+**Oversell (7).** Traced to the SQL. `readPool` and `readLayers` both take
+`FOR UPDATE`, and `LockStock` takes every variant a sale touches — bundle
+components included — in sorted order, so two sales sharing two items queue
+instead of deadlocking. It is genuinely called: `sales/finalize.go:563` and four
+places in `stockops`. The order in the sale is lock (563) → consume under the
+lock (616) → availability check (620), so the check reads state nobody else can
+be changing. `TestConcurrentSalesCannotOversellTheLastUnit` puts six tills on
+one unit and expects one sale.
+
+**Order quantities (8).** Enforced by CHECK constraints rather than by
+application code: `qty_picked <= qty` and `qty_delivered <= qty_picked` make
+over-delivery unrepresentable. Order invoicing takes `FOR UPDATE` on the order
+and returns the existing invoice when one is already recorded, so a retry that
+lost its response gets the same answer instead of a second invoice.
+
+**Reports (10).** No join fan-out: the day's line count is a correlated
+subquery, not a join, and the fourteen-day trend is a `generate_series` LEFT
+JOIN grouped by day with the company filter in the JOIN rather than the WHERE —
+which is what keeps a closed Friday reading zero instead of vanishing. The
+queries carry no `state` filter and do not need one: `cancelled` is
+*"draft only; a signed invoice is never cancelled"*, and a POS sale is created
+already signed, so there are no draft or cancelled sales invoices to exclude. A
+signed invoice is corrected by a credit note, and credit notes are excluded
+explicitly where they would distort a takings figure.
+
+**Money (6).** No floating-point arithmetic anywhere in the money-bearing
+packages. The two `float64` uses are a Saudization head-count percentage, which
+is documented as not money, and its formatter handles the carry at `.995`
+correctly.
+
+**Search (11).** The permission is checked **per branch** rather than once for
+the whole search, so a cashier finds products and not employees — a single route
+permission would be either too narrow to be useful or too broad to be safe.
+Every branch is company-scoped and runs under RLS, with cross-tenant and
+cross-company tests.
+
+**Secrets (13).** Constant-time comparison everywhere it matters — password,
+TOTP, API key hash, refresh cookie — and the API-key lookup is by hash, so an
+unknown key and a wrong key take the same query and the same time.
+
+**Webhooks (12).** Genuinely implemented: HMAC-SHA256 signing in an
+`X-RawSyst-Signature` header, a delivery id so a receiver can recognise a retry
+of something it has already handled, and a capped backoff schedule.
+
+## Backup is a boundary, not a gap
+
+Worth stating plainly because "backup" reads as missing otherwise. **This
+product records backups; it does not take them.** Taking a dump is the
+operator's job, and a product that claimed otherwise would be claiming a
+guarantee it cannot keep. What it does own is the distinction that matters: the
+health route reports the last **verified** backup rather than the last
+successful run, because the second is a more comforting number and a less true
+one, and a failed verification does not stamp `verified_at`.
+
+Restore is not implemented in-product and is not claimed to be.

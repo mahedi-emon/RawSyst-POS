@@ -465,3 +465,107 @@ func decodeJSONFrom(t *testing.T, resp *http.Response) map[string]any {
 	}
 	return out
 }
+
+// One item sold, returned once. Six cashiers racing must credit it once.
+//
+// The over-return limit lives in the database — 0019's
+// `assert_return_within_original()` sums what has already gone back and refuses
+// a credit note that would take more than was sold — and ComputeReturn checks
+// the same figures a moment earlier for the sake of a readable message.
+//
+// Neither is a lock, and under READ COMMITTED the trigger's aggregate cannot
+// see a credit-note line another transaction has inserted and not yet
+// committed. What actually serialises these six is a step nobody would look for
+// in a returns test: `claim_invoice_number` takes the credit note's number with
+// an INSERT ... ON CONFLICT DO UPDATE on the per-store counter, which holds a
+// row lock until commit, and it runs BEFORE the invoice and its lines are
+// written. Every document in a store's series therefore queues there, and by
+// the time the second return reaches the trigger the first is committed and
+// visible.
+//
+// That is a real guarantee and it is an incidental one. It comes from document
+// numbering rather than from the rule being enforced, so it would disappear
+// quietly if numbering ever moved to a sequence or claimed its number after the
+// lines were written. This test pins the behaviour end to end so that change
+// cannot pass unnoticed.
+//
+// Idempotency is a different thing and does not cover this: `alreadyRefunded`
+// keys on the credit note's own uuid and catches the SAME return arriving
+// twice, whereas six different notes against one line are six documents.
+func TestConcurrentReturnsCannotCreditTheSameItemTwice(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "cashier")
+	ctx := t.Context()
+
+	resp := h.do(t, "POST", "/api/v1/pos/sales", f.token,
+		oneItemSale(f, newUUID(), "1", "115.00", "115.00"))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("sale: %s", readBody(t, resp))
+	}
+	invoiceID, _ := decodeJSON(t, resp)["invoice_id"].(string)
+	resp.Body.Close()
+
+	var lineID string
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT id::text FROM sales_invoice_line WHERE invoice_id = $1`,
+			invoiceID).Scan(&lineID)
+	}); err != nil {
+		t.Fatalf("find the line: %v", err)
+	}
+
+	const cashiers = 6
+	statuses := make([]int, cashiers)
+	concurrently(cashiers, func(i int) error {
+		// A DIFFERENT credit note each time, which is what makes this a race
+		// rather than a retry: the idempotency key is the note's own uuid.
+		r := h.do(t, "POST", "/api/v1/pos/returns", f.token, map[string]any{
+			"credit_note_uuid":    newUUID(),
+			"original_invoice_id": invoiceID,
+			"issued_at":           "2026-08-15T12:00:00Z",
+			"reason":              "changed their mind",
+			"lines": []any{map[string]any{
+				"line_id": lineID, "qty": "1"}},
+			"refunds": []any{map[string]any{
+				"method": "cash", "amount": "115.00"}},
+		})
+		defer r.Body.Close()
+		statuses[i] = r.StatusCode
+		return nil
+	})
+
+	credited := 0
+	for _, s := range statuses {
+		if s == http.StatusCreated {
+			credited++
+		}
+	}
+
+	// What the customer was actually credited, and what came back on the shelf.
+	var returnedQty, creditNotes decimal.Decimal
+	if err := h.pool.TxAsTenant(ctx, f.tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx, `
+			SELECT coalesce(sum(abs(qty)), 0)
+			FROM sales_invoice_line WHERE reverses_line_id = $1`,
+			lineID).Scan(&returnedQty); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT count(*) FROM sales_invoice
+			WHERE company_id = $1 AND doc_type = 'credit_note'`,
+			f.companyID).Scan(&creditNotes)
+	}); err != nil {
+		t.Fatalf("read the returns: %v", err)
+	}
+
+	t.Logf("%d of %d returns were accepted; %s returned across %s credit notes",
+		credited, cashiers, returnedQty, creditNotes)
+
+	if credited != 1 {
+		t.Errorf("%d cashiers returned the same item, want exactly 1", credited)
+	}
+	if !returnedQty.Equal(decimal.RequireFromString("1")) {
+		t.Errorf("%s were returned against a line that sold 1; the customer "+
+			"has been credited for goods they did not bring back", returnedQty)
+	}
+}

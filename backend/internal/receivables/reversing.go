@@ -164,14 +164,27 @@ func (s *Service) ReversePayment(
 		if e != nil {
 			return e
 		}
-		lines, e := rule.Build(accounting.Transaction{
-			Amounts: accounting.Amounts{"amount": orig.amount},
-			Groups: map[string]accounting.Group{
-				"payments": {{
-					Role: tenderRole(orig.method), Amount: orig.amount, Memo: orig.method,
-				}},
-			},
-		})
+
+		// The original entry with its sides flipped, read from the entry rather
+		// than rebuilt from the rule.
+		//
+		// Rebuilding looks equivalent and is not, for two reasons. The rule is
+		// resolved at TODAY's date, so a rule amended since the receipt was
+		// taken produces a reversal shaped differently from the entry it claims
+		// to undo, and the receipt's journal never nets to zero. And a receipt
+		// that settled a foreign-currency invoice carries a realised exchange
+		// gain or loss whose size depended on two rates on two days; no amount
+		// of rule evaluation at reversal time recovers it, so reversing one leg
+		// and not the other would leave the gain standing while the receipt it
+		// arose from was undone.
+		//
+		// This is the same correction purchasing/reversing.go already carries
+		// for supplier payments. The two sides of the ledger now behave alike.
+		if orig.entryID == nil {
+			return errs.New(errs.CodeConflict,
+				"That receipt was never posted, so there is nothing to reverse.")
+		}
+		lines, e := accounting.LinesOf(ctx, tx, *orig.entryID)
 		if e != nil {
 			return e
 		}
