@@ -398,6 +398,65 @@ Before each, add its endpoints to `npm run verify:api` the way the built
 screens are covered. And the largest untested claim in the product remains R6:
 nothing has been checked against a live non-owner account.
 
+### 0.85 Running it locally
+
+What Gate 1 actually needed, so the next person does not rediscover it.
+
+```bash
+# 1. A throwaway Postgres. Published on 5433 so it cannot collide with a
+#    native one already holding 5432.
+docker run -d --name rawsyst-dev-db -p 5433:5432 \
+  -e POSTGRES_DB=rawsyst -e POSTGRES_USER=rawsyst -e POSTGRES_PASSWORD=rawsystdev \
+  postgres:17-alpine
+
+# 2. An application role that is NOT a superuser.
+#
+#    This step is the one that matters. The postgres image makes POSTGRES_USER a
+#    SUPERUSER; superusers ignore row-level security completely; and a
+#    deployment connecting as one has no tenant isolation at all while every
+#    policy still sits in the catalogue looking correct.
+#    TestConnectionCannotBypassRowLevelSecurity exists to catch exactly this,
+#    and its comment records that CI ran for days against a superuser once.
+psql -h localhost -p 5433 -U rawsyst -d rawsyst <<'SQL'
+CREATE ROLE rawsyst_app LOGIN PASSWORD 'rawsystapp' NOSUPERUSER NOBYPASSRLS;
+-- Extensions need the superuser, so they are created before handing over.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS citext;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+GRANT ALL ON SCHEMA public TO rawsyst_app;
+SQL
+
+# 3. Migrate and seed AS THE APP ROLE, so it owns the tables and FORCE RLS
+#    applies to it.
+export RAWSYST_ENV=development
+export RAWSYST_DB_DSN="postgres://rawsyst_app:rawsystapp@localhost:5433/rawsyst?sslmode=disable"
+export RAWSYST_JWT_SECRET=dev-only-secret-not-for-any-real-deployment
+export RAWSYST_DATA_ENCRYPTION_KEYS=1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+export RAWSYST_METRICS_ENABLED=false
+
+cd backend
+go run ./cmd/migrate
+go run ./cmd/devseed -email owner@example.test -password 'DevPassw0rd!2026'
+go run ./cmd/api                      # :8080
+
+cd ../web-next
+npm run dev                           # :3001, proxying /api/v1 to :8080
+npm run verify:api                    # every screen contract, against the server
+```
+
+The same environment runs the Go integration tests:
+`go test -tags integration ./internal/...`. Without `RAWSYST_DB_DSN` every
+database test skips and still prints `ok`, so a green run means nothing until
+the DSN is set.
+
+**A fresh seed cannot make a Saudi sale until two fixtures are corrected.**
+`devseed` leaves its EGS unit with an empty VAT number and the branch with no
+National Address, so the ZATCA compliance gate refuses every sale with
+`compliance_blocked`. Amend the unit through `PUT /einvoicing/units/{id}` with a
+valid non-group VAT — 15 digits, first and last a 3 — and fill in the branch
+address. See risk R7.
+
 ### 0.9 Risks
 
 | | |
