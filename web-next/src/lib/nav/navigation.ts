@@ -401,6 +401,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'expenses',
         labelKey: 'nx.nav.biz.money.expenses',
         href: '/money/expenses',
+        built: true,
         permissions: ['expense.view'],
         descriptionKey: 'nx.navd.biz.money.expenses',
       },
@@ -408,8 +409,20 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'treasury',
         labelKey: 'nx.nav.biz.money.treasury',
         href: '/money/accounts',
+        built: true,
         permissions: ['accounting.view'],
         descriptionKey: 'nx.navd.biz.money.treasury',
+      },
+      {
+        id: 'money-transfers',
+        labelKey: 'nx.nav.biz.money.transfers',
+        href: '/money/transfers',
+        built: true,
+        // C2 covers inter-account movement, and it is a job of its own: cash
+        // to the bank is neither income nor a cost, and a screen that folded
+        // it into either would teach somebody to read it wrongly.
+        permissions: ['accounting.view'],
+        descriptionKey: 'nx.navd.biz.money.transfers',
       },
       {
         id: 'receipts',

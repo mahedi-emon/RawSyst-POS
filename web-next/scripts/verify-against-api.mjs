@@ -376,6 +376,133 @@ if (day?.rows?.[0]) {
   console.log('  -  no sales on this day; the row shape was not exercised');
 }
 
+console.log('\nCASH, BANK AND WHAT WAS SPENT');
+{
+  const accounts = await check(
+    'GET /treasury/accounts',
+    `/treasury/accounts?company_id=${CO}`,
+    ['id', 'kind', 'name', 'currency', 'is_active', 'account_id', 'account_code', 'balance'],
+    (j) => j.data[0],
+  );
+  if (!accounts?.data?.length) {
+    console.log('  -  no money accounts; the balance shape was not exercised');
+  }
+
+  const transfers = await check(
+    'GET /treasury/transfers',
+    `/treasury/transfers?company_id=${CO}&limit=3`,
+    null,
+  );
+  if (transfers?.data?.[0]) {
+    expectFields('  transfer', transfers.data[0], [
+      'id',
+      'transfer_no',
+      // Names rather than ids: the screen shows where money went, and an id
+      // in that column would be an id somebody has to look up.
+      'from',
+      'to',
+      'amount',
+      'currency',
+      'moved_on',
+    ]);
+  } else {
+    console.log('  -  nothing has been moved; the transfer shape was not exercised');
+  }
+
+  // A PERIOD, not a page: totals for a date range with the expenses inside
+  // it, because "what did we spend last month" is the question and a list
+  // alone cannot answer it.
+  const period = await check(
+    'GET /expenses',
+    `/expenses?company_id=${CO}`,
+    [
+      'from',
+      'to',
+      'total',
+      // E2.3 restricts input VAT recovery by CATEGORY. The half that cannot
+      // be reclaimed is part of the cost, and one combined tax figure would
+      // hide it.
+      'tax_recoverable',
+      'tax_absorbed',
+      'by_head',
+      'count',
+      'expenses',
+    ],
+  );
+
+  const expenseID = period?.expenses?.[0]?.id;
+  if (!expenseID) {
+    console.log('  -  nothing spent in the period; the voucher shape was not exercised');
+  } else {
+    expectFields('  expense row', period.expenses[0], [
+      'expense_no',
+      'expense_date',
+      // A ROLE -- cash or bank -- rather than an account id, because every
+      // company has one of each and the chart already maps them.
+      'paid_from',
+      'subtotal_net',
+      'tax_total',
+      'total_inclusive',
+    ]);
+
+    const one = await check(
+      'GET /expenses/{id}',
+      `/expenses/${expenseID}?company_id=${CO}`,
+      ['id', 'expense_no', 'subtotal_net', 'tax_recoverable', 'tax_absorbed', 'lines'],
+    );
+    if (one?.lines?.[0]) {
+      expectFields('  expense line', one.lines[0], [
+        'head_id',
+        'net_amount',
+        'tax_treatment',
+        'tax_amount',
+        'tax_recoverable',
+        'tax_absorbed',
+        // Net plus whatever tax was absorbed: what actually lands in the
+        // expense account.
+        'charge_amount',
+      ]);
+    }
+  }
+
+  const heads = await check(
+    'GET /expenses/heads',
+    `/expenses/heads?company_id=${CO}`,
+    [
+      'id',
+      'name',
+      'account_code',
+      // What decides whether the tax on a line comes back. The form says so
+      // as soon as a category is chosen, rather than letting somebody find
+      // out on the VAT return.
+      'input_vat_recoverable',
+      'is_active',
+    ],
+    (j) => j.data[0],
+  );
+  if (!heads?.data?.length) {
+    console.log('  -  no expense heads seeded');
+  }
+
+  await check('GET /expenses/departments', `/expenses/departments?company_id=${CO}`, null);
+  await check('GET /expenses/recurring', `/expenses/recurring?company_id=${CO}`, null);
+
+  // paid_from is a role. An account id there is refused, which is what makes
+  // the two-option select on the form correct rather than a simplification.
+  const wrong = await post(`/expenses?company_id=${CO}`, {
+    uuid: crypto.randomUUID(),
+    expense_date: new Date().toISOString().slice(0, 10),
+    paid_from: '00000000-0000-0000-0000-000000000000',
+    lines: [{ head_id: heads?.data?.[0]?.id ?? '', net_amount: '1.00', tax_treatment: 'standard' }],
+  });
+  if (wrong.status === 400) {
+    console.log('  ok paid_from is a role, and an account id is refused');
+  } else {
+    console.log(`  x an account id in paid_from came back ${wrong.status}, want 400`);
+    failures += 1;
+  }
+}
+
 console.log('\nORDERS');
 {
   const orders = await check(

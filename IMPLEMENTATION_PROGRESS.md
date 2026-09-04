@@ -1178,6 +1178,61 @@ The document kinds are `picking`, `packing`, `delivery` — the screen had
 `delivery_note`, which the route refuses by name. And `advance` takes no body
 at all; the 400 that looked like a body problem turned out to be a state I had
 put an order into by picking it while it was still a quotation.
+### 0.98 Cash, bank and what was spent
+
+Five screens: money accounts, moving money between them, the expense period,
+recording one, and one voucher.
+
+**A till has no IBAN.** Five account kinds, and only three can carry bank
+detail — the same three the schema allows it on. The form follows that rather
+than showing every field for every kind, and sends the bank fields only for the
+kinds that can hold them, so a till never acquires an empty IBAN it did not ask
+for.
+
+**Unmatched statement lines are on the account list.** `unreconciled` is the
+count of statement lines nobody has tied to a transaction, and it belongs where
+somebody sees it rather than inside the reconciliation screen it is the reason
+to open.
+
+**A transfer is neither income nor a cost.** Cash taken to the bank has not been
+earned and has not been spent; it has moved. A list of dated amounts looks
+exactly like a list of takings, so the screen says which it is.
+
+**Two tax figures on the expense period, and the second one is money gone.**
+E2.3 restricts input VAT recovery by CATEGORY — entertainment, some vehicles,
+fuel — and that tax is absorbed into the expense "so the VAT return is not
+overstated". One combined tax figure would hide the half that is a real cost.
+The form says so as soon as a category is chosen, rather than letting somebody
+discover it on the return.
+
+#### Four things driving it first corrected
+
+| assumed | actually |
+|---|---|
+| `/expenses` is a list | a **period**: totals for a date range with the expenses inside |
+| `paid_from` is an account id | **`cash` or `bank`** — a role, and an id is refused |
+| transfers need no id | a **`uuid`**, and it is money: a retry must not bank the takings twice |
+| `date`, `net`, `total`, `gross` | `expense_date`, `subtotal_net`, `total_inclusive`, `charge_amount` |
+
+The `paid_from` one is the most interesting, and the service says why: *"a role
+rather than an account id because these two ARE configuration: every company has
+exactly one of each and the chart already maps them."* A treasury-account picker
+would have offered a choice the route does not have. `verify:api` now asserts
+that an account id there is refused, which is what makes the two-option select
+correct rather than a simplification.
+
+`charge_amount` is the other one worth knowing: net plus whatever tax was
+absorbed, which is what actually lands in the expense account. That is the whole
+point of the split, and a screen showing `net` there would understate every
+restricted expense.
+
+#### A duplicate nav id, and a test for it
+
+Adding a **Moving money** entry (C2 covers inter-account movement) collided with
+the stock `transfers` item, and the nav test caught it — as a money transfer
+being checked against the STOCK transfer’s permission. Ids key that map, and
+they are React keys and i18n suffixes too, so a collision is three bugs wearing
+one hat. Renamed, and now pinned per workspace.
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1190,8 +1245,11 @@ batches, nine screens with the contracts pinned in `verify:api`.
 
 Stock and orders are done (§0.96, §0.97).
 
-Next: **returns**, then the money modules — expenses, income, cash, bank — and
-then accounting and journals.
+Cash, bank and expenses are done (§0.98).
+
+Next: **expense heads, departments and recurring costs** (the configuration
+behind the expense screen), then **bank reconciliation**, then returns,
+accounting and journals.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

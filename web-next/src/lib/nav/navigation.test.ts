@@ -216,6 +216,9 @@ const PRIMARY_READ: Record<string, string> = {
   locations: '/api/v1/stock/locations',
   production: '/api/v1/stock/production',
   orders: '/api/v1/orders',
+  expenses: '/api/v1/expenses',
+  treasury: '/api/v1/treasury/accounts',
+  'money-transfers': '/api/v1/treasury/transfers',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',
@@ -268,6 +271,29 @@ describe('a link that appears leads somewhere', () => {
         if (!PRIMARY_READ[item.id]) continue;
         expect(item.permissions.length, item.id).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+describe('every nav item has its own id', () => {
+  it('does not repeat one inside a workspace', () => {
+    // Ids key the PRIMARY_READ map above, and a repeated one makes both items
+    // claim the same route -- which is how a money transfer came to be checked
+    // against the STOCK transfer's permission. They are also React keys and
+    // i18n key suffixes, so a collision is three bugs wearing one hat.
+    for (const [workspace, sections] of [
+      ['business', BUSINESS_NAV],
+      ['platform', PLATFORM_NAV],
+    ] as const) {
+      const seen = new Set<string>();
+      const repeated: string[] = [];
+      for (const section of sections) {
+        for (const item of section.items) {
+          if (seen.has(item.id)) repeated.push(item.id);
+          seen.add(item.id);
+        }
+      }
+      expect(repeated, workspace).toEqual([]);
     }
   });
 });
