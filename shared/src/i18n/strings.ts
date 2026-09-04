@@ -4714,6 +4714,30 @@ export const en = {
   'nx.npo.needSupplier': 'Choose a supplier first.',
   'nx.npo.needWarehouse': 'Choose where it is being delivered.',
   'nx.npo.needLines': 'Add at least one product.',
+
+  // --- supplier ageing (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.age.title': 'What you owe',
+  'nx.age.subtitle': 'Money owed to suppliers, aged from the day each bill fell due — not from the day it was raised.',
+  'nx.age.asOf': 'As at {date}',
+  'nx.age.colSupplier': 'Supplier',
+  'nx.age.colNotDue': 'Not due yet',
+  'nx.age.col030': '1–30 days',
+  'nx.age.col3160': '31–60 days',
+  'nx.age.col6190': '61–90 days',
+  'nx.age.col90': 'Over 90 days',
+  'nx.age.colTotal': 'Owed',
+  'nx.age.caption': 'What is owed to each supplier, split by how long each amount has been overdue',
+  'nx.age.everything': 'Everything owed',
+  'nx.age.overdueHint': 'Anything to the right of the first column is late.',
+  'nx.age.emptyTitle': 'You owe nothing',
+  'nx.age.emptyDesc': 'No supplier bill is outstanding. This is the state you want it in.',
+  'nx.age.dueBasis': 'A 60-day bill raised 45 days ago is not late. Ageing from the bill date would say it was, and have you chasing a supplier who is owed nothing yet.',
 } as const;
 
 /** Every string the interface can show. */
@@ -9456,6 +9480,30 @@ export const ar: Record<Key, string> = {
   'nx.npo.needSupplier': 'اختر موردًا أولًا.',
   'nx.npo.needWarehouse': 'اختر مكان التسليم.',
   'nx.npo.needLines': 'أضف منتجًا واحدًا على الأقل.',
+
+  // --- supplier ageing (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.age.title': 'المستحق عليك',
+  'nx.age.subtitle': 'المبالغ المستحقة للموردين، محسوبة من تاريخ استحقاق كل فاتورة لا من تاريخ إصدارها.',
+  'nx.age.asOf': 'حتى {date}',
+  'nx.age.colSupplier': 'المورد',
+  'nx.age.colNotDue': 'لم يستحق بعد',
+  'nx.age.col030': '1–30 يومًا',
+  'nx.age.col3160': '31–60 يومًا',
+  'nx.age.col6190': '61–90 يومًا',
+  'nx.age.col90': 'أكثر من 90 يومًا',
+  'nx.age.colTotal': 'الإجمالي',
+  'nx.age.caption': 'المستحق لكل مورد، موزعًا حسب مدة التأخر',
+  'nx.age.everything': 'إجمالي المستحق',
+  'nx.age.overdueHint': 'كل ما بعد العمود الأول متأخر.',
+  'nx.age.emptyTitle': 'لا يوجد مستحق عليك',
+  'nx.age.emptyDesc': 'لا توجد فاتورة مورد قائمة. هذه هي الحالة المطلوبة.',
+  'nx.age.dueBasis': 'فاتورة بمدة 60 يومًا صدرت قبل 45 يومًا ليست متأخرة. الحساب من تاريخ الإصدار سيقول إنها متأخرة، فتطارد موردًا لا يستحق شيئًا بعد.',
 };
 
 /**
@@ -13994,6 +14042,30 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.npo.needSupplier': 'আগে সরবরাহকারী বাছুন।',
   'nx.npo.needWarehouse': 'কোথায় পৌঁছাবে বাছুন।',
   'nx.npo.needLines': 'অন্তত একটি পণ্য যোগ করুন।',
+
+  // --- supplier ageing (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.age.title': 'আপনার দেনা',
+  'nx.age.subtitle': 'সরবরাহকারীদের পাওনা, প্রতিটি বিল যেদিন বকেয়া হয়েছে সেদিন থেকে হিসাব — তৈরির দিন থেকে নয়।',
+  'nx.age.asOf': '{date} পর্যন্ত',
+  'nx.age.colSupplier': 'সরবরাহকারী',
+  'nx.age.colNotDue': 'এখনো বকেয়া নয়',
+  'nx.age.col030': '১–৩০ দিন',
+  'nx.age.col3160': '৩১–৬০ দিন',
+  'nx.age.col6190': '৬১–৯০ দিন',
+  'nx.age.col90': '৯০ দিনের বেশি',
+  'nx.age.colTotal': 'পাওনা',
+  'nx.age.caption': 'প্রতিটি সরবরাহকারীর পাওনা, কতদিন বকেয়া সেই অনুযায়ী ভাগ করা',
+  'nx.age.everything': 'মোট পাওনা',
+  'nx.age.overdueHint': 'প্রথম কলামের ডানের সবই দেরি হয়েছে।',
+  'nx.age.emptyTitle': 'আপনার কোনো দেনা নেই',
+  'nx.age.emptyDesc': 'কোনো সরবরাহকারীর বিল বকেয়া নেই। এটাই কাঙ্ক্ষিত অবস্থা।',
+  'nx.age.dueBasis': '৬০ দিনের একটি বিল ৪৫ দিন আগে তৈরি হলে তা দেরি নয়। বিলের তারিখ থেকে হিসাব করলে দেরি দেখাত, আর আপনি এমন সরবরাহকারীর পেছনে ছুটতেন যার এখনো কিছু পাওনা নেই।',
 };
 
 /**

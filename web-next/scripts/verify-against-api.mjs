@@ -454,11 +454,28 @@ console.log('\nBUYING');
       }
     }
 
-    await check(
+    const ageing = await check(
       'GET /purchasing/ageing',
       `/purchasing/ageing?company_id=${CO}`,
       ['as_of', 'rows', 'total', 'base_currency'],
     );
+    if (ageing?.rows?.[0]) {
+      // Aged from the DUE date, per B6: a 60-day bill raised 45 days ago is not
+      // late, and ageing from the bill date would have a buyer chasing a
+      // supplier who is owed nothing yet. The screen writes that down.
+      expectFields('  ageing row', ageing.rows[0], [
+        'supplier_id',
+        'supplier',
+        'not_due',
+        'days_0_30',
+        'days_31_60',
+        'days_61_90',
+        'days_90_plus',
+        'total',
+      ]);
+    } else {
+      console.log('  -  nothing is owed; the bucket shape was not exercised');
+    }
 
     // A rate is a fraction everywhere in this system, and "15" for fifteen per
     // cent used to be accepted and multiplied -- a 948 order came back as
