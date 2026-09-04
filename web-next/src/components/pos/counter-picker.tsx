@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { useApiList } from '@/lib/api/hooks';
 import { useCompanyScope } from '@/lib/company/company-context';
+import { useT } from '@/lib/i18n/locale';
 import { useCounter, type Counter } from '@/lib/pos/counter';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,7 @@ export function CounterPicker() {
   // company to search, or scan from a registered terminal" — which is what this
   // screen did on every load until it was tried against a real server. The null
   // path defers the request until the company resolves.
+  const t = useT();
   const scope = useCompanyScope();
   const { data, isLoading, error, refetch } = useApiList<Counter>(
     scope ? '/pos/counters' : null,
@@ -37,10 +39,11 @@ export function CounterPicker() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-4 py-10">
       <div>
-        <h1 className="text-page font-semibold text-fg">Open a counter</h1>
+        <h1 className="text-page font-semibold text-fg">
+          {t('nx.pos.openCounter')}
+        </h1>
         <p className="mt-1 text-body text-muted">
-          Everything you ring up will be recorded against the counter you choose,
-          and against its own drawer and shift.
+          {t('nx.pos.openCounterBody')}
         </p>
       </div>
 
@@ -60,11 +63,11 @@ export function CounterPicker() {
       {!isLoading && !error && counters.length === 0 && (
         <EmptyState
           icon={Monitor}
-          title="There is no counter here you can open"
-          description="A counter has to be set up before it can sell, and a counter paired to a desktop till is opened on that machine rather than in a browser. Tills and devices, under Settings, is where they are added."
+          title={t('nx.pos.noCounterTitle')}
+          description={t('nx.pos.noCounterDesc')}
           action={
             <Button asChild variant="secondary">
-              <a href="/settings/devices">Go to tills and devices</a>
+              <a href="/settings/devices">{t('nx.pos.goToDevices')}</a>
             </Button>
           }
         />
@@ -105,7 +108,7 @@ export function CounterPicker() {
         href="/dashboard"
         className="text-center text-label text-muted underline underline-offset-4 hover:text-fg"
       >
-        Go back to the back office instead
+        {t('nx.pos.goBackOffice')}
       </a>
     </div>
   );

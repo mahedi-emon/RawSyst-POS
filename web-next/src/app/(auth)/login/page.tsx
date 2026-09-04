@@ -25,6 +25,7 @@ import { Field, Input } from '@/components/ui/field';
 import { api, type BusinessChoice } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useSession } from '@/lib/auth/session';
+import { useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 type Step =
@@ -35,6 +36,7 @@ type Step =
 function SignInForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const t = useT();
   const { reload } = useSession();
 
   const [step, setStep] = useState<Step>({ kind: 'credentials' });
@@ -78,7 +80,7 @@ function SignInForm() {
       router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : '/');
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
-      setError(messageFor(e));
+      setError(messageFor(e, t));
     } finally {
       setBusy(false);
     }
@@ -109,7 +111,7 @@ function SignInForm() {
 
       {step.kind === 'credentials' && (
         <>
-          <Field label="Email" error={fieldErrors.email} required>
+          <Field label={t('nx.auth.email')} error={fieldErrors.email} required>
             <Input
               type="email"
               name="email"
@@ -122,7 +124,7 @@ function SignInForm() {
             />
           </Field>
 
-          <Field label="Password" error={fieldErrors.password} required>
+          <Field label={t('nx.auth.password')} error={fieldErrors.password} required>
             <Input
               type="password"
               name="password"
@@ -134,14 +136,14 @@ function SignInForm() {
           </Field>
 
           <Button type="submit" variant="primary" size="lg" block busy={busy}>
-            Sign in
+            {t('nx.auth.signIn')}
           </Button>
 
           <a
             href="/forgot-password"
             className="text-center text-label text-muted underline underline-offset-4 hover:text-fg"
           >
-            I have forgotten my password
+            {t('nx.auth.forgot')}
           </a>
         </>
       )}
@@ -150,11 +152,10 @@ function SignInForm() {
         <>
           <div>
             <h2 className="text-card-title font-semibold text-fg">
-              Which business?
+              {t('nx.auth.chooseBusiness')}
             </h2>
             <p className="mt-1 text-body text-muted">
-              This sign-in opens more than one. Choose the one you want to work
-              in — you can sign out and pick another at any time.
+              {t('nx.auth.chooseBusinessBody')}
             </p>
           </div>
 
@@ -187,15 +188,14 @@ function SignInForm() {
         <>
           <div>
             <h2 className="text-card-title font-semibold text-fg">
-              Enter your code
+              {t('nx.auth.mfaTitle')}
             </h2>
             <p className="mt-1 text-body text-muted">
-              Open your authenticator app and type the six digits it is showing.
-              A recovery code works here too.
+              {t('nx.auth.mfaBody')}
             </p>
           </div>
 
-          <Field label="Code" error={fieldErrors.mfa_code} required>
+          <Field label={t('nx.auth.code')} error={fieldErrors.mfa_code} required>
             <Input
               name="mfa_code"
               value={code}
@@ -211,7 +211,7 @@ function SignInForm() {
           </Field>
 
           <Button type="submit" variant="primary" size="lg" block busy={busy}>
-            Continue
+            {t('nx.auth.continue')}
           </Button>
         </>
       )}
@@ -220,6 +220,7 @@ function SignInForm() {
 }
 
 export default function LoginPage() {
+  const t = useT();
   return (
     // The sign-in sits on the product's own chrome colour rather than on a
     // separate marketing surface, so the first thing somebody sees is the
@@ -245,9 +246,11 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-lg border border-line bg-surface p-6 shadow-overlay">
-          <h1 className="text-page font-semibold text-fg">Sign in</h1>
+          <h1 className="text-page font-semibold text-fg">
+            {t('nx.auth.signIn')}
+          </h1>
           <p className="mt-1 mb-5 text-body text-muted">
-            Your account decides what you see. There is nothing to choose here.
+            {t('nx.auth.subtitle')}
           </p>
 
           <Suspense fallback={null}>

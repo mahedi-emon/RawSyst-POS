@@ -58,6 +58,7 @@ import { ErrorState } from '@/components/ui/states';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useCompany } from '@/lib/company/company-context';
+import { useT } from '@/lib/i18n/locale';
 import { formatMoney } from '@/lib/format/money';
 import {
   addScanned,
@@ -114,13 +115,14 @@ interface CompletedSale {
 
 /** The tenders a counter offers. Cash first: it is most of them. */
 const TENDER_METHODS = [
-  { id: 'cash', label: 'Cash' },
-  { id: 'card', label: 'Card' },
-  { id: 'bank_transfer', label: 'Transfer' },
-  { id: 'customer_due', label: 'On account' },
+  { id: 'cash', labelKey: 'nx.pos.tenderCash' },
+  { id: 'card', labelKey: 'nx.pos.tenderCard' },
+  { id: 'bank_transfer', labelKey: 'nx.pos.tenderTransfer' },
+  { id: 'customer_due', labelKey: 'nx.pos.tenderAccount' },
 ] as const;
 
 export function Till() {
+  const t = useT();
   const { state: counterState, leave } = useCounter();
   const { currency, market, company } = useCompany();
   const shift = useShift();
@@ -222,7 +224,7 @@ export function Till() {
       ring(matches[0]);
       return;
     }
-    setError(`Nothing in this catalogue matches “${code}”.`);
+    setError(t('nx.pos.noMatch', { code }));
     refocus();
   }
 
@@ -273,10 +275,10 @@ export function Till() {
             tax_treatment: l.taxTreatment,
             ...(l.promotionId ? { promotion_id: l.promotionId } : {}),
           })),
-          tenders: tenders.map((t) => ({
-            method: t.method,
-            amount: t.amount,
-            ...(t.reference ? { reference: t.reference } : {}),
+          tenders: tenders.map((tender) => ({
+            method: tender.method,
+            amount: tender.amount,
+            ...(tender.reference ? { reference: tender.reference } : {}),
           })),
         },
         // The same key for every attempt at this sale. A retry after a lost
@@ -291,7 +293,7 @@ export function Till() {
         // usually the shop's own address, which nobody can fix at a counter.
         if (err.isComplianceRefusal && err.fields) setFieldErrors(err.fields);
       } else {
-        setError(messageFor(err));
+        setError(messageFor(err, t));
       }
     } finally {
       setPaying(false);
@@ -322,7 +324,7 @@ export function Till() {
     return (
       <TillFrame counterName={counterName} onLeave={leave}>
         <div className="grid flex-1 place-items-center">
-          <p className="text-body text-muted">Opening the counter…</p>
+          <p className="text-body text-muted">{t('nx.pos.openingCounter')}</p>
         </div>
       </TillFrame>
     );
@@ -345,12 +347,12 @@ export function Till() {
     <TillFrame
       counterName={counterName}
       onLeave={leave}
-      shiftLabel={`Session ${shift.state.shift.session_no}`}
+      shiftLabel={t('nx.pos.session', { no: shift.state.shift.session_no })}
     >
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* ---- cart ----------------------------------------------------- */}
         <section
-          aria-label="This sale"
+          aria-label={t('nx.pos.thisSale')}
           className="flex min-h-0 flex-1 flex-col border-line lg:border-e"
         >
           <form onSubmit={onScan} className="relative shrink-0 border-b border-line p-3">
@@ -363,8 +365,8 @@ export function Till() {
                 ref={scanRef}
                 value={term}
                 onChange={(e) => onType(e.target.value)}
-                placeholder="Scan a barcode, or type a name and press Enter"
-                aria-label="Scan or search"
+                placeholder={t('nx.pos.scanPlaceholder')}
+                aria-label={t('nx.pos.scanLabel')}
                 autoComplete="off"
                 enterKeyHint="enter"
                 className={cn(
@@ -406,7 +408,7 @@ export function Till() {
             {fieldErrors && (
               <div className="mt-2 rounded-sm border border-caution/25 bg-caution-subtle p-2.5">
                 <p className="text-label font-medium text-caution-fg">
-                  This has to be put right in Settings, not here.
+                  {t('nx.pos.fixInSettings')}
                 </p>
                 <ul className="mt-1 list-disc ps-4 text-caption text-caution-fg">
                   {Object.entries(fieldErrors).map(([field, message]) => (
@@ -417,7 +419,7 @@ export function Till() {
                   href="/settings/business"
                   className="mt-1.5 inline-block text-caption font-medium underline underline-offset-2"
                 >
-                  Open business details
+                  {t('nx.pos.openBusinessDetails')}
                 </a>
               </div>
             )}
@@ -427,14 +429,16 @@ export function Till() {
             {lines.length === 0 ? (
               <div className="grid h-full place-items-center px-6 text-center">
                 <div>
-                  <p className="text-lede font-medium text-fg">Ready</p>
+                  <p className="text-lede font-medium text-fg">
+                    {t('nx.pos.ready')}
+                  </p>
                   <p className="mt-1 text-body text-muted">
-                    Scan the first item to start a sale.
+                    {t('nx.pos.readyDesc')}
                   </p>
                   <p className="mt-3 text-caption text-subtle">
                     {catalogue.size === 1
-                      ? '1 line ready to scan'
-                      : `${catalogue.size} lines ready to scan`}
+                      ? t('nx.pos.linesOne')
+                      : t('nx.pos.linesMany', { count: catalogue.size })}
                   </p>
                 </div>
               </div>
@@ -452,10 +456,11 @@ export function Till() {
                           {line.description}
                         </p>
                         <p className="text-caption text-muted">
-                          {line.sku} · {money(line.unitPrice)} each
+                          {line.sku} ·{' '}
+                          {t('nx.pos.each', { price: money(line.unitPrice) })}
                           {short && (
                             <Badge tone="caution" className="ms-2">
-                              More than is in stock
+                              {t('nx.pos.moreThanStock')}
                             </Badge>
                           )}
                         </p>
@@ -469,7 +474,9 @@ export function Till() {
                           }
                           onBlur={refocus}
                           inputMode="decimal"
-                          aria-label={`Quantity of ${line.description}`}
+                          aria-label={t('nx.pos.quantityOf', {
+                            item: line.description,
+                          })}
                           className={cn(
                             'num h-10 w-16 rounded-sm border border-input bg-input-bg',
                             'text-center text-body tabular-nums [direction:ltr]',
@@ -484,7 +491,9 @@ export function Till() {
                             setLines((c) => removeLine(c, line.variantId));
                             refocus();
                           }}
-                          aria-label={`Remove ${line.description}`}
+                          aria-label={t('nx.pos.removeItem', {
+                            item: line.description,
+                          })}
                           className="grid size-10 place-items-center rounded-sm text-muted hover:bg-critical-subtle hover:text-critical-fg"
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
@@ -500,7 +509,7 @@ export function Till() {
 
         {/* ---- totals and payment --------------------------------------- */}
         <aside
-          aria-label="Payment"
+          aria-label={t('nx.pos.payment')}
           className="flex shrink-0 flex-col border-t border-line bg-surface lg:w-[24rem] lg:border-t-0"
         >
           <div className="border-b border-line p-3">
@@ -516,7 +525,7 @@ export function Till() {
             >
               <UserRound className="size-4 shrink-0" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-start text-body">
-                {customer ? customer.name : 'Walk-in customer'}
+                {customer ? customer.name : t('nx.pos.walkIn')}
               </span>
               {customer && (
                 <X
@@ -533,10 +542,16 @@ export function Till() {
 
           <div className="flex-1 p-3">
             <dl className="flex flex-col gap-1.5">
-              <Row label="Items" value={`${totals.units} in ${totals.lineCount}`} />
-              <Row label="Gross" value={money(totals.gross)} />
               <Row
-                label="Discount"
+                label={t('nx.pos.items')}
+                value={t('nx.pos.itemsCount', {
+                  units: totals.units,
+                  lines: totals.lineCount,
+                })}
+              />
+              <Row label={t('nx.pos.gross')} value={money(totals.gross)} />
+              <Row
+                label={t('nx.pos.discount')}
                 value={
                   totals.discount === '0.00' ? '—' : `-${money(totals.discount)}`
                 }
@@ -547,7 +562,7 @@ export function Till() {
                 the screen, and the only place the currency is spelled out.
                 Prices include tax, so this is what they pay. */}
             <div className="rule-total mt-3 pt-3">
-              <p className="text-label text-muted">To pay</p>
+              <p className="text-label text-muted">{t('nx.pos.toPay')}</p>
               <p className="num mt-0.5 flex items-baseline gap-2 text-figure font-semibold tabular-nums tracking-tight">
                 <span className="text-section font-medium text-muted">{currency}</span>
                 {money(totals.net)}
@@ -556,23 +571,25 @@ export function Till() {
 
             {tenders.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1">
-                {tenders.map((t, i) => (
+                {tenders.map((tender, i) => (
                   <li
-                    key={`${t.method}-${i}`}
+                    key={`${tender.method}-${i}`}
                     className="flex items-center justify-between gap-2 text-body"
                   >
                     <span className="capitalize text-muted">
-                      {t.method.replace(/_/g, ' ')}
+                      {tender.method.replace(/_/g, ' ')}
                     </span>
                     <span className="flex items-center gap-1">
-                      <span className="num tabular-nums">{money(t.amount)}</span>
+                      <span className="num tabular-nums">
+                        {money(tender.amount)}
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
                           setTenders((c) => c.filter((_, j) => j !== i));
                           refocus();
                         }}
-                        aria-label="Remove this payment"
+                        aria-label={t('nx.pos.removePayment')}
                         className="grid size-7 place-items-center rounded-xs text-muted hover:text-critical-fg"
                       >
                         <Delete className="size-3.5" aria-hidden="true" />
@@ -581,7 +598,9 @@ export function Till() {
                   </li>
                 ))}
                 <li className="mt-1 flex items-center justify-between border-t border-line pt-1.5 text-body font-medium">
-                  <span>{change ? 'Change' : 'Still to pay'}</span>
+                  <span>
+                    {change ? t('nx.pos.change') : t('nx.pos.stillToPay')}
+                  </span>
                   <span className={cn('num tabular-nums', change && 'text-positive-fg')}>
                     {money(change ? balance.slice(1) : balance)}
                   </span>
@@ -605,11 +624,11 @@ export function Till() {
                   onClick={() => tenderExact(m.id)}
                   title={
                     m.id === 'customer_due' && !customer
-                      ? 'Choose a customer before putting a sale on account'
+                      ? t('nx.pos.chooseCustomerFirst')
                       : undefined
                   }
                 >
-                  {m.label}
+                  {t(m.labelKey)}
                 </Button>
               ))}
             </div>
@@ -620,13 +639,13 @@ export function Till() {
               block
               className="mt-2 h-14 text-lede"
               busy={paying}
-              busyLabel="Completing the sale"
+              busyLabel={t('nx.pos.completing')}
               disabled={lines.length === 0 || owing}
               onClick={() => void pay()}
             >
               {owing && lines.length > 0
-                ? `${money(balance)} still to pay`
-                : 'Complete sale'}
+                ? t('nx.pos.stillToPayAmount', { amount: money(balance) })
+                : t('nx.pos.completeSale')}
             </Button>
           </div>
         </aside>
@@ -671,6 +690,7 @@ function TillFrame({
   onLeave: () => void;
   children: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="flex h-dvh flex-col bg-ground">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
@@ -680,7 +700,7 @@ function TillFrame({
           className="flex h-9 items-center gap-1.5 rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg"
         >
           <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
-          Leave counter
+          {t('nx.pos.leaveCounter')}
         </button>
         <p className="min-w-0 flex-1 truncate text-label font-medium text-fg">
           {counterName}
@@ -692,7 +712,7 @@ function TillFrame({
           href="/dashboard"
           className="hidden h-9 items-center rounded-sm px-2 text-label text-muted hover:bg-surface-hover hover:text-fg sm:flex"
         >
-          Back office
+          {t('nx.shell.backOffice')}
         </a>
       </header>
       {children}
@@ -731,6 +751,7 @@ function SaleComplete({
   tendered: string;
   onNext: () => void;
 }) {
+  const t = useT();
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     ref.current?.focus();
@@ -740,15 +761,15 @@ function SaleComplete({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Sale complete"
+      aria-label={t('nx.pos.saleComplete')}
       className="fixed inset-0 z-50 grid place-items-center bg-[rgb(15_27_24/0.6)] p-4"
     >
       <div className="w-full max-w-sm rounded-lg bg-surface p-6 text-center shadow-overlay">
-        <p className="text-label text-muted">Sale complete</p>
+        <p className="text-label text-muted">{t('nx.pos.saleComplete')}</p>
 
         {change && change !== '0.00' ? (
           <>
-            <p className="mt-4 text-label text-muted">Change</p>
+            <p className="mt-4 text-label text-muted">{t('nx.pos.change')}</p>
             <p className="num text-figure font-semibold tabular-nums text-positive-fg">
               <span className="text-section font-medium text-muted">{currency} </span>
               {change}
@@ -756,7 +777,7 @@ function SaleComplete({
           </>
         ) : (
           <>
-            <p className="mt-4 text-label text-muted">Paid</p>
+            <p className="mt-4 text-label text-muted">{t('nx.pos.paid')}</p>
             <p className="num text-figure font-semibold tabular-nums">
               <span className="text-section font-medium text-muted">{currency} </span>
               {tendered}
@@ -768,15 +789,15 @@ function SaleComplete({
             was the VAT?" without opening anything. */}
         <dl className="mt-4 flex justify-center gap-5 text-caption text-muted">
           <div>
-            <dt>Net</dt>
+            <dt>{t('nx.pos.net')}</dt>
             <dd className="num tabular-nums text-fg">{sale.subtotal_net}</dd>
           </div>
           <div>
-            <dt>Tax</dt>
+            <dt>{t('nx.pos.tax')}</dt>
             <dd className="num tabular-nums text-fg">{sale.tax_total}</dd>
           </div>
           <div>
-            <dt>Total</dt>
+            <dt>{t('nx.pos.total')}</dt>
             <dd className="num tabular-nums text-fg">{sale.total_inclusive}</dd>
           </div>
         </dl>
@@ -789,7 +810,7 @@ function SaleComplete({
           className="mt-6 h-14 text-lede"
           onClick={onNext}
         >
-          Next sale
+          {t('nx.pos.nextSale')}
         </Button>
       </div>
     </div>

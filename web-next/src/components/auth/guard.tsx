@@ -26,14 +26,16 @@ import { useEffect, type ReactNode } from 'react';
 
 import type { Permission } from '@/lib/auth/permissions';
 import { useSession, type Workspace } from '@/lib/auth/session';
+import { useT } from '@/lib/i18n/locale';
 import { AccessDenied } from '@/components/ui/states';
 
 /** The quiet state while the session resolves. Not a spinner: it is usually
  *  one network round trip, and a spinner that appears for 200ms is a flash. */
 function Resolving() {
+  const t = useT();
   return (
     <div className="grid min-h-dvh place-items-center bg-ground" aria-busy="true">
-      <p className="sr-only">Checking your access</p>
+      <p className="sr-only">{t('nx.guard.checking')}</p>
     </div>
   );
 }

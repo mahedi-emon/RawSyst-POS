@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useApiList } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
+import { useT } from '@/lib/i18n/locale';
 import { formatMoney } from '@/lib/format/money';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +40,7 @@ export function CustomerPicker({
   onPick: (c: PosCustomer) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +81,7 @@ export function CustomerPicker({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Choose a customer"
+        aria-label={t('nx.pos.chooseCustomer')}
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-surface shadow-overlay"
       >
@@ -92,14 +94,14 @@ export function CustomerPicker({
             ref={inputRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, code or phone"
-            aria-label="Search customers"
+            placeholder={t('nx.pos.custSearch')}
+            aria-label={t('nx.pos.custSearchLabel')}
             className="h-12 w-full bg-transparent ps-10 pe-11 text-body text-fg placeholder:text-disabled focus-visible:outline-none"
           />
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('nx.common.close')}
             className="absolute end-1 grid size-10 place-items-center rounded-sm text-muted hover:bg-surface-hover"
           >
             <X className="size-4" aria-hidden="true" />
@@ -108,14 +110,14 @@ export function CustomerPicker({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading && (
-            <p className="p-4 text-body text-muted">Looking…</p>
+            <p className="p-4 text-body text-muted">{t('nx.pos.looking')}</p>
           )}
 
           {!isLoading && customers.length === 0 && (
             <p className="p-4 text-body text-muted">
               {debounced
-                ? 'No customer matches that.'
-                : 'Start typing to find a customer.'}
+                ? t('nx.pos.custNoMatch')
+                : t('nx.pos.custStartTyping')}
             </p>
           )}
 
@@ -137,7 +139,9 @@ export function CustomerPicker({
                     <span className="block text-caption text-muted">
                       {c.code}
                       {c.phone ? ` · ${c.phone}` : ''}
-                      {c.customer_type === 'wholesale' ? ' · wholesale' : ''}
+                      {c.customer_type === 'wholesale'
+                        ? ` · ${t('nx.pos.wholesale')}`
+                        : ''}
                     </span>
                   </span>
                   <span className="shrink-0 text-end">
@@ -153,8 +157,14 @@ export function CustomerPicker({
                           all -- different from a limit of zero, and the
                           cashier needs to know which. */}
                       {c.available
-                        ? `${formatMoney(c.available, { currency: c.currency ?? currency, market, bare: true })} available`
-                        : 'no credit'}
+                        ? t('nx.pos.available', {
+                            amount: formatMoney(c.available, {
+                              currency: c.currency ?? currency,
+                              market,
+                              bare: true,
+                            }),
+                          })
+                        : t('nx.pos.noCredit')}
                     </span>
                   </span>
                 </button>

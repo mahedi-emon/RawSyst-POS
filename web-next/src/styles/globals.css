@@ -411,6 +411,21 @@
     border-block-start: 1px solid var(--ry-border);
   }
 
+  /* The chevron on a native select.
+     `background-position` takes `left` or `right` and has no logical form, so
+     mirroring it needs a direction rule rather than a token. Inline, the arrow
+     sat on top of the text in every Arabic select. */
+  .select-chevron {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f7a76' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.625rem center;
+    background-size: 1rem;
+  }
+
+  [dir='rtl'] .select-chevron {
+    background-position: left 0.625rem center;
+  }
+
   /* Screen-reader-only, needed by every table caption and icon-only button in
      the product. */
   .sr-only {

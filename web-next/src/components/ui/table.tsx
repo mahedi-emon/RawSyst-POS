@@ -27,6 +27,7 @@
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 export type SortDirection = 'asc' | 'desc';
@@ -80,6 +81,7 @@ export function DataTable<Row>({
   totals,
   className,
 }: TableProps<Row>) {
+  const t = useT();
   return (
     // The scroll container is the table's own, so a wide table never makes the
     // page scroll sideways -- which would move the navigation off screen.
@@ -251,12 +253,13 @@ export function TableSkeleton({
   columns: number;
   rows?: number;
 }) {
+  const t = useT();
   return (
     <div
       className="w-full overflow-hidden rounded-md border border-line bg-surface"
       // Announced once, not per row.
       role="status"
-      aria-label="Loading"
+      aria-label={t('nx.tbl.loading')}
     >
       <div className="h-9 border-b border-line-strong bg-surface-sunken" />
       {Array.from({ length: rows }, (_, r) => (
@@ -300,11 +303,14 @@ export function LoadMore({
   onLoadMore: () => void;
   loadedCount: number;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-4 pt-3">
       <p className="text-caption text-muted" aria-live="polite">
-        {loadedCount === 1 ? '1 row' : `${loadedCount} rows`}
-        {hasMore ? ' so far' : ''}
+        {loadedCount === 1
+          ? t('nx.tbl.rowsOne')
+          : t('nx.tbl.rowsMany', { count: loadedCount })}
+        {hasMore ? ` ${t('nx.tbl.soFar')}` : ''}
       </p>
       {hasMore && (
         <button
@@ -317,7 +323,7 @@ export function LoadMore({
             'disabled:pointer-events-none disabled:opacity-55',
           )}
         >
-          {loading ? 'Loading' : 'Show more'}
+          {loading ? t('nx.tbl.loading') : t('nx.tbl.showMore')}
         </button>
       )}
     </div>

@@ -10,11 +10,12 @@ import { Check, Globe, LogOut, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { useSession } from '@/lib/auth/session';
-import { LOCALES, useLocale } from '@/lib/i18n/locale';
+import { LOCALES, useLocale, useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 export function UserMenu() {
   const { signOut, identity } = useSession();
+  const t = useT();
   const { locale, setLocale } = useLocale();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,7 +43,7 @@ export function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Account and language"
+        aria-label={t('nx.shell.account')}
         className={cn(
           'grid size-10 place-items-center rounded-sm',
           'hover:bg-surface-hover',
@@ -65,13 +66,13 @@ export function UserMenu() {
           <div className="px-2.5 py-2">
             <p className="text-label font-medium text-fg">
               {identity?.workspace === 'platform'
-                ? 'Platform operator'
-                : 'Signed in'}
+                ? t('nx.shell.platformOperator')
+                : t('nx.shell.signedIn')}
             </p>
             <p className="mt-0.5 text-caption text-muted">
               {identity
-                ? `${identity.grants.size} permissions`
-                : 'Resolving your access'}
+                ? t('nx.shell.permissions', { count: identity.grants.size })
+                : t('nx.shell.resolvingAccess')}
             </p>
           </div>
 
@@ -79,7 +80,7 @@ export function UserMenu() {
 
           <p className="flex items-center gap-2 px-2.5 py-1.5 text-caption font-semibold text-subtle">
             <Globe className="size-3.5" aria-hidden="true" />
-            Language
+            {t('nx.shell.language')}
           </p>
           {LOCALES.map((l) => (
             <button
@@ -123,7 +124,7 @@ export function UserMenu() {
             )}
           >
             <LogOut className="size-4" aria-hidden="true" />
-            Sign out
+            {t('nav.signOut')}
           </button>
         </div>
       )}

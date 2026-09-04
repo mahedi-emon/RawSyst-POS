@@ -32,6 +32,7 @@ import { Badge, Figure, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { useApi } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
+import { useT } from '@/lib/i18n/locale';
 import { formatMoneyParts, formatQuantity, isNegative } from '@/lib/format/money';
 import { cn } from '@/lib/utils';
 
@@ -117,6 +118,7 @@ function routeFor(link: string): string {
 }
 
 export default function DashboardPage() {
+  const t = useT();
   const scope = useCompanyScope();
   const { currency, market, company } = useCompany();
 
@@ -131,11 +133,13 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="Overview"
+        title={t('nx.dash.title')}
         description={
           company
-            ? `${company.trade_name || company.legal_name} — trading today, and where the money stands.`
-            : 'Trading today, and where the money stands.'
+            ? t('nx.dash.subtitleNamed', {
+                name: company.trade_name || company.legal_name,
+              })
+            : t('nx.dash.subtitle')
         }
       />
 
@@ -158,7 +162,7 @@ export default function DashboardPage() {
 
           {/* --- the four figures an owner actually asks for --------------- */}
           <section
-            aria-label="Today"
+            aria-label={t('nx.dash.today')}
             className="grid gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
           >
             {/* Gap-px on a line-coloured background draws the dividers, so the
@@ -166,13 +170,16 @@ export default function DashboardPage() {
                 cards. */}
             <div className="bg-surface p-4">
               <Figure
-                label="Sold today"
+                label={t('nx.dash.soldToday')}
                 currency={currency}
                 value={money(data.sales.total)}
                 caption={
                   data.sales.change_pct
-                    ? `${isNegative(data.sales.change_pct) ? '' : '+'}${data.sales.change_pct}% against yesterday · ${data.sales.invoice_count} invoices`
-                    : `${data.sales.invoice_count} invoices`
+                    ? t('nx.dash.vsYesterday', {
+                        pct: `${isNegative(data.sales.change_pct) ? '' : '+'}${data.sales.change_pct}`,
+                        count: data.sales.invoice_count,
+                      })
+                    : t('nx.dash.invoices', { count: data.sales.invoice_count })
                 }
                 href="/sales"
               />
@@ -183,13 +190,18 @@ export default function DashboardPage() {
 
             <div className="bg-surface p-4">
               <Figure
-                label="Gross profit"
+                label={t('nx.dash.grossProfit')}
                 currency={currency}
                 value={money(data.profit.gross)}
                 caption={
                   data.profit.margin_pct
-                    ? `${data.profit.margin_pct}% margin on ${money(data.profit.revenue)}`
-                    : `on revenue of ${money(data.profit.revenue)}`
+                    ? t('nx.dash.marginOn', {
+                        pct: data.profit.margin_pct,
+                        revenue: money(data.profit.revenue),
+                      })
+                    : t('nx.dash.onRevenue', {
+                        revenue: money(data.profit.revenue),
+                      })
                 }
                 tone={isNegative(data.profit.gross) ? 'critical' : undefined}
                 href="/reports/financials"
@@ -198,23 +210,28 @@ export default function DashboardPage() {
 
             <div className="bg-surface p-4">
               <Figure
-                label="Cash and bank"
+                label={t('nx.dash.cashAndBank')}
                 currency={currency}
                 value={money(data.money.total)}
-                caption={`${money(data.money.cash)} in the drawer · ${money(data.money.bank)} at the bank`}
+                caption={t('nx.dash.cashSplit', {
+                  cash: money(data.money.cash),
+                  bank: money(data.money.bank),
+                })}
                 href="/money/accounts"
               />
             </div>
 
             <div className="bg-surface p-4">
               <Figure
-                label="Owed to you"
+                label={t('nx.dash.owedToYou')}
                 currency={currency}
                 value={money(data.money.receivable)}
                 caption={
                   data.money.unsettled !== '0'
-                    ? `${money(data.money.unsettled)} taken by card, not yet settled`
-                    : 'Customer balances outstanding'
+                    ? t('nx.dash.unsettled', {
+                        amount: money(data.money.unsettled),
+                      })
+                    : t('nx.dash.balancesOutstanding')
                 }
                 href="/customers/ageing"
               />
@@ -223,28 +240,30 @@ export default function DashboardPage() {
 
           <div className="grid gap-5 lg:grid-cols-2">
             <Panel
-              title="How it was paid"
-              description="Today's takings, by tender"
+              title={t('nx.dash.howPaid')}
+              description={t('nx.dash.howPaidDesc')}
             >
               {data.tenders.length === 0 ? (
                 <p className="py-4 text-body text-muted">
-                  Nothing has been taken today yet.
+                  {t('nx.dash.nothingTakenYet')}
                 </p>
               ) : (
                 <ul className="flex flex-col">
-                  {data.tenders.map((t) => (
+                  {data.tenders.map((tender) => (
                     <li
-                      key={t.method}
+                      key={tender.method}
                       className="flex items-baseline justify-between gap-4 border-b border-line py-2.5 last:border-b-0"
                     >
                       <span className="text-body text-fg capitalize">
-                        {t.method.replace(/_/g, ' ')}
+                        {tender.method.replace(/_/g, ' ')}
                         <span className="ms-2 text-caption text-subtle">
-                          {t.count === 1 ? '1 sale' : `${t.count} sales`}
+                          {tender.count === 1
+                            ? t('nx.dash.saleOne')
+                            : t('nx.dash.saleMany', { count: tender.count })}
                         </span>
                       </span>
                       <span className="num text-body font-medium tabular-nums">
-                        {money(t.total)}
+                        {money(tender.total)}
                       </span>
                     </li>
                   ))}
@@ -252,10 +271,15 @@ export default function DashboardPage() {
               )}
             </Panel>
 
-            <Panel title="Stock" description="What is on the shelves right now">
+            <Panel
+              title={t('nx.dash.stock')}
+              description={t('nx.dash.stockDesc')}
+            >
               <dl className="grid grid-cols-2 gap-4">
                 <div>
-                  <dt className="text-label text-muted">Value at cost</dt>
+                  <dt className="text-label text-muted">
+                    {t('nx.dash.valueAtCost')}
+                  </dt>
                   <dd className="num mt-0.5 text-section font-semibold tabular-nums">
                     <span className="text-label font-medium text-muted">
                       {currency}{' '}
@@ -264,13 +288,17 @@ export default function DashboardPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-label text-muted">Lines held</dt>
+                  <dt className="text-label text-muted">
+                    {t('nx.dash.linesHeld')}
+                  </dt>
                   <dd className="num mt-0.5 text-section font-semibold tabular-nums">
                     {formatQuantity(String(data.inventory.variant_count), market)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-label text-muted">Running low</dt>
+                  <dt className="text-label text-muted">
+                    {t('nx.dash.runningLow')}
+                  </dt>
                   <dd className="mt-0.5">
                     <Link
                       href="/stock?filter=low"
@@ -281,7 +309,9 @@ export default function DashboardPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-label text-muted">Out of stock</dt>
+                  <dt className="text-label text-muted">
+                    {t('stock.outOfStock')}
+                  </dt>
                   <dd className="mt-0.5">
                     <Link
                       href="/stock?filter=out"
@@ -303,7 +333,7 @@ export default function DashboardPage() {
               business with no expenses rather than a figure not yet wired. */}
           {data.unbuilt.length > 0 && (
             <p className="text-caption text-subtle">
-              Not yet reported here: {data.unbuilt.join(', ')}.
+              {t('nx.dash.notReported', { items: data.unbuilt.join(', ') })}
             </p>
           )}
         </div>
@@ -313,11 +343,12 @@ export default function DashboardPage() {
 }
 
 function AttentionList({ items }: { items: AttentionItem[] }) {
+  const t = useT();
   if (items.length === 0) {
     return (
       <EmptyState
-        title="Nothing needs you"
-        description="No low stock, nothing overdue and nothing waiting on a decision. The figures below are today's trading."
+        title={t('nx.dash.nothingNeedsYou')}
+        description={t('nx.dash.nothingNeedsYouDesc')}
       />
     );
   }
@@ -335,9 +366,9 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
   } as const;
 
   return (
-    <section aria-label="Needs attention">
+    <section aria-label={t('dash.needsAttention')}>
       <h2 className="pb-2 text-label font-semibold text-muted">
-        Needs attention
+        {t('dash.needsAttention')}
       </h2>
       <ul className="overflow-hidden rounded-md border border-line bg-surface">
         {items.map((item) => {

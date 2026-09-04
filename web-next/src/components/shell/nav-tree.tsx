@@ -21,6 +21,7 @@ import * as icons from 'lucide-react';
 import Link from 'next/link';
 import type { ComponentType } from 'react';
 
+import { useT } from '@/lib/i18n/locale';
 import type { ResolvedSection } from '@/lib/nav/navigation';
 import { cn } from '@/lib/utils';
 
@@ -42,9 +43,10 @@ export function NavTree({
   activeHref?: string;
   touch?: boolean;
 }) {
+  const t = useT();
   return (
     <nav
-      aria-label="Main"
+      aria-label={t('nx.shell.mainNav')}
       className="flex-1 overflow-y-auto overscroll-contain px-2 pb-6"
     >
       {sections.map((section) => {
@@ -58,7 +60,7 @@ export function NavTree({
               )}
             >
               <SectionIcon className="size-3.5" aria-hidden={true} />
-              {section.label}
+              {t(section.labelKey)}
             </h2>
 
             <ul>
@@ -73,14 +75,14 @@ export function NavTree({
                         // Not a link and not focusable: there is nothing at the
                         // other end for this business. The title says why, so
                         // hovering answers the question the grey raises.
-                        title="Not included in your plan"
+                        title={t('nx.nav.notInPlan')}
                         className={cn(
                           'flex items-center justify-between gap-2 rounded-sm ps-8 pe-2',
                           touch ? 'min-h-11 py-2.5' : 'min-h-8 py-1.5',
                           'text-body text-shell-fg/40',
                         )}
                       >
-                        {item.label}
+                        {t(item.labelKey)}
                         <icons.Lock className="size-3.5" aria-hidden={true} />
                       </span>
                     </li>
@@ -104,7 +106,7 @@ export function NavTree({
                           : 'text-shell-fg hover:bg-shell-hover hover:text-shell-fg-strong',
                       )}
                     >
-                      {item.label}
+                      {t(item.labelKey)}
                     </Link>
                   </li>
                 );

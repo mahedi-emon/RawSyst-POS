@@ -21,6 +21,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { Loader2 } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 
+import { useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 const button = cva(
@@ -102,6 +103,7 @@ export function Button({
   ref,
   ...props
 }: ButtonProps) {
+  const t = useT();
   const Component = asChild ? Slot : 'button';
 
   return (
@@ -122,7 +124,7 @@ export function Button({
           <span className="absolute inset-0 grid place-items-center">
             <Loader2 className="animate-spin" aria-hidden="true" />
           </span>
-          <span className="sr-only">{busyLabel ?? 'Working'}</span>
+          <span className="sr-only">{busyLabel ?? t('nx.btn.working')}</span>
         </>
       )}
       <span

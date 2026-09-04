@@ -114,12 +114,32 @@ export function isNetworkError(e: unknown): e is NetworkError {
  *
  * Only ever reached for an error with no envelope -- a proxy timing out, a
  * gateway returning HTML. Anything the API itself refused arrives with a
- * message written for this exact situation, and that one is used instead.
+ * message written for this exact situation, and that one is used instead,
+ * in whatever language the server wrote it.
+ *
+ * Takes a translator rather than holding one. This module has no locale and
+ * cannot be given one: a `t` captured at import time goes stale the moment the
+ * reader switches language, which is the one thing the locale provider exists
+ * to prevent. Callers inside React pass `useT()`; the English is the answer for
+ * a caller that has no locale at all.
  */
-export function messageFor(e: unknown): string {
+export function messageFor(
+  e: unknown,
+  // Narrowed to the two keys this function can ask for, so a caller's `t` --
+  // which accepts every key in the catalogue -- is assignable to it. Typed as
+  // `(key: string)` it would not be: a function accepting fewer inputs cannot
+  // stand in for one accepting more.
+  translate?: (key: 'nx.err.networkPlain' | 'nx.err.generic') => string,
+): string {
   if (isApiError(e)) return e.message;
   if (isNetworkError(e)) {
-    return 'RawSyst cannot reach the server. Check the connection and try again.';
+    return (
+      translate?.('nx.err.networkPlain') ??
+      'RawSyst cannot reach the server. Check the connection and try again.'
+    );
   }
-  return 'Something went wrong. Try again, and tell support if it keeps happening.';
+  return (
+    translate?.('nx.err.generic') ??
+    'Something went wrong. Try again, and tell support if it keeps happening.'
+  );
 }

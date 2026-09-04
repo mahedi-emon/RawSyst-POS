@@ -13,9 +13,11 @@
 import { Building2 } from 'lucide-react';
 
 import { useCompany } from '@/lib/company/company-context';
+import { useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 export function CompanySwitch() {
+  const t = useT();
   const { company, companies, setCompany } = useCompany();
 
   if (companies.length <= 1 || !company) return null;
@@ -29,7 +31,7 @@ export function CompanySwitch() {
       <select
         value={company.id}
         onChange={(e) => setCompany(e.target.value)}
-        aria-label="Company"
+        aria-label={t('nx.shell.company')}
         className={cn(
           'h-9 max-w-[14rem] truncate rounded-sm border border-line',
           'bg-surface ps-8 pe-2 text-label text-fg',

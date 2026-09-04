@@ -42,6 +42,11 @@ const SCREEN_DIRS = [
   sharedSrc,
   join(repoRoot, 'pos', 'src'),
   join(repoRoot, 'web', 'components'),
+  // The greenfield front end. Added the moment it had screens rather than
+  // after it had dozens, because this check is the only thing that finds an
+  // English sentence sitting in the middle of an Arabic screen, and the cost
+  // of catching up grows with every page written.
+  join(repoRoot, 'web-next', 'src'),
 ];
 
 /** Files with no translatable prose in them. */
@@ -98,6 +103,24 @@ const NO_PROSE = new Set([
   // sentence is the no-keystore case, and the pairing screen replaces it with
   // its own words — see the `no_keystore` branch there.
   'credential.ts',
+
+  // web-next's error classes, for exactly the reason `client.ts` is here.
+  //
+  // Most of what it holds is not prose: `ApiError` and `NetworkError` are class
+  // names, and the error CODES (`not_found`, `period_closed`) are the server's
+  // stable identifiers, which a screen branches on and never shows. Its one
+  // English sentence is `NetworkError`'s message, and every display site
+  // replaces it — `messageFor(e, t)` and `ErrorState` both switch on the
+  // exception's CLASS and call `t()`. Translating it at construction would mean
+  // holding a translator for the life of the module, which goes stale the
+  // moment the reader switches language.
+  'errors.ts',
+
+  // Generated from the Go route table. Every string in it is an identifier the
+  // backend defines — URL patterns, permission names, and the `Access` values
+  // `Public`, `Authenticated`, `Permission`, `SuperAdmin`. Translating one
+  // would stop a guard matching.
+  'contract.generated.ts',
 ]);
 
 /**
@@ -222,6 +245,17 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
     // Already inside t(...), or naming a module, or a CSS class.
     if (before.trimEnd().endsWith('t(')) continue;
     if (before.includes('import') || before.includes('className')) continue;
+
+    // An icon's name, which is a component identifier the icon set defines.
+    // `icon: 'ShoppingCart'` resolves to a React component; translating it
+    // would leave the navigation with no icons at all. The same shape as
+    // `className` above, and exempted the same way.
+    if (/\bicon:\s*$/.test(before)) continue;
+
+    // A developer log. `console.error('RawSyst screen failed to render', e)` is
+    // read by whoever reads stack traces, never by a shop, and the brief is
+    // explicit that developer-only logs are not translated.
+    if (/console\.(error|warn|info|log|debug)\(\s*$/.test(before)) continue;
 
     // The English half of a translated string.
     //

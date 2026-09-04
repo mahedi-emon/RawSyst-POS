@@ -27,6 +27,7 @@ import { DataTable, LoadMore, TableSkeleton, type Column } from '@/components/ui
 import { EmptyState, ErrorState, NoMatches } from '@/components/ui/states';
 import { useApiList } from '@/lib/api/hooks';
 import { useCompanyScope } from '@/lib/company/company-context';
+import { useT } from '@/lib/i18n/locale';
 
 interface Product {
   id: string;
@@ -40,6 +41,7 @@ interface Product {
 const PAGE_SIZE = 50;
 
 function ProductsScreen() {
+  const t = useT();
   const scope = useCompanyScope();
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -78,27 +80,27 @@ function ProductsScreen() {
   const columns: Column<Product>[] = [
     {
       key: 'name',
-      header: 'Product',
+      header: t('nx.cat.colProduct'),
       primary: true,
       cell: (p) => p.name,
     },
     {
       key: 'sku',
-      header: 'Code',
+      header: t('nx.cat.colCode'),
       secondary: true,
       cell: (p) => <span className="num text-muted">{p.sku}</span>,
     },
     {
       key: 'variant_count',
-      header: 'Variants',
+      header: t('nx.cat.colVariants'),
       numeric: true,
       width: 'w-24',
-      headerHint: 'Sizes, colours and other options this product is sold in',
+      headerHint: t('nx.cat.variantsHint'),
       cell: (p) => p.variant_count,
     },
     {
       key: 'tax_treatment',
-      header: 'Tax',
+      header: t('nx.cat.colTax'),
       secondary: true,
       width: 'w-32',
       cell: (p) => (
@@ -110,7 +112,7 @@ function ProductsScreen() {
     },
     {
       key: 'lifecycle',
-      header: 'Status',
+      header: t('nx.cat.colStatus'),
       width: 'w-28',
       cell: (p) => (
         <Badge tone={p.lifecycle === 'active' ? 'positive' : 'neutral'}>
@@ -123,13 +125,13 @@ function ProductsScreen() {
   return (
     <>
       <PageHeader
-        title="Products"
-        description="What the shop sells, and what it charges. A product holds its variants — the sizes and colours that are actually scanned."
+        title={t('nx.cat.title')}
+        description={t('nx.cat.subtitle')}
         actions={
           <Can permission="catalog.create">
             <Button variant="primary">
               <Plus aria-hidden="true" />
-              New product
+              {t('nx.cat.newProduct')}
             </Button>
           </Can>
         }
@@ -139,8 +141,8 @@ function ProductsScreen() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or code"
-          aria-label="Search products"
+          placeholder={t('nx.cat.searchPlaceholder')}
+          aria-label={t('nx.cat.searchLabel')}
           type="search"
           className="h-10 w-full max-w-xs rounded-sm border border-input bg-input-bg px-3 text-body placeholder:text-disabled"
         />
@@ -155,16 +157,16 @@ function ProductsScreen() {
       {!error && !isLoading && rows.length === 0 && debounced === '' && (
         <EmptyState
           icon={PackagePlus}
-          title="No products yet"
-          description="A product is anything the shop sells. Add the first one, or bring a whole catalogue in from a spreadsheet."
+          title={t('nx.cat.emptyTitle')}
+          description={t('nx.cat.emptyDesc')}
           action={
             <div className="flex flex-wrap items-center justify-center gap-2">
               <Can permission="catalog.create">
-                <Button variant="primary">Add a product</Button>
+                <Button variant="primary">{t('nx.cat.addProduct')}</Button>
               </Can>
               <Can permission="data.import">
                 <Button asChild variant="secondary">
-                  <a href="/settings/imports">Import from a file</a>
+                  <a href="/settings/imports">{t('nx.cat.importFromFile')}</a>
                 </Button>
               </Can>
             </div>
@@ -173,13 +175,13 @@ function ProductsScreen() {
       )}
 
       {!error && !isLoading && rows.length === 0 && debounced !== '' && (
-        <NoMatches what="products" onClear={() => setSearch('')} />
+        <NoMatches what={t('nx.cat.products')} onClear={() => setSearch('')} />
       )}
 
       {rows.length > 0 && (
         <>
           <DataTable
-            caption="Products, with their variant count, tax treatment and status"
+            caption={t('nx.cat.caption')}
             columns={columns}
             rows={rows}
             rowKey={(p) => p.id}

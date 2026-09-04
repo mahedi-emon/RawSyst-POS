@@ -26,7 +26,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { useLocale } from '@/lib/i18n/locale';
+import { useLocale, useT } from '@/lib/i18n/locale';
 import {
   findActiveItem,
   type ResolvedSection,
@@ -53,6 +53,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const t = useT();
   const { direction } = useLocale();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -92,7 +93,7 @@ export function AppShell({
           'focus:shadow-overlay',
         )}
       >
-        Skip to the main content
+        {t('nx.shell.skip')}
       </a>
 
       {/* ---- desktop sidebar ---- */}
@@ -117,7 +118,7 @@ export function AppShell({
           <aside
             role="dialog"
             aria-modal="true"
-            aria-label="Navigation"
+            aria-label={t('nx.shell.navigation')}
             className={cn(
               'fixed inset-y-0 start-0 z-50 flex w-[min(86vw,320px)] flex-col',
               'bg-shell text-shell-fg shadow-overlay',
@@ -131,7 +132,7 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                aria-label="Close navigation"
+                aria-label={t('nx.shell.closeNav')}
                 className="grid size-11 place-items-center rounded-sm text-shell-fg hover:bg-shell-hover"
               >
                 <X className="size-5" aria-hidden="true" />
@@ -161,7 +162,7 @@ export function AppShell({
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            aria-label="Open navigation"
+            aria-label={t('nx.shell.openNav')}
             className="grid size-10 place-items-center rounded-sm hover:bg-surface-hover lg:hidden"
           >
             <Menu className="size-5" aria-hidden="true" />
@@ -173,9 +174,9 @@ export function AppShell({
           <div className="min-w-0 flex-1">
             {active && (
               <p className="truncate text-body font-medium text-fg lg:text-label lg:font-normal lg:text-muted">
-                <span className="lg:hidden">{active.item.label}</span>
+                <span className="lg:hidden">{t(active.item.labelKey)}</span>
                 <span className="hidden lg:inline">
-                  {active.section.label}
+                  {t(active.section.labelKey)}
                   <ChevronLeft
                     className={cn(
                       'mx-1 inline size-3 align-middle text-disabled',
@@ -183,7 +184,7 @@ export function AppShell({
                     )}
                     aria-hidden="true"
                   />
-                  <span className="text-fg">{active.item.label}</span>
+                  <span className="text-fg">{t(active.item.labelKey)}</span>
                 </span>
               </p>
             )}

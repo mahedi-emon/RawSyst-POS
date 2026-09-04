@@ -12,8 +12,10 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { useSession } from '@/lib/auth/session';
+import { useT } from '@/lib/i18n/locale';
 
 export default function Root() {
+  const t = useT();
   const { status, identity } = useSession();
   const router = useRouter();
 
@@ -29,7 +31,7 @@ export default function Root() {
 
   return (
     <div className="grid min-h-dvh place-items-center bg-ground" aria-busy="true">
-      <p className="sr-only">Opening RawSyst</p>
+      <p className="sr-only">{t('nx.root.opening')}</p>
     </div>
   );
 }

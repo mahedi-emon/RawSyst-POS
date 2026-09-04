@@ -27,6 +27,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 
+import { useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 interface FieldContextValue {
@@ -62,6 +63,7 @@ export function Field({
   className,
   children,
 }: FieldProps) {
+  const t = useT();
   const base = useId();
   const id = `${base}-control`;
   const hintId = `${base}-hint`;
@@ -84,7 +86,7 @@ export function Field({
               <span aria-hidden="true" className="text-critical">
                 *
               </span>
-              <span className="sr-only">(required)</span>
+              <span className="sr-only">{t('nx.field.required')}</span>
             </>
           )}
         </label>
@@ -140,10 +142,12 @@ export function Input({
       className={cn(
         control,
         'h-10 px-3',
-        numeric && 'num text-end',
         // A numeric field is read left to right even in Arabic, for the same
-        // reason a total is: reordering the digits changes the figure.
-        numeric && 'ltr:text-right rtl:text-left [direction:ltr]',
+        // reason a total is: reordering the digits changes the figure. With
+        // `direction: ltr` forced on the element, `text-right` IS the end of
+        // the field in both scripts -- an `rtl:text-left` here was wrong, and
+        // pushed the digits to the wrong side of an Arabic form.
+        numeric && 'num [direction:ltr] text-right',
         className,
       )}
       {...props}
@@ -184,16 +188,17 @@ export function Select({
       // custom listbox is warranted where options need searching or grouping
       // by something the platform cannot express -- not for a list of five
       // branches.
-      className={cn(control, 'h-10 ps-3 pe-8 appearance-none', className)}
-      style={{
-        // Logical inset so the chevron moves to the left in Arabic without a
-        // second stylesheet.
-        backgroundImage:
-          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f7a76' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 0.625rem center',
-        backgroundSize: '1rem',
-      }}
+      //
+      // `select-chevron` carries the arrow. It lives in globals.css because
+      // `background-position` has no logical form: it takes `left` or `right`
+      // and nothing else, so mirroring it needs a `[dir='rtl']` rule rather
+      // than a token. Written inline it put the arrow on top of the text in
+      // every Arabic select in the product.
+      className={cn(
+        control,
+        'select-chevron h-10 ps-3 pe-8 appearance-none',
+        className,
+      )}
       {...props}
     >
       {children}

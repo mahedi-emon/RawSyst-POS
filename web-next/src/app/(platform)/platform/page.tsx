@@ -23,6 +23,7 @@ import { Activity, Database, HardDrive, LifeBuoy, Server } from 'lucide-react';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { ErrorState, Skeleton } from '@/components/ui/states';
 import { useApi } from '@/lib/api/hooks';
+import { useT } from '@/lib/i18n/locale';
 import { cn } from '@/lib/utils';
 
 interface Health {
@@ -49,6 +50,7 @@ interface Health {
 }
 
 export default function PlatformHealthPage() {
+  const t = useT();
   const { data, isLoading, error, refetch } = useApi<Health>('/platform/health', undefined, {
     // The point of this screen is that it is current. Thirty seconds is short
     // enough to notice a queue backing up and long enough not to be a load
@@ -60,8 +62,8 @@ export default function PlatformHealthPage() {
   return (
     <>
       <PageHeader
-        title="Service health"
-        description="The shape of the platform right now: what is running, what is queued and what is stuck."
+        title={t('nx.plat.healthTitle')}
+        description={t('nx.plat.healthSubtitle')}
       />
 
       {error && <ErrorState error={error} onRetry={() => void refetch()} />}
@@ -77,17 +79,21 @@ export default function PlatformHealthPage() {
       {data && (
         <div className="flex flex-col gap-6">
           <section
-            aria-label="Right now"
+            aria-label={t('nx.plat.rightNow')}
             className="grid gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
           >
             <Stat
               icon={Database}
-              label="Database"
-              value={data.database_ok ? `${data.database_latency_ms} ms` : 'Not answering'}
+              label={t('nx.plat.database')}
+              value={
+                data.database_ok
+                  ? `${data.database_latency_ms} ms`
+                  : t('nx.plat.notAnswering')
+              }
               caption={
                 data.database_ok
-                  ? 'Answered this check'
-                  : 'The one figure here that is measured, and it failed'
+                  ? t('nx.plat.answered')
+                  : t('nx.plat.measuredFailed')
               }
               tone={
                 !data.database_ok
@@ -99,69 +105,77 @@ export default function PlatformHealthPage() {
             />
             <Stat
               icon={Server}
-              label="Businesses trading"
-              value={`${data.active_tenants} of ${data.tenants}`}
+              label={t('nx.plat.businessesTrading')}
+              value={t('nx.plat.ofTotal', {
+                active: data.active_tenants,
+                total: data.tenants,
+              })}
               // Counting a signup as active is how a platform tells itself a
               // story. The route defines active as "traded in the last thirty
               // days", and the caption says so rather than leaving the reader
               // to assume the flattering meaning.
-              caption="Sold something in the last 30 days"
+              caption={t('nx.plat.soldIn30')}
             />
             <Stat
               icon={Activity}
-              label="Queue"
-              value={`${data.jobs_queued} waiting`}
-              caption={`${data.jobs_running} running · ${data.jobs_failed_24h} failed in 24h`}
+              label={t('nx.plat.queue')}
+              value={t('nx.plat.queueWaiting', { count: data.jobs_queued })}
+              caption={t('nx.plat.queueDetail', {
+                running: data.jobs_running,
+                failed: data.jobs_failed_24h,
+              })}
               tone={data.jobs_dead > 0 ? 'caution' : 'ok'}
             />
             <Stat
               icon={LifeBuoy}
-              label="Tickets"
+              label={t('nx.plat.tickets')}
               value={String(data.tickets_open)}
-              caption={`${data.tickets_waiting_on_support} waiting on us`}
+              caption={t('nx.plat.waitingOnUs', {
+                count: data.tickets_waiting_on_support,
+              })}
               tone={data.tickets_waiting_on_support > 0 ? 'caution' : 'ok'}
             />
           </section>
 
           <div className="grid gap-5 lg:grid-cols-3">
             <Panel
-              title="Stuck work"
-              description="Things that will not clear without somebody"
+              title={t('nx.plat.stuckTitle')}
+              description={t('nx.plat.stuckDesc')}
             >
               <ul className="flex flex-col">
                 <Row
-                  label="Dead jobs"
+                  label={t('nx.plat.deadJobs')}
                   value={data.jobs_dead}
                   // A DEAD job is deliberately not retriable: it exhausted its
                   // attempts on something retrying cannot fix. Saying that here
                   // stops an operator hunting for a retry button.
-                  hint="Exhausted their attempts. Retrying will not fix these."
+                  hint={t('nx.plat.deadJobsHint')}
                   bad={data.jobs_dead > 0}
                   href="/platform/jobs"
                 />
                 <Row
-                  label="Submissions failed"
+                  label={t('nx.plat.submissionsFailed')}
                   value={data.submissions_failed}
-                  hint="E-invoicing documents refused by the authority"
+                  hint={t('nx.plat.submissionsFailedHint')}
                   bad={data.submissions_failed > 0}
                 />
                 <Row
-                  label="Submissions pending"
+                  label={t('nx.plat.submissionsPending')}
                   value={data.submissions_pending}
-                  hint="In flight, retrying"
+                  hint={t('nx.plat.submissionsPendingHint')}
                 />
                 <Row
-                  label="Sync failures, 24h"
+                  label={t('nx.plat.syncFailures')}
                   value={data.sync_failures_24h}
-                  hint="Terminals that could not push"
+                  hint={t('nx.plat.syncFailuresHint')}
                   bad={data.sync_failures_24h > 0}
                 />
               </ul>
             </Panel>
 
             <Panel
-              title="Backups"
-              description="Verified, not merely taken"
+              title={t('nx.plat.backupsTitle')}
+              description={t('nx.plat.backupsDesc')}
             >
               <div className="flex flex-col gap-3">
                 <p className="num text-figure font-semibold leading-none tabular-nums">
@@ -169,8 +183,12 @@ export default function PlatformHealthPage() {
                 </p>
                 <p className="text-body text-muted">
                   {data.tenants_without_verified_backup === 0
-                    ? 'Every business has proved it can restore.'
-                    : `${data.tenants_without_verified_backup === 1 ? 'One business has' : `${data.tenants_without_verified_backup} businesses have`} never proved a restore. A backup nobody has restored is a file, not a backup.`}
+                    ? t('nx.plat.allRestorable')
+                    : data.tenants_without_verified_backup === 1
+                      ? t('nx.plat.neverRestoredOne')
+                      : t('nx.plat.neverRestoredMany', {
+                          count: data.tenants_without_verified_backup,
+                        })}
                 </p>
                 <div className="rule pt-3">
                   <p className="text-label text-muted">
@@ -178,29 +196,36 @@ export default function PlatformHealthPage() {
                       className="me-1.5 inline size-3.5 align-[-2px]"
                       aria-hidden="true"
                     />
-                    {data.tenants_with_verified_backup} verified of {data.tenants}
+                    {t('nx.plat.verifiedOf', {
+                      verified: data.tenants_with_verified_backup,
+                      total: data.tenants,
+                    })}
                   </p>
                 </div>
               </div>
             </Panel>
 
-            <Panel title="Scale" description="What the platform is carrying">
+            <Panel
+              title={t('nx.plat.scaleTitle')}
+              description={t('nx.plat.scaleDesc')}
+            >
               <ul className="flex flex-col">
-                <Row label="Businesses" value={data.tenants} />
-                <Row label="Companies" value={data.companies} />
+                <Row label={t('nx.plat.businesses')} value={data.tenants} />
+                <Row label={t('nx.plat.companies')} value={data.companies} />
                 <Row
-                  label="Users"
+                  label={t('nx.plat.users')}
                   value={data.users}
-                  hint={`${data.active_users_30d} signed in within 30 days`}
+                  hint={t('nx.plat.signedIn30', {
+                    count: data.active_users_30d,
+                  })}
                 />
-                <Row label="Terminals" value={data.terminals} />
+                <Row label={t('nx.plat.terminals')} value={data.terminals} />
               </ul>
             </Panel>
           </div>
 
           <p className="text-caption text-subtle">
-            Checked <time dateTime={data.checked_at}>{data.checked_at}</time>.
-            Refreshes every 30 seconds.
+            {t('nx.plat.checkedAt', { time: data.checked_at })}
           </p>
         </div>
       )}
