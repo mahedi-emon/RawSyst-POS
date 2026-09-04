@@ -651,7 +651,7 @@ fifteen per cent came back from the server as net 444.0000, tax 66.6000, total
 to another. Confirmed again on a two-line order: 544.0000 / 66.6000 / 610.6000,
 line for line.
 
-#### 🟠 OPEN FINDING — purchasing asks the client for a tax rate; sales never does
+#### ~~🟠 OPEN FINDING — purchasing asks the client for a tax rate~~ ✅ RESOLVED, §0.92
 
 Not fixed, because fixing it properly changes tax arithmetic, and that is the
 most correctness-sensitive code in the product. Recorded with the evidence so it
@@ -797,6 +797,102 @@ frontend closes its own half — `/change-password` calls `signOut()` before
 redirecting, so the browser holds nothing. The residual is a token captured
 elsewhere, for at most fifteen minutes. Recorded so nobody reads the handler's
 message as a stronger promise than the system makes.
+
+### 0.92 The purchasing tax rate — resolved, with the evidence
+
+§0.90 left this open rather than guessing. The investigation the brief asked
+for found an answer already written down in this repository, on the same kind
+of document, by the same author.
+
+#### The rule the product already states
+
+`internal/expenses/record.go`, pricing a supplier's expense:
+
+> The RATE comes from the registry at the expense date, never from the caller:
+> a client that could state its own VAT rate could state what the return
+> claims. The TREATMENT comes from the caller, because only they know whether
+> the supplier charged VAT — but it is checked against the treatments the
+> country allows on that date.
+
+`internal/sales/terminal.go`, on the sale path:
+
+> applyTaxProfile fills in the values the till is not allowed to choose.
+
+An expense is a purchase. A bill is a purchase. Purchasing was the only path in
+the product taking a rate from whoever was calling — and defaulting it to
+**zero** when it was absent, so an order raised without one carried no input
+VAT at all. That is the number the shop reclaims.
+
+So this was not a case where purchasing legitimately needs an explicit rate. It
+was an inconsistency, and the correct behaviour was already implemented twice.
+
+#### The change, and why it is the smallest one
+
+`registry.Service.TaxRate(ctx, tx, country, treatment, asOf, tenantID)` already
+existed — it is what the sale path asks, it is per-treatment rather than
+per-country, and it **refuses rather than defaults**. Purchasing now calls it.
+
+- The **treatment** stays the caller's, checked against `catalog.TaxRulesFor`
+  for the market and the date. A treatment the country does not use is refused,
+  naming the country.
+- The **rate** is the register's, at the order date.
+- `zero_rated` and `exempt` resolve to zero without a lookup, because there is
+  no rate to record and no source to cite for "this is not taxed".
+- The **United States** is refused by `registry.TaxRate` in its own words: tax
+  there is set by state, county and city, so it cannot be resolved from a
+  country and a date. Nothing is defaulted and nothing is invented — which is
+  what the brief asked for, and it is the product's existing position rather
+  than a new one.
+
+#### `tax_rate` in the body: an assertion, not an input
+
+Neither removing the field nor ignoring it would do.
+
+Removing it breaks every caller at once, and **fifty-four assertions in this
+repository's own tests** send exactly the rate the register holds. Ignoring it
+silently is how a caller keeps sending last year's rate for a year and never
+learns: their totals would quietly become right while their own screen kept
+showing the old figure.
+
+So it is now checked. Send it and it must agree; omit it and the register
+answers. Disagreement is refused, naming both numbers:
+
+> Line 1 states a tax rate of 0.05 and the rate on file is 0.15. The rate comes
+> from the regulatory register, so either leave it out or send the one in force.
+
+Zero counts as "not stated", because JSON cannot distinguish an absent rate from
+a zero one and a zero-rated line resolves to zero anyway. The route's own
+description in `router.go` now says all of this, so it reaches the generated
+contract rather than living only here.
+
+**Nothing was silently changed, and no existing test needed editing.** The
+purchasing half of `internal/api` passes unchanged, which is the evidence that
+the register and the tests already agreed.
+
+#### Verified live
+
+| | |
+|---|---|
+| `standard`, no `tax_rate` sent | net 200.0000, **tax 30.0000** — the register answered |
+| `zero_rated`, no rate | tax 0.0000, line rate 0.000000 |
+| `standard` with `tax_rate: 0.05` | **400**, naming both numbers |
+| `tax_treatment: "reverse_charge_moon"` | **400**, "not a tax treatment SA uses" |
+
+`verify:api` now asserts all four, and fails if an order raised without a rate
+comes back carrying no tax — which is the silent failure the old behaviour
+produced.
+
+#### The screen no longer asks
+
+`/buying/orders/new` had a **Tax %** box with a panel underneath explaining why
+the product could not fill it in. Both are gone. The buyer picks a treatment —
+standard, zero-rated, exempt — which is a fact they read off the supplier's
+invoice, and the summary says **Before tax** and means it.
+
+`draft-order.ts` computes net only, and its test says why: showing an estimated
+tax would be worse than showing none, because it is a number the buyer reads,
+remembers, and then finds different on the order they just raised. The full
+breakdown is on the order the moment it exists, one redirect away.
 
 ### 0.8 Exact next task
 

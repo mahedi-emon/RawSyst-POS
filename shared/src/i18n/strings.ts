@@ -4758,6 +4758,18 @@ export const en = {
   'nx.nowhere.title': 'There is nothing here for you yet',
   'nx.nowhere.body': 'Your account is signed in but holds no permissions, so there is no screen to open. Ask an owner to give you a role.',
   'nx.nowhere.signOut': 'Sign out',
+
+  // --- tax treatment on a draft order (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.npo.colTax': 'Tax',
+  'nx.npo.taxHint': 'Whether this supplier charges tax on the line. How much is read from the tax register when the order is raised.',
+  'nx.npo.beforeTax': 'Before tax',
+  'nx.npo.taxAdded': 'Tax is added when the order is raised, at the rate on file for this market on that date. The full breakdown is on the order.',
 } as const;
 
 /** Every string the interface can show. */
@@ -9544,6 +9556,18 @@ export const ar: Record<Key, string> = {
   'nx.nowhere.title': 'لا يوجد شيء لك هنا بعد',
   'nx.nowhere.body': 'حسابك مسجّل الدخول لكنه لا يحمل أي صلاحيات، فلا توجد شاشة لفتحها. اطلب من المالك منحك دورًا.',
   'nx.nowhere.signOut': 'تسجيل الخروج',
+
+  // --- tax treatment on a draft order (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.npo.colTax': 'الضريبة',
+  'nx.npo.taxHint': 'هل يفرض هذا المورد ضريبة على البند. أما المقدار فيُقرأ من السجل الضريبي عند إنشاء الأمر.',
+  'nx.npo.beforeTax': 'قبل الضريبة',
+  'nx.npo.taxAdded': 'تُضاف الضريبة عند إنشاء الأمر بالنسبة المسجّلة لهذا السوق في ذلك التاريخ. التفصيل الكامل على الأمر.',
 };
 
 /**
@@ -14126,6 +14150,18 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.nowhere.title': 'এখানে এখনো আপনার জন্য কিছু নেই',
   'nx.nowhere.body': 'আপনার অ্যাকাউন্ট সাইন ইন আছে কিন্তু কোনো অনুমতি নেই, তাই খোলার মতো কোনো পর্দা নেই। মালিককে একটি ভূমিকা দিতে বলুন।',
   'nx.nowhere.signOut': 'সাইন আউট',
+
+  // --- tax treatment on a draft order (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.npo.colTax': 'কর',
+  'nx.npo.taxHint': 'এই সরবরাহকারী এই লাইনে কর নেয় কিনা। কত তা আদেশ তৈরির সময় কর নিবন্ধন থেকে পড়া হয়।',
+  'nx.npo.beforeTax': 'করের আগে',
+  'nx.npo.taxAdded': 'আদেশ তৈরির সময় কর যোগ হয়, সেই তারিখে এই বাজারের জন্য নথিভুক্ত হারে। পূর্ণ হিসাব আদেশে দেখা যাবে।',
 };
 
 /**

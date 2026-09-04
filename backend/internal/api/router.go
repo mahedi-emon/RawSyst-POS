@@ -664,6 +664,14 @@ func (s *Server) Routes() []Route {
 
 		{http.MethodGet, "/api/v1/purchasing/orders", AccessPermission, "purchasing.view",
 			s.handleListOrders, ""},
+		// The tax RATE is resolved from the regulatory register at the order
+		// date, never taken from the request -- the same rule the expenses
+		// service states and for the same reason: a client that could state its
+		// own VAT rate could state what the return claims. `tax_rate` in the
+		// body is an optional assertion; sending one that disagrees with the
+		// register is refused, and omitting it is the ordinary case. The
+		// TREATMENT is the caller's, because only they know whether the
+		// supplier charged, and it is checked against what the country allows.
 		{http.MethodPost, "/api/v1/purchasing/orders", AccessPermission, "purchasing.create_order",
 			s.handleCreateOrder, ""},
 		{http.MethodGet, "/api/v1/purchasing/orders/{poID}", AccessPermission, "purchasing.view",

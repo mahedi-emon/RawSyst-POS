@@ -477,30 +477,96 @@ console.log('\nBUYING');
       console.log('  -  nothing is owed; the bucket shape was not exercised');
     }
 
-    // A rate is a fraction everywhere in this system, and "15" for fifteen per
-    // cent used to be accepted and multiplied -- a 948 order came back as
-    // 15,168. The screens send a fraction; this is what stops the boundary
-    // quietly accepting the other thing again.
-    const badRate = await post(
-      `/purchasing/orders?company_id=${CO}`,
-      {
+    // Where the rate comes from, which is the whole point of the block below.
+    //
+    // A purchase used to be priced from whatever the caller sent, defaulting to
+    // zero — so an order raised without an explicit rate carried no input VAT,
+    // silently. It is now resolved from the regulatory register at the order
+    // date, the same rule the sale path and the expenses path follow. The
+    // screens send a treatment and no rate at all, which only works if this
+    // holds.
+    const warehouse = (
+      await call(`/purchasing/warehouses?company_id=${CO}`)
+    ).json?.data?.[0];
+    const variant = (
+      await call(`/stock/on-hand?company_id=${CO}&limit=1`)
+    ).json?.data?.[0];
+
+    if (!warehouse || !variant) {
+      console.log('  -  no warehouse or stock; purchase pricing was not exercised');
+    } else {
+      const draft = (lines) => ({
         supplier_id: suppliers.data[0].id,
-        warehouse_id: '00000000-0000-0000-0000-000000000000',
-        lines: [
+        warehouse_id: warehouse.id,
+        lines,
+      });
+
+      const priced = await post(
+        `/purchasing/orders?company_id=${CO}`,
+        draft([
           {
-            variant_id: '00000000-0000-0000-0000-000000000000',
+            variant_id: variant.variant_id,
+            description: 'verify:api',
+            qty: '10',
+            unit_cost: '20.00',
+            tax_treatment: 'standard',
+          },
+        ]),
+      );
+      if (priced.status !== 201) {
+        console.log(`  x POST /purchasing/orders with no rate: HTTP ${priced.status}`);
+        failures += 1;
+      } else if (priced.json.tax_total === '0.0000' || priced.json.tax_total === '0') {
+        console.log(
+          '  x an order raised with no tax_rate carried NO TAX. The register is not being read.',
+        );
+        failures += 1;
+      } else {
+        console.log(
+          `  ok a standard line with no rate supplied is priced from the register (tax ${priced.json.tax_total})`,
+        );
+      }
+
+      // A rate that disagrees with the register is refused rather than used or
+      // quietly ignored — ignoring it is how a caller sends last year's rate
+      // for a year and never finds out.
+      const disagrees = await post(
+        `/purchasing/orders?company_id=${CO}`,
+        draft([
+          {
+            variant_id: variant.variant_id,
             qty: '1',
             unit_cost: '10.00',
-            tax_rate: '15',
+            tax_treatment: 'standard',
+            tax_rate: '0.05',
           },
-        ],
-      },
-    );
-    if (badRate.status === 400) {
-      console.log('  ok a tax rate of 15 is refused as a percentage');
-    } else {
-      console.log(`  x a tax rate of 15 came back ${badRate.status}, want 400`);
-      failures += 1;
+        ]),
+      );
+      if (disagrees.status === 400) {
+        console.log('  ok a rate that disagrees with the register is refused');
+      } else {
+        console.log(`  x a disagreeing rate came back ${disagrees.status}, want 400`);
+        failures += 1;
+      }
+
+      // And a treatment the market does not use, named rather than defaulted.
+      const odd = await post(
+        `/purchasing/orders?company_id=${CO}`,
+        draft([
+          {
+            variant_id: variant.variant_id,
+            qty: '1',
+            unit_cost: '10.00',
+            tax_treatment: 'not_a_treatment',
+          },
+        ]),
+      );
+      if (odd.status === 400) {
+        console.log('  ok a treatment this market does not use is refused');
+      } else {
+        console.log(`  x an unknown treatment came back ${odd.status}, want 400`);
+        failures += 1;
+      }
     }
   }
 }

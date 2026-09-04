@@ -31,15 +31,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 )
 
@@ -56,11 +59,27 @@ type Service struct {
 	// buying only in its own currency never needs one, and a bill in a foreign
 	// currency is refused rather than booked at par when it is absent.
 	rates *fx.Service
+
+	// rules is the regulatory rule registry, and it is what says how much tax
+	// a purchase carries.
+	//
+	// NOT optional in the way the two above are. Without it an order cannot be
+	// priced at all, because the alternative is taking a rate from whoever is
+	// calling -- and the expenses service, which is the same side of the
+	// business, already says why that is unacceptable: "a client that could
+	// state its own VAT rate could state what the return claims."
+	rules *registry.Service
 }
 
 // WithRates wires G2's exchange rates, which a foreign-currency bill needs.
 func (s *Service) WithRates(f *fx.Service) *Service {
 	s.rates = f
+	return s
+}
+
+// WithRules wires the regulatory rule registry, which prices every line.
+func (s *Service) WithRules(r *registry.Service) *Service {
+	s.rules = r
 	return s
 }
 
@@ -71,6 +90,111 @@ func (s *Service) WithApprovals(w *workflow.Service) *Service {
 }
 
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// taxRateFor is what a purchase line is taxed at, from the register.
+//
+// The rate is NEVER taken from the caller. That rule is not new here -- the
+// expenses service states it on the same kind of document, and states why:
+//
+//	The RATE comes from the registry at the expense date, never from the
+//	caller: a client that could state its own VAT rate could state what the
+//	return claims. The TREATMENT comes from the caller, because only they know
+//	whether the supplier charged VAT.
+//
+// Purchasing took a rate from the request body until now, and defaulted it to
+// zero when it was absent, so a client sending nothing raised orders with no
+// tax on them and a client sending "15" for fifteen per cent raised an order
+// fifteen hundred per cent too large. Both are silent, and both end up on a
+// document a supplier can hold the shop to and in the input tax the shop
+// reclaims.
+//
+// The treatment is the caller's, and is checked against what the country
+// allows on that date -- the same check catalog.checkTreatment makes when a
+// product is set up.
+//
+// A treatment that charges nothing resolves to zero without asking the
+// register, because there is no rate to record and no source to cite for "this
+// is not taxed". A treatment the register cannot price -- the United States,
+// where tax is set by state, county and city rather than nationally -- is
+// refused by registry.TaxRate in its own words, which name what has to be
+// recorded. Nothing is defaulted, because every default here would be an
+// invented legal value.
+func (s *Service) taxRateFor(
+	ctx context.Context, tx pgx.Tx, scope Scope, country, treatment string,
+	asOf time.Time,
+) (string, decimal.Decimal, error) {
+	if s.rules == nil {
+		return "", decimal.Zero, errs.New(errs.CodeInternal,
+			"The purchasing service was built without the regulatory rule registry.")
+	}
+
+	rules, err := catalog.TaxRulesFor(ctx, s.rules, tx, country, asOf, scope.TenantID)
+	if err != nil {
+		return "", decimal.Zero, err
+	}
+
+	treatment = strings.ToLower(strings.TrimSpace(treatment))
+	if treatment == "" {
+		treatment = "standard"
+	}
+	if !rules.Allows(treatment) {
+		return "", decimal.Zero, errs.Newf(errs.CodeInvalidInput,
+			"A line marked %q cannot be bought here: that is not a tax "+
+				"treatment %s uses.", treatment, strings.ToUpper(country))
+	}
+
+	// Only the treatments that charge have a rate to look up.
+	switch treatment {
+	case "standard", "reduced":
+		rate, e := s.rules.TaxRate(ctx, tx, country, treatment, asOf, scope.TenantID)
+		if e != nil {
+			return "", decimal.Zero, e
+		}
+		return treatment, rate, nil
+	default:
+		return treatment, decimal.Zero, nil
+	}
+}
+
+// agreesOnRate refuses a request whose rate is not the one on file.
+//
+// `tax_rate` used to be the value the line was priced with. It is now an
+// optional ASSERTION: send it and the server checks it, omit it and the
+// register answers. Neither ignoring it nor removing it would do.
+//
+// Ignoring it silently is how a caller keeps sending 0.05 for a year and never
+// learns that the rate went to 0.15 — their totals would quietly become right
+// while their own screen kept showing the old figure.
+//
+// Removing it breaks every caller at once for a field most of them are sending
+// correctly, and fifty-four assertions in this repository's own tests are
+// sending exactly the rate the register holds.
+//
+// So: disagreement is an error that names both numbers, and agreement costs
+// nothing. Zero is treated as "not stated", because the JSON has no way to
+// distinguish an absent rate from a zero one and a zero-rated line legitimately
+// resolves to zero anyway.
+func agreesOnRate(stated, resolved decimal.Decimal, index int) error {
+	if stated.IsZero() || stated.Equal(resolved) {
+		return nil
+	}
+	return errs.Newf(errs.CodeInvalidInput,
+		"Line %d states a tax rate of %s and the rate on file is %s. The rate "+
+			"comes from the regulatory register, so either leave it out or "+
+			"send the one in force.",
+		index+1, stated.String(), resolved.String())
+}
+
+// countryOf is the market whose rules price this company's purchases.
+func countryOf(ctx context.Context, tx pgx.Tx, companyID uuid.UUID) (string, error) {
+	var country string
+	err := tx.QueryRow(ctx,
+		`SELECT country FROM company WHERE id = $1`, companyID).Scan(&country)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", errs.New(errs.CodeNotFound, "That company was not found.")
+	}
+	return country, err
+}
 
 // Scope is which books a purchase belongs to.
 //
@@ -348,14 +472,23 @@ func (s *Service) createOrderInTx(
 	ctx context.Context, tx pgx.Tx, scope Scope, in NewOrder,
 	rfqID, quoteID, requisitionID *uuid.UUID,
 ) (Order, error) {
-	var currency string
+	var currency, country string
 	if e := tx.QueryRow(ctx,
-		`SELECT base_currency FROM company WHERE id = $1`,
-		scope.CompanyID).Scan(&currency); e != nil {
+		`SELECT base_currency, country FROM company WHERE id = $1`,
+		scope.CompanyID).Scan(&currency, &country); e != nil {
 		if errors.Is(e, pgx.ErrNoRows) {
 			return Order{}, errs.New(errs.CodeNotFound, "That company was not found.")
 		}
 		return Order{}, e
+	}
+
+	// The date the rules are read at. An order raised today is priced at
+	// today's rates, and reading them at "now" for an order dated otherwise
+	// would reprice history -- the same reason a sale resolves at its issue
+	// date rather than at the moment somebody reprints it.
+	pricedAt := time.Now().UTC()
+	if in.ExpectedOn != nil {
+		pricedAt = *in.ExpectedOn
 	}
 
 	// The supplier and warehouse must belong to this company. Row-level
@@ -392,14 +525,22 @@ func (s *Service) createOrderInTx(
 
 	subtotal, tax, total := decimal.Zero, decimal.Zero, decimal.Zero
 	for i, line := range in.Lines {
-		net := line.Qty.Mul(line.UnitCost).Round(4)
-		lineTax := net.Mul(line.TaxRate).Round(4)
-		gross := net.Add(lineTax)
-
-		treatment := line.TaxTreatment
-		if treatment == "" {
-			treatment = "standard"
+		// From the register, never from the caller. See taxRateFor.
+		treatment, rate, e := s.taxRateFor(ctx, tx, scope, country,
+			line.TaxTreatment, pricedAt)
+		if e != nil {
+			// Returned as it came. The registry's message names the rule that
+			// has to be recorded and where; wrapping it in "line 3 could not
+			// be priced" would replace the only sentence anybody can act on.
+			return Order{}, e
 		}
+		if e := agreesOnRate(line.TaxRate, rate, i); e != nil {
+			return Order{}, e
+		}
+
+		net := line.Qty.Mul(line.UnitCost).Round(4)
+		lineTax := net.Mul(rate).Round(4)
+		gross := net.Add(lineTax)
 
 		if _, e := tx.Exec(ctx, `
 			INSERT INTO po_line
@@ -408,7 +549,7 @@ func (s *Service) createOrderInTx(
 			   net_amount, tax_amount, gross_amount)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 			scope.TenantID, poID, i+1, line.VariantID, line.Description,
-			line.Qty, line.UnitCost, treatment, line.TaxRate,
+			line.Qty, line.UnitCost, treatment, rate,
 			net, lineTax, gross); e != nil {
 			return Order{}, e
 		}
@@ -801,6 +942,15 @@ func (s *Service) ReplaceOrderLines(
 			return e
 		}
 
+		country, e := countryOf(ctx, tx, scope.CompanyID)
+		if e != nil {
+			return e
+		}
+		pricedAt := time.Now().UTC()
+		if in.ExpectedOn != nil {
+			pricedAt = *in.ExpectedOn
+		}
+
 		if _, e := tx.Exec(ctx, `DELETE FROM po_line WHERE po_id = $1`, poID); e != nil {
 			return e
 		}
@@ -814,14 +964,21 @@ func (s *Service) ReplaceOrderLines(
 				return errs.Newf(errs.CodeInvalidInput, "Line %d has a negative cost.", i+1)
 			}
 
-			net := line.Qty.Mul(line.UnitCost).Round(4)
-			lineTax := net.Mul(line.TaxRate).Round(4)
-			gross := net.Add(lineTax)
-
-			treatment := line.TaxTreatment
-			if treatment == "" {
-				treatment = "standard"
+			// Re-resolved on every edit rather than carried from the draft,
+			// so a rate that changed between raising and amending is the one
+			// the amended order carries.
+			treatment, rate, e := s.taxRateFor(ctx, tx, scope, country,
+				line.TaxTreatment, pricedAt)
+			if e != nil {
+				return e
 			}
+			if e := agreesOnRate(line.TaxRate, rate, i); e != nil {
+				return e
+			}
+
+			net := line.Qty.Mul(line.UnitCost).Round(4)
+			lineTax := net.Mul(rate).Round(4)
+			gross := net.Add(lineTax)
 
 			if _, e := tx.Exec(ctx, `
 				INSERT INTO po_line
@@ -830,7 +987,7 @@ func (s *Service) ReplaceOrderLines(
 				   net_amount, tax_amount, gross_amount)
 				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 				scope.TenantID, poID, i+1, line.VariantID, line.Description,
-				line.Qty, line.UnitCost, treatment, line.TaxRate,
+				line.Qty, line.UnitCost, treatment, rate,
 				net, lineTax, gross); e != nil {
 				return e
 			}

@@ -10,25 +10,21 @@
 // catalogue is the other thing it does. The dashboard has been pointing at low
 // stock since it was built; this is where that pointing finally leads.
 //
-// # The buyer types a tax rate, and that is a gap, not a design
+// # Nobody types a tax rate
 //
-// A SALE never asks. `applyTaxProfile` is explicit that it "fills in the values
-// the till is not allowed to choose", reading the rate from the regulatory
-// register at the invoice date, and refusing the sale if no rate is on file.
-// Purchasing takes the rate from the request body and defaults it to zero, and
-// no business-facing route exposes what the rate should be -- the register is
-// readable only through `/platform/jurisdictions/rates`, which is super-admin.
+// The buyer says WHETHER this line is taxed — standard, zero-rated, exempt —
+// which is a fact they can read off the supplier's invoice. How much is the
+// register's answer, resolved by `CreateOrder` at the order date, and it is
+// not a number this screen is allowed to have an opinion about.
 //
-// So the honest options were: send nothing and raise every order at zero per
-// cent, silently; hardcode 0.15, which is a Saudi assumption in a product that
-// sells into three markets; or ask. This asks, says why, and carries the
-// previous line's rate down the order so it is typed once. Recorded as a
-// finding: purchasing should resolve the rate the way sales does.
+// That is the same rule the sale path and the expenses path follow, and the
+// expenses service says why in one sentence: a client that could state its own
+// VAT rate could state what the return claims.
 //
-// # Percent in, fraction out
-//
-// The field takes 15 and sends 0.15, because a rate is a fraction everywhere in
-// this system and 15 meant 1500% until the boundary started refusing it.
+// So the summary here says "before tax" and means it. Showing an estimate
+// would be worse than showing none — a number the buyer reads, remembers, and
+// then finds different on the order they just raised. The full breakdown is on
+// the order the moment it exists, which is one redirect away.
 
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -47,7 +43,8 @@ import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, formatQuantity } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
 import type { Order } from '@/lib/purchasing/orders';
-import { lineTotals, orderTotals, type Draft } from '@/lib/purchasing/draft-order';
+import { lineNet, orderNet, type Draft } from '@/lib/purchasing/draft-order';
+import { TAX_TREATMENT } from '@/lib/purchasing/orders';
 
 interface Supplier {
   id: string;
@@ -124,10 +121,9 @@ function NewOrderScreen() {
         description: `${row.product} · ${row.sku}`,
         qty: '',
         unit_cost: '',
-        // Carried down the order so a rate is typed once, per the redundant
-        // entry rule. Blank on the first line: guessing one would be worse
-        // than asking, and the register is not readable from here.
-        tax_percent: current[current.length - 1]?.tax_percent ?? '',
+        // Carried down the order, per the redundant entry rule: a delivery is
+        // usually taxed one way throughout, and saying so once is enough.
+        tax_treatment: current[current.length - 1]?.tax_treatment ?? 'standard',
       },
     ]);
   }
@@ -142,7 +138,7 @@ function NewOrderScreen() {
     setLines((current) => current.filter((_, i) => i !== index));
   }
 
-  const totals = orderTotals(lines);
+  const net = orderNet(lines);
   const money = (v: string) => formatMoney(v, { currency, market });
 
   async function save() {
@@ -170,11 +166,9 @@ function NewOrderScreen() {
             description: l.description,
             qty: l.qty || '0',
             unit_cost: l.unit_cost || '0',
-            // Sent as the fraction the API takes, from the percentage a buyer
-            // reads off an invoice. 15 here would be 1500% there.
-            tax_rate: l.tax_percent
-              ? String(Number(l.tax_percent) / 100)
-              : '0',
+            // No tax_rate. The register answers, and sending one that
+            // disagrees with it is refused rather than used.
+            tax_treatment: l.tax_treatment,
           })),
         },
       );
@@ -267,7 +261,7 @@ function NewOrderScreen() {
             ) : (
               <ul className="flex flex-col divide-y divide-line">
                 {lines.map((line, i) => {
-                  const sums = lineTotals(line);
+                  const rowNet = lineNet(line);
                   return (
                     <li key={line.variant_id} className="py-3 first:pt-0">
                       <div className="flex items-baseline justify-between gap-3">
@@ -301,24 +295,28 @@ function NewOrderScreen() {
                           />
                         </Field>
                         <Field
-                          label={t('nx.npo.colRate')}
-                          hint={i === 0 ? t('nx.npo.rateHint') : undefined}
+                          label={t('nx.npo.colTax')}
+                          hint={i === 0 ? t('nx.npo.taxHint') : undefined}
                         >
-                          <Input
-                            value={line.tax_percent}
+                          <Select
+                            value={line.tax_treatment}
                             onChange={(e) =>
-                              patch(i, { tax_percent: e.target.value })
+                              patch(i, { tax_treatment: e.target.value })
                             }
-                            inputMode="decimal"
-                            autoComplete="off"
-                          />
+                          >
+                            {Object.entries(TAX_TREATMENT).map(([value, key]) => (
+                              <option key={value} value={value}>
+                                {t(key)}
+                              </option>
+                            ))}
+                          </Select>
                         </Field>
                         <div className="flex flex-col justify-end pb-2">
                           <p className="text-caption text-muted">
-                            {t('nx.npo.colLine')}
+                            {t('nx.npo.beforeTax')}
                           </p>
                           <p className="num text-body font-medium text-fg">
-                            {money(sums.gross)}
+                            {money(rowNet)}
                           </p>
                         </div>
                       </div>
@@ -329,29 +327,24 @@ function NewOrderScreen() {
             )}
 
             {lines.length > 0 ? (
-              <dl className="mt-4 flex flex-col gap-1 border-t border-line pt-3 text-body">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted">{t('nx.po.net')}</dt>
-                  <dd className="num">{money(totals.net)}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted">{t('nx.po.tax')}</dt>
-                  <dd className="num">{money(totals.tax)}</dd>
-                </div>
-                <div className="mt-1 flex justify-between gap-4 border-t-[3px] border-double border-line-strong pt-2 font-semibold">
-                  <dt>{t('nx.po.total')}</dt>
-                  <dd className="num">{money(totals.gross)}</dd>
-                </div>
-              </dl>
+              <>
+                <dl className="mt-4 flex flex-col gap-1 border-t border-line pt-3 text-body">
+                  <div className="flex justify-between gap-4 font-semibold">
+                    <dt>{t('nx.npo.beforeTax')}</dt>
+                    <dd className="num">{money(net)}</dd>
+                  </div>
+                </dl>
+                {/* Not a disclaimer. It is the difference between a total that
+                    is provisional and one that is wrong, and a buyer about to
+                    commit the shop to a number should know which they are
+                    looking at. */}
+                <p className="mt-2 text-caption text-muted">
+                  {t('nx.npo.taxAdded')}
+                </p>
+              </>
             ) : null}
           </Panel>
 
-          {/* Said once, under the thing it is about, rather than beside every
-              rate field. It explains a gap in the product, and a person needs
-              to read it once. */}
-          <Panel title={t('nx.npo.rateNoteTitle')}>
-            <p className="text-body text-muted">{t('nx.npo.rateNoteBody')}</p>
-          </Panel>
         </div>
 
         <div className="flex flex-col gap-6">

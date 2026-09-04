@@ -58,6 +58,66 @@ func TestAPurchaseLineReportsTheTaxItWasStoredWith(t *testing.T) {
 	}
 }
 
+// The rate comes from the register, not from whoever is calling.
+//
+// The expenses service states the rule on the same kind of document and states
+// why: "a client that could state its own VAT rate could state what the return
+// claims." Purchasing took one from the request body and defaulted it to zero,
+// so a caller sending nothing raised orders with no tax on them at all -- and
+// that tax is what the shop reclaims as input VAT.
+func TestAPurchaseIsPricedFromTheRegisterNotTheRequest(t *testing.T) {
+	h := newHarness(t)
+	f := seedBuying(t, h)
+
+	// No tax_rate in the body at all.
+	created := h.do(t, "POST", f.path("/api/v1/purchasing/orders"), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "description": "Abaya",
+				"qty": "10", "unit_cost": "20.00", "tax_treatment": "standard",
+			}},
+		})
+	if created.StatusCode != 201 {
+		t.Fatalf("order: %s", readBody(t, created))
+	}
+	body := decodeJSON(t, created)
+	if body["tax_total"] != "30.0000" {
+		t.Errorf("200 net came to %v in tax with no rate supplied, want 30.0000 "+
+			"from the register. Zero here means every order raised without an "+
+			"explicit rate carried no input VAT.", body["tax_total"])
+	}
+
+	// A rate that disagrees is refused rather than used or ignored.
+	wrong := h.do(t, "POST", f.path("/api/v1/purchasing/orders"), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "qty": "10",
+				"unit_cost": "20.00", "tax_treatment": "standard",
+				"tax_rate": "0.05",
+			}},
+		})
+	if wrong.StatusCode != 400 {
+		t.Errorf("a stated rate of 0.05 against a register holding 0.15 came "+
+			"back %d, want 400. Ignoring it silently is how a caller keeps "+
+			"sending last years rate and never learns.", wrong.StatusCode)
+	}
+
+	// A treatment the country does not use is refused, naming the country.
+	odd := h.do(t, "POST", f.path("/api/v1/purchasing/orders"), f.token,
+		map[string]any{
+			"supplier_id": f.supplierID, "warehouse_id": f.warehouseID,
+			"lines": []map[string]any{{
+				"variant_id": f.variantID.String(), "qty": "1",
+				"unit_cost": "1.00", "tax_treatment": "not_a_treatment",
+			}},
+		})
+	if odd.StatusCode != 400 {
+		t.Errorf("an unknown treatment came back %d, want 400", odd.StatusCode)
+	}
+}
+
 // A rate is a fraction everywhere in this system.
 //
 // `sales_line_rate_sane` has constrained a sales line to [0, 1) since 0018 and

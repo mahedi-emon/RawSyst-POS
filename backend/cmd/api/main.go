@@ -214,7 +214,7 @@ func run() error {
 	// hold a reference to it. One instance: the engine reads and writes one
 	// set of tables and a second would be a second queue.
 	workflowSvc := workflow.NewService(pool)
-	purchasingSvc := purchasing.NewService(pool).WithApprovals(workflowSvc).WithRates(fx.New(pool))
+	purchasingSvc := purchasing.NewService(pool).WithApprovals(workflowSvc).WithRates(fx.New(pool)).WithRules(rules)
 	// The portal hands a one-time code to the same queue the staff recovery
 	// codes go through, so a code that exists and a message that will be sent
 	// commit together.
