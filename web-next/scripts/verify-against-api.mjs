@@ -45,6 +45,30 @@ async function call(path) {
   return { status: res.status, json };
 }
 
+/** A POST, optionally as somebody other than the current token. */
+async function post(path, body, as = null) {
+  const res = await fetch(API + path, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${as ?? token}`,
+      'Content-Type': 'application/json',
+      // The client sends one on every mutation; the server should accept it
+      // here too, and a run that omitted it would not be exercising the
+      // request the product actually makes.
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { status: res.status, json };
+}
+
 /** Checks a payload carries the fields a screen reads off it. */
 function expectFields(label, obj, fields) {
   if (!obj) {
@@ -285,6 +309,183 @@ const snap = await check(
   (j) => j.items[0],
 );
 if (snap) console.log(`  -  ${snap.items.length} sellable lines`);
+
+console.log('\nSHIFT (at a counter, which is the only way these routes answer)');
+{
+  // Every shift route refuses a token with no device on it -- "Only a
+  // registered till can open a session" -- so a browser sign-in cannot reach
+  // any of this. The till binds a counter first and so does this.
+  const counters = await call(`/pos/counters?company_id=${CO}`);
+  const counter = counters.json?.data?.find((c) => c.status === 'active')
+    ?? counters.json?.data?.[0];
+
+  if (!counter) {
+    console.log('  -  no counter on this company; the shift routes were not exercised');
+  } else {
+    const bound = await post('/pos/counter-sessions', { device_id: counter.id });
+    if (bound.status !== 200 && bound.status !== 201) {
+      console.log(`  x POST /pos/counter-sessions: HTTP ${bound.status}`);
+      failures += 1;
+    } else {
+      expectFields('POST /pos/counter-sessions', bound.json, [
+        'access_token',
+        'expires_at',
+      ]);
+      // A counter-bound token, and deliberately no refresh token with it: the
+      // counter is re-checked whenever this expires.
+      const till = bound.json.access_token;
+
+      // A till restarted mid-shift finds its session here rather than from the
+      // open response, which is the only other copy of the id. 404 is a real
+      // answer -- it means this counter is between shifts.
+      const current = await fetch(`${API}/shifts/current`, {
+        headers: { Authorization: `Bearer ${till}` },
+      });
+      let session = current.ok ? await current.json() : null;
+      let opened = false;
+
+      if (session) {
+        console.log(`  ok GET /shifts/current -> session ${session.session_no} already open`);
+      } else if (current.status === 404) {
+        console.log('  ok GET /shifts/current -> 404, this counter is between shifts');
+        // Blind, because that is the half with an invariant worth checking.
+        const open = await post(
+          '/shifts',
+          { opening_float: '200.00', blind_close: true },
+          till,
+        );
+        if (open.status !== 201) {
+          console.log(`  x POST /shifts: HTTP ${open.status}`);
+          failures += 1;
+        } else {
+          session = open.json;
+          opened = true;
+          expectFields('POST /shifts', session, [
+            'id',
+            'session_no',
+            'device_id',
+            'store_id',
+            'state',
+            'opened_at',
+            'opening_float',
+            'blind_close',
+          ]);
+        }
+      } else {
+        console.log(`  x GET /shifts/current: HTTP ${current.status}`);
+        failures += 1;
+      }
+
+      if (session) {
+        const peek = await fetch(`${API}/shifts/${session.id}`, {
+          headers: { Authorization: `Bearer ${till}` },
+        });
+        const report = peek.ok ? await peek.json() : null;
+        expectFields('GET /shifts/{id}', report, [
+          'session_no',
+          'state',
+          'opened_at',
+          'opening_float',
+          'invoice_count',
+          'gross_sales',
+          'net_sales',
+          'tax_total',
+          'refund_total',
+        ]);
+
+        // THE invariant the close screen is built around. On a blind session
+        // the expected figure is withheld -- and so are the three takings it
+        // could be derived from, because hiding the total alone left
+        // gross - refunds - non-cash as the cash takings exactly. A cashier who
+        // can see what the drawer should hold can make it agree, and then the
+        // variance reads zero on every shift.
+        if (session.blind_close && report) {
+          const leaked = [
+            'expected_cash',
+            'cash_takings',
+            'non_cash_takings',
+            'cash_movements',
+          ].filter((f) => f in report);
+          if (leaked.length) {
+            console.log(`  x blind close leaks ${leaked.join(', ')} to the cashier`);
+            failures += 1;
+          } else {
+            console.log('  ok blind close withholds the drawer from the cashier');
+          }
+        } else if (report) {
+          // Worth saying out loud. The invariant is the reason the close screen
+          // is shaped the way it is, and a run that quietly skipped it reads
+          // exactly like a run that checked it.
+          console.log('  -  this session is not blind; the withholding rule was NOT exercised');
+        }
+
+        // The supervisor's half, as the OWNER: report.view, which a cashier
+        // does not hold. The same session, and here the figure is present --
+        // if it were not, the two routes would differ for no reason and the
+        // X report would be useless.
+        const x = await fetch(`${API}/shifts/${session.id}/x-report`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!x.ok) {
+          console.log(`  x GET /shifts/{id}/x-report: HTTP ${x.status}`);
+          failures += 1;
+        } else {
+          const xr = await x.json();
+          expectFields('GET /shifts/{id}/x-report', xr, [
+            'expected_cash',
+            'cash_takings',
+            'non_cash_takings',
+            'cash_movements',
+          ]);
+        }
+
+        // Only the session this run opened is touched further: a shift that was
+        // already running belongs to somebody counting a real drawer.
+        if (opened) {
+          const drop = await post(
+            `/shifts/${session.id}/cash-drop`,
+            { amount: '-50.00', reason: 'safe_drop', note: 'verify:api' },
+            till,
+          );
+          if (drop.status !== 204) {
+            console.log(`  x POST /shifts/{id}/cash-drop: HTTP ${drop.status}`);
+            failures += 1;
+          } else {
+            console.log('  ok POST /shifts/{id}/cash-drop');
+          }
+
+          // 200 float, less a 50 drop, no sales: the drawer should hold 150,
+          // and counting exactly that is the case where the variance is zero.
+          const close = await post(
+            `/shifts/${session.id}/close`,
+            { counted_cash: '150.00', note: 'verify:api' },
+            till,
+          );
+          if (close.status !== 200) {
+            console.log(`  x POST /shifts/{id}/close: HTTP ${close.status}`);
+            failures += 1;
+          } else {
+            expectFields('POST /shifts/{id}/close', close.json, [
+              'state',
+              'closed_at',
+              'expected_cash',
+              'counted_cash',
+              'variance',
+            ]);
+            // The count is committed, so the figures come back -- withholding
+            // them now would stop anyone reconciling the variance they are
+            // being asked to explain.
+            console.log(
+              `  -  expected ${close.json.expected_cash}, counted ${close.json.counted_cash}, variance ${close.json.variance}`,
+            );
+          }
+        } else {
+          console.log('  -  a shift was already open; it was left alone, not closed');
+        }
+      }
+    }
+  }
+}
 
 console.log('\nPLATFORM (hidden from a business owner, which is correct)');
 {

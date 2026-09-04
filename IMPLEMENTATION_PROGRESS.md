@@ -458,9 +458,50 @@ Two things it learned to survive on the way:
   rows that collide, and only those, with the reference in the accessible name
   too. Found by running the product, not by reading it.
 
+### 0.87 The drawer, verified at a counter
+
+FE-19 was built and had never been checked against a running server, because it
+cannot be: every shift route refuses a token that does not name a terminal --
+"Only a registered till can open a session. Sign in on the terminal itself
+rather than in a browser." A browser sign-in reaches none of it. `verify:api`
+now binds a counter through `POST /pos/counter-sessions` first, exactly as the
+till does, and drives the whole path with the token that comes back.
+
+What it proves, on a session it opens itself:
+
+| | |
+|---|---|
+| `GET /shifts/current` | 404 between shifts, and a session when there is one -- a till restarted mid-shift finds its own session here rather than from the open response, which is the only other copy of the id |
+| `POST /shifts` | opens blind, with a declared float |
+| `GET /shifts/{id}` | **withholds `expected_cash`, `cash_takings`, `non_cash_takings` and `cash_movements`** from the cashier |
+| `GET /shifts/{id}/x-report` | the same session, as the owner, carries all four |
+| `POST .../cash-drop` | 204 |
+| `POST .../close` | 200 float less a 50 drop, counted 150: **expected 150, variance 0** |
+
+The withholding rule is the one worth having a test for. Hiding the expected
+figure alone was not enough -- `gross_sales` less `refund_total` less
+`non_cash_takings` is the cash takings exactly for a shop that sells for cash
+and card, which is most shops -- so the server withholds all four, and the run
+now fails if any of them appears in the cashier's view of a blind session. A
+cashier who can see what the drawer should hold can make it agree, and then the
+variance reads zero on every shift and the whole reconciliation is theatre.
+
+`ShiftReport` in `lib/pos/shift.ts` already types all four as optional, which
+is now confirmed rather than assumed.
+
+Two smaller things the run does deliberately:
+
+- It sends an `Idempotency-Key` on every POST, because the client does, and a
+  run that omitted it would not be exercising the request the product makes.
+- It closes **only** the session it opened. A shift that was already running
+  belongs to somebody counting a real drawer, and the run says so and leaves it
+  alone -- along with a line saying the withholding rule was not exercised,
+  because a run that quietly skipped it reads exactly like one that checked it.
+
 ### 0.8 Exact next task
 
-**FE-18 returns, then FE-19 shift close, then FE-25 purchasing.**
+**FE-25 purchasing.** FE-18 and FE-19 are done, and FE-19 is now verified
+live at a counter (§0.87) rather than only built.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and
