@@ -220,6 +220,89 @@ await check(
   (j) => j.data[0],
 );
 
+console.log('\nSTOCK, BEYOND WHAT IS ON HAND');
+{
+  const places = await check(
+    'GET /stock/locations',
+    `/stock/locations?company_id=${CO}`,
+    ['id', 'code', 'name', 'kind', 'is_active', 'holds_stock'],
+    (j) => j.data[0],
+  );
+  // The route answers with the branches beside the locations, and the
+  // movements filter and the transfer screens both read them.
+  if (places && !('branches' in places)) {
+    console.log('  x /stock/locations no longer carries branches');
+    failures += 1;
+  }
+
+  const moves = await check(
+    'GET /stock/movements',
+    `/stock/movements?company_id=${CO}&limit=5`,
+    null,
+  );
+  if (moves?.data?.[0]) {
+    // A movement has no id: it is a line in a ledger rather than a document,
+    // which is why the screen keys rows on what makes them distinct.
+    expectFields('  movement', moves.data[0], [
+      'occurred_at',
+      'product',
+      'sku',
+      'location',
+      'reason',
+      // Signed. The screen colours it and prefixes a plus, because -2 and 2
+      // are opposite events.
+      'delta',
+      'value',
+    ]);
+  } else {
+    console.log('  -  nothing has moved; the ledger shape was not exercised');
+  }
+
+  const adjustments = await check(
+    'GET /stock/adjustments',
+    `/stock/adjustments?company_id=${CO}&limit=5`,
+    ['id', 'adjustment_no', 'kind', 'reason', 'status', 'location', 'value', 'currency'],
+    (j) => j.data[0],
+  );
+  const adjID = adjustments?.data?.[0]?.id;
+  if (adjID) {
+    const one = await check(
+      'GET /stock/adjustments/{id}',
+      `/stock/adjustments/${adjID}?company_id=${CO}`,
+      ['id', 'adjustment_no', 'kind', 'status', 'lines'],
+    );
+    if (one?.lines?.[0]) {
+      // system_qty beside delta IS the evidence: -2 against 74 is a breakage,
+      // -2 against 2 is a shelf that was already empty.
+      expectFields('  adjustment line', one.lines[0], [
+        'variant_id',
+        'sku',
+        'product',
+        'system_qty',
+        'delta',
+        'value',
+      ]);
+    }
+  }
+
+  await check('GET /stock/transfers', `/stock/transfers?company_id=${CO}&limit=5`, null);
+  await check('GET /stock/batches', `/stock/batches?company_id=${CO}&limit=5`, null);
+
+  // Availability is what a channel asks before promising a unit. It needs
+  // both a variant and a warehouse; neither alone is a question it can
+  // answer.
+  const variant = (await call(`/stock/on-hand?company_id=${CO}&limit=1`)).json?.data?.[0];
+  // `check` hands back the whole envelope, and this route wants one row.
+  const place = places?.data?.[0];
+  if (variant && place) {
+    await check(
+      'GET /stock/availability',
+      `/stock/availability?company_id=${CO}&variant_id=${variant.variant_id}&warehouse_id=${place.id}`,
+      ['variant_id', 'on_hand', 'reserved', 'available_to_sell'],
+    );
+  }
+}
+
 console.log('\nCUSTOMERS');
 const customers = await check(
   'GET /customers',

@@ -1054,6 +1054,71 @@ The decision panel is **absent** without `purchasing.approve_request` rather
 than disabled: a control the requester can see but not move is an invitation to
 ask why. A rejection requires a note and an approval does not, because the
 requester has to be able to act on the answer.
+### 0.96 Inventory — movements, adjustments, counts, transfers, batches
+
+Nine screens across five documents, driven live before anything was drawn.
+
+**Movements is a ledger, not a balance.** `/stock/on-hand` says where you
+are; this says how you got there, and it is the screen somebody opens when
+those two disagree with the shelf. Nothing is aggregated — two deliveries of
+the same thing on the same day are two lines, because the question is which
+one was wrong. The delta carries its own sign and its own colour, because a
+column of unsigned numbers with a separate in/out column makes the reader do
+the arithmetic.
+
+**Adjustments is a control.** The route note is explicit: *"reading what was
+written off is how a manager notices somebody writing too much off; gating it
+behind the verb that DOES the writing would hide it from exactly the person
+checking."* So the list is `inventory.view`, raising one is
+`inventory.adjust_stock`, and the value column is the point of the screen
+rather than a detail on it. The reason is a chosen list — a free box gives
+"damaged", "Damaged" and "brokn" in one report — with a note beside it for
+what the list cannot say.
+
+The form asks **change by**, not count to. The route takes a `delta`, and a
+screen that asked for the new total would have to subtract — wrongly, the
+moment somebody sold one while the form was open. Asking for the change asks
+for the thing that is actually known: two were dropped.
+
+**Blank is not zero on a count.** Counting nothing and counting none of
+something are different claims, and the second is a write-off of everything on
+the shelf. `differenceOf` returns null for an empty box and the row says "not
+counted yet"; nine tests, including that a lot dated today is still good today
+and that `1.` half-typed shows nothing rather than flickering to a difference
+that was never true.
+
+**A transfer has one next step, so it shows one button.** Requested waits for
+an approver, approved waits for whoever packs it, in transit waits for whoever
+unpacks it. Three buttons with two greyed out would ask the reader to work out
+which is live.
+
+And the server enforces a segregation inside it: *"You raised TRF-000001, so
+somebody else has to approve it."* That is on the screen beside the button
+rather than arriving as an error after a press — the frontend cannot know who
+raised it any better than by comparing names, so it states the rule and leaves
+the boundary where it belongs.
+
+**Batches read FEFO**, soonest to expire first, which is the order they get
+used. A date that has passed and one that is close both need somebody and they
+need different somebodies, so they are separate states rather than one
+"attention" colour. Compared at day resolution in the viewer’s own timezone:
+a lot is good until the end of the day printed on it, and comparing instants
+would mark it expired for anybody west of the shop. Eight tests.
+
+#### Two more nav links that led to a 403
+
+Found by adding these screens to the map the nav test checks.
+
+**Counts and adjustments** pointed at `/stock/counts` and asked for
+`inventory.adjust_stock`. A count IS an adjustment — the same document with
+`kind: 'count'` — so they share a list, and that list is `inventory.view`. The
+old pairing showed the link to somebody the list refuses and hid it from the
+manager who reads it to check what was written off, which is the one person it
+exists for.
+
+**Transfers** listed `inventory.view` OR `inventory.transfer_stock`. The list
+route is the first; holding only the second reached a link the list refuses.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1061,9 +1126,11 @@ the three-way match, supplier payments, ageing, and the sourcing half with the
 four-way permission split proved live (§0.88 – §0.95). Twelve screens,
 thirty-one routes, `verify:api` and `verify:rbac` both green.
 
-Next, in the order the brief gives: **inventory and stock movements**, then
-transfers, batch/lot/expiry, reservations, orders, delivery, returns, and the
-money modules.
+Inventory is done (§0.96): movements, adjustments, counts, transfers and
+batches, nine screens with the contracts pinned in `verify:api`.
+
+Next: **stock locations and production**, which complete the stock section,
+then reservations, orders, delivery, returns, and the money modules.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

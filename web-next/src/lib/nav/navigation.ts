@@ -206,27 +206,37 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'movements',
         labelKey: 'nx.nav.biz.stock.movements',
         href: '/stock/movements',
+        built: true,
         permissions: ['inventory.view'],
         descriptionKey: 'nx.navd.biz.stock.movements',
       },
       {
         id: 'counts',
         labelKey: 'nx.nav.biz.stock.counts',
-        href: '/stock/counts',
-        permissions: ['inventory.adjust_stock'],
+        // A count IS an adjustment -- same document, kind 'count' -- so they
+        // share a list, and the list route is inventory.view. Naming
+        // adjust_stock here showed the link to somebody the list refuses and
+        // hid it from the manager who reads it to check what was written off.
+        href: '/stock/adjustments',
+        built: true,
+        permissions: ['inventory.view'],
         descriptionKey: 'nx.navd.biz.stock.counts',
       },
       {
         id: 'transfers',
         labelKey: 'nx.nav.biz.stock.transfers',
         href: '/stock/transfers',
-        permissions: ['inventory.view', 'inventory.transfer_stock'],
+        built: true,
+        // The list is inventory.view. transfer_stock is the verb, and holding it
+        // alone reached a link the list refuses.
+        permissions: ['inventory.view'],
         descriptionKey: 'nx.navd.biz.stock.transfers',
       },
       {
         id: 'batches',
         labelKey: 'nx.nav.biz.stock.batches',
         href: '/stock/batches',
+        built: true,
         permissions: ['inventory.view'],
         descriptionKey: 'nx.navd.biz.stock.batches',
       },
