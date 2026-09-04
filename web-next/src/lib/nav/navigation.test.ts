@@ -213,6 +213,8 @@ const PRIMARY_READ: Record<string, string> = {
   counts: '/api/v1/stock/adjustments',
   transfers: '/api/v1/stock/transfers',
   batches: '/api/v1/stock/batches',
+  locations: '/api/v1/stock/locations',
+  production: '/api/v1/stock/production',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',
