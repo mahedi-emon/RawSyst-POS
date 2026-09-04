@@ -19,7 +19,7 @@
 
 import { UserPlus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense } from 'react';
 
 import { Can, RequirePermission } from '@/components/auth/guard';
 import { ResourceList } from '@/components/data/resource-list';
@@ -31,6 +31,7 @@ import type { Column } from '@/components/ui/table';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
+import { useUrlFlag } from '@/lib/url-state';
 
 export interface CustomerRow {
   id: string;
@@ -55,7 +56,9 @@ function CustomersScreen() {
   const router = useRouter();
   const scope = useCompanyScope();
   const { currency, market } = useCompany();
-  const [includeInactive, setIncludeInactive] = useState(false);
+  // In the URL, so "show me the inactive ones too" is a link somebody can
+  // send and the back button undoes.
+  const [includeInactive, setIncludeInactive] = useUrlFlag('inactive');
 
   const money = (v: string | undefined, row: CustomerRow) =>
     formatMoney(v ?? null, {
@@ -183,7 +186,9 @@ function CustomersScreen() {
 export default function CustomersPage() {
   return (
     <RequirePermission anyOf={['customers.view']}>
-      <CustomersScreen />
+      <Suspense fallback={<div className="h-64" aria-busy="true" />}>
+        <CustomersScreen />
+      </Suspense>
     </RequirePermission>
   );
 }

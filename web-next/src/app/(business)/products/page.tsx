@@ -12,6 +12,7 @@
 
 import { PackagePlus, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { Can, RequirePermission } from '@/components/auth/guard';
 import { ResourceList } from '@/components/data/resource-list';
@@ -136,7 +137,11 @@ function ProductsScreen() {
 export default function ProductsPage() {
   return (
     <RequirePermission anyOf={['catalog.view']}>
-      <ProductsScreen />
+      {/* The list keeps its search in the URL, and `useSearchParams` needs a
+          boundary to prerender behind. */}
+      <Suspense fallback={<div className="h-64" aria-busy="true" />}>
+        <ProductsScreen />
+      </Suspense>
     </RequirePermission>
   );
 }

@@ -352,6 +352,41 @@
     color: var(--ry-text);
   }
 
+  /* No 300ms double-tap delay, anywhere.
+     A till is used on a tablet by somebody working fast, and a third of a
+     second between the tap and the line appearing is the difference between a
+     counter that feels immediate and one that feels broken. Set globally
+     because it is right for every control in the product, not only the POS. */
+  button,
+  a,
+  [role='button'],
+  input,
+  select,
+  label,
+  summary {
+    touch-action: manipulation;
+  }
+
+  /* The grey flash Android paints over a tapped element, replaced with the
+     product's own selection colour so a tap looks like the rest of the UI
+     rather than like the browser's default. */
+  html {
+    -webkit-tap-highlight-color: rgb(200 162 39 / 0.15);
+  }
+
+  /* Headings wrap on meaning rather than leaving one word alone on the last
+     line. Cheap, and it is most visible on the two-line page descriptions. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
   /* One focus treatment for the whole product. Brass, two pixels, offset so it
      is visible against both a white field and a dark shell. */
   :focus-visible {
@@ -409,6 +444,23 @@
      and a form section separate identically. */
   .rule {
     border-block-start: 1px solid var(--ry-border);
+  }
+
+  /* Scrolling inside a dialog or drawer must not carry on into the page
+     behind it. On a phone, chaining is how somebody closing a customer list
+     loses their place on the screen underneath. */
+  .scroll-trap {
+    overscroll-behavior: contain;
+  }
+
+  /* A long table skips the layout and paint of rows that are off screen.
+     `contain-intrinsic-size` gives each row a guessed height so the scrollbar
+     does not jump as they are realised -- 44px is this product's row height.
+     Applied to the table rather than to every list, because the tables are
+     where the hundreds of rows are. */
+  .rows-lazy > tbody > tr {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 44px;
   }
 
   /* The chevron on a native select.

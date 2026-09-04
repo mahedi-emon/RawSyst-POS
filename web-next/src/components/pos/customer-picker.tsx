@@ -96,6 +96,11 @@ export function CustomerPicker({
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('nx.pos.custSearch')}
             aria-label={t('nx.pos.custSearchLabel')}
+            // A customer code is not a word, and this box is often typed into
+            // on a tablet where autocorrect would change it.
+            autoComplete="off"
+            spellCheck={false}
+            autoCorrect="off"
             className="h-12 w-full bg-transparent ps-10 pe-11 text-body text-fg placeholder:text-disabled focus-visible:outline-none"
           />
           <button
@@ -108,7 +113,7 @@ export function CustomerPicker({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="scroll-trap min-h-0 flex-1 overflow-y-auto">
           {isLoading && (
             <p className="p-4 text-body text-muted">{t('nx.pos.looking')}</p>
           )}

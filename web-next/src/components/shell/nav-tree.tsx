@@ -17,21 +17,14 @@
 // reason on hover. Those are different situations with different remedies: one
 // is a conversation with the owner, the other with sales.
 
-import * as icons from 'lucide-react';
 import Link from 'next/link';
-import type { ComponentType } from 'react';
+
 
 import { useT } from '@/lib/i18n/locale';
 import type { ResolvedSection } from '@/lib/nav/navigation';
 import { cn } from '@/lib/utils';
 
-type IconComponent = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
-
-/** Resolves the icon named in the navigation data. */
-function iconFor(name: string): IconComponent {
-  const set = icons as unknown as Record<string, IconComponent | undefined>;
-  return set[name] ?? icons.Circle;
-}
+import { iconFor, Lock } from './nav-icons';
 
 export function NavTree({
   sections,
@@ -83,7 +76,7 @@ export function NavTree({
                         )}
                       >
                         {t(item.labelKey)}
-                        <icons.Lock className="size-3.5" aria-hidden={true} />
+                        <Lock className="size-3.5" aria-hidden={true} />
                       </span>
                     </li>
                   );

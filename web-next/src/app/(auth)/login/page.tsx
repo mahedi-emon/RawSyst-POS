@@ -22,6 +22,7 @@ import { Suspense, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
+import { FormError } from '@/components/ui/form-error';
 import { api, type BusinessChoice } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useSession } from '@/lib/auth/session';
@@ -97,17 +98,7 @@ function SignInForm() {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-      {error && (
-        <p
-          role="alert"
-          className={cn(
-            'rounded-sm border border-critical/25 bg-critical-subtle',
-            'px-3 py-2 text-body text-critical-fg',
-          )}
-        >
-          {error}
-        </p>
-      )}
+      <FormError message={error} fields={fieldErrors} />
 
       {step.kind === 'credentials' && (
         <>

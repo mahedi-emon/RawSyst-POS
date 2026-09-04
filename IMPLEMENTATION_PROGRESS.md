@@ -469,17 +469,45 @@ address. See risk R7.
 | **R6 — Not validated with a non-owner account** | Every live check used the seeded Owner. The cashier/employee experience is proven by unit tests over the navigation tree, not against a live 403. **This is now the largest untested claim in the product** and should be the next thing added to `verify:api`: seed a Cashier, sign in as them, and assert the refusals. |
 | **R7 — A fresh dev database cannot sell** | `cmd/devseed` creates an EGS unit with an empty VAT number, so the Saudi compliance gate refuses every sale until it is amended and the branch National Address is filled in. Worth fixing in devseed; recorded here so the next person does not lose an hour to it. |
 
-### 0.10 Tools actually used
+### 0.10 Tool and skill decision log
 
-| Tool / skill | Purpose | Where |
-|---|---|---|
-| **Serena** | Symbol search and safe edits | `find_symbol` on `Overview`, `Company`, `VariantSummary`, `Entitlements`, `Terminal`, `Health`; `replace_content` for every Go and TS edit; 5 project memories read |
-| **`frontend-design` skill** | Visual direction | Its calibration list is why the palette is not cream-and-terracotta and why there are no ALL-CAPS eyebrows or `→` suffixes |
-| **shadcn** | `@radix-ui/react-slot` for `asChild`, the CVA variant pattern | `components/ui/button.tsx`. No `shadcn add` was run |
-| **Docker** | A throwaway Postgres 17 for Gate 1 | `rawsyst-dev-db` on :5433 |
-| **Go toolchain** | `cmd/migrate`, `cmd/devseed`, `cmd/api`, `go test -tags integration` | Gate 1 |
-| **curl + psql** | Live contract validation and schema inspection | §0.2 |
-| Deliberately **not** used | 21st.dev / Skiper / Magic UI (would import another idiom), Stitch (the direction came from the subject matter and the backend's own vocabulary), GSAP / Motion (this is an ERP; motion is one 120ms colour transition), Convex, React Native | with the reason, as the brief asks |
+Nothing is listed here that was not actually run. Where a tool was inspected and
+rejected, the reason is recorded — a tool used to satisfy a checklist is worse
+than one left alone, because it drags a second design language into a product
+that has one.
+
+#### Used, and what it changed
+
+| Tool / skill | Why it was relevant | Where | Result |
+|---|---|---|---|
+| **Serena** | Repository, API and permission tracing; safe edits | Throughout, both sessions | `find_symbol` on `Overview`, `Company`, `VariantSummary`, `Entitlements`, `Terminal`, `Health`, `ReturnableLine`, `Report`; `get_symbols_overview`; 5 project memories; `replace_content` for every Go and TS edit. **Every payload type in `web-next` was read out of Go source rather than guessed** — which is what made the live-validation pass a check rather than a discovery |
+| **`frontend-design`** | Product visual direction | Global shell, tokens, dashboard | Its calibration list of AI-design tells is directly why the palette is not cream-and-terracotta, why there are no ALL-CAPS eyebrows, no `→` in button text and no monospace data labels. The green-family identity and the ledger double-rule came from reasoning about the subject, which is what the skill asks for |
+| **`vercel-react-best-practices`** | Bundle and re-render performance | `nav-tree.tsx`, audit of all screens | Found `import * as icons from 'lucide-react'` — a barrel import that defeats tree-shaking entirely, because the bundler cannot know which of ~1,500 icons a runtime string selects. Replaced with an explicit map (`nav-icons.ts`). Audited the rest against `rendering-conditional-render`, `rerender-no-inline-components` and `js-set-map-lookups`: no other violations |
+| **`web-design-guidelines`** | Interface quality review | Design tokens + every screen | Fetched the live rules and applied seven: `touch-action: manipulation` globally (a 300ms double-tap delay on a till is the difference between immediate and broken), an intentional tap-highlight colour, `text-wrap: balance`/`pretty`, `overscroll-behavior: contain` on every dialog and drawer, `content-visibility` on table rows, and `spellCheck={false}`/`autoCorrect="off"` on the barcode and code fields — autocorrect on a barcode field changes a scan into something not in the catalogue |
+| **`ui-ux-pro-max`** | UX patterns for forms and tables | `form-error.tsx`, table audit | Two targeted `--domain ux` searches, per its own query contract (a design system already exists; regenerating one would have produced a second visual language). Forms returned a genuine gap: a **focusable error summary** — a keyboard or screen-reader user pressed Save, the form refused, and nothing told them. `FormError` now takes focus on the transition into an error and is used by sign-in and the till. The table search returned four rules the product already satisfied, which is a result worth recording rather than a change |
+| **21st.dev MCP** | Interaction research | Cash-drawer count | Searched for a denomination counter. Everything on offer is a generic number pad or an animated currency ticker — nothing for "how many 500 notes, how many 100s", and a rolling animated figure on a number somebody is reconciling would be actively wrong. **Looked, found nothing suitable, built it by hand.** That is the honest outcome of design research, and it is why nothing was installed |
+| **Stitch MCP** | Existing design exploration | Audit only | `list_projects` found "Modern POS Interface" (2026-08-14) carrying a full RawSyst design system: blue primary, Inter, JetBrains Mono for data labels, ALL-CAPS `label-caps`. That is the **superseded** direction — the current brief bans monospace data labels and caps eyebrows, and the identity is now the green family. Recorded so nobody re-imports it. Not used for generation |
+| **shadcn** | Accessible primitives | `button.tsx`, all variants | `@radix-ui/react-slot` for `asChild`, and the CVA variant pattern. `shadcn add` was never run: every primitive in `components/ui/` is written against RawSyst tokens |
+| **Docker · Go toolchain · psql · curl** | Gate 1 | §0.2, §0.85 | A throwaway Postgres, `cmd/migrate`, `cmd/devseed`, `cmd/api`, `go test -tags integration`, and the contract sweep that became `npm run verify:api` |
+
+#### Inspected and deliberately not used
+
+| Tool / skill | Why not |
+|---|---|
+| **`design-taste-frontend` / `taste-skill`** | Its bundled skills are editorial and marketing-site directions — brutalist grids, cinematic brand boards, hero image generation. RawSyst is a ledger read under fluorescent light by somebody with a queue; adopting any of them would replace a working identity with a louder one |
+| **`gsap-master`, `motion-framer`** | The product has one motion rule: a 120ms colour transition, a spinner, and nothing else, with `prefers-reduced-motion` honoured globally. An animation library would be a dependency in service of nothing. Kept as knowledge, not installed — which is also what `FRONTEND_TOOLBOX.md` §7 already says |
+| **`convex`** | The Go service is the backend and the security boundary. Adding a second one is not a design decision, it is a rewrite |
+| **`vercel-react-native-skills`** | There is no native surface. The brief itself says not to force React Native patterns into the web app |
+| **Skiper UI, Magic UI, UIverse** | Component sources. Importing from any of them brings its own idiom — spacing, radii, motion, colour — into a product whose whole point is that every screen belongs to the same one. Nothing was taken |
+
+#### The synthesis rule, in practice
+
+The tools supplied research and rules. Not one component was installed from any
+catalogue. Every primitive in `web-next/src/components/ui/` is written against
+`globals.css` tokens, so a change to the palette, the radius scale or the type
+scale moves the whole product at once — which is the test of whether a design
+system exists or whether the screens merely resemble each other.
+
 
 ---
 

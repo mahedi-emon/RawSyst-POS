@@ -7,6 +7,14 @@
 // SERVER, cursor pagination, and four states that say four different things.
 // Written on the first use it would have been an abstraction over one example.
 //
+// # The search term lives in the URL
+//
+// So a filtered list can be sent to somebody, the back button undoes it, and a
+// refresh does not throw it away. The text field is driven by local state so
+// each keystroke paints immediately; the URL catches up on a debounce, with
+// `replace` rather than `push` so five characters do not become five history
+// entries. See `lib/url-state.ts`.
+//
 // # Why "Show more" and not page numbers
 //
 // The API is cursor-based, and that is not an implementation detail leaking
@@ -31,6 +39,7 @@ import {
 } from '@/components/ui/table';
 import { ErrorState, NoMatches } from '@/components/ui/states';
 import { useApiList } from '@/lib/api/hooks';
+import { useUrlState } from '@/lib/url-state';
 
 export interface ResourceListProps<Row> {
   /** The API path. Null defers the request until the company scope resolves. */
@@ -73,27 +82,35 @@ export function ResourceList<Row>({
   filters,
   pageSize = 50,
 }: ResourceListProps<Row>) {
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const [urlSearch, setUrlSearch] = useUrlState('q');
+  // Seeded from the URL, so a shared link arrives with the box already filled.
+  const [typed, setTyped] = useState(urlSearch);
   const [cursor, setCursor] = useState<string | null>(null);
   const [accumulated, setAccumulated] = useState<Row[]>([]);
 
   // 250ms: long enough that typing a name is one request rather than eight,
   // short enough that it does not feel like waiting.
   useEffect(() => {
-    const id = setTimeout(() => {
-      setDebounced(search);
-      // A new search is a new list, not more of the old one.
-      setCursor(null);
-      setAccumulated([]);
-    }, 250);
+    if (typed === urlSearch) return;
+    const id = setTimeout(() => setUrlSearch(typed), 250);
     return () => clearTimeout(id);
-  }, [search]);
+  }, [typed, urlSearch, setUrlSearch]);
 
-  const { data, isLoading, isFetching, error, refetch } = useApiList<Row>(
-    path,
-    { ...query, [searchParam]: debounced, limit: pageSize, after: cursor },
-  );
+  // A new search or a changed filter is a new list, not more of the old one.
+  // Keyed on the serialised query rather than on the object, which is a fresh
+  // reference every render.
+  const filterKey = JSON.stringify(query ?? {});
+  useEffect(() => {
+    setCursor(null);
+    setAccumulated([]);
+  }, [urlSearch, path, filterKey]);
+
+  const { data, isLoading, isFetching, error, refetch } = useApiList<Row>(path, {
+    ...query,
+    [searchParam]: urlSearch,
+    limit: pageSize,
+    after: cursor,
+  });
 
   useEffect(() => {
     if (!data?.data) return;
@@ -121,33 +138,43 @@ export function ResourceList<Row>({
   // more pages by construction.
   const hasMore = Boolean(cursorOf) && (data?.page?.has_more ?? false);
 
+  function clear() {
+    setTyped('');
+    setUrlSearch('');
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label={searchLabel}
-            type="search"
-            className="h-10 w-full max-w-xs rounded-sm border border-input bg-input-bg px-3 text-body placeholder:text-disabled"
-          />
-          {filters}
+        <input
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={searchPlaceholder}
+          aria-label={searchLabel}
+          type="search"
+          // A product code or a customer reference is not a word.
+          autoComplete="off"
+          spellCheck={false}
+          className="h-10 w-full max-w-xs rounded-sm border border-input bg-input-bg px-3 text-body placeholder:text-disabled"
+        />
+        {filters}
       </div>
 
-      {error && <ErrorState error={error} onRetry={() => void refetch()} />}
+      {error ? <ErrorState error={error} onRetry={() => void refetch()} /> : null}
 
-      {!error && isLoading && rows.length === 0 && (
+      {!error && isLoading && rows.length === 0 ? (
         <TableSkeleton columns={columns.length} />
-      )}
+      ) : null}
 
-      {!error && !isLoading && rows.length === 0 && debounced === '' && emptyState}
+      {!error && !isLoading && rows.length === 0 && urlSearch === ''
+        ? emptyState
+        : null}
 
-      {!error && !isLoading && rows.length === 0 && debounced !== '' && (
-        <NoMatches what={noun} onClear={() => setSearch('')} />
-      )}
+      {!error && !isLoading && rows.length === 0 && urlSearch !== '' ? (
+        <NoMatches what={noun} onClear={clear} />
+      ) : null}
 
-      {rows.length > 0 && (
+      {rows.length > 0 ? (
         <>
           <DataTable
             caption={caption}
@@ -166,7 +193,7 @@ export function ResourceList<Row>({
             }}
           />
         </>
-      )}
+      ) : null}
     </>
   );
 }

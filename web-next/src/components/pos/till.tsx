@@ -54,6 +54,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/panel';
+import { FormError } from '@/components/ui/form-error';
 import { ErrorState } from '@/components/ui/states';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
@@ -368,6 +369,12 @@ export function Till() {
                 placeholder={t('nx.pos.scanPlaceholder')}
                 aria-label={t('nx.pos.scanLabel')}
                 autoComplete="off"
+                // A barcode is not a word. Spellcheck underlines every scan in
+                // red and, on a phone keyboard, autocorrects one into
+                // something that is not in the catalogue.
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
                 enterKeyHint="enter"
                 className={cn(
                   'h-12 w-full rounded-sm border border-input bg-input-bg ps-11 pe-3',
@@ -377,7 +384,7 @@ export function Till() {
             </div>
 
             {matches.length > 0 && (
-              <ul className="absolute inset-x-3 top-16 z-20 max-h-72 overflow-y-auto rounded-sm border border-line bg-surface shadow-overlay">
+              <ul className="scroll-trap absolute inset-x-3 top-16 z-20 max-h-72 overflow-y-auto rounded-sm border border-line bg-surface shadow-overlay">
                 {matches.map((m) => (
                   <li key={m.variantId}>
                     <button
@@ -400,32 +407,29 @@ export function Till() {
               </ul>
             )}
 
-            {error && (
-              <p role="alert" className="mt-2 text-body text-critical-fg">
-                {error}
-              </p>
-            )}
-            {fieldErrors && (
-              <div className="mt-2 rounded-sm border border-caution/25 bg-caution-subtle p-2.5">
-                <p className="text-label font-medium text-caution-fg">
-                  {t('nx.pos.fixInSettings')}
-                </p>
-                <ul className="mt-1 list-disc ps-4 text-caption text-caution-fg">
-                  {Object.entries(fieldErrors).map(([field, message]) => (
-                    <li key={field}>{message}</li>
-                  ))}
-                </ul>
-                <a
-                  href="/settings/business"
-                  className="mt-1.5 inline-block text-caption font-medium underline underline-offset-2"
-                >
-                  {t('nx.pos.openBusinessDetails')}
-                </a>
-              </div>
-            )}
+            <FormError
+              message={error}
+              fields={fieldErrors}
+              action={
+                fieldErrors ? (
+                  <>
+                    <p className="text-caption font-medium text-critical-fg">
+                      {t('nx.pos.fixInSettings')}
+                    </p>
+                    <a
+                      href="/settings/business"
+                      className="mt-1 inline-block text-caption font-medium underline underline-offset-2"
+                    >
+                      {t('nx.pos.openBusinessDetails')}
+                    </a>
+                  </>
+                ) : null
+              }
+              className="mt-2"
+            />
           </form>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="scroll-trap min-h-0 flex-1 overflow-y-auto">
             {lines.length === 0 ? (
               <div className="grid h-full place-items-center px-6 text-center">
                 <div>

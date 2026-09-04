@@ -121,7 +121,7 @@ export function AppShell({
             aria-label={t('nx.shell.navigation')}
             className={cn(
               'fixed inset-y-0 start-0 z-50 flex w-[min(86vw,320px)] flex-col',
-              'bg-shell text-shell-fg shadow-overlay',
+              'bg-shell text-shell-fg shadow-overlay scroll-trap',
             )}
           >
             <div className="flex items-center justify-between pe-2">

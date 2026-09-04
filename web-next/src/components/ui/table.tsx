@@ -87,11 +87,14 @@ export function DataTable<Row>({
     // page scroll sideways -- which would move the navigation off screen.
     <div
       className={cn(
-        'w-full overflow-x-auto rounded-md border border-line bg-surface',
+        'w-full overflow-x-auto overscroll-x-contain rounded-md border border-line bg-surface',
         className,
       )}
     >
-      <table className="w-full border-collapse text-body">
+      {/* `rows-lazy` skips layout and paint for rows off screen. A day of
+          invoices or a stock list runs to hundreds of rows and every one of
+          them was being laid out. */}
+      <table className="rows-lazy w-full border-collapse text-body">
         <caption className="sr-only">{caption}</caption>
 
         <thead>

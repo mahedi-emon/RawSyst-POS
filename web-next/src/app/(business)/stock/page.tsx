@@ -20,7 +20,7 @@
 
 import { Boxes, PackageSearch } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
 import { ResourceList } from '@/components/data/resource-list';
@@ -33,6 +33,7 @@ import { useApi } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatQuantity, isZero } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
+import { useUrlFlag, useUrlState } from '@/lib/url-state';
 
 interface StockLine {
   variant_id: string;
@@ -63,12 +64,17 @@ function StockScreen() {
   const { market } = useCompany();
   const params = useSearchParams();
 
-  // The dashboard links here with `filter=low` or `filter=out`. Both start on
+  // Both filters live in the URL, so a narrowed stock list is a link somebody
+  // can send and the back button undoes.
+  const [flagged, setOnlyLow] = useUrlFlag('low');
+  const [locationId, setLocationId] = useUrlState('at');
+
+  // The dashboard's own links carry `?filter=low` or `?filter=out`. Both mean
   // the low view, because that is the one query the server has and it contains
-  // both answers.
+  // both answers -- `low` is at or below the reorder level, which includes
+  // everything that has run out.
   const linked = params.get('filter');
-  const [onlyLow, setOnlyLow] = useState(linked === 'low' || linked === 'out');
-  const [locationId, setLocationId] = useState('');
+  const onlyLow = flagged || linked === 'low' || linked === 'out';
 
   const locations = useApi<LocationsResponse>(
     scope ? '/stock/locations' : null,

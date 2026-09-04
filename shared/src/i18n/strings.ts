@@ -4307,6 +4307,15 @@ export const en = {
   'nx.stock.emptyDesc': 'Stock appears here once goods are received against a purchase order, or counted onto the shelf with an adjustment.',
   'nx.stock.goToCounts': 'Count stock onto the shelf',
   'nx.stock.lines': 'stock lines',
+
+  // --- the form error summary (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.err.notSaved': 'This was not saved.',
 } as const;
 
 /** Every string the interface can show. */
@@ -8642,6 +8651,15 @@ export const ar: Record<Key, string> = {
   'nx.stock.emptyDesc': 'يظهر المخزون هنا بعد استلام البضاعة مقابل أمر شراء، أو بعد جرده على الرف بتسوية.',
   'nx.stock.goToCounts': 'جرد المخزون على الرف',
   'nx.stock.lines': 'أصناف المخزون',
+
+  // --- the form error summary (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.err.notSaved': 'لم يتم الحفظ.',
 };
 
 /**
@@ -12773,6 +12791,15 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.stock.emptyDesc': 'ক্রয় আদেশের বিপরীতে পণ্য গ্রহণ করলে, বা সমন্বয় দিয়ে তাকে গুনে তুললে স্টক এখানে আসে।',
   'nx.stock.goToCounts': 'তাকে স্টক গুনে তুলুন',
   'nx.stock.lines': 'স্টক আইটেম',
+
+  // --- the form error summary (web-next)
+  //
+  // Prefixed `nx.` because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when `web/` is retired. ---
+  'nx.err.notSaved': 'এটি সংরক্ষিত হয়নি।',
 };
 
 /**
