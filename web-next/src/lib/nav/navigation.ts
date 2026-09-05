@@ -34,8 +34,20 @@ export interface NavItem {
   /** Catalogue key. Navigation holds keys, never prose. */
   labelKey: Key;
   href: string;
-  /** Any one of these opens the item. */
+  /** Any one of these opens the item. The ACT the screen exists to perform. */
   permissions: readonly Permission[];
+  /**
+   * Reads the screen cannot work without, all of which are required.
+   *
+   * `permissions` is any-of, which is right for "who may do this" and cannot
+   * express "and they also need to be able to see the list". Two screens tried
+   * to say it in a comment -- "BOTH, not either" -- and then listed only the
+   * read, so the link appeared for anybody who could look and refused anybody
+   * who could not also act. Three seeded roles met that: an Auditor offered
+   * Goods receipts, a Branch Manager and a Purchase Manager offered Supplier
+   * payments.
+   */
+  alsoNeeds?: readonly Permission[];
   /** The plan feature this needs, when the backend gates the route group. */
   feature?: string;
   /**
@@ -130,8 +142,20 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         // A link to /sales/returns would always have failed.
         href: '/pos/returns',
         built: true,
-        permissions: ['sales.refund', 'sales.exchange'],
+        // `sales.refund` ALONE. This listed `sales.exchange` too, and the
+        // screen behind it is guarded on refund -- so somebody holding only
+        // exchange saw the link and got the refusal. Exchanging is its own
+        // verb with its own screen, below.
+        permissions: ['sales.refund'],
         descriptionKey: 'nx.navd.biz.selling.returns',
+      },
+      {
+        id: 'exchanges',
+        labelKey: 'nx.nav.biz.selling.exchanges',
+        href: '/pos/exchanges',
+        built: true,
+        permissions: ['sales.exchange'],
+        descriptionKey: 'nx.navd.biz.selling.exchanges',
       },
       {
         id: 'orders',
@@ -293,10 +317,10 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         labelKey: 'nx.nav.biz.buying.receipts',
         href: '/buying/receipts',
         built: true,
-        // BOTH, not either: the screen books a delivery (receive_goods) against
-        // an order it has to list first (purchasing.view). Held apart, the
-        // link appears and the dropdown behind it is empty with a 403.
-        permissions: ['purchasing.view'],
+        // BOTH, and now said in a way the resolver can act on. The screen books
+        // a delivery, which is the act, against an order it has to list first.
+        permissions: ['purchasing.receive_goods'],
+        alsoNeeds: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.receipts',
       },
       {
@@ -312,8 +336,9 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         labelKey: 'nx.nav.biz.buying.supplier-payments',
         href: '/buying/payments',
         built: true,
-        // Paying is the action; finding the bill to pay is purchasing.view.
-        permissions: ['purchasing.view'],
+        // Paying is the act; finding the bill to pay is the read it needs.
+        permissions: ['purchasing.pay_supplier'],
+        alsoNeeds: ['purchasing.view'],
         descriptionKey: 'nx.navd.biz.buying.supplier-payments',
       },
       {
@@ -852,6 +877,9 @@ export function resolveNavigation(
       const permitted =
         item.permissions.length === 0 || grants.canAny(...item.permissions);
       if (!permitted) continue;
+      // ALL of these, not any. A screen that lists orders in order to book a
+      // delivery against one is useless to somebody who cannot list them.
+      if ((item.alsoNeeds ?? []).some((p) => !grants.can(p))) continue;
 
       const includedInPlan =
         !item.feature || features === undefined || features.has(item.feature);

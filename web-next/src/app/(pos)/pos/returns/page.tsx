@@ -39,6 +39,7 @@ import { ApiError, messageFor } from '@/lib/api/errors';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, formatQuantity, isZero } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
+import { useSellFrom } from '@/components/pos/location-picker';
 import { newSaleId } from '@/lib/pos/cart';
 import { useCounter } from '@/lib/pos/counter';
 import { cn } from '@/lib/utils';
@@ -80,6 +81,8 @@ function ReturnsScreen() {
   const scope = useCompanyScope();
   const { currency, market } = useCompany();
   const { state: counter } = useCounter();
+  // Goods coming back go onto a shelf, and a branch with two has to say which.
+  const { warehouseId } = useSellFrom();
 
   const [reference, setReference] = useState('');
   const [sale, setSale] = useState<LookedUpSale | null>(null);
@@ -153,6 +156,7 @@ function ReturnsScreen() {
           credit_note_uuid: noteId,
           original_invoice_id: sale.id,
           issued_at: new Date().toISOString(),
+          ...(warehouseId ? { warehouse_id: warehouseId } : {}),
           reason: reason.trim(),
           lines: Object.entries(qty)
             .filter(([, n]) => n && new Decimal(n).greaterThan(0))

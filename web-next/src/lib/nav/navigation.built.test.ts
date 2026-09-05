@@ -32,10 +32,30 @@ function builtRoutes(dir: string, prefix = ''): string[] {
       const segment = /^\(.*\)$/.test(entry.name) ? '' : `/${entry.name}`;
       out.push(...builtRoutes(path.join(dir, entry.name), prefix + segment));
     } else if (entry.name === 'page.tsx') {
-      out.push(prefix === '' ? '/' : prefix);
+      const route = prefix === '' ? '/' : prefix;
+      out.push(route);
+      FILE_OF.set(route, path.join(dir, entry.name));
     }
   }
   return out;
+}
+
+/** Where each route's page lives, so its guard can be read. */
+const FILE_OF = new Map<string, string>();
+
+/**
+ * The permissions a page's own guard accepts.
+ *
+ * Read out of the source rather than imported, because `RequirePermission` is
+ * a React component and this is a filesystem test. Returns null for a page
+ * with no guard at all, which is a different finding from a guard that
+ * disagrees.
+ */
+function guardOf(file: string): string[] | null {
+  const source = fs.readFileSync(file, 'utf8');
+  const match = /<RequirePermission[^>]*anyOf=\{\[([^\]]*)\]\}/s.exec(source);
+  if (!match) return null;
+  return [...(match[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
 }
 
 const ROUTES = new Set(builtRoutes(APP));
@@ -96,6 +116,41 @@ describe('the sidebar offers only what exists', () => {
       (r) => !navHrefs.has(r) && !reachedOtherwise.has(r),
     );
     expect(orphans).toEqual([]);
+  });
+
+  it('never offers a link on a permission the screen itself refuses', () => {
+    // The failure this catches, found by building the exchange screen: the
+    // Returns entry was shown on `sales.refund` OR `sales.exchange`, and the
+    // page behind it is guarded on `sales.refund` alone. Somebody holding only
+    // `sales.exchange` -- a real seeded combination -- saw the link and got
+    // "you do not have permission" for a screen the sidebar had just offered
+    // them.
+    //
+    // `navigation.test.ts` checks the same thing against the API's own route
+    // table, but only for routes it can name in PRIMARY_READ. This checks the
+    // guard the page actually renders, which is the thing a person meets.
+    //
+    // Nav permissions are ANY-of and so are guards, so every permission that
+    // SHOWS an item has to be one the guard ACCEPTS. One that is not is a link
+    // somebody sees and cannot follow.
+    const wrong: string[] = [];
+    for (const item of ALL_ITEMS) {
+      if (!item.built) continue;
+      const file = FILE_OF.get(item.href);
+      if (!file) continue;
+      const guard = guardOf(file);
+      // A platform screen is gated by holding the platform role rather than by
+      // a permission string, and has no anyOf to read.
+      if (guard === null) continue;
+      for (const granted of item.permissions) {
+        if (!guard.includes(granted)) {
+          wrong.push(
+            `${item.id}: shown on ${granted}, but ${item.href} accepts ${guard.join(' | ')}`,
+          );
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 
   it('leaves the unbuilt architecture in place rather than deleting it', () => {

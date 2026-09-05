@@ -73,6 +73,7 @@ import {
   totalsFor,
   type CartLine,
 } from '@/lib/pos/cart';
+import { useSellFrom } from '@/components/pos/location-picker';
 import { Catalogue, type Sellable } from '@/lib/pos/catalogue';
 import { useCounter } from '@/lib/pos/counter';
 import { useShift, type ShiftReport } from '@/lib/pos/shift';
@@ -129,6 +130,11 @@ export function Till() {
   const { state: counterState, leave } = useCounter();
   const { currency, market, company } = useCompany();
   const shift = useShift();
+
+  // Which shelf the goods leave from. Null in the ordinary shop with one
+  // stock location, where the server resolves it; set where a branch has two,
+  // because without it every sale comes back 400.
+  const { warehouseId } = useSellFrom();
 
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [catalogueError, setCatalogueError] = useState<unknown>(null);
@@ -270,6 +276,10 @@ export function Till() {
           doc_type: 'simplified',
           issued_at: new Date().toISOString(),
           invoice_discount: invoiceDiscount,
+          // Sent only when there is a choice to state. Sending one where the
+          // branch has a single location would be the till asserting
+          // something the server already knows.
+          ...(warehouseId ? { warehouse_id: warehouseId } : {}),
           ...(customer ? { customer_id: customer.id } : {}),
           lines: lines.map((l) => ({
             variant_id: l.variantId,

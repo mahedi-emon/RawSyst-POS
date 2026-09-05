@@ -534,6 +534,81 @@ if (!branch || !accountant || !auditor) {
   );
 }
 
+// --- taking goods back and swapping them are two verbs -------------------
+//
+// `sales.refund` and `sales.exchange` are separate permissions, and the
+// sidebar treated them as one: the Returns entry was shown on either, and the
+// screen behind it is guarded on refund alone. Somebody holding only exchange
+// saw a link and got a refusal.
+//
+// Whether the seeded roles hold them apart is the question this answers. The
+// boundary is worth having either way: an exchange writes an INVOICE as well as
+// a credit note, so it puts goods out of the shop, which taking a return does
+// not.
+
+console.log('\nTAKING GOODS BACK, AND SWAPPING THEM');
+{
+  const refundRole = roles.find((r) => (r.permissions ?? []).includes('sales.refund'));
+  const exchangeRole = roles.find((r) => (r.permissions ?? []).includes('sales.exchange'));
+
+  const held = (name) => {
+    const role = roles.find((r) => r.name === name);
+    const p = new Set(role?.permissions ?? []);
+    return `${name}: refund=${p.has('sales.refund')} exchange=${p.has('sales.exchange')}`;
+  };
+  for (const name of ['Cashier / POS Operator', 'Branch / Store Manager', 'Owner']) {
+    if (roles.some((r) => r.name === name)) console.log(`  -  ${held(name)}`);
+  }
+
+  if (!refundRole || !exchangeRole) {
+    console.log('  -  neither verb is seeded on any role; the boundary was not exercised');
+  } else {
+    // A cashier who can do neither must be refused both, which is the case the
+    // POS guard is built around.
+    const plain = await staff('plain-cashier', roleNamed(/Customer Service/));
+    if (!plain) {
+      console.log('  -  no role without either verb; the refusals were not exercised');
+    } else {
+      expect(
+        'somebody with neither verb: POST /pos/returns',
+        (
+          await plain.call('POST', q('/pos/returns'), {
+            credit_note_uuid: crypto.randomUUID(),
+            original_invoice_id: '00000000-0000-0000-0000-000000000000',
+            issued_at: new Date().toISOString(),
+            reason: 'verify:rbac',
+            lines: [],
+          })
+        ).status,
+        403,
+      );
+      expect(
+        'somebody with neither verb: POST /pos/exchanges',
+        (
+          await plain.call('POST', q('/pos/exchanges'), {
+            credit_note_uuid: crypto.randomUUID(),
+            invoice_uuid: crypto.randomUUID(),
+            original_invoice_id: '00000000-0000-0000-0000-000000000000',
+            issued_at: new Date().toISOString(),
+            reason: 'verify:rbac',
+            returning: [],
+            replacement: { doc_type: 'simplified', lines: [] },
+            settlement: [],
+          })
+        ).status,
+        403,
+      );
+      // And the read that both screens start from. Looking a sale up to refund
+      // it is `sales.refund`, so a person who cannot refund cannot look.
+      expect(
+        'somebody with neither verb: GET /pos/sales/lookup',
+        (await plain.call('GET', q('/pos/sales/lookup?reference=INV-1'))).status,
+        403,
+      );
+    }
+  }
+}
+
 console.log(
   `\n${failures === 0 ? 'EVERY BOUNDARY HELD' : `${failures} BOUNDARIES DID NOT HOLD`}`,
 );

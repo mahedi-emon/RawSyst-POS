@@ -509,14 +509,27 @@ func earnable(total decimal.Decimal, tenders []Tender) decimal.Decimal {
 func (s *Service) alreadyRung(
 	ctx context.Context, tx pgx.Tx, term Terminal, invoiceUUID uuid.UUID,
 ) (Finalized, bool, error) {
+	// The TOTALS as well as the id. A replay that answers with zeros is a till
+	// telling a cashier the sale came to nothing -- see the note on the refund
+	// side, which had the same hole and the worse half of it.
+	//
+	// The LINES are deliberately not reloaded. Nothing reads them off a replay
+	// -- the receipt was printed the first time -- and rebuilding a priced line
+	// from storage would be a second implementation of Compute that could
+	// disagree with the first.
 	var out Finalized
 	err := tx.QueryRow(ctx, `
-		SELECT i.id, z.icv, z.pih, z.invoice_hash, z.schema_version
+		SELECT i.id,
+		       i.subtotal_net, i.discount_total, i.tax_total, i.total_inclusive,
+		       z.icv, z.pih, z.invoice_hash, z.schema_version
 		FROM sales_invoice i
 		JOIN zatca_invoice z ON z.invoice_id = i.id
 		WHERE i.tenant_id = $1 AND i.uuid = $2`,
 		term.TenantID, invoiceUUID).
-		Scan(&out.InvoiceID, &out.Link.ICV, &out.Link.PIH,
+		Scan(&out.InvoiceID,
+			&out.Computed.SubtotalNet, &out.Computed.DiscountTotal,
+			&out.Computed.TaxTotal, &out.Computed.TotalInclusive,
+			&out.Link.ICV, &out.Link.PIH,
 			&out.Link.InvoiceHash, &out.Link.SchemaVersion)
 
 	if errors.Is(err, pgx.ErrNoRows) {

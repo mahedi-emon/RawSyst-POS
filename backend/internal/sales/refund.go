@@ -371,14 +371,31 @@ func (s *Service) reverseLoyalty(
 func (s *Service) alreadyRefunded(
 	ctx context.Context, tx pgx.Tx, term Terminal, creditNoteUUID uuid.UUID,
 ) (Refunded, bool, error) {
+	// The TOTALS and the NUMBER as well as the id.
+	//
+	// A retry after a lost response is the whole reason this path exists, and
+	// it used to answer with the right id and nothing else: no credit note
+	// number and every figure zero. A till doing exactly what it is supposed
+	// to do -- pressing again when the first answer never arrived -- showed
+	// the cashier a completed return worth nothing, with a blank number to
+	// read to the customer.
+	//
+	// The same mistake as the one CreditNoteNumber's comment records, made
+	// again on the other path. Replaying has to mean answering what was
+	// answered before.
 	var out Refunded
 	err := tx.QueryRow(ctx, `
-		SELECT i.id, z.icv, z.pih, z.invoice_hash, z.schema_version
+		SELECT i.id, coalesce(i.human_number, ''),
+		       i.subtotal_net, i.tax_total, i.total_inclusive,
+		       z.icv, z.pih, z.invoice_hash, z.schema_version
 		FROM sales_invoice i
 		JOIN zatca_invoice z ON z.invoice_id = i.id
 		WHERE i.tenant_id = $1 AND i.uuid = $2`,
 		term.TenantID, creditNoteUUID).
-		Scan(&out.CreditNoteID, &out.Link.ICV, &out.Link.PIH,
+		Scan(&out.CreditNoteID, &out.CreditNoteNumber,
+			&out.Computed.SubtotalNet, &out.Computed.TaxTotal,
+			&out.Computed.TotalInclusive,
+			&out.Link.ICV, &out.Link.PIH,
 			&out.Link.InvoiceHash, &out.Link.SchemaVersion)
 
 	if errors.Is(err, pgx.ErrNoRows) {

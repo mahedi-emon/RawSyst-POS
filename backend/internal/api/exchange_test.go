@@ -248,6 +248,32 @@ func TestRetryingAnExchangeDoesNotSellTwice(t *testing.T) {
 		t.Error("the retry sold the replacement a second time")
 	}
 
+	// And it SAYS what it said the first time.
+	//
+	// Matching ids alone let this through: the replay answered with the right
+	// documents and every figure zero, and no credit note number at all. A
+	// till doing exactly what it is supposed to do -- pressing again when the
+	// first answer never arrived -- showed the cashier a completed exchange
+	// worth nothing, with a blank number to read to the customer, while the
+	// books said 115.00 had changed hands. Found by driving a retry against a
+	// running server; matching ids is not the same as replaying.
+	for _, field := range []string{"human_number", "total_inclusive"} {
+		if firstNote[field] != secondNote[field] {
+			t.Errorf("the replayed credit note's %s is %v, was %v",
+				field, secondNote[field], firstNote[field])
+		}
+	}
+	if firstSale["total_inclusive"] != secondSale["total_inclusive"] {
+		t.Errorf("the replayed replacement came to %v, was %v",
+			secondSale["total_inclusive"], firstSale["total_inclusive"])
+	}
+	for _, field := range []string{"credit_applied", "difference", "customer_paid"} {
+		if firstBody[field] != secondBody[field] {
+			t.Errorf("the replayed exchange's %s is %v, was %v",
+				field, secondBody[field], firstBody[field])
+		}
+	}
+
 	// And the customer was charged once.
 	if got := cashThroughDrawer(t, h, f); !got.Equal(decimal.RequireFromString("345.00")) {
 		t.Errorf("cash = %s, want 345.00 (230 sale + 115 difference, once)", got)

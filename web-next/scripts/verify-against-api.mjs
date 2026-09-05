@@ -1480,6 +1480,239 @@ console.log('\nSHIFT (at a counter, which is the only way these routes answer)')
           'refund_total',
         ]);
 
+        // --- swapping goods, which is a credit note and a sale at once ---
+        //
+        // Run at the counter and before the close, because both halves
+        // join this terminal's invoice chain and a till with no open
+        // session cannot ring anything up.
+        const sellable = (
+          await call(`/catalog/snapshot?company_id=${CO}&limit=5`)
+        ).json?.items?.filter((i) => i.is_active) ?? [];
+
+        // A branch with more than one stock location must SAY which one.
+        // The till sent nothing at all, so in such a shop no sale, return
+        // or exchange was possible; found by driving a sale rather than
+        // by reading the code.
+        const stockLocations = await call(`/stock/locations?company_id=${CO}`);
+        const here = (stockLocations.json?.data ?? []).filter(
+          (l) => l.is_active && l.store === counter.store,
+        );
+        const sellFrom = here.length > 1 ? here[0].id : null;
+        if (here.length > 1) {
+          const nowhere = await post(
+            `/pos/sales?company_id=${CO}`,
+            {
+              invoice_uuid: crypto.randomUUID(),
+              doc_type: 'simplified',
+              issued_at: new Date().toISOString(),
+              lines: [
+                {
+                  variant_id: sellable[0]?.id,
+                  description: sellable[0]?.name,
+                  qty: '1',
+                  unit_price: sellable[0]?.price,
+                  tax_treatment: sellable[0]?.tax_treatment,
+                },
+              ],
+              tenders: [{ method: 'cash', amount: sellable[0]?.price }],
+            },
+            till,
+          );
+          if (nowhere.status === 400) {
+            console.log(
+              '  ok a branch with two stock locations refuses a sale that does not name one',
+            );
+          } else {
+            console.log(
+              `  x a sale naming no stock location came back ${nowhere.status}, want 400`,
+            );
+            failures += 1;
+          }
+        }
+
+        if (sellable.length < 2) {
+          console.log('  -  fewer than two sellable items; the exchange was not exercised');
+        } else {
+          const saleUUID = crypto.randomUUID();
+          const sold = await post(
+            `/pos/sales?company_id=${CO}`,
+            {
+              invoice_uuid: saleUUID,
+              doc_type: 'simplified',
+              issued_at: new Date().toISOString(),
+              ...(sellFrom ? { warehouse_id: sellFrom } : {}),
+              lines: [
+                {
+                  variant_id: sellable[0].id,
+                  description: sellable[0].name,
+                  qty: '1',
+                  unit_price: sellable[0].price,
+                  tax_treatment: sellable[0].tax_treatment,
+                },
+              ],
+              tenders: [{ method: 'cash', amount: sellable[0].price }],
+            },
+            till,
+          );
+          if (sold.status !== 201) {
+            console.log(`  x POST /pos/sales: HTTP ${sold.status}`);
+            failures += 1;
+          } else {
+            const back = await fetch(
+              `${API}/pos/sales/${sold.json.invoice_id}/returnable`,
+              { headers: { Authorization: `Bearer ${till}` } },
+            );
+            const returnable = await back.json();
+            const line = returnable?.lines?.[0];
+            if (!line) {
+              console.log('  x GET /pos/sales/{id}/returnable returned no lines');
+              failures += 1;
+            } else {
+              expectFields('GET /pos/sales/{id}/returnable', line, [
+                'line_id',
+                // What may still go back, which the till must never work
+                // out for itself: earlier credit notes live on the server.
+                'qty_returnable',
+                // Tax-inclusive, which is what an exchange settles on.
+                'gross_returnable',
+                'tax_treatment',
+              ]);
+
+              const creditUUID = crypto.randomUUID();
+              const swap = {
+                credit_note_uuid: creditUUID,
+                invoice_uuid: crypto.randomUUID(),
+                original_invoice_id: sold.json.invoice_id,
+                issued_at: new Date().toISOString(),
+                ...(sellFrom ? { warehouse_id: sellFrom } : {}),
+                reason: 'verify:api -- wrong size',
+                returning: [{ line_id: line.line_id, qty: '1' }],
+                replacement: {
+                  doc_type: 'simplified',
+                  lines: [
+                    {
+                      variant_id: sellable[1].id,
+                      description: sellable[1].name,
+                      qty: '1',
+                      unit_price: sellable[1].price,
+                      tax_treatment: sellable[1].tax_treatment,
+                    },
+                  ],
+                },
+                settlement: [
+                  {
+                    method: 'cash',
+                    amount: Math.abs(
+                      Number(sellable[1].price) - Number(line.gross_returnable),
+                    ).toFixed(2),
+                  },
+                ],
+              };
+
+              // The server states the difference and requires it EXACTLY:
+              // an overpayment is change owed, not part of the sale.
+              const overpaid = await post(
+                `/pos/exchanges?company_id=${CO}`,
+                {
+                  ...swap,
+                  credit_note_uuid: crypto.randomUUID(),
+                  invoice_uuid: crypto.randomUUID(),
+                  settlement: [{ method: 'cash', amount: '999999.00' }],
+                },
+                till,
+              );
+              if (
+                overpaid.status === 400 &&
+                /settles at/i.test(overpaid.json?.error?.message ?? '')
+              ) {
+                console.log(
+                  '  ok an exchange settles at the amount the server states, and says what it is',
+                );
+              } else {
+                console.log(
+                  `  x an over-settled exchange came back ${overpaid.status}, want 400`,
+                );
+                failures += 1;
+              }
+
+              // C14 wants a reason on every return, and an exchange holds
+              // one: unexplained returns are how refund fraud is hidden.
+              const silent = await post(
+                `/pos/exchanges?company_id=${CO}`,
+                {
+                  ...swap,
+                  credit_note_uuid: crypto.randomUUID(),
+                  invoice_uuid: crypto.randomUUID(),
+                  reason: '',
+                },
+                till,
+              );
+              if (silent.status === 400) {
+                console.log('  ok an exchange with no reason on it is refused');
+              } else {
+                console.log(`  x an exchange with no reason came back ${silent.status}`);
+                failures += 1;
+              }
+
+              const swapped = await post(
+                `/pos/exchanges?company_id=${CO}`,
+                swap,
+                till,
+              );
+              if (swapped.status !== 201) {
+                console.log(`  x POST /pos/exchanges: HTTP ${swapped.status}`);
+                failures += 1;
+              } else {
+                expectFields('POST /pos/exchanges', swapped.json, [
+                  'credit_note',
+                  'replacement',
+                  // The offsetting portion, which goes through a clearing
+                  // account and never touches the drawer.
+                  'credit_applied',
+                  // Signed, and the only money that actually moves.
+                  'difference',
+                  'customer_paid',
+                ]);
+                expectFields('  credit note', swapped.json.credit_note, [
+                  'credit_note_id',
+                  // What a cashier reads to the customer.
+                  'human_number',
+                  'total_inclusive',
+                ]);
+
+                // A retry after a lost response must answer what it
+                // answered before, not merely point at the same rows. It
+                // used to come back with the right ids, a blank number and
+                // every figure zero.
+                const retry = await post(
+                  `/pos/exchanges?company_id=${CO}`,
+                  swap,
+                  till,
+                );
+                const same =
+                  retry.status === 200 &&
+                  retry.json?.credit_note?.credit_note_id ===
+                    swapped.json.credit_note.credit_note_id &&
+                  retry.json?.credit_note?.human_number ===
+                    swapped.json.credit_note.human_number &&
+                  retry.json?.difference === swapped.json.difference;
+                if (same) {
+                  console.log(
+                    '  ok a retried exchange replays the same documents AND the same figures',
+                  );
+                } else {
+                  console.log(
+                    `  x a retried exchange came back ${retry.status} with ` +
+                      `${JSON.stringify(retry.json?.credit_note?.human_number)} / ` +
+                      `${retry.json?.difference}`,
+                  );
+                  failures += 1;
+                }
+              }
+            }
+          }
+        }
+
         // THE invariant the close screen is built around. On a blind session
         // the expected figure is withheld -- and so are the three takings it
         // could be derived from, because hiding the total alone left

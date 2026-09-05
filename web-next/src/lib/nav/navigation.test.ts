@@ -85,6 +85,64 @@ describe('an employee sees only what they can use', () => {
   });
 });
 
+describe('a screen that acts is offered to whoever can act', () => {
+  // Three seeded roles were being offered a link into a refusal, because two
+  // action screens named the read they depend on rather than the act they
+  // perform -- and `permissions` is any-of, so naming the read showed the item
+  // to everybody who could look.
+
+  it('does not offer receiving to somebody who may only look at orders', () => {
+    // The Auditor, exactly: purchasing.view and no receive_goods.
+    const auditor = new Grants(['purchasing.view', 'accounting.view']);
+    const ids = flattenNavigation(resolveNavigation(BUSINESS_NAV, auditor)).map(
+      (i) => i.id,
+    );
+    expect(ids).toContain('purchase-orders');
+    expect(ids).not.toContain('goods-receipts');
+    expect(ids).not.toContain('supplier-payments');
+  });
+
+  it('offers it to somebody who may actually receive', () => {
+    const keeper = new Grants(['purchasing.view', 'purchasing.receive_goods']);
+    const ids = flattenNavigation(resolveNavigation(BUSINESS_NAV, keeper)).map(
+      (i) => i.id,
+    );
+    expect(ids).toContain('goods-receipts');
+    // Receiving is not paying. The Branch Manager holds one and not the other.
+    expect(ids).not.toContain('supplier-payments');
+  });
+
+  it('withholds it from somebody who may act but cannot see the list', () => {
+    // `alsoNeeds` is required in FULL, unlike `permissions`. A screen that
+    // lists orders in order to book a delivery against one is useless without
+    // the list, and the dropdown would be empty behind a 403.
+    const oddRole = new Grants(['purchasing.receive_goods']);
+    const ids = flattenNavigation(resolveNavigation(BUSINESS_NAV, oddRole)).map(
+      (i) => i.id,
+    );
+    expect(ids).not.toContain('goods-receipts');
+  });
+
+  it('keeps returns and exchanges apart, because they are two verbs', () => {
+    // The same defect on the till: the Returns entry was shown on refund OR
+    // exchange, and the screen behind it is guarded on refund alone.
+    const refunder = new Grants(['sales.refund']);
+    const exchanger = new Grants(['sales.exchange']);
+
+    const refundIds = flattenNavigation(resolveNavigation(BUSINESS_NAV, refunder)).map(
+      (i) => i.id,
+    );
+    const exchangeIds = flattenNavigation(
+      resolveNavigation(BUSINESS_NAV, exchanger),
+    ).map((i) => i.id);
+
+    expect(refundIds).toContain('returns');
+    expect(refundIds).not.toContain('exchanges');
+    expect(exchangeIds).toContain('exchanges');
+    expect(exchangeIds).not.toContain('returns');
+  });
+});
+
 describe('a module the plan does not include reads differently from one refused', () => {
   it('keeps the item but marks it outside the plan', () => {
     // Holding the permission and not the plan is a different situation from
@@ -260,6 +318,10 @@ describe('a link that appears leads somewhere', () => {
         if (!route) continue;
         const needed = permissionOf.get(route);
         expect(needed, `${route} is not a GET permission route`).toBeDefined();
+        // An ACTION screen names the act in `permissions` and the read it
+        // depends on in `alsoNeeds`, which is required in full -- so the read
+        // is covered and the any-of check below does not apply to it.
+        if ((item.alsoNeeds ?? []).includes(needed as never)) continue;
         for (const granted of item.permissions) {
           if (granted !== needed) {
             wrong.push(`${item.id}: shown on ${granted}, but ${route} needs ${needed}`);

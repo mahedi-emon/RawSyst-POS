@@ -23,6 +23,7 @@ import {
   useId,
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
@@ -126,14 +127,25 @@ const control = [
 export function Input({
   className,
   numeric,
+  ref,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   /** Money or a quantity. Aligns to the end and uses tabular figures. */
   numeric?: boolean;
+  /**
+   * Focus target.
+   *
+   * Declared explicitly rather than relying on React 19 treating `ref` as an
+   * ordinary prop, so the type is right for a caller that needs to move focus
+   * -- a counter returns it to the scan box after every action, which is the
+   * single most important interaction detail on a till.
+   */
+  ref?: Ref<HTMLInputElement>;
 }) {
   const { id, describedBy, invalid } = useField();
   return (
     <input
+      ref={ref}
       id={id}
       aria-describedby={describedBy}
       aria-invalid={invalid || undefined}

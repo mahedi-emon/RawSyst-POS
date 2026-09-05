@@ -287,7 +287,7 @@ marked N/A or mapped, rather than dropping them.)
 | B7 | Point of Sale (POS) & Billing | FE-13, FE-14, FE-41 | /pos | 12 /pos/* routes, /shifts | sales.create | COMPLETE | A real sale posted end to end: counter token, shift, catalogue snapshot, tax split, idempotent replay. |
 | B8 | Hardware Integration (Showroom Cash-Counter Reality) | — | /pos | — | — | BLOCKED | Cash drawer, pole display and scales need the desktop till. A browser cannot reach them; scanners work as keyboards and do. |
 | B9 | Promotions, Discounts & Pricing Engine | FE-42 | /promotions | /promotions/*, /promotions/quote | promotion.view / promotion.manage | NOT STARTED | Cart carries promotion_id so redemption is recorded; the quote call is not wired yet. |
-| B10 | Sales Returns, Exchange & Replacement | FE-18 | /sales/returns | /pos/returns, /pos/exchanges | sales.refund, sales.exchange | NOT STARTED |  |
+| B10 | Sales Returns, Exchange & Replacement | FE-18 | /pos/returns, /pos/exchanges | /pos/returns, /pos/exchanges, /pos/sales/{id}/returnable | sales.refund, sales.exchange | COMPLETE | §0.101. Returns were built in §0.91; exchanges are new. Three defects found live: the till never named a stock location, an idempotent replay came back hollow, and the sidebar offered exchanges to a screen that refused them. |
 | B11 | Sales Quotation, Sales Order & Delivery Documentation | FE-32 | /orders | 9 /orders/* routes | order.view / order.manage | NOT STARTED | POST /orders/{id}/invoice still has no frontend caller. |
 | B12 | Wholesale / B2B Module | FE-20 | /customers | /customers, /dashboard/sales | customers.view | IN PROGRESS | Wholesale pricing flows at the till, the customer list marks wholesale accounts, and the sales day splits retail from wholesale so bulk orders do not distort retail figures. |
 | B13 | Online Order & Delivery Management | FE-32, FE-43 | /orders, /deliveries | /orders/*, /deliveries/* | order.view, delivery.view | NOT STARTED | Plan-gated: online_orders. |
@@ -1505,6 +1505,143 @@ The **Auditor** is the sharper case and the reason the permission exists at all:
 they may reconcile and may not post. Somebody who could correct the books they
 are checking is not checking them.
 
+### 0.101 Exchanges — and three defects that only a running server shows
+
+`/pos/exchanges`. Scan the receipt, pick what is coming back, scan what is
+going out, settle the difference. One screen and one request, because the
+service puts both halves through a single transaction: *"a till that issued the
+credit note and then failed to place the sale would have given the goods away;
+one that placed the sale and failed to credit would have charged twice."*
+
+**Only the difference goes through the drawer.** A customer swapping a 100 item
+for a 150 one hands over 50; the offsetting 100 goes through a clearing account
+and is never a tender. The service says why: a drawer expected to hold cash that
+never moved through it shows a variance at close with no cause. The screen shows
+the two totals and then the one figure that matters, with the direction in
+words — "The customer pays" or "You hand back".
+
+**The difference is settled exactly, and one press does it.** The server states
+the figure and refuses anything else, because *"an overpayment is change owed,
+and treating it as part of the sale overstates takings and the VAT on them."* So
+the tender buttons carry the amount rather than opening a keypad: it is not the
+cashier's number to choose.
+
+The arithmetic is 24 tests in `lib/pos/exchange.test.ts`. The client's figures
+are an estimate and the file says so — the credit is pro-rata from
+`returnable`, which agrees with the server for a whole line and for any line
+without an allocated discount. Where it disagrees, the server refuses with the
+exact amount it settles at, and that sentence is what gets shown.
+
+#### 🔴 The till could not sell at all in a two-location shop
+
+`POST /pos/sales` answered **400** on the first attempt to drive one:
+
+> *"This branch has more than one stock location, so the sale must say which one
+> it is selling from."*
+
+The till was sending no `warehouse_id` at all. A shop with a shop floor and a
+back room — which is an ordinary shop, and is what the dev tenant became during
+§0.96's inventory work — could not ring up a sale, take a return or make an
+exchange. Nothing in the source showed it: the field is optional in the request
+and the server only refuses when the branch is ambiguous.
+
+The setting exists (I5's default warehouse, migration 0009), but
+`GET /devices/{id}/settings` is `devices.view` — a manager's permission. **A
+cashier cannot read their own till's configuration.** So the answer is given
+where the person is: a one-time choice at the counter, kept in session storage
+beside the counter id and sent on every sale, return and exchange.
+
+Asked **only** when there is something to ask. One location resolves silently
+and the till opens straight away, because adding a screen to every shift for a
+question with one answer is worse than the bug.
+
+#### 🔴 An idempotent replay came back hollow
+
+The property held — a retry created no second credit note and no second invoice,
+and burned no ICV. But the body it answered with was empty:
+
+| | first call | retry |
+|---|---|---|
+| `credit_note_id` | 996e44c6… | 996e44c6… ✓ |
+| `human_number` | CRN-MAIN-2026-000004 | **""** |
+| `total_inclusive` | 100 | **0** |
+| `difference` | 25 | **0** |
+
+`alreadyRefunded` and `alreadyRung` loaded the id and the ZATCA link and
+nothing else. So a till doing exactly what it is built to do — pressing again
+when the first answer never arrived — showed the cashier a completed exchange
+worth nothing, with a blank number to read to the customer, while the books said
+25 had changed hands.
+
+The same mistake `CreditNoteNumber`'s own comment records having been found
+once before by photographing a screen after a refund, made again on the other
+path. Both queries now load the totals and the number.
+
+`TestRetryingAnExchangeDoesNotSellTwice` existed and did not catch it: it
+compared ids. **Matching ids is not the same as replaying.** It now compares
+`human_number`, `total_inclusive`, `credit_applied`, `difference` and
+`customer_paid`, and fails on the old code with all six.
+
+#### 🔴 Three roles were being shown links into a refusal
+
+The Returns entry was shown on `sales.refund` **or** `sales.exchange`, and the
+screen behind it is guarded on refund alone — so anybody holding only exchange
+saw a link and got "you do not have permission". Splitting it into two entries
+fixed that one, and a new test looks for the whole class:
+
+`navigation.built.test.ts` now reads each page's own `RequirePermission` out of
+the source and asserts that every permission which SHOWS an item is one the
+guard ACCEPTS. It immediately found two more, both live:
+
+```
+goods-receipts:     shown on purchasing.view, but /buying/receipts accepts purchasing.receive_goods
+supplier-payments:  shown on purchasing.view, but /buying/payments accepts purchasing.pay_supplier
+```
+
+The comment on the first one said *"BOTH, not either"* — and `permissions` is
+any-of, so it could not mean that. An **Auditor** was offered Goods receipts; a
+**Branch Manager** and a **Purchase Manager** were offered Supplier payments.
+
+So `NavItem` gained `alsoNeeds`: the act goes in `permissions` (any-of, and
+what the guard checks), the reads the screen cannot work without go in
+`alsoNeeds` (all-of). The comment is now something the resolver can act on.
+
+#### Verified live
+
+```
+ok a branch with two stock locations refuses a sale that does not name one
+ok GET /pos/sales/{id}/returnable
+ok an exchange settles at the amount the server states, and says what it is
+ok an exchange with no reason on it is refused
+ok POST /pos/exchanges
+ok   credit note
+ok a retried exchange replays the same documents AND the same figures
+```
+
+And the boundary, with real accounts:
+
+```
+ok somebody with neither verb: POST /pos/returns      -> 403
+ok somebody with neither verb: POST /pos/exchanges    -> 403
+ok somebody with neither verb: GET /pos/sales/lookup  -> 403
+```
+
+The seeded roles grant refund and exchange together, which the run reports
+rather than hides. The split still matters: the permissions are separate, a
+role built by hand can hold one without the other, and an exchange writes an
+invoice as well as a credit note — it puts goods out of the shop, which taking
+a return does not.
+
+#### A trap worth naming: `decimal.js`'s `isPositive()` is true for zero
+
+Four of the exchange library's own tests failed on the first run, all from one
+cause: `new Decimal(0).isPositive()` is `true`, because the method reads the
+SIGN and zero's sign is positive. Written the obvious way, an empty quantity box
+counted as a line to return, a returnable quantity of nothing was divided into
+a total and produced `NaN` on screen, and "there is nothing coming back, so
+this is a sale rather than an exchange" never fired at all. Every comparison
+now asks `greaterThan(0)`, and the file says why.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1525,8 +1662,12 @@ departments, and standing costs with the generate pass.
 Bank reconciliation is done (§0.100), and fixing one backend defect on the way:
 a deliberate refusal was reaching callers as a 500 on three different triggers.
 
-Next: **sales returns**, then purchase returns, complete accounting, manual
-journals, receivables and payables.
+Sales returns and exchanges are done (§0.101), with three live defects fixed on
+the way — including one that stopped the till selling at all in a shop with two
+stock locations.
+
+Next: **purchase returns**, then complete accounting, manual journals,
+receivables and payables.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and
