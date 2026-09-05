@@ -15,16 +15,31 @@
 // A backup nobody has restored is a file. The platform health screen counts
 // them; this is where an operator finds out which ones, which is the only form
 // of that number anybody can act on.
+//
+// # The search goes to the server, and it did not used to
+//
+// This screen used to filter in the browser, because `GET /platform/tenants`
+// took no arguments. What it also did was `LIMIT 500`, which the filter had no
+// way to know — so an operator searching for a client who had signed up earlier
+// than the most recent five hundred was told there were no matches. The
+// development database holds nine and a half thousand accounts, of which one
+// hundred and thirty are named "Tieout" and not one was reachable.
+//
+// "No matches" and "not in the half of the table I was sent" are different
+// answers, and only one of them was true. The route now searches, filters and
+// pages, so the question is asked where the rows are.
 
 import { Building2 } from 'lucide-react';
 import { Suspense } from 'react';
 
 import { RequireWorkspace } from '@/components/auth/guard';
 import { ResourceList } from '@/components/data/resource-list';
+import { Select } from '@/components/ui/field';
 import { Badge, PageHeader } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/states';
 import type { Column } from '@/components/ui/table';
 import { useT } from '@/lib/i18n/locale';
+import { useUrlState } from '@/lib/url-state';
 
 interface Tenant {
   id: string;
@@ -50,6 +65,10 @@ function day(value?: string): string | null {
 
 function BusinessesScreen() {
   const t = useT();
+  // In the URL, so a filtered list is a link an operator can send to a
+  // colleague rather than a set of steps they have to describe.
+  const [market, setMarket] = useUrlState('market');
+  const [status, setStatus] = useUrlState('status');
 
   const columns: Column<Tenant>[] = [
     {
@@ -137,13 +156,38 @@ function BusinessesScreen() {
         path="/platform/tenants"
         columns={columns}
         rowKey={(x) => x.id}
-        // `GET /platform/tenants` takes no search parameter and returns every
-        // tenant in one answer, so the filtering happens where the rows are.
-        // Name and market, because those are what an operator recognises an
-        // account by; the id is not something anybody types from memory.
-        filterRow={(x, term) =>
-          x.name.toLowerCase().includes(term) ||
-          (x.market ?? '').toLowerCase().includes(term)
+        // Server-side, on the name. The id is not something anybody types from
+        // memory, and the market is a filter rather than a search term.
+        searchParam="search"
+        query={{ market, status }}
+        // Keyset, on the id of the last row. The route orders by
+        // (created_at, id) descending and resolves the cursor row's pair, so
+        // the newest account stays at the top instead of the order being
+        // whatever the ids happen to sort as.
+        cursorOf={(x) => x.id}
+        filters={
+          <>
+            <Select
+              aria-label={t('nx.plat.filterMarket')}
+              value={market}
+              onChange={(e) => setMarket(e.target.value)}
+            >
+              <option value="">{t('nx.plat.allMarkets')}</option>
+              <option value="sa">{t('plat.marketSa')}</option>
+              <option value="bd">{t('plat.marketBd')}</option>
+              <option value="us">{t('plat.marketUs')}</option>
+            </Select>
+            <Select
+              aria-label={t('nx.plat.filterStatus')}
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="">{t('nx.plat.allStatuses')}</option>
+              <option value="active">{t('nx.plat.statusActive')}</option>
+              <option value="suspended">{t('nx.plat.statusSuspended')}</option>
+              <option value="deactivated">{t('nx.plat.statusDeactivated')}</option>
+            </Select>
+          </>
         }
         caption={t('nx.plat.bizCaption')}
         searchPlaceholder={t('nx.plat.bizSearch')}

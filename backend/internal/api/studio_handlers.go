@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
 )
 
 // The label studio (B3), global search (D7), analytics (D2) and the Super
@@ -447,12 +449,41 @@ func (s *Server) handlePlatformHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
-	out, err := s.platform.Tenants(r.Context())
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+
+	// Cursored rather than offset-paged, like the catalogue: an offset walks
+	// and discards every row before the page, and rows shift underneath
+	// somebody who is still reading.
+	var after *uuid.UUID
+	if raw := q.Get("after"); raw != "" {
+		id, err := parseUUID(raw, "after")
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		after = &id
+	}
+
+	out, err := s.platform.Tenants(r.Context(), platformops.TenantFilter{
+		Search: q.Get("search"),
+		Market: q.Get("market"),
+		Status: q.Get("status"),
+		Plan:   q.Get("plan"),
+		Limit:  limit,
+		After:  after,
+	})
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+
+	page := map[string]any{"limit": limit, "has_more": false}
+	if len(out) > 0 {
+		page["cursor"] = out[len(out)-1].ID
+		page["has_more"] = limit > 0 && len(out) == limit
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out, "page": page})
 }
 
 func (s *Server) handleFailedJobs(w http.ResponseWriter, r *http.Request) {

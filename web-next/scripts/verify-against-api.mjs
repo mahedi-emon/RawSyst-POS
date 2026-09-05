@@ -3621,8 +3621,81 @@ console.log('\nPLATFORM (as an operator)');
       ['id', 'name', 'plan_tier', 'status', 'market', 'companies', 'users', 'created_at'],
       (j) => j.data[0],
     );
-    if (tenants?.page) {
-      console.log('  -  /platform/tenants now paginates; the screen filters in the browser');
+    // The list searches, filters and pages on the SERVER, and the screen
+    // depends on all three. It used to do none of them: `LIMIT 500` with no
+    // arguments, filtered in the browser. On a platform with more accounts than
+    // that -- this database has nine and a half thousand -- an operator
+    // searching for a client outside the newest five hundred was told there
+    // were no matches, which is a wrong answer wearing the clothes of a right
+    // one. If any of this regresses the screen silently goes back to lying.
+    if (!tenants?.page || typeof tenants.page.has_more !== 'boolean') {
+      console.log('  x /platform/tenants: no page metadata; the list cannot be walked');
+      failures += 1;
+    } else {
+      console.log('  ok the list pages');
+    }
+
+    {
+      const first = (await call('/platform/tenants?limit=2')).json;
+      const rows = first?.data ?? [];
+      if (rows.length === 2 && first.page?.cursor) {
+        const second = (
+          await call(`/platform/tenants?limit=2&after=${first.page.cursor}`)
+        ).json;
+        const overlap = (second?.data ?? []).filter((r) =>
+          rows.some((f) => f.id === r.id),
+        );
+        if (overlap.length > 0) {
+          console.log('  x /platform/tenants: the second page repeats the first');
+          failures += 1;
+        } else {
+          console.log('  ok the cursor advances without repeating');
+        }
+      } else {
+        console.log('  -  fewer than two tenants; paging was not exercised');
+      }
+    }
+
+    const firstTenant = tenants?.data?.[0];
+    if (firstTenant?.name) {
+      // Searching for a name that exists must find it, and a name that cannot
+      // exist must find nothing. The second half is what catches a filter that
+      // is accepted and ignored.
+      const hit = (
+        await call(
+          `/platform/tenants?limit=50&search=${encodeURIComponent(firstTenant.name)}`,
+        )
+      ).json;
+      if ((hit?.data ?? []).length === 0) {
+        console.log('  x /platform/tenants: search does not find a tenant that exists');
+        failures += 1;
+      }
+      const miss = (
+        await call('/platform/tenants?limit=50&search=zzzznosuchbusinesszzzz')
+      ).json;
+      if ((miss?.data ?? []).length !== 0) {
+        console.log('  x /platform/tenants: search is accepted and ignored');
+        failures += 1;
+      }
+      if ((hit?.data ?? []).length > 0 && (miss?.data ?? []).length === 0) {
+        console.log('  ok the search narrows, and narrows to nothing when it should');
+      }
+    }
+
+    // The register the operator keeps and, until this session, could not read:
+    // the only read was scoped to a tenant and an operator has none.
+    const subs = await check('GET /platform/subprocessors', '/platform/subprocessors', null);
+    if (subs?.data?.[0]) {
+      expectFields('  sub-processor', subs.data[0], [
+        'id',
+        'name',
+        'purpose',
+        'country',
+        'data_categories',
+        'is_active',
+      ]);
+    } else {
+      console.log('  -  the sub-processor register is empty; the row shape was not exercised');
     }
 
     const jobs = await check('GET /platform/jobs/failed', '/platform/jobs/failed', null);

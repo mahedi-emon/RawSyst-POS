@@ -810,6 +810,50 @@ func (s *Service) Subprocessors(
 	return out, db.Translate(err, "")
 }
 
+// AllSubprocessors is the same register as seen by the platform that keeps it.
+//
+// Two differences from Subprocessors, and both are the point:
+//
+//   - It runs as the platform rather than inside a tenant. `subprocessor` is a
+//     global table — the platform operator is one processor for everybody, so
+//     there is one list — but Subprocessors reads it inside TxAsTenant to get
+//     an RLS context. A platform operator has no tenant, so that read answered
+//     "say which company to search" and the operator could not see the register
+//     they are the only person allowed to write.
+//   - It includes the inactive rows. A tenant reads the list to complete their
+//     own processing record and only current sub-processors belong there. The
+//     operator maintaining it has to see the one they retired, or retiring one
+//     is indistinguishable from deleting it and it can never be brought back.
+func (s *Service) AllSubprocessors(ctx context.Context) ([]Subprocessor, error) {
+	out := []Subprocessor{}
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT id, name, purpose, country, data_categories,
+			       coalesce(safeguard, ''), dpa_signed_on, is_active
+			FROM subprocessor
+			ORDER BY is_active DESC, name`)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p Subprocessor
+			var signed *time.Time
+			if e := rows.Scan(&p.ID, &p.Name, &p.Purpose, &p.Country,
+				&p.DataCategories, &p.Safeguard, &signed,
+				&p.IsActive); e != nil {
+				return e
+			}
+			if signed != nil {
+				p.DPASignedOn = signed.Format("2006-01-02")
+			}
+			out = append(out, p)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
 // SaveSubprocessor is the platform owner's write.
 func (s *Service) SaveSubprocessor(
 	ctx context.Context, in Subprocessor,

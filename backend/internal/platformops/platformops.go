@@ -22,6 +22,7 @@ package platformops
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -184,7 +185,37 @@ func (s *Service) Overview(ctx context.Context) (Health, error) {
 }
 
 // Tenants lists the platform's customers.
-func (s *Service) Tenants(ctx context.Context) ([]Tenant, error) {
+// TenantFilter narrows and pages the tenant list.
+//
+// It exists because the list used to be `ORDER BY created_at DESC LIMIT 500`
+// with no arguments at all, and the screen above it filtered the rows it had
+// received in the browser. On a platform with more than five hundred accounts —
+// the development database alone holds nine and a half thousand — that meant an
+// operator searching for a client who signed up earlier than the most recent
+// five hundred was told there were no matches. "No matches" and "not in the
+// half of the table I sent you" are different answers, and only one of them was
+// true.
+//
+// Every field is optional; the zero value lists the newest accounts.
+type TenantFilter struct {
+	// Search matches the business name, case-insensitively, anywhere in it.
+	// Not the id: nobody types a uuid from memory.
+	Search string
+	Market string
+	Status string
+	Plan   string
+
+	// Limit defaults to 50 and is capped at 200, like every other list.
+	Limit int
+	// After is the id of the last row of the previous page.
+	After *uuid.UUID
+}
+
+func (s *Service) Tenants(ctx context.Context, f TenantFilter) ([]Tenant, error) {
+	if f.Limit <= 0 || f.Limit > 200 {
+		f.Limit = 50
+	}
+
 	out := []Tenant{}
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
@@ -198,8 +229,20 @@ func (s *Service) Tenants(ctx context.Context) ([]Tenant, error) {
 			       (SELECT max(b.verified_at) FROM backup_record b
 			        WHERE b.tenant_id = t.id)
 			FROM tenant t
-			ORDER BY t.created_at DESC
-			LIMIT 500`)
+			WHERE ($1::text IS NULL OR t.name ILIKE '%' || $1 || '%')
+			  AND ($2::text IS NULL OR t.market = $2)
+			  AND ($3::text IS NULL OR t.status::text = $3)
+			  AND ($4::text IS NULL OR t.plan_tier::text = $4)
+			  -- Keyset on the pair the list is ordered by, not on the id alone:
+			  -- ordering by id would put the newest account somewhere in the
+			  -- middle, and an operator scanning for a signup from this morning
+			  -- would not find it near the top.
+			  AND ($5::uuid IS NULL OR (t.created_at, t.id) <
+			       (SELECT a.created_at, a.id FROM tenant a WHERE a.id = $5::uuid))
+			ORDER BY t.created_at DESC, t.id DESC
+			LIMIT $6`,
+			nullText(f.Search), nullText(f.Market), nullText(f.Status),
+			nullText(f.Plan), f.After, f.Limit)
 		if e != nil {
 			return e
 		}
@@ -225,6 +268,20 @@ func (s *Service) Tenants(ctx context.Context) ([]Tenant, error) {
 		return rows.Err()
 	})
 	return out, db.Translate(err, "")
+}
+
+// nullText turns an absent filter into SQL NULL, so one query serves the
+// filtered and the unfiltered case rather than two being assembled.
+//
+// Trimmed, because a search box that has been typed into and cleared leaves a
+// space behind, and a space is not a search for a business whose name contains
+// one.
+func nullText(s string) any {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // FailedJob is one thing the queue could not do.

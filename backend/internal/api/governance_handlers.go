@@ -851,6 +851,25 @@ func (s *Server) handleListSubprocessors(
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
+// The same register, for the platform operator who maintains it.
+//
+// Separate from handleListSubprocessors rather than a branch inside it: that
+// one is scoped to a tenant and answers what a tenant may put in their own
+// processing record, and this one runs as the platform and includes the retired
+// rows. Folding them together would mean a route whose answer depends on who
+// asks, which is how a tenant ends up reading a sub-processor the platform had
+// stopped using.
+func (s *Server) handlePlatformSubprocessors(
+	w http.ResponseWriter, r *http.Request,
+) {
+	out, err := s.privacy.AllSubprocessors(r.Context())
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 func (s *Server) handleSaveSubprocessor(
 	w http.ResponseWriter, r *http.Request,
 ) {

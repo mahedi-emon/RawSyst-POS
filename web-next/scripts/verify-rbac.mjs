@@ -211,7 +211,21 @@ if (!cashier) {
 
   // 404 rather than 403, deliberately: confirming a platform route exists is
   // itself a leak, so it answers as though it were not there.
-  expect('GET /platform/health', (await cashier.call('GET', '/platform/health')).status, 404);
+  //
+  // The tenant list matters most of the three. It answers with every business
+  // on the platform by name, market and plan — one shop's whole customer list
+  // from the point of view of a competitor who is also a client — so it is the
+  // route where a hole would be worth the most to somebody. The register is
+  // here because it is new, and the searched list because a route that has just
+  // grown query parameters is a route whose guard is worth re-asserting.
+  for (const [label, path] of [
+    ['GET /platform/health', '/platform/health'],
+    ['GET /platform/tenants', '/platform/tenants'],
+    ['GET /platform/tenants (searched)', '/platform/tenants?search=a&limit=5'],
+    ['GET /platform/subprocessors', '/platform/subprocessors'],
+  ]) {
+    expect(label, (await cashier.call('GET', path)).status, 404);
+  }
 }
 
 // --- B5.1: asking, approving, comparing and awarding are four jobs -------

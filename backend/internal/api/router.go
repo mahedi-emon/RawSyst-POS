@@ -2314,6 +2314,12 @@ func (s *Server) Routes() []Route {
 
 		// E4.1's last bullet: the platform operator is a processor for every
 		// tenant and keeps the sub-processor record. Only they can write it.
+		{http.MethodGet, "/api/v1/platform/subprocessors", AccessSuperAdmin, "",
+			s.handlePlatformSubprocessors,
+			"the register as the operator who keeps it sees it, retired rows " +
+				"included; GET /privacy/subprocessors is scoped to a tenant " +
+				"and an operator has none, so the only person allowed to write " +
+				"this list could not read it back"},
 		{http.MethodPut, "/api/v1/platform/subprocessors", AccessSuperAdmin, "",
 			s.handleSaveSubprocessor,
 			"the platform's own PDPL posture, which is the platform owner's " +
