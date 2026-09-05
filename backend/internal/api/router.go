@@ -925,6 +925,36 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/stores", AccessAuthenticated, "", s.handleListStores,
 			"the branches of this company, for any screen that has to name one; RLS confines it to the caller's tenant"},
 
+		// --- business settings (I1) ---
+		//
+		// The company record after setup, and its branches. Until these routes
+		// existed neither could be changed at all: `UPDATE company` appeared
+		// nowhere in the product outside a receipt-number counter, and a branch
+		// was written only by the setup wizard reading its own scratch answers.
+		//
+		// A shop could not correct a mistyped legal name, record a new
+		// commercial registration, open a second branch, or fix the postal code
+		// that sales/document.go refuses to issue an invoice without. The
+		// storefront disclosure reported `cr_number` missing while the product
+		// had no way to supply one.
+		//
+		// `identity.view` and `identity.edit`, which is what /onboarding/company
+		// and the branding routes already carry. No new `settings.*` verb: it
+		// would have to be granted to every tenant's already-cloned roles before
+		// the screen opened, which is the trap 0032 and 0033 fell into.
+		{http.MethodGet, "/api/v1/companies/{companyID}",
+			AccessPermission, "identity.view", s.handleReadBusiness,
+			"the business record and its branches, with the reason each settled field can no longer change"},
+		{http.MethodPut, "/api/v1/companies/{companyID}",
+			AccessPermission, "identity.edit", s.handleAmendBusiness,
+			"a partial amendment; naming a settled field is refused with the reason rather than ignored"},
+		{http.MethodPost, "/api/v1/companies/{companyID}/branches",
+			AccessPermission, "identity.edit", s.handleOpenBranch,
+			"opens a branch after setup, which nothing could do before"},
+		{http.MethodPut, "/api/v1/companies/{companyID}/branches/{branchID}",
+			AccessPermission, "identity.edit", s.handleAmendBranch,
+			"renames, re-addresses, closes or reopens a branch; there is no delete, because its code is inside every document number it issued"},
+
 		// --- branding (I2) ---
 		//
 		// Setting a logo is a settings change, so it carries the permission the
