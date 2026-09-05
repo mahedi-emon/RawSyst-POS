@@ -5263,17 +5263,23 @@ accounts.
   green as of the item-15 commit; the `[S-T]` and `[A-B]` chunks and the four
   new item-16 tests were green before shutdown.
 
-### ⚠ One thing NOT re-verified in this recovery session
+### Environment note, and the re-verification
 
-The dev Postgres (`localhost:5433`) and Docker Desktop are **not running** — the
-laptop was shut down. So the backend integration suite, `verify:api` and
-`verify:rbac` **could not be re-run** at the moment of this checkpoint. Every
-frontend check above WAS re-run and is green. The backend results quoted are from
-before shutdown, when they last ran.
+At the start of this recovery session the dev Postgres and Docker were both down
+after the shutdown, so nothing backend could be checked. Docker Desktop turned
+out to be installed under `C:\Users\USER\AppData\Local\Programs\DockerDesktop\`,
+not the default `C:\Program Files\Docker\` — worth remembering, because the
+obvious path is wrong on this machine. The database is the `rawsyst-dev-db`
+container mapping 5433 to 5432; `docker start rawsyst-dev-db` brings it back.
 
-**First action next session:** start Docker Desktop, bring up Postgres on 5433,
-then re-run the item-16 backend chunks and both verification scripts before
-starting new work.
+With it up, **everything was re-run and is green**:
+
+    item 16's four backend tests          ok
+    internal/api ^Test[U-Z]               ok
+    verify:api    ALL SCREEN CONTRACTS VERIFIED
+    verify:rbac   EVERY BOUNDARY HELD
+
+So nothing in this checkpoint rests on pre-shutdown results any more.
 
 ## Blueprint status
 
