@@ -680,6 +680,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'compliance',
         labelKey: 'nx.nav.biz.oversight.compliance',
         href: '/oversight/compliance',
+        built: true,
         permissions: ['compliance.view'],
         descriptionKey: 'nx.navd.biz.oversight.compliance',
       },
@@ -741,9 +742,25 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.settings.devices',
       },
       {
+        // Not `tax`: the reports section already uses that id for the return,
+        // and the ids key the nav's read map, so a repeat makes two screens
+        // claim one route.
+        id: 'tax-setup',
+        labelKey: 'nx.nav.biz.settings.tax',
+        href: '/settings/tax',
+        built: true,
+        // Reading the tax position is reading the books: the rate, the
+        // deadline and the retention period all explain figures on a report.
+        // Recording an exchange rate needs accounting.create, and the screen
+        // hides that panel rather than gating the whole page on it.
+        permissions: ['accounting.view'],
+        descriptionKey: 'nx.navd.biz.settings.tax',
+      },
+      {
         id: 'einvoicing',
         labelKey: 'nx.nav.biz.settings.einvoicing',
         href: '/settings/einvoicing',
+        built: true,
         permissions: ['einvoicing.view'],
         feature: 'einvoicing',
         descriptionKey: 'nx.navd.biz.settings.einvoicing',

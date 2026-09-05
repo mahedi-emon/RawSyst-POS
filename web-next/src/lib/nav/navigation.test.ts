@@ -301,6 +301,9 @@ const PRIMARY_READ: Record<string, string> = {
   payroll: '/api/v1/payroll',
   users: '/api/v1/people',
   roles: '/api/v1/people/roles',
+  'tax-setup': '/api/v1/exchange-rates',
+  einvoicing: '/api/v1/einvoicing/units',
+  compliance: '/api/v1/compliance',
 };
 
 describe('a link that appears leads somewhere', () => {

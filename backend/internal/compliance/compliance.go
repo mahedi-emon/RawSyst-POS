@@ -170,8 +170,20 @@ type People struct {
 	// E7 names Iqama and work permits specifically; anything with an expiry
 	// date counts, because a lapsed supplier VAT certificate is the same kind
 	// of problem.
+	//
+	// Both totals span TWO sources: the uploaded document shelf, and the
+	// residency permit recorded against each employee. Counting only the first
+	// is what this did, and it meant a dashboard whose own comment named Iqamas
+	// answered "nothing expiring" to a business whose cashier could not legally
+	// work next month -- while `GET /employees/expiring` listed them by name.
 	ExpiringSoon int `json:"expiring_soon"`
 	Expired      int `json:"expired"`
+
+	// Of those, the ones that are somebody's permit rather than a filed
+	// document. Two different screens fix them, so a dashboard that lumps them
+	// together tells an owner a number and not where to go.
+	StaffExpiringSoon int `json:"staff_expiring_soon"`
+	StaffExpired      int `json:"staff_expired"`
 }
 
 // Records is the archive-health reading.
@@ -425,9 +437,18 @@ func (s *Service) storefront(
 func (s *Service) payroll(
 	ctx context.Context, tx pgx.Tx, scope Scope, out *Report,
 ) error {
+	// Formatted in SQL, not scanned as text. `payroll_run.period` is a DATE,
+	// and pgx refuses to put one into a *string in binary format -- so this
+	// route answered 500 for every business, whatever was in the table. It had
+	// no screen, so nothing ever asked it.
+	//
+	// The month, not the day: a run is a month, the rest of the product speaks
+	// of it as "2026-08", and a compliance dashboard saying 2026-08-01 invites
+	// somebody to wonder what happened on the first.
 	var period *string
 	if e := tx.QueryRow(ctx, `
-		SELECT max(period) FROM payroll_run WHERE company_id = $1`,
+		SELECT to_char(max(period), 'YYYY-MM')
+		FROM payroll_run WHERE company_id = $1`,
 		scope.CompanyID).Scan(&period); e != nil {
 		return e
 	}
@@ -476,7 +497,7 @@ func (s *Service) payroll(
 func (s *Service) people(
 	ctx context.Context, tx pgx.Tx, scope Scope, out *Report,
 ) error {
-	return tx.QueryRow(ctx, `
+	if e := tx.QueryRow(ctx, `
 		SELECT count(*) FILTER (
 		         WHERE expires_on >= current_date
 		           AND expires_on <= current_date + 60),
@@ -484,7 +505,33 @@ func (s *Service) people(
 		FROM document
 		WHERE company_id = $1 AND expires_on IS NOT NULL`,
 		scope.CompanyID).Scan(
-		&out.People.ExpiringSoon, &out.People.Expired)
+		&out.People.ExpiringSoon, &out.People.Expired); e != nil {
+		return e
+	}
+
+	// And the residency permits, which are the ones E7 actually names. They
+	// live on the employee rather than on the document shelf, and leaving them
+	// out made this reading blind to the case it exists for. Somebody who has
+	// left is excluded: their permit lapsing is not this business's exposure.
+	//
+	// Sixty days, the same window as the document count above and as
+	// `GET /employees/expiring` defaults to. Two windows would let the
+	// dashboard and the staff screen disagree about the same person.
+	if e := tx.QueryRow(ctx, `
+		SELECT count(*) FILTER (
+		         WHERE id_expires_on >= current_date
+		           AND id_expires_on <= current_date + 60),
+		       count(*) FILTER (WHERE id_expires_on < current_date)
+		FROM employee
+		WHERE company_id = $1 AND id_expires_on IS NOT NULL
+		  AND left_on IS NULL`,
+		scope.CompanyID).Scan(
+		&out.People.StaffExpiringSoon, &out.People.StaffExpired); e != nil {
+		return e
+	}
+	out.People.ExpiringSoon += out.People.StaffExpiringSoon
+	out.People.Expired += out.People.StaffExpired
+	return nil
 }
 
 func (s *Service) records(

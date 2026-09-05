@@ -1033,6 +1033,114 @@ if (catalogue.length === 0) {
   }
 }
 
+// --- binding the business's tax identity is not reading a certificate ----
+//
+// `einvoicing.view` is the status: a store manager whose till has stopped
+// selling needs to see that its certificate expired, or they will spend the
+// morning restarting hardware. `einvoicing.onboard` is what exchanges a
+// one-time password for a credential, and it binds the BUSINESS's tax identity
+// — so the seeded roles give it to the Owner and to nobody else.
+//
+// The screen offers the onboarding controls only where the second is held, and
+// the status panel to everybody who holds the first. This proves the server
+// agrees, because a screen is not a boundary.
+
+console.log('\nSEEING A CERTIFICATE IS NOT ASKING FOR ONE');
+const manager2 = await staff('einvoicing', roleNamed(/Branch/));
+const unit = (await owner('GET', q('/einvoicing/units'))).json?.data?.[0];
+
+if (!manager2 || !unit) {
+  console.log('  -  no Branch Manager or no signing unit; that split was not exercised');
+} else {
+  expect(
+    'branch manager: GET /einvoicing/units',
+    (await manager2.call('GET', q('/einvoicing/units'))).status,
+    200,
+  );
+  expect(
+    'branch manager: GET onboarding status',
+    (await manager2.call(
+      'GET',
+      q(`/einvoicing/units/${unit.id}/onboarding?environment=sandbox`),
+    )).status,
+    200,
+  );
+
+  // And not the act itself. A one-time password spent by the wrong person is
+  // spent: the taxpayer has to fetch another from the portal.
+  expect(
+    'branch manager: POST onboarding/compliance',
+    (await manager2.call('POST', q(`/einvoicing/units/${unit.id}/onboarding/compliance`), {
+      environment: 'sandbox',
+      csr: 'not-a-real-csr',
+      otp: '000000',
+    })).status,
+    403,
+  );
+  expect(
+    'branch manager: POST onboarding/production',
+    (await manager2.call('POST', q(`/einvoicing/units/${unit.id}/onboarding/production`), {
+      environment: 'sandbox',
+    })).status,
+    403,
+  );
+  expect(
+    'branch manager: PUT /einvoicing/units/{id}',
+    (await manager2.call('PUT', q(`/einvoicing/units/${unit.id}`), {
+      label: 'renamed by verify:rbac',
+    })).status,
+    403,
+  );
+}
+
+// --- a rate is recorded by whoever writes the books ----------------------
+//
+// Reading an exchange rate is `accounting.view`, because a rate explains a
+// figure on a report. Entering one is `accounting.create`, the same verb that
+// writes a journal by hand — because the rate decides what every
+// foreign-currency document is worth in the book.
+
+console.log('\nRECORDING AN EXCHANGE RATE IS WRITING IN THE BOOKS');
+const reader = await staff('fxreader', roleNamed(/Auditor/));
+if (!reader) {
+  console.log('  -  no Auditor seeded; the exchange-rate split was not exercised');
+} else {
+  expect(
+    'auditor: GET /exchange-rates',
+    (await reader.call('GET', q('/exchange-rates'))).status,
+    200,
+  );
+  expect(
+    'auditor: PUT /exchange-rates',
+    (await reader.call('PUT', q('/exchange-rates'), {
+      from_currency: 'EUR',
+      to_currency: 'SAR',
+      rate: '4.10',
+      as_of: new Date().toISOString().slice(0, 10),
+      source: 'verify:rbac',
+    })).status,
+    403,
+  );
+}
+
+// --- the compliance dashboard is its own permission ----------------------
+//
+// `compliance.view` rather than a reuse of accounting or identity: E7's
+// readings span tax, privacy, payroll and the archive, and nobody who holds one
+// of those necessarily holds the rest.
+
+console.log('\nTHE COMPLIANCE DASHBOARD IS ITS OWN PERMISSION');
+const cashier2 = await staff('cashier-compliance', cashierRole);
+if (!cashier2) {
+  console.log('  -  no Cashier seeded; the compliance boundary was not exercised');
+} else {
+  expect(
+    'cashier: GET /compliance',
+    (await cashier2.call('GET', q('/compliance'))).status,
+    403,
+  );
+}
+
 await retireSeeded();
 
 console.log(

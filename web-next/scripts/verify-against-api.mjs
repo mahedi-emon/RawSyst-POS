@@ -2806,6 +2806,154 @@ console.log('\nROLES AND PERMISSIONS');
   }
 }
 
+console.log('\nTAX, E-INVOICING AND COMPLIANCE');
+{
+  const wrapper = await check('GET /compliance', `/compliance?company_id=${CO}`, null);
+  const report = wrapper?.report;
+  if (!report) {
+    console.log('  x the compliance dashboard returned no report');
+    failures += 1;
+  } else {
+    expectFields('  compliance report', report, [
+      'invoicing',
+      'vat',
+      'privacy',
+      'storefront',
+      'payroll',
+      'people',
+      'records',
+      // A legal value nobody has verified is not the same as one that stops
+      // something working, and the screen bands them differently.
+      'unverified_rules',
+      'blocking_rules',
+    ]);
+    expectFields('  vat reading', report.vat, [
+      'registered',
+      // Every one of these comes from the regulatory register. Nothing on the
+      // screen computes a rate or infers a deadline.
+      'open_ended_periods',
+    ]);
+    expectFields('  invoicing reading', report.invoicing, [
+      'started',
+      'devices',
+      'devices_ready',
+      'pending',
+      'failed',
+      // A rejection is the authority refusing a document and will not fix
+      // itself; a failure will be retried. The screen ranks them differently.
+      'rejected',
+    ]);
+    expectFields('  people reading', report.people, [
+      'expiring_soon',
+      'expired',
+      // The residency permits, which E7 names and which the reading used to
+      // miss entirely: it counted the document shelf and not the staff.
+      'staff_expiring_soon',
+      'staff_expired',
+    ]);
+    expectFields('  payroll reading', report.payroll, [
+      'unsubmitted_runs',
+      'deadline_known',
+    ]);
+    expectFields('  records reading', report.records, ['retention_years']);
+    expectFields('  storefront reading', report.storefront, ['missing']);
+
+    // The month a run belongs to, not a day inside it: the rest of the product
+    // speaks of a run as "2026-08", and this scanned a DATE into a string and
+    // answered 500 for every business that had ever paid anybody.
+    const period = report.payroll.last_run_period;
+    if (period !== undefined && !/^\d{4}-\d{2}$/.test(period)) {
+      console.log(`  x the dashboard reports the payroll period as ${period}`);
+      failures += 1;
+    } else if (period) {
+      console.log(`  ok the dashboard names the month payroll last ran (${period})`);
+    }
+
+    // The staff figure is inside the total, never beside it.
+    if (report.people.staff_expiring_soon > report.people.expiring_soon) {
+      console.log('  x more staff permits are expiring than documents in total');
+      failures += 1;
+    } else {
+      console.log('  ok expiring staff permits are counted inside the total');
+    }
+
+    // A dashboard that reports a rate has to have got it from the register.
+    // A business with no rate on file must say so rather than showing zero.
+    if (report.vat.registered && report.vat.standard_rate === undefined) {
+      console.log('  -  registered with no standard rate on file; the screen says so');
+    } else if (report.vat.standard_rate) {
+      console.log(`  ok the standard rate comes off the register (${report.vat.standard_rate})`);
+    }
+  }
+
+  const units = await check(
+    'GET /einvoicing/units',
+    `/einvoicing/units?company_id=${CO}`,
+    null,
+  );
+  const unit = units?.data?.[0];
+  if (unit) {
+    expectFields('  signing unit', unit, [
+      'id',
+      'label',
+      'architecture',
+      'csr',
+      'csid_status',
+      'terminals',
+      'invoices',
+      // Whether the nine certificate-request fields are filled. A unit that
+      // cannot request a certificate should say so before somebody fetches a
+      // one-time password for it.
+      'csr_complete',
+    ]);
+
+    // The status route REQUIRES an environment. Sandbox and production are
+    // different bindings, and defaulting to either would be choosing for
+    // somebody -- onboarding into the wrong one produces a till that appears
+    // to work and reports nothing.
+    const noEnv = await call(`/einvoicing/units/${unit.id}/onboarding?company_id=${CO}`);
+    if (noEnv.status === 200) {
+      console.log('  x the onboarding status defaults to an environment rather than asking');
+      failures += 1;
+    } else {
+      console.log(`  ok onboarding status insists on an environment -> ${noEnv.status}`);
+    }
+
+    for (const env of ['sandbox', 'production']) {
+      const state = await check(
+        `GET onboarding (${env})`,
+        `/einvoicing/units/${unit.id}/onboarding?company_id=${CO}&environment=${env}`,
+        ['egs_unit_id', 'environment', 'connected', 'needs_renewal', 'next_action'],
+      );
+      // The sentence the screen shows verbatim. An empty one would leave a
+      // person looking at a panel that says nothing about what to do.
+      if (state && !String(state.next_action ?? '').trim()) {
+        console.log(`  x onboarding in ${env} says nothing about what to do next`);
+        failures += 1;
+      }
+    }
+  } else {
+    console.log('  -  no signing units; the e-invoicing shapes were not exercised');
+  }
+
+  const rates = await check(
+    'GET /exchange-rates',
+    `/exchange-rates?company_id=${CO}`,
+    null,
+  );
+  if (rates?.data?.[0]) {
+    expectFields('  exchange rate', rates.data[0], [
+      'id',
+      'from_currency',
+      'to_currency',
+      'rate',
+      'as_of',
+    ]);
+  } else {
+    console.log('  -  no exchange rates on file; the rate shape was not exercised');
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {

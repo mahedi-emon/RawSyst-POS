@@ -4862,3 +4862,118 @@ instead of a refusal naming permissions the person never chose.
     contract up to date: 468 routes, 110 permissions (103 route-gated)
     957 internal/api tests + internal/identity: green
     300 web-next tests, 482 shared tests: green
+
+# Tax management and E7's compliance dashboard: COMPLETE
+
+Module 13. Three screens, and the route behind the biggest of them had never
+once answered.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend fixes + frontend) |
+| **Screens** | `/settings/tax`, `/settings/einvoicing`, `/oversight/compliance` |
+| **Migration** | none — both fixes are in Go |
+| **Permissions** | `accounting.view`, `accounting.create`, `compliance.view`, `einvoicing.view`, `einvoicing.onboard` — all **existing** |
+| **i18n** | 130 keys × en/ar/bn |
+| **Tests** | 4 backend, 20 frontend unit |
+
+## `GET /compliance` answered 500 for every business that had paid anybody
+
+`max(period)` on `payroll_run.period` is a DATE, scanned into a `*string`. pgx
+refuses to put a date into a string in binary format.
+
+An empty table hands back a NULL and nothing has to be converted — which is
+exactly why the fault survived. It worked until the month a business first ran
+payroll, and never again after. E7's whole dashboard — invoicing, VAT, privacy,
+storefront, payroll, documents, archive health — was unreachable from that day
+on. Nothing caught it because nothing called it: no screen.
+
+Formatted in SQL now, and as a month rather than a day: the rest of the product
+speaks of a run as `2026-08`, and `2026-08-01` invites somebody to wonder what
+happened on the first.
+
+## And the people reading was blind to the case it exists for
+
+Its own comment says *"E7 names Iqama and work permits specifically"*, and it
+counted rows in the `document` table only. An employee whose residency permit
+expires next month — the exact thing `GET /employees/expiring` lists by name —
+did not appear. The dashboard told an owner nothing was expiring while their
+cashier was weeks from being unable to work legally.
+
+It now counts both, with the staff figure reported separately as well as inside
+the total: two different screens fix them, so a dashboard that lumps them
+together gives an owner a number and not somewhere to go. Somebody who has left
+is excluded — their permit lapsing is not this business's exposure, and counting
+it would leave a permanent reading nobody can clear.
+
+Sixty days, the same window the staff alert uses. Two windows would let the
+dashboard and the staff screen disagree about the same person.
+
+## Not one tax rate is typed anywhere on these screens
+
+The standard rate, the filing deadline and the record-retention period are read
+off `GET /compliance`, which reads them from the regulatory register. There is
+no control on `/settings/tax` that sets a rate and there will not be: a rate
+somebody typed is a rate nobody verified, and every invoice the business issues
+would be computed from it.
+
+What IS typed there is an exchange rate, and the distinction is the point — a
+rate between two currencies is a market fact a business records, not a legal
+value a government sets. The server refuses to guess one, so somebody has to
+enter it.
+
+## "We do not know" never renders as "nothing to do"
+
+* A filing deadline the register cannot compute reads as **unknown**, not as
+  settled — `filingUrgency` returns `unknown` rather than `settled` when the
+  server sends no date, and there is a test for exactly that.
+* An e-invoicing chain nobody has onboarded reads as **not started**, not as
+  healthy.
+* `totalCost`-style silence elsewhere: an archive nobody has proved a restore
+  from says so, because that is the only honest answer this product can give
+  about a backup.
+* **Unverified is not broken.** `unverified_rules` counts legal values nobody
+  has checked against a primary source; `blocking_rules` counts the subset that
+  stop something working. Twelve unverified with one blocker is a business
+  trading normally with one thing to chase, and reporting twelve problems would
+  be as wrong as reporting none.
+
+## The dashboard leads with what to do, not with nine equal panels
+
+Nine panels of equal weight tell an owner nothing, because nothing on the screen
+is more important than anything else. `needsAttention` orders the outstanding
+readings — critical, then caution, then unknown — and every line links to the
+screen where that thing is fixed. A dashboard that names a problem and leaves
+you hunting for the page is one people stop opening.
+
+A rejection outranks a failure, and expired outranks expiring, for the same
+reason in both cases: one will fix itself on retry and the other will not, and
+an expired permit is not a warning about next month.
+
+## The Fatoora one-time password, said plainly
+
+ZATCA issues a certificate only against a password the taxpayer reads from their
+own portal. Software cannot generate it and fabricating one would be forging a
+credential. `/settings/einvoicing` says that at the top, once, as a property of
+the obligation rather than a fault in the product — and everything around it is
+built: the unit, its nine certificate-request fields, the environment choice,
+the stage it has reached, and renewal.
+
+The password field is `type="password"` and is cleared the moment the request
+returns, whichever way it went. A one-time password left in an input on a shop
+counter is the same exposure as writing it on paper.
+
+The three environments are an explicit choice with no default beyond the URL,
+because onboarding into the wrong one produces a till that appears to work and
+reports nothing — and the status route refuses without one, which
+`verify:api` now asserts.
+
+## Verified live
+
+    ALL SCREEN CONTRACTS VERIFIED
+    EVERY BOUNDARY HELD    (einvoicing.view vs einvoicing.onboard;
+                            accounting.view vs accounting.create;
+                            compliance.view standing on its own)
+    contract up to date: 468 routes, 110 permissions (103 route-gated)
+    957 internal/api tests: green
+    320 web-next tests, 482 shared tests: green
