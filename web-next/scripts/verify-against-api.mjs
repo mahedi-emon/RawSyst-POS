@@ -3694,7 +3694,11 @@ console.log('\nYOUR OWN ACCOUNT');
     }
   }
 
-  const notes = await check('GET /notifications', '/notifications', null);
+  // Company-scoped, although the route is merely authenticated: notifyScope
+  // resolves a company from the request, so a notification belongs to a person
+  // IN a business. Calling it without one answers 400, which is how the
+  // notification screen was found to be sending no scope at all.
+  const notes = await check('GET /notifications', `/notifications?company_id=${CO}`, null);
   if (notes?.data?.[0]) {
     expectFields('  notification', notes.data[0], [
       'id',
@@ -3707,11 +3711,15 @@ console.log('\nYOUR OWN ACCOUNT');
   } else {
     console.log('  -  nothing has been notified; the notice shape was not exercised');
   }
-  await check('GET /notifications/unread', '/notifications/unread', null);
+  await check(
+    'GET /notifications/unread',
+    `/notifications/unread?company_id=${CO}`,
+    null,
+  );
 
   const prefs = await check(
     'GET /notifications/preferences',
-    '/notifications/preferences',
+    `/notifications/preferences?company_id=${CO}`,
     null,
   );
   if (prefs?.data?.[0]) {
@@ -3723,7 +3731,12 @@ console.log('\nYOUR OWN ACCOUNT');
   // Search is a lens over what the caller may already reach, so the shape
   // matters more than the hits: a screen that grouped by a `kind` the route
   // stopped sending would render every result under nothing.
-  const hits = (await call(`/search?company_id=${CO}&q=a`)).json;
+  // The term is taken from a customer that exists rather than guessed, so the
+  // hit shape is exercised on every seed instead of only on one whose data
+  // happens to match a hard-coded string.
+  const someone = (await call(`/customers?company_id=${CO}&limit=1`)).json?.data?.[0];
+  const term = (someone?.display_name ?? someone?.name ?? 'sh').slice(0, 3);
+  const hits = (await call(`/search?company_id=${CO}&q=${encodeURIComponent(term)}`)).json;
   if (hits?.data?.[0]) {
     expectFields('  search hit', hits.data[0], ['kind', 'id', 'label']);
     const KINDS = new Set([
