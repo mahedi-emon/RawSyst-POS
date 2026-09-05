@@ -113,6 +113,19 @@ type RoleOption struct {
 	// product is broken.
 	Assignable          bool     `json:"assignable"`
 	WithheldPermissions []string `json:"withheld_permissions,omitempty"`
+
+	// IsSystem marks a role the product ships and keeps current. A6.2's role
+	// builder has to say which those are: they cannot be edited or removed,
+	// and the answer is "copy it and edit the copy". Sent on the LIST because
+	// a screen that had to ask for each role individually would make thirteen
+	// requests to draw one table -- or would offer Edit on everything and let
+	// the server refuse, which teaches people to expect refusals.
+	IsSystem bool `json:"is_system"`
+
+	// InUse is how many people hold this role. A role cannot be removed while
+	// anybody does, so a screen offering Remove without knowing this is
+	// offering an action it cannot say is available.
+	InUse int `json:"in_use"`
 }
 
 // NewPerson is somebody being added to the business.
@@ -152,11 +165,17 @@ func (s *Service) ListRoles(ctx context.Context, scope PeopleScope) ([]RoleOptio
 		rows, e := tx.Query(ctx, `
 			SELECT r.id, r.key, r.name, coalesce(r.description, ''),
 			       coalesce(array_agg(rp.permission ORDER BY rp.permission)
-			                FILTER (WHERE rp.permission IS NOT NULL), '{}')
+			                FILTER (WHERE rp.permission IS NOT NULL), '{}'),
+			       -- A template belongs to no tenant, so it is built-in by
+			       -- ownership as well as by its flag; SaveRole treats the two
+			       -- the same and so does this.
+			       r.is_system OR r.tenant_id IS NULL,
+			       (SELECT count(*) FROM user_role_assignment a
+			         WHERE a.role_id = r.id)
 			FROM role r
 			LEFT JOIN role_permission rp ON rp.role_id = r.id
 			WHERE r.tenant_id IS NULL OR r.tenant_id = current_tenant_id()
-			GROUP BY r.id, r.key, r.name, r.description
+			GROUP BY r.id, r.key, r.name, r.description, r.is_system, r.tenant_id
 			ORDER BY r.name`)
 		if e != nil {
 			return e
@@ -166,7 +185,7 @@ func (s *Service) ListRoles(ctx context.Context, scope PeopleScope) ([]RoleOptio
 		for rows.Next() {
 			var o RoleOption
 			if e := rows.Scan(&o.ID, &o.Key, &o.Name, &o.Description,
-				&o.Permissions); e != nil {
+				&o.Permissions, &o.IsSystem, &o.InUse); e != nil {
 				return e
 			}
 			o.WithheldPermissions = withheld(o.Permissions, scope.Holds)

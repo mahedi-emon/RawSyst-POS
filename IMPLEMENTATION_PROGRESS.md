@@ -4756,3 +4756,109 @@ then discard.
 writes to them. The columns, the payslip lines and now the posting rule all
 carry them, so whatever populates them lands in a ledger that already balances.
 Recorded as unused rather than removed.
+
+# A6.2 — Roles and granular permissions: COMPLETE
+
+Module 12. The role builder had a backend since 0101 and no screen. Building the
+screen found that the list it draws from could not answer two of the questions
+the screen has to ask, and that one of its refusals said something untrue.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend fixes + frontend) |
+| **Screens** | `/people/users`, `/people/roles`, `/people/roles/new`, `/people/roles/[roleID]` |
+| **Migration** | `0130_every_permission_says_what_it_lets_somebody_do.sql` |
+| **Permissions** | `identity.view`, `identity.create`, `identity.manage_roles` — all **existing** |
+| **i18n** | 101 keys × en/ar/bn |
+| **Tests** | 5 backend (role list, refusals), 2 backend (permission catalogue), 23 frontend unit |
+
+## Two permissions had never said what they let somebody do
+
+`permission_catalogue` is what turns `sales.view` into "See what the shop sold"
+— one sentence in an owner's words, in three languages, with a warning where the
+permission deserves one. The builder is made of nothing else.
+
+`catalog.edit` and `report.export` were never given a row. Both are enforced by
+routes and both have been in the seeded roles since 0005. The service falls
+through to `{section: "other", label: <the permission key>}`, which is the right
+fallback — a permission that lost its description should stay grantable rather
+than vanish from a role somebody is editing — but it is not a place to live. An
+owner building a role read 101 sentences and then, under a heading called
+"other", the words `catalog.edit` and `report.export`. In Arabic and Bangla too,
+because a fallback has nothing to translate.
+
+Found by rendering the list before building the screen for it.
+`TestEveryPermissionSaysWhatItLetsSomebodyDo` stops the next one arriving the
+same way, and `TestNoPermissionSectionHoldsASingleTickBox` caught the other half:
+`inventory.recall_batch` sat alone under a heading called `inventory` while every
+other stock permission was under `stock`, so the builder drew a section for one
+tick box.
+
+## The role list could not say which roles are the product's own
+
+Thirteen roles, all built-in, and `GET /people/roles` said so about none of them.
+A screen therefore had two options: ask `GET /roles/{id}` thirteen times to draw
+one table, or offer Edit on everything and let the server refuse. The same gap
+hid `in_use`, without which Remove is a button that cannot say whether it is
+available.
+
+`RoleOption` gained both. `is_system` is `r.is_system OR r.tenant_id IS NULL`,
+because a template belongs to no tenant and `SaveRole` already treated the two
+the same.
+
+## A refusal that said the role did not exist
+
+`DELETE /roles/{id}` scoped its lookup to the caller's tenant. A built-in
+template has no tenant, so the row never matched and the answer was 404 *"That
+role was not found"* — for a role sitting in the list the caller had just read,
+where the same id on PUT answered *"That is one of the built-in roles. Copy it
+and edit the copy."*
+
+An owner told a visible role does not exist reloads the page. The truth is that
+it cannot be deleted. `RemoveRole` now looks the role up by id the way `SaveRole`
+does and checks ownership afterwards, so a built-in refuses as a built-in and
+another business's role is still, correctly, not found —
+`TestARoleSomebodyElseOwnsIsStillNotFound` exists to stop that fix turning every
+miss into a 403.
+
+## Delegation must not become escalation
+
+`identity.manage_roles` lets somebody put into a role anything they hold
+**themselves**, and the server's subset rule is the only thing between that and
+"anybody who can build a role can build themselves an Owner". The failure would
+be silent and total: a manager builds "Evening cover", quietly ticks
+`accounting.close_period` and `hr.view_pay`, assigns it to themselves, and the
+business has no owner-only anything. Nothing 500s. Nothing looks wrong.
+
+`verify:rbac` now proves it live — an HR Manager is refused the builder outright,
+and a role holding something the caller does not is refused with the permission
+named. The picker mirrors the same rule so an ungrantable box is drawn disabled
+and explained rather than ticked and rejected on save, and `copyOf` keeps only
+what the copier can grant, so copying the Owner role produces a saveable draft
+instead of a refusal naming permissions the person never chose.
+
+## What the screens say that a table of tick boxes would not
+
+* **103 boxes is a list nobody reads**, so they are grouped by the server's own
+  sections, collapsible, each saying how many inside it are ticked — a collapsed
+  section still tells you whether anything in it is on.
+* **A caution is not decoration.** Twenty-seven permissions carry a sentence
+  from the server saying what makes them dangerous. They sit beside the box, in
+  the server's words.
+* **Four sign-in states, not two.** Suspended is an administrator's decision,
+  locked is the sign-in system's after too many failures, and a one-time
+  password is an account that works and has not been collected. Collapsing them
+  into "inactive" loses the only one an owner can act on.
+* **A one-time password is shown once.** A4.2 calls the irreversibility "a
+  security requirement, not just a policy choice", so the panel says plainly
+  that closing it loses the password rather than implying it can be found again.
+* **Nobody is deleted.** Suspending stops them signing in and leaves the record,
+  the same reasoning that keeps a departed employee's payslips readable.
+
+## Verified live
+
+    ALL SCREEN CONTRACTS VERIFIED     (103 permissions, all described, all translated)
+    EVERY BOUNDARY HELD               (incl. the subset rule and the built-in refusal)
+    contract up to date: 468 routes, 110 permissions (103 route-gated)
+    957 internal/api tests + internal/identity: green
+    300 web-next tests, 482 shared tests: green

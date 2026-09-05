@@ -119,6 +119,8 @@ describe('the sidebar offers only what exists', () => {
       '/people/employees/new', // an action on /people/employees
       '/people/payroll/[runID]', // a row on /people/payroll, and where
       // preparing a month lands
+      '/people/roles/new', // an action on /people/roles, and where Copy lands
+      '/people/roles/[roleID]', // a row on /people/roles
     ]);
 
     const orphans = [...ROUTES].filter(

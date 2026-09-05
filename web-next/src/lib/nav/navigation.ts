@@ -590,8 +590,24 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'users',
         labelKey: 'nx.nav.biz.staff.users',
         href: '/people/users',
+        built: true,
         permissions: ['identity.view'],
         descriptionKey: 'nx.navd.biz.staff.users',
+      },
+      {
+        id: 'roles',
+        labelKey: 'nx.nav.biz.staff.roles',
+        href: '/people/roles',
+        built: true,
+        // The one permission that can hand out permissions. `identity.view`
+        // gets the people list and stops there: reading who works here is not
+        // deciding what they may do.
+        permissions: ['identity.manage_roles'],
+        // And the screen cannot draw at all without reading the role list,
+        // which is `identity.view`. Both, in full: somebody holding only the
+        // first would see the link and collect a 403 on the first request.
+        alsoNeeds: ['identity.view'],
+        descriptionKey: 'nx.navd.biz.staff.roles',
       },
     ],
   },

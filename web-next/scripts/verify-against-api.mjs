@@ -2672,6 +2672,140 @@ console.log('\nSTAFF, ATTENDANCE AND PAYROLL');
   }
 }
 
+console.log('\nROLES AND PERMISSIONS');
+{
+  const perms = await check('GET /permissions', `/permissions?company_id=${CO}`, null);
+  const rows = perms?.data ?? [];
+  if (rows.length === 0) {
+    console.log('  x the role builder is offered no permissions at all');
+    failures += 1;
+  } else {
+    expectFields('  permission', rows[0], [
+      'permission',
+      'section',
+      'label',
+      // Whether the CALLER may grant it. The builder draws a box it cannot
+      // tick as disabled and explained, rather than letting somebody tick it
+      // and collect the subset refusal on save.
+      'holds',
+    ]);
+
+    // A permission with no catalogue row falls through to
+    // {section: 'other', label: <the key>} -- the right fallback, and not a
+    // place to live. Two permissions had lived there since 0005.
+    const undescribed = rows.filter(
+      (p) => p.label === p.permission || p.section === 'other',
+    );
+    if (undescribed.length > 0) {
+      console.log(
+        `  x ${undescribed.length} permissions are shown as their own identifier: ` +
+          undescribed.map((p) => p.permission).join(', '),
+      );
+      failures += 1;
+    } else {
+      console.log(`  ok all ${rows.length} permissions say what they let somebody do`);
+    }
+
+    // A section is a heading. One with a single member under it reads as a
+    // grouping somebody forgot to finish.
+    const counts = new Map();
+    for (const p of rows) counts.set(p.section, (counts.get(p.section) ?? 0) + 1);
+    const lonely = [...counts].filter(([, n]) => n === 1).map(([s]) => s);
+    if (lonely.length > 0) {
+      console.log(`  x a heading is drawn for a single tick box: ${lonely.join(', ')}`);
+      failures += 1;
+    } else {
+      console.log(`  ok the builder groups into ${counts.size} readable sections`);
+    }
+
+    const translated = rows.filter((p) => p.label_ar && p.label_bn);
+    if (translated.length !== rows.length) {
+      console.log(
+        `  x ${rows.length - translated.length} permissions have English only`,
+      );
+      failures += 1;
+    } else {
+      console.log('  ok every permission is described in all three languages');
+    }
+  }
+
+  const roles = await check('GET /people/roles', `/people/roles?company_id=${CO}`, null);
+  const role = roles?.data?.[0];
+  if (role) {
+    expectFields('  role', role, [
+      'id',
+      'key',
+      'name',
+      'permissions',
+      // False when the caller does not hold everything in it, with
+      // `withheld_permissions` saying which -- shown greyed, never filtered
+      // out, or an owner hunts for a role they know exists.
+      'assignable',
+      // Which roles the product ships and keeps current. Without it a screen
+      // asks for each role individually to draw one table, or offers Edit on
+      // everything and lets the server refuse.
+      'is_system',
+      // A role cannot be removed while anybody holds it.
+      'in_use',
+    ]);
+
+    const builtin = (roles.data ?? []).filter((r) => r.is_system);
+    if (builtin.length === 0) {
+      console.log('  x not one seeded role is marked as the product’s own');
+      failures += 1;
+    } else {
+      console.log(`  ok ${builtin.length} of ${roles.data.length} roles are the product’s own`);
+    }
+
+    const held = (roles.data ?? []).some((r) => r.in_use > 0);
+    if (!held) {
+      console.log('  x every role reports nobody holding it, and somebody signed in');
+      failures += 1;
+    } else {
+      console.log('  ok the list says how many people hold each role');
+    }
+
+    await check(
+      'GET /roles/{id}',
+      `/roles/${role.id}?company_id=${CO}`,
+      ['id', 'key', 'name', 'permissions', 'is_system', 'in_use'],
+      (j) => j.role,
+    );
+  } else {
+    console.log('  -  no roles at all; the role shape was not exercised');
+  }
+
+  const people = await check('GET /people', `/people?company_id=${CO}`, null);
+  if (people?.data?.[0]) {
+    expectFields('  person', people.data[0], [
+      'id',
+      'email',
+      'full_name',
+      'status',
+      // Four states, not two: suspended is an administrator's decision,
+      // locked is the sign-in system's, and a one-time password is an account
+      // that works and has not been collected. Each has a different next step.
+      'must_change_password',
+      'locked',
+      'roles',
+    ]);
+    const assignment = people.data.find((p) => p.roles?.length > 0)?.roles?.[0];
+    if (assignment) {
+      expectFields('  role assignment', assignment, [
+        'id',
+        'role_id',
+        'role_name',
+        'store_ids',
+        'warehouse_ids',
+      ]);
+    } else {
+      console.log('  -  nobody holds a role; the assignment shape was not exercised');
+    }
+  } else {
+    console.log('  -  nobody can sign in; the person shape was not exercised');
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {

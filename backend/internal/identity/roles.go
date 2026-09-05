@@ -299,23 +299,37 @@ func (s *Service) RemoveRole(
 ) error {
 	return db.Translate(s.pool.TxAsTenant(ctx, scope.TenantID,
 		func(tx pgx.Tx) error {
+			// Looked up by id alone, the way SaveRole does, and only then
+			// by owner. Scoping the lookup to this tenant made a built-in
+			// template -- which has no tenant -- answer "That role was not
+			// found" for a role sitting in the list the caller is reading,
+			// while the same id on PUT answered the accurate refusal. An
+			// owner told a visible role does not exist reloads the page; the
+			// truth is that it cannot be deleted.
 			var isSystem bool
+			var owner *uuid.UUID
 			var inUse int
 			e := tx.QueryRow(ctx, `
-				SELECT r.is_system,
+				SELECT r.is_system, r.tenant_id,
 				       (SELECT count(*) FROM user_role_assignment a
 				         WHERE a.role_id = r.id)
-				FROM role r WHERE r.id = $1 AND r.tenant_id = $2`,
-				id, scope.TenantID).Scan(&isSystem, &inUse)
+				FROM role r WHERE r.id = $1`,
+				id).Scan(&isSystem, &owner, &inUse)
 			if e == pgx.ErrNoRows {
 				return errs.New(errs.CodeNotFound, "That role was not found.")
 			}
 			if e != nil {
 				return e
 			}
-			if isSystem {
+			if isSystem || owner == nil {
 				return errs.New(errs.CodeForbidden,
-					"The built-in roles cannot be removed.")
+					"That is one of the built-in roles, and they cannot be "+
+						"removed. A role you made yourself can be.")
+			}
+			if *owner != scope.TenantID {
+				// Another business's role. Not found is the right answer here:
+				// its existence is not this caller's to learn.
+				return errs.New(errs.CodeNotFound, "That role was not found.")
 			}
 			if inUse > 0 {
 				return errs.Newf(errs.CodeConflict,

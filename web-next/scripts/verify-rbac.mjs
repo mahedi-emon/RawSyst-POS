@@ -916,6 +916,123 @@ if (!hr) {
   }
 }
 
+// --- A6.2: delegation must not become escalation -------------------------
+//
+// `identity.manage_roles` is the most powerful permission the product has:
+// anybody holding it can put into a role anything they hold themselves. The
+// subset rule is the only thing standing between that and "anybody who can
+// build a role can build themselves an Owner".
+//
+// It is worth proving live because the failure would be silent and total: a
+// Branch Manager builds a role called "Evening cover", quietly ticks
+// `accounting.close_period` and `hr.view_pay`, assigns it to themselves, and
+// the business has no owner-only anything any more. Nothing would 500. Nothing
+// would look wrong.
+//
+// The screen mirrors the same rule so the box is drawn disabled rather than
+// ticked and refused. The two must agree, and where they disagree the server
+// wins — which is why this asserts the server.
+
+console.log('\nBUILDING A ROLE CANNOT BUILD YOURSELF A BIGGER ONE');
+const builder = await staff('rolebuilder', roleNamed(/HR Manager/));
+
+if (!builder) {
+  console.log('  -  no HR Manager seeded; the escalation boundary was not exercised');
+} else {
+  // They hold hr.view_pay and payroll.run. They do not hold identity.manage_roles
+  // at all, so the whole builder is closed to them: the narrowest and most
+  // important case, since a role builder open to everybody needs no subset rule.
+  expect(
+    'hr manager: GET /permissions',
+    (await builder.call('GET', q('/permissions'))).status,
+    403,
+  );
+  expect(
+    'hr manager: POST /roles',
+    (await builder.call('POST', q('/roles'), {
+      name: 'Should never exist',
+      permissions: ['hr.view'],
+    })).status,
+    403,
+  );
+}
+
+// The other half, and the one the subset rule is actually for: somebody who
+// CAN build roles, trying to put in something they do not hold.
+const catalogue = (await owner('GET', q('/permissions'))).json?.data ?? [];
+const heldByOwner = new Set(catalogue.filter((p) => p.holds).map((p) => p.permission));
+if (catalogue.length === 0) {
+  console.log('  -  the permission catalogue is empty; the subset rule was not exercised');
+} else {
+  ok(`the owner may grant ${heldByOwner.size} of ${catalogue.length} permissions`);
+
+  // A permission that does not exist stands in for one the caller does not
+  // hold: the owner holds everything, and the rule is the same test either way
+  // -- "is this in the set I hold" -- so an unknown name exercises it exactly.
+  const refused = await owner('POST', q('/roles'), {
+    name: 'verify:rbac escalation probe',
+    permissions: ['sales.view', 'not.a.real.permission'],
+  });
+  expect('a role holding something the caller does not', refused.status, 403);
+  if (refused.status === 403) {
+    const said = refused.json?.error?.message ?? '';
+    if (said.includes('not.a.real.permission')) {
+      ok('and the refusal names which permission stopped it');
+    } else {
+      bad(`the refusal does not name what was refused: ${said}`);
+    }
+  }
+
+  // Building one out of what the caller does hold works, is readable, and can
+  // be taken away again. A subset rule that refused everything would pass the
+  // check above and break the feature.
+  const made = await owner('POST', q('/roles'), {
+    name: 'verify:rbac evening cover',
+    description: 'Created by verify:rbac and removed at the end of it',
+    permissions: ['sales.view', 'catalog.view'],
+  });
+  if (made.status !== 200 && made.status !== 201) {
+    bad(`building a role out of held permissions answered ${made.status}`);
+  } else {
+    const id = made.json?.role?.id;
+    ok(`built a role out of held permissions -> ${made.status}`);
+
+    // It has to appear on the assignable list, marked as the tenant's own and
+    // held by nobody -- the two fields the roles screen draws its buttons from.
+    const listed = ((await owner('GET', q('/people/roles'))).json?.data ?? [])
+      .find((r) => r.id === id);
+    if (!listed) {
+      bad('a role that was just built is not on the assignable list');
+    } else if (listed.is_system) {
+      bad('a role the business built is marked as the product’s own');
+    } else if (listed.in_use !== 0) {
+      bad(`a brand new role reports ${listed.in_use} holders`);
+    } else {
+      ok('it is listed as the business’s own, held by nobody');
+    }
+
+    // And a built-in refuses in a way that says what is true. It answered
+    // "That role was not found" for a role in the list the caller just read.
+    const shipped = ((await owner('GET', q('/people/roles'))).json?.data ?? [])
+      .find((r) => r.is_system);
+    if (shipped) {
+      const gone = await owner('DELETE', q(`/roles/${shipped.id}`));
+      if (gone.status === 404) {
+        bad(
+          'removing a built-in role reports it missing, and it is in the list ' +
+            'the caller just read',
+        );
+      } else {
+        expect('removing a built-in role', gone.status, 403);
+      }
+    }
+
+    if (id) {
+      expect('removing one the business built', (await owner('DELETE', q(`/roles/${id}`))).status, 204);
+    }
+  }
+}
+
 await retireSeeded();
 
 console.log(
