@@ -569,6 +569,62 @@ func (s *Service) CompaniesFor(
 	return out, err
 }
 
+// Store is a branch, as a screen needs to name one.
+type Store struct {
+	ID   uuid.UUID `json:"id"`
+	Code string    `json:"code"`
+	Name string    `json:"name"`
+	// NameAr so an Arabic screen shows the branch the way the business wrote
+	// it, rather than the Latin name transliterated by nobody.
+	NameAr   string `json:"name_ar,omitempty"`
+	Address  string `json:"address,omitempty"`
+	Phone    string `json:"phone,omitempty"`
+	IsActive bool   `json:"is_active"`
+}
+
+// StoresIn lists the branches of one company.
+//
+// Beside CompaniesFor, and answering the same kind of question one level down:
+// which parts of this business exist, so a screen can name one. Three routes
+// already returned a branch list and every one belonged to somebody else --
+// `/devices/stores` is the branches a TERMINAL can be registered in,
+// `/stock/locations` carries them as a side payload, `/onboarding/stores`
+// creates them. A screen outside those modules had nowhere to ask, which is how
+// three branch dropdowns came to be built against a route that did not exist.
+//
+// Closed branches are included rather than filtered out. A shift worked in a
+// branch that has since closed still happened there, and dropping it would show
+// that shift with no branch at all. `is_active` says which is which, ordered so
+// the open ones come first, and the caller decides.
+func (s *Service) StoresIn(
+	ctx context.Context, tenantID, companyID uuid.UUID,
+) ([]Store, error) {
+	out := []Store{}
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT id, code, name, coalesce(name_ar, ''),
+			       coalesce(address, ''), coalesce(phone, ''), is_active
+			FROM store
+			WHERE company_id = $1
+			ORDER BY is_active DESC, name`, companyID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var st Store
+			if e := rows.Scan(&st.ID, &st.Code, &st.Name, &st.NameAr,
+				&st.Address, &st.Phone, &st.IsActive); e != nil {
+				return e
+			}
+			out = append(out, st)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
 // dec parses a decimal the database produced. Panics on malformed input,
 // deliberately: every caller passes a value Postgres just serialised from a
 // numeric column, so a failure here is a schema bug rather than bad user

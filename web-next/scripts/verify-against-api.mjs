@@ -3287,6 +3287,36 @@ console.log('\nTILLS, DISCOUNTS, POINTS AND CREDIT');
   await check('GET /gift-cards', `/gift-cards?company_id=${CO}`, null);
 }
 
+console.log('\nTHE BRANCHES A SCREEN HAS TO NAME');
+{
+  // Three screens were built with a branch dropdown pointing at /stores, which
+  // did not exist. Every branch list in the product belonged to another module:
+  // /devices/stores is behind devices.view, /stock/locations carries them as a
+  // side payload. This is the general one.
+  const stores = await check('GET /stores', `/stores?company_id=${CO}`, null);
+  if (stores?.data?.[0]) {
+    expectFields('  branch', stores.data[0], [
+      'id',
+      'code',
+      'name',
+      // Said rather than filtered on: a record made in a branch that has since
+      // closed still names it, and dropping closed ones would leave that
+      // record with no branch at all.
+      'is_active',
+    ]);
+    const order = stores.data.map((s) => s.is_active);
+    if (order.join(',') !== [...order].sort((a, b) => (b ? 1 : 0) - (a ? 1 : 0)).join(',')) {
+      console.log('  x closed branches are not sorted below open ones');
+      failures += 1;
+    } else {
+      console.log('  ok open branches come before closed ones');
+    }
+  } else {
+    console.log('  x a company with a shop reports no branches');
+    failures += 1;
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {

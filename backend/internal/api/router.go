@@ -919,6 +919,11 @@ func (s *Server) Routes() []Route {
 
 		{http.MethodGet, "/api/v1/companies", AccessAuthenticated, "", s.handleListCompanies,
 			"every signed-in user needs to know which companies they are in before asking about one; scoped by RLS and the token"},
+		// The same decision one level down: a branch's name is not a secret
+		// from somebody already signed into that company, and every screen
+		// outside devices and stock needed a branch list that did not exist.
+		{http.MethodGet, "/api/v1/stores", AccessAuthenticated, "", s.handleListStores,
+			"the branches of this company, for any screen that has to name one; RLS confines it to the caller's tenant"},
 
 		// --- branding (I2) ---
 		//

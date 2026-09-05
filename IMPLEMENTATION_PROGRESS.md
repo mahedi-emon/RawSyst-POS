@@ -5159,10 +5159,56 @@ nobody can spend.
     ALL SCREEN CONTRACTS VERIFIED   (shift, promotion, loyalty, wallet shapes)
     EVERY BOUNDARY HELD             (cashier refused /shifts, /wallets credit,
                                      /loyalty/expire and /promotions)
-    contract: 470 routes, 110 permissions (103 route-gated)
+    contract: 471 routes, 110 permissions (103 route-gated)
     internal/api [S-T] and [A-B] chunks: green; the four new tests: green
 
 ---
+
+## Correction found while opening item 17: three branch dropdowns pointed at nothing
+
+Driving the settings routes before building item 17 turned up a defect in THIS
+session's own work. `GET /stores` does not exist, and three screens built earlier
+in the session call it:
+
+* `/people/employees/new` — the branch somebody is hired into
+* `/people/employees/[employeeID]` — the branch on their record
+* `/shifts` — the branch filter
+
+All three would have rendered an empty select and a failed query, on screens
+where naming a branch is most of the point.
+
+Every branch list in the product belonged to another module: `/devices/stores` is
+"the branches a terminal can be registered in" behind `devices.view`;
+`/stock/locations` carries them as a side payload behind an inventory
+permission; `/onboarding/stores` creates them during setup. There was no general
+answer to "which branches does this business have".
+
+`GET /api/v1/stores` is that answer, as `reports.StoresIn` beside
+`reports.CompaniesFor` — the same question one level down. **Merely
+authenticated**, deliberately and for the reason `GET /companies` already is: a
+branch's name is not a secret from somebody signed into that company, RLS
+confines it to their tenant, and every candidate permission is wrong for
+somebody (`identity.view` is held only by the Owner and the Auditor in the base
+seed, so an HR Manager could not fill the dropdown on the screen where they
+assign a branch). A permission that must be granted to every tenant's cloned
+roles before a dropdown works is the trap 0032 and 0033 fell into.
+
+Closed branches are listed rather than filtered, sorted below the open ones. A
+shift worked in a branch that has since closed still happened there, and
+dropping it would show that shift with no branch at all.
+
+Two further corrections came out of writing the tests, both mine:
+
+* An explicit `CanAccessCompany` check in the handler was **redundant** —
+  `companyFromRequestOrDevice` already refuses an out-of-scope company with "that
+  company was not found". Removed rather than left as a second copy of a rule
+  with one home.
+* The cross-tenant test asserted a 404. That is the wrong mechanism: across
+  tenants the guard is **row-level security**, not the token's company scope, so
+  the id passes the scope check and the query simply matches nothing. The test
+  now asserts the property that actually holds — no branch of theirs comes back.
+
+4 backend tests. `verify:api` extended. Contract now **471 routes**.
 
 # SESSION CHECKPOINT
 
@@ -5239,7 +5285,7 @@ accounts.
 | **Nav entries marked built** | **53 of 82** |
 | **Frontend tests** | **356 passed / 23 files** (web-next) |
 | **Shared tests** | **482 passed / 29 files** (includes i18n coverage, locale, RTL) |
-| **Backend routes** | **470** |
+| **Backend routes** | **471** |
 | **Permissions** | **110** (103 route-gated) |
 | **Migrations** | through **0130** |
 
