@@ -1160,6 +1160,10 @@ func (s *Server) Routes() []Route {
 		// no approve route here, and `accounting.approve` stays unused.
 		{http.MethodGet, "/api/v1/accounting/journals", AccessPermission, "accounting.view",
 			s.handleListJournals, "the adjustment register, newest first"},
+		{http.MethodGet, "/api/v1/accounting/chart", AccessPermission, "accounting.view",
+			s.handleChartOfAccounts,
+			"the chart of accounts with what each holds; a journal names an " +
+				"account directly and nothing else listed them"},
 		{http.MethodPost, "/api/v1/accounting/journals", AccessPermission, "accounting.create",
 			s.handleRecordJournal,
 			"posts an adjustment straight to the ledger; balances or is refused, and needs a reason"},

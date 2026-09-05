@@ -684,6 +684,68 @@ console.log('\nSENDING GOODS BACK, WHICH IS NOT RECEIVING THEM');
   }
 }
 
+// --- reading the ledger is not writing into it ---------------------------
+//
+// `accounting.create` is what 0101 calls "Write a journal entry by hand" and
+// describes as posting "straight to the ledger, past every other screen". The
+// Auditor is the case it exists for: they read everything, reconcile the bank,
+// and cannot post -- because somebody who could correct the books they are
+// checking is not checking them.
+
+console.log('\nWRITING INTO THE LEDGER BY HAND');
+if (!auditor || !accountant) {
+  console.log('  -  Auditor or Accountant not seeded; the ledger boundary was not exercised');
+} else {
+  const chart = (await owner('GET', q('/accounting/chart'))).json?.data ?? [];
+  const postable = chart.filter((a) => a.is_postable && a.is_active);
+  const entry = {
+    uuid: crypto.randomUUID(),
+    entry_date: new Date().toISOString().slice(0, 10),
+    reason: 'verify:rbac',
+    lines: [
+      { account_id: postable[0]?.id, debit: '1.00' },
+      { account_id: postable[1]?.id, credit: '1.00' },
+    ],
+  };
+
+  // The chart and the register are readable by anybody who may read the books.
+  for (const [label, path] of [
+    ['GET /accounting/chart', q('/accounting/chart')],
+    ['GET /accounting/journals', q('/accounting/journals')],
+  ]) {
+    expect(`auditor: ${label}`, (await auditor.call('GET', path)).status, 200);
+  }
+
+  // Writing one is not.
+  expect(
+    'auditor: POST /accounting/journals',
+    (await auditor.call('POST', q('/accounting/journals'), entry)).status,
+    403,
+  );
+
+  // And a branch manager cannot even read the chart: 0005 says they cannot
+  // "see bank ledgers or true net profit", and the seed holds no accounting.*
+  // for them at all.
+  if (branch) {
+    expect(
+      'branch manager: GET /accounting/chart',
+      (await branch.call('GET', q('/accounting/chart'))).status,
+      403,
+    );
+  }
+
+  // The Accountant is the person the screen is for.
+  const theirs = await accountant.call('POST', q('/accounting/journals'), {
+    ...entry,
+    uuid: crypto.randomUUID(),
+  });
+  if (theirs.status === 403) {
+    bad('accountant: POST /accounting/journals -> 403, and they hold accounting.create');
+  } else {
+    ok(`accountant: POST /accounting/journals -> ${theirs.status}, past the gate`);
+  }
+}
+
 console.log(
   `\n${failures === 0 ? 'EVERY BOUNDARY HELD' : `${failures} BOUNDARIES DID NOT HOLD`}`,
 );

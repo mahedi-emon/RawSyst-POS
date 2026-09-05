@@ -282,6 +282,8 @@ const PRIMARY_READ: Record<string, string> = {
   treasury: '/api/v1/treasury/accounts',
   'money-transfers': '/api/v1/treasury/transfers',
   reconcile: '/api/v1/treasury/statements',
+  chart: '/api/v1/accounting/chart',
+  journals: '/api/v1/accounting/journals',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',

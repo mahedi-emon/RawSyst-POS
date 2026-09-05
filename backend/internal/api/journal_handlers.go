@@ -46,6 +46,37 @@ func (s *Server) journalsReady(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// --- GET /api/v1/accounting/chart --------------------------------------
+
+// handleChartOfAccounts lists the accounts a company has.
+//
+// The product had no way to. Every posting path resolves accounts by ROLE,
+// which is right for a rule and useless to a person writing an adjustment:
+// a journal line takes an `account_id` and nothing answered "which accounts
+// are there".
+//
+// Not `/expenses/accounts`, which returns postable expense accounts only and
+// is behind `expense.manage_heads` because choosing what a spending category
+// posts to is a configuration decision. This is the chart, read by anybody who
+// may read the ledger.
+func (s *Server) handleChartOfAccounts(w http.ResponseWriter, r *http.Request) {
+	if !s.journalsReady(w, r) {
+		return
+	}
+	scope, err := s.journalScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.journals.Chart(r.Context(), scope,
+		r.URL.Query().Get("include_inactive") == "true")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 type journalLineRequest struct {
 	AccountID string `json:"account_id"`
 	Debit     string `json:"debit"`
@@ -124,7 +155,17 @@ func (s *Server) handleRecordJournal(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusCreated, out)
+
+	// 200 for a recognised repeat, as every other idempotent path answers.
+	// 201 says "created" of an entry that already existed, and a caller that
+	// branched on the status to tell "posted" from "already posted" was told
+	// wrongly.
+	status := http.StatusCreated
+	if out.AlreadyRecorded {
+		status = http.StatusOK
+		w.Header().Set("Idempotency-Replayed", "true")
+	}
+	httpx.JSON(w, status, out)
 }
 
 // optionalAmount reads one side of a line. Empty is zero, which is how a line

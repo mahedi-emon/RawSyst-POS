@@ -953,6 +953,195 @@ console.log('\nCASH, BANK AND WHAT WAS SPENT');
   }
 }
 
+console.log('\nTHE LEDGER BY HAND');
+{
+  // The chart of accounts. Nothing listed it until now: every posting path
+  // resolves accounts by ROLE, which is right for a rule and useless to a
+  // person writing an adjustment, and a journal line names an account_id.
+  const chart = await check(
+    'GET /accounting/chart',
+    `/accounting/chart?company_id=${CO}`,
+    ['id', 'code', 'name', 'type', 'is_postable', 'is_control', 'balance'],
+    (j) => j.data[0],
+  );
+
+  const accounts = chart?.data ?? [];
+  const control = accounts.find((a) => a.is_control);
+  if (control) {
+    // C9.3 makes three of these hard invariants. The screen marks them,
+    // because a difference between a control account and its sub-ledger is a
+    // real error rather than a rounding.
+    if (control.control_of) {
+      console.log(`  ok a control account says what it controls (${control.control_of})`);
+    } else {
+      console.log('  x a control account does not say what it controls');
+      failures += 1;
+    }
+  }
+  if (accounts.some((a) => a.role)) {
+    console.log('  ok the chart says what the posting rules call an account');
+  } else {
+    console.log('  -  no account is mapped to a rule role on this company');
+    }
+
+  const postable = accounts.filter((a) => a.is_postable && a.is_active);
+  await check(
+    'GET /accounting/journals',
+    `/accounting/journals?company_id=${CO}`,
+    null,
+  );
+
+  if (postable.length < 2) {
+    console.log('  -  fewer than two postable accounts; journals were not exercised');
+  } else {
+    const [one, two] = postable;
+    const day = new Date().toISOString().slice(0, 10);
+    const entry = (over) => ({
+      uuid: crypto.randomUUID(),
+      entry_date: day,
+      reason: 'verify:api -- an accrual',
+      lines: [
+        { account_id: one.id, debit: '250.00' },
+        { account_id: two.id, credit: '250.00' },
+      ],
+      ...over,
+    });
+
+    // C10 wants a reason on every hand-written entry: it is what somebody
+    // reading the ledger a year from now has to go on.
+    const silent = await post(`/accounting/journals?company_id=${CO}`, entry({ reason: '' }));
+    if (silent.status === 400 && silent.json?.error?.fields?.reason) {
+      console.log('  ok a journal with no reason is refused, and the field is named');
+    } else {
+      console.log(`  x a journal with no reason came back ${silent.status}, want 400`);
+      failures += 1;
+    }
+
+    // The refusal states the DIFFERENCE, which is the number a person has to
+    // find -- not the two totals, which leaves them doing the subtraction.
+    const lopsided = await post(`/accounting/journals?company_id=${CO}`, entry({
+      lines: [
+        { account_id: one.id, debit: '100.00' },
+        { account_id: two.id, credit: '60.00' },
+      ],
+    }));
+    if (lopsided.status === 400 && /difference of 40/i.test(lopsided.json?.error?.message ?? '')) {
+      console.log('  ok an unbalanced journal is refused, and the refusal says by how much');
+    } else {
+      console.log(`  x an unbalanced journal came back ${lopsided.status}`);
+      failures += 1;
+    }
+
+    // A line is a debit or a credit. Both is ambiguous and neither is empty.
+    const bothSides = await post(`/accounting/journals?company_id=${CO}`, entry({
+      lines: [
+        { account_id: one.id, debit: '10.00', credit: '10.00' },
+        { account_id: two.id, credit: '10.00' },
+      ],
+    }));
+    if (bothSides.status === 400) {
+      console.log('  ok a line cannot carry a debit and a credit at once');
+    } else {
+      console.log(`  x a two-sided line came back ${bothSides.status}`);
+      failures += 1;
+    }
+
+    const body = entry({});
+    const posted = await post(`/accounting/journals?company_id=${CO}`, body);
+    if (posted.status !== 201) {
+      console.log(`  x POST /accounting/journals: HTTP ${posted.status}`);
+      failures += 1;
+    } else {
+      expectFields('POST /accounting/journals', posted.json, [
+        'id',
+        'journal_no',
+        // The ledger entry it became. A manual journal is a document ABOUT a
+        // posting, not the posting itself.
+        'journal_entry_id',
+        'entry_no',
+        'total',
+        'lines',
+      ]);
+      expectFields('  journal line', posted.json.lines[0], [
+        'account_id',
+        // The code and the name, so a screen shows "1100 Cash" without a
+        // second request per line.
+        'account_code',
+        'account_name',
+        'debit',
+        'credit',
+      ]);
+
+      // A retry answers 200 with the entry already written. It answered 201
+      // either way, which says "created" of something it did not create.
+      const retry = await post(`/accounting/journals?company_id=${CO}`, body);
+      if (
+        retry.status === 200 &&
+        retry.json?.journal_no === posted.json.journal_no &&
+        retry.json?.already_recorded === true
+      ) {
+        console.log('  ok the same journal arriving twice is posted once, and says so');
+      } else {
+        console.log(
+          `  x a retried journal came back ${retry.status} as ${retry.json?.journal_no}`,
+        );
+        failures += 1;
+      }
+
+      await check(
+        'GET /accounting/journals/{id}',
+        `/accounting/journals/${posted.json.id}?company_id=${CO}`,
+        ['id', 'journal_no', 'reason', 'lines'],
+      );
+
+      // Reversing wants its OWN reason: the opposite entry is a separate fact
+      // in the ledger and this is the only place that says what it was for.
+      const noWhy = await post(
+        `/accounting/journals/${posted.json.id}/reverse?company_id=${CO}`,
+        {},
+      );
+      if (noWhy.status === 400) {
+        console.log('  ok a reversal with no reason on it is refused');
+      } else {
+        console.log(`  x a reversal with no reason came back ${noWhy.status}`);
+        failures += 1;
+      }
+
+      const undo = {
+        uuid: crypto.randomUUID(),
+        reason: 'verify:api -- the accrual was invoiced after all',
+      };
+      const reversed = await post(
+        `/accounting/journals/${posted.json.id}/reverse?company_id=${CO}`,
+        undo,
+      );
+      if (reversed.status !== 201) {
+        console.log(`  x POST .../reverse: HTTP ${reversed.status}`);
+        failures += 1;
+      } else {
+        const flipped =
+          reversed.json?.reverses_id === posted.json.id &&
+          reversed.json?.lines?.[0]?.credit === posted.json.lines[0].debit;
+        if (flipped) {
+          console.log('  ok a reversal is the opposite of what was posted, and links to it');
+        } else {
+          console.log('  x a reversal does not mirror the entry it undoes');
+          failures += 1;
+        }
+
+        const original = await call(
+          `/accounting/journals/${posted.json.id}?company_id=${CO}`,
+        );
+        if (original.json?.reversed_by) {
+          console.log('  ok the original says it has been reversed');
+        } else {
+          console.log('  x the original does not know it was reversed');
+          failures += 1;
+        }
+      }
+    }
+  }
+}
 console.log('\nORDERS');
 {
   const orders = await check(

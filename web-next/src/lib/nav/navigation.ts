@@ -494,9 +494,18 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.money.receipts',
       },
       {
+        id: 'chart',
+        labelKey: 'nx.nav.biz.money.chart',
+        href: '/money/chart',
+        built: true,
+        permissions: ['accounting.view'],
+        descriptionKey: 'nx.navd.biz.money.chart',
+      },
+      {
         id: 'journals',
         labelKey: 'nx.nav.biz.money.journals',
         href: '/money/journals',
+        built: true,
         permissions: ['accounting.view'],
         descriptionKey: 'nx.navd.biz.money.journals',
       },

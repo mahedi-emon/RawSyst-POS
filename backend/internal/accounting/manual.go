@@ -98,6 +98,16 @@ type Journal struct {
 	ReversedBy *uuid.UUID    `json:"reversed_by,omitempty"`
 	CreatedBy  string        `json:"created_by,omitempty"`
 	CreatedAt  string        `json:"created_at"`
+
+	// AlreadyRecorded is set when this UUID had been posted before and the
+	// stored entry is being returned instead of a second one.
+	//
+	// The route answered 201 either way, which says "created" of something it
+	// did not create. Every other idempotent path in the product answers 200
+	// with `Idempotency-Replayed` on a repeat -- a sale, an exchange, a
+	// purchase return -- and a client that branched on the status to tell
+	// "posted" from "already posted" was told wrongly here.
+	AlreadyRecorded bool `json:"already_recorded"`
 }
 
 // JournalLine is one posted leg.
@@ -138,6 +148,7 @@ func (s *JournalService) Record(
 		if e == nil {
 			var readErr error
 			out, readErr = s.read(ctx, tx, scope.CompanyID, existing)
+			out.AlreadyRecorded = true
 			return readErr
 		}
 		if !errors.Is(e, pgx.ErrNoRows) {

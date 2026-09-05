@@ -294,7 +294,7 @@ marked N/A or mapped, rather than dropping them.)
 | B14 | Installment / EMI (কিস্তি) System | FE-44 | /money/installments | 7 /installments/* routes | installment.view / installment.manage | NOT STARTED | Plan-gated: installments. |
 | B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | NOT STARTED | Plan-gated: warranty. |
 | B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS | List and statement built. Loyalty not started |  |
-| C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/journals | /accounting/journals/* | accounting.view / accounting.create | NOT STARTED | Manual journals still have no frontend caller. |
+| C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/chart, /money/journals | /accounting/chart, /accounting/journals/* | accounting.view / accounting.create | COMPLETE | §0.104. The chart had NO route at all — added here. Journals: write, read, reverse, all live. |
 | C2 | Cash & Bank Management | FE-28 | /money/accounts, /money/transfers | 10 /treasury/* routes | accounting.view / manage_accounts | COMPLETE | §0.98. Accounts with the five kinds, transfers, and the unmatched count that leads here. |
 | C3 | Expense & Investment Management | FE-26 | /money/expenses, /money/expenses/setup | 16 /expenses/* routes | expense.view / expense.record / expense.manage_heads | IN PROGRESS | Expenses and the configuration behind them are done (§0.98, §0.99): period, voucher, recording, categories, departments, standing costs. Investors (C3.2) not started. |
 | C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/{id}, /customers/ageing | /customers/{id}/ledger, /open-invoices | customers.view | IN PROGRESS | The customer statement and unpaid-invoice list are built; the ageing reports are not |  |
@@ -1793,6 +1793,108 @@ against its own tokens. Pulling in a component would have meant a second design
 language beside the first, and a dependency added to claim a tool was used is
 the thing the brief names as forbidden.
 
+### 0.104 The ledger by hand — and a chart nothing could list
+
+Two screens and one route that did not exist.
+
+#### 🔴 There was no way to list the chart of accounts
+
+Every posting path in the product resolves accounts by ROLE — `inventory`,
+`input_vat`, `accounts_payable` — which is exactly right for a rule and useless
+to a person writing an adjustment. `POST /accounting/journals` takes an
+`account_id` per line, and **nothing anywhere answered "which accounts are
+there"**. A manual journal screen was not buildable.
+
+`/expenses/accounts` exists and is not this: it returns postable EXPENSE
+accounts only, and is gated on `expense.manage_heads` because choosing what a
+spending category posts to is a configuration decision. A journal touches any
+account in the chart and is read by anybody who may read the ledger.
+
+So `GET /accounting/chart`, carrying four things a list of names could not:
+
+- **`is_postable`** — a header groups its children and holds nothing. The
+  journal picker offers only the rest, because posting to a header is how a
+  chart silently stops adding up.
+- **`is_control`** with `control_of` — C9.3 makes receivable, payable and
+  inventory hard invariants, and a difference between one and its sub-ledger is
+  a real error rather than a rounding.
+- **`role`** — what the posting rules call it. This is what makes the chart
+  legible as a system rather than as a list: an owner asking "where does VAT go"
+  is asking which account holds `output_vat`.
+- **`balance`** — signed, and deliberately not normalised by type. A liability
+  showing a debit balance and an asset showing a credit one are both worth
+  seeing at a glance, and flipping the sign per type would hide exactly those.
+
+Verified live against 45 seeded accounts, three of them control accounts.
+
+#### The difference, not the two totals
+
+The server refuses an unbalanced entry and says it as one number — *"debits come
+to 100.00 and credits to 60.00, a difference of 40.00"* — because the figure a
+person has to close is the difference. The screen shows the same figure while
+they type, so the refusal is prevented rather than explained: an entry that does
+not balance is the ordinary state of one half-written.
+
+`lib/accounting/journals.ts` is 25 tests, including the one that matters —
+two lines of `0.10` and `0.20` against a credit of `0.30` balance, because
+this is the ledger and `0.1 + 0.2` in binary floating point is not `0.3`.
+
+#### There is no edit button, and there never will be
+
+Design 02 §111: *"Corrections happen only by posting a reversing entry with
+reverses_id set. There is no code path — and no database permission — that edits
+posted history."* So the detail screen offers the opposite entry instead, and
+says why.
+
+Driving it found that the reverse route wants **its own reason**, and the
+refusal explains it better than a comment could: *"The ledger will carry an
+opposite entry, and this is the only place that says what it was for."* The
+screen was sending an empty body. It now asks — a reason for the reversal, not
+this entry's, because "why it was undone" is not the same sentence as "why it
+was written".
+
+#### 🔴 A replayed journal said it had created something
+
+`POST /accounting/journals` answered **201 either way**. The body was right —
+the same journal, one row in the table — but the status says "created" of an
+entry that already existed, and every other idempotent path in the product
+answers 200 with `Idempotency-Replayed`: a sale, an exchange, a purchase
+return. A caller branching on the status to tell "posted" from "already posted"
+was told wrongly.
+
+`Journal` now carries `already_recorded`, and
+`TestTheSameJournalArrivingTwiceIsPostedOnce` — which asserted 201 and so could
+never have caught it — now asserts the replay.
+
+#### Verified live
+
+```
+ok GET /accounting/chart
+ok a control account says what it controls (receivable)
+ok the chart says what the posting rules call an account
+ok a journal with no reason is refused, and the field is named
+ok an unbalanced journal is refused, and the refusal says by how much
+ok a line cannot carry a debit and a credit at once
+ok the same journal arriving twice is posted once, and says so
+ok a reversal with no reason on it is refused
+ok a reversal is the opposite of what was posted, and links to it
+ok the original says it has been reversed
+```
+
+And the boundary the permission exists for:
+
+```
+ok auditor:        GET  /accounting/chart    -> 200
+ok auditor:        GET  /accounting/journals -> 200
+ok auditor:        POST /accounting/journals -> 403
+ok branch manager: GET  /accounting/chart    -> 403
+ok accountant:     POST /accounting/journals -> 201, past the gate
+```
+
+The Auditor is the case `accounting.create` exists for: they read everything and
+reconcile the bank, and cannot post — because somebody who could correct the
+books they are checking is not checking them.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1821,8 +1923,11 @@ Purchase returns are done (§0.102) — and were a backend gap, not a frontend
 one: the feature did not exist and was built, with two migrations and eight
 tests.
 
-Next: **complete accounting and manual journals**, then receivables, payables
-and the financial statements.
+Core accounting and manual journals are done (§0.104), including a chart of
+accounts route that did not exist.
+
+Next: **receivables and payables**, then the financial statements, payroll and
+people.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

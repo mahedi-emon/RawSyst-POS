@@ -225,14 +225,25 @@ func TestTheSameJournalArrivingTwiceIsPostedOnce(t *testing.T) {
 	firstID, _ := decodeJSONFrom(t, first)["id"].(string)
 
 	second := postJournal(t, h, f, body)
-	if second.StatusCode != http.StatusCreated {
-		t.Fatalf("second: %d %s", second.StatusCode, readBody(t, second))
+	// 200, as every other idempotent path in the product answers a repeat.
+	// This route answered 201 either way, which says "created" of an entry it
+	// did not create -- and a caller branching on the status to tell "posted"
+	// from "already posted" was told wrongly.
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("retry: %d %s, want 200", second.StatusCode, readBody(t, second))
 	}
-	secondID, _ := decodeJSONFrom(t, second)["id"].(string)
+	if second.Header.Get("Idempotency-Replayed") != "true" {
+		t.Error("a replayed journal did not say so")
+	}
+	replayed := decodeJSONFrom(t, second)
+	secondID, _ := replayed["id"].(string)
 
 	if firstID != secondID {
 		t.Errorf("the retry made a second journal (%s then %s)",
 			firstID, secondID)
+	}
+	if already, _ := replayed["already_recorded"].(bool); !already {
+		t.Error("the replayed journal did not report itself as one")
 	}
 
 	var n int
