@@ -285,6 +285,8 @@ const PRIMARY_READ: Record<string, string> = {
   chart: '/api/v1/accounting/chart',
   journals: '/api/v1/accounting/journals',
   receivables: '/api/v1/receivables/ageing',
+  financials: '/api/v1/reports/profit-and-loss',
+  tax: '/api/v1/reports/vat-return',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',

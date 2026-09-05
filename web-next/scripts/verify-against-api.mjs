@@ -953,6 +953,137 @@ console.log('\nCASH, BANK AND WHAT WAS SPENT');
   }
 }
 
+console.log('\nTHE FINANCIAL STATEMENTS');
+{
+  const year = new Date().getFullYear();
+  const from = `${year}-01-01`;
+  const to = new Date().toISOString().slice(0, 10);
+
+  const trial = await check(
+    'GET /reports/trial-balance',
+    `/reports/trial-balance?company_id=${CO}`,
+    ['as_of', 'base_currency', 'rows'],
+  );
+  if (trial?.rows?.[0]) {
+    expectFields('  trial balance row', trial.rows[0], [
+      'account_id',
+      'code',
+      'name',
+      // The TYPE, so the screen can group without a second call to the chart.
+      'type',
+      'debit',
+      'credit',
+    ]);
+  }
+
+  const pl = await check(
+    'GET /reports/profit-and-loss',
+    `/reports/profit-and-loss?company_id=${CO}&from=${from}&to=${to}`,
+    [
+      'from',
+      'to',
+      'revenue',
+      'revenue_total',
+      'cost_of_sales',
+      'cost_of_sales_total',
+      // Stated rather than left to the reader to subtract, which is the whole
+      // point of a statement.
+      'gross_profit',
+      'expenses',
+      'expenses_total',
+      'net_profit',
+    ],
+  );
+
+  const sheet = await check(
+    'GET /reports/balance-sheet',
+    `/reports/balance-sheet?company_id=${CO}`,
+    [
+      'as_of',
+      'assets',
+      'assets_total',
+      'liabilities',
+      'liabilities_total',
+      'equity',
+      'equity_total',
+      // This year's profit is equity that has not been closed off yet, and
+      // leaving it out is why a balance sheet appears not to balance.
+      'current_earnings',
+      'equity_and_liabilities',
+      'difference',
+      // The SERVER's answer. The screen shows it and never recomputes it.
+      'balanced',
+    ],
+  );
+  if (sheet && sheet.balanced !== true) {
+    console.log(`  x the balance sheet does not balance: out by ${sheet.difference}`);
+    failures += 1;
+  } else if (sheet) {
+    console.log('  ok the balance sheet balances');
+  }
+
+  // The two statements have to agree about the same period's profit, or one of
+  // them is describing a different set of books.
+  if (pl && sheet && pl.net_profit !== undefined) {
+    if (sheet.current_earnings === pl.net_profit) {
+      console.log("  ok the balance sheet carries the profit and loss's own figure");
+    } else {
+      console.log(
+        `  -  current_earnings ${sheet.current_earnings} against net_profit ${pl.net_profit};` +
+          ' the two cover different periods unless the year started on the from-date',
+      );
+    }
+  }
+
+  await check(
+    'GET /reports/cash-flow',
+    `/reports/cash-flow?company_id=${CO}&from=${from}&to=${to}`,
+    ['from', 'to', 'opening', 'closing', 'in', 'out'],
+  );
+
+  const vat = await check(
+    'GET /reports/vat-return',
+    `/reports/vat-return?company_id=${CO}&from=${from}&to=${to}`,
+    [
+      // The market names its own tax. Nothing on the screen says "VAT".
+      'country',
+      'model',
+      'supplies',
+      'total_net',
+      'output_tax_total',
+      'input_tax_total',
+      'net_payable',
+      // Whether it agrees with the ledger it was drawn from.
+      'reconciled',
+      'filed',
+    ],
+  );
+  if (vat?.supplies?.[0]) {
+    expectFields('  taxable supply', vat.supplies[0], [
+      'treatment',
+      'net_amount',
+      'tax_amount',
+      'invoice_count',
+    ]);
+  }
+
+  // The field the whole screen is built around: what stands between these
+  // figures and a filing, in the server's own words. A return that reported
+  // nothing outstanding AND did not reconcile would be the dangerous case.
+  if (vat) {
+    const blockers = vat.outstanding ?? [];
+    if (blockers.length > 0) {
+      console.log(
+        `  ok the return says what stops it being filed (${blockers.length} reasons)`,
+      );
+    } else if (vat.reconciled) {
+      console.log('  ok nothing is outstanding on this return');
+    } else {
+      console.log('  x the return does not reconcile and reports no reason');
+      failures += 1;
+    }
+  }
+}
 console.log('\nWHAT CUSTOMERS OWE, AND TAKING IT');
 {
   // The mirror of the supplier ageing, and the same five buckets -- so the two

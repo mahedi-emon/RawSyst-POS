@@ -1937,6 +1937,77 @@ GET  /receivables/ageing                -> not_due 100.00
 `verify:api` now covers all of it, and still reports rather than passes when a
 company has no debtor to exercise it with.
 
+### 0.106 The statements, and a tax return that says why it cannot be filed
+
+Four statements on one screen and the return on another.
+
+**They are read together, so they are one screen.** An accountant asks "how did
+we do", then "so what do we own", then "where did the cash go" — for the same
+period, in that order. Four sidebar entries would make that three navigations
+and lose the period each time. Tabs, with the period and the tab in the URL.
+
+**Two stand at a date and two cover a range.** A balance sheet says what the
+business owns on the 31st; a profit and loss says what it earned between two
+dates. So the from-date is offered only where it changes something, and a
+balance sheet is asked for `as_of` rather than being sent a parameter it has no
+use for.
+
+**Nothing on either screen adds anything up.** The server draws every figure
+from the ledger and says whether the balance sheet balances. The one exception
+is the cash flow's net movement, which is `closing` less `opening` — two figures
+the server states — because the in and out lists carry no totals and summing
+them would be a second answer that could disagree the moment the server groups a
+line differently.
+
+A loss is called a loss, and a refund a refund. "Net profit: −11,385" makes
+somebody read the minus sign to find out, and the minus sign is the thing that
+gets missed.
+
+#### The tax return leads with what is stopping it
+
+The route reports `outstanding`, and on a Saudi company today it holds three
+sentences — the input tax on bills does not match the Input VAT account, tax
+held behind the three-way match is not included, and:
+
+> *"the official return form layout has not been verified against the tax
+> authority, so these totals are not mapped to numbered boxes"*
+
+A screen that showed the totals and left those in a footnote would be presenting
+an unfiled draft as a filing. So they come first, in a panel of their own, in
+**the server's own words** — rewording a regulatory refusal is how it stops
+meaning what it said.
+
+`readyToFile` is three conditions and all of them the server's: it reconciles,
+nothing is outstanding, and it has not been filed. Deciding a return was ready
+would be inventing a regulatory confirmation, which is the one thing this
+product must never do. Ten tests cover it, including the one that matters —
+`outstanding` is `omitempty` on the wire, and reading its absence as "unknown"
+would have blocked every clean return.
+
+Nothing on the screen says "VAT" and no rate appears anywhere. `model` and
+`country` come off the payload; the totals are the ledger's, and the ledger got
+them from the register.
+
+#### Verified live
+
+```
+ok GET /reports/trial-balance
+ok   trial balance row
+ok GET /reports/profit-and-loss
+ok GET /reports/balance-sheet
+ok the balance sheet balances
+ok the balance sheet carries the profit and loss's own figure
+ok GET /reports/cash-flow
+ok GET /reports/vat-return
+ok   taxable supply
+ok the return says what stops it being filed (3 reasons)
+```
+
+The cross-check between the two statements is worth keeping: a balance sheet
+whose `current_earnings` disagreed with the profit and loss's `net_profit` would
+mean the two were describing different books, and neither would say so on its
+own.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1971,8 +2042,10 @@ accounts route that did not exist.
 Receivables are done (§0.105) and payables were done in §0.94 — bills, the
 three-way match, supplier payments and the ageing.
 
-Next: **the financial statements**, then payroll, employees, and roles with
-granular permissions.
+The financial statements and the tax return are done (§0.106).
+
+Next: **payroll and employees**, then roles with granular permissions, and the
+business reports.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and
