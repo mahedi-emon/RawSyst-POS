@@ -1339,6 +1339,133 @@ if (!branchHand) {
   );
 }
 
+// --- printing a label is not designing one -------------------------------
+
+console.log('\nPRINTING A LABEL IS NOT DESIGNING ONE');
+{
+  // Built rather than found, because no shipped role holds label.manage
+  // WITHOUT label.print -- and that is exactly the combination the products
+  // nav got wrong. It offered the labels screen to anyone holding EITHER, and
+  // the first thing that screen fetches is GET /labels/scheme, which needs
+  // label.print. A custom manage-only role would have opened a screen that
+  // answered 403 before it drew anything.
+  const built = [];
+  async function role(name, permissions) {
+    const made = await owner('POST', q('/roles'), {
+      name: `verify:rbac ${name}`,
+      description: 'Created by verify:rbac and removed at the end of it',
+      permissions,
+    });
+    if (made.status !== 200 && made.status !== 201) {
+      bad(`could not build the ${name} role: ${made.status}`);
+      return null;
+    }
+    const r = made.json?.role;
+    if (r?.id) built.push(r.id);
+    return r ? { id: r.id, name: r.name } : null;
+  }
+
+  const readerRole = await role('label reader', [
+    'label.print',
+    'devices.view',
+    'serial.view',
+  ]);
+  const designerRole = await role('label designer', ['label.manage']);
+
+  const firstSeat = seeded.length;
+  const reader = await staff('label-reader', readerRole);
+  const designer = await staff('label-designer', designerRole);
+
+  if (reader) {
+    // The three screens must actually open for the person they were built for.
+    // A boundary check that only ever proves refusals will happily pass on a
+    // product nobody can use.
+    expect('label.print: GET /labels/scheme', (await reader.call('GET', q('/labels/scheme'))).status, 200);
+    expect('label.print: GET /labels/templates', (await reader.call('GET', q('/labels/templates'))).status, 200);
+    expect('devices.view: GET /devices', (await reader.call('GET', q('/devices'))).status, 200);
+    expect('serial.view: GET /serials', (await reader.call('GET', q('/serials'))).status, 200);
+
+    // Printing does not carry designing.
+    expect(
+      'label.print: PUT /labels/scheme',
+      (await reader.call('PUT', q('/labels/scheme'), {
+        parts: ['category', 'colour'],
+        separator: '-',
+        symbology: 'code128',
+        part_length: 3,
+      })).status,
+      403,
+    );
+    // Nor does seeing a till carry pairing one. An enrolment code is a
+    // credential: it lets an unknown machine become this shop's till.
+    const till = (await owner('GET', q('/devices'))).json?.data?.[0];
+    if (till) {
+      expect(
+        'devices.view: POST an enrolment code',
+        (await reader.call('POST', q(`/devices/${till.id}/enrolment-code`), {})).status,
+        403,
+      );
+    } else {
+      console.log('  -  no till to ask for a code for; that boundary was not exercised');
+    }
+    // Nor does looking up a serial carry booking one in.
+    expect(
+      'serial.view: POST /serials',
+      (await reader.call('POST', q('/serials'), {
+        variant_id: '00000000-0000-0000-0000-000000000000',
+        warehouse_id: '00000000-0000-0000-0000-000000000000',
+        serials: ['verify-rbac-should-not-stick'],
+      })).status,
+      403,
+    );
+  }
+
+  if (designer) {
+    // The defect, stated as an assertion: holding only label.manage does NOT
+    // get you into the labels screen, because its first read needs
+    // label.print. The nav now asks for label.print alone; if anybody widens
+    // it back to "either", this is the line that says why they should not.
+    expect(
+      'label.manage alone: GET /labels/scheme',
+      (await designer.call('GET', q('/labels/scheme'))).status,
+      403,
+    );
+  }
+
+  // Torn down in the run that built them. A check that leaves a role behind
+  // every time makes the roles screen unreadable inside a week, and the
+  // sixty-five orphaned accounts this script once accumulated are why that is
+  // written down rather than assumed. The holders go first: a role somebody
+  // still holds cannot be removed, and should not be.
+  // The assignment goes first, and that ordering is the whole trick: a
+  // disabled account still HOLDS its role -- rightly, their name is on what
+  // they touched -- so the server refuses the delete with "1 people still hold
+  // that role" until the assignment itself is taken away.
+  const mine = new Set(seeded.slice(firstSeat).filter(Boolean));
+  const staffed = (await owner('GET', q('/people?limit=200'))).json?.data ?? [];
+  for (const person of staffed) {
+    if (!mine.has(person.id)) continue;
+    for (const held of person.roles ?? []) {
+      if (built.includes(held.role_id)) {
+        await owner('DELETE', q(`/people/roles/${held.id}`));
+      }
+    }
+  }
+  for (const id of mine) {
+    await owner('POST', q(`/people/${id}/active`), { active: false });
+  }
+  let left = 0;
+  for (const id of built) {
+    const gone = await owner('DELETE', q(`/roles/${id}`));
+    if (gone.status !== 204 && gone.status !== 200) left += 1;
+  }
+  if (left > 0) {
+    console.log(`  -  ${left} of ${built.length} roles built by this run could NOT be removed`);
+  } else {
+    console.log(`  -  removed the ${built.length} roles this run built`);
+  }
+}
+
 await retireSeeded();
 
 console.log(

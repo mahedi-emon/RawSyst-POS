@@ -224,12 +224,12 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-37 | Approvals | ✅ | ⬜ NOT STARTED | `/approvals` | `approval.view` | Plan-gated |
 | FE-38 | Privacy (24 routes) | ✅ | ⬜ NOT STARTED | `/oversight/privacy` | `privacy.view` | |
 | FE-39 | Business details / onboarding wizard | ✅ | ⬜ NOT STARTED | `/settings/business` | `identity.edit` | **Blocks Saudi selling** until the branch National Address is complete |
-| FE-40 | Barcodes and label studio | ✅ | ⬜ NOT STARTED | `/products/labels` | `label.print` | Plan-gated |
+| FE-40 | Barcodes and label studio | ✅ | **COMPLETE** | `/products/labels` | `label.print` | Plan-gated. §0.107. The nav asked for print-or-manage; a manage-only role would have been refused on the screen's first read. |
 | FE-41 | POS shift close, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/pos`, `/shifts` | `sales.receive_payment` | |
 | FE-42 | Promotions | ✅ | ⬜ NOT STARTED | `/promotions` | `promotion.view` | Plan-gated |
 | FE-43 | Deliveries | ✅ | ⬜ NOT STARTED | `/deliveries` | `delivery.view` | Plan-gated |
 | FE-44 | Instalment plans | ✅ | ⬜ NOT STARTED | `/money/installments` | `installment.view` | Plan-gated |
-| FE-45 | Service jobs / serials / warranty | ✅ | ⬜ NOT STARTED | `/aftersales/*` | `service.view` | Plan-gated |
+| FE-45 | Service jobs / serials / warranty | ✅ | IN PROGRESS | `/aftersales/*`, `/stock/serials` | `service.view`, `serial.view` | Plan-gated. Serials and warranty COMPLETE (§0.107): four warranty states, the server's `under_warranty` never recomputed. Service jobs are a separate lane. |
 | FE-46 | Loyalty, wallets, gift cards | ✅ | ⬜ NOT STARTED | `/customers/loyalty` | `loyalty.view` | Plan-gated |
 | FE-47 | Investors | ✅ | ⬜ NOT STARTED | `/money/investors` | `investor.view` | Plan-gated |
 | FE-48 | Fixed assets | ✅ | ⬜ NOT STARTED | `/money/assets` | `asset.view` | Plan-gated |
@@ -244,7 +244,7 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-57 | Compliance dashboard | ✅ | ⬜ NOT STARTED | `/oversight/compliance` | `compliance.view` | |
 | FE-58 | Supplier portal administration | ✅ | ⬜ NOT STARTED | `/buying/suppliers` | `portal.manage` | 11 supplier-portal routes exist |
 | FE-59 | Group companies / consolidation | ✅ | ⬜ NOT STARTED | `/oversight/groups` | `group.view` | Plan-gated |
-| FE-60 | Tills and devices | ✅ | ⬜ NOT STARTED | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit |
+| FE-60 | Tills and devices | ✅ | **COMPLETE** | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit. §0.107. `pending` is read against `binding`, so a normal paired till is not reported as a fault. |
 | FE-61 | Backups | ✅ | ⬜ NOT STARTED | `/oversight/backups` | `backup.view` | |
 | FE-62 | Plan and billing | ✅ | ⬜ NOT STARTED | `/settings/subscription` | `subscription.view` | |
 | FE-63 | Integrations: API keys, webhooks | ✅ | ⬜ NOT STARTED | `/settings/integrations` | `integration.view` | |
@@ -278,7 +278,7 @@ marked N/A or mapped, rather than dropping them.)
 | A8 | Dashboard & KPI Center | FE-11 | /dashboard | GET /dashboard/overview | sales.view ∪ accounting.view ∪ inventory.view | COMPLETE | Attention list first, four drill-through figures. Verified live. |
 | B1 | Product & Catalog Management | FE-12 | /products | GET/POST /catalog/products | catalog.view / catalog.create | IN PROGRESS | List verified live and on the shared list component. Create/edit not started. |
 | B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | IN PROGRESS | The grid is built and verified live; generating a matrix is not |  |
-| B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | NOT STARTED | Plan-gated: label_studio. |
+| B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | COMPLETE | Plan-gated: label_studio. §0.107. The screen prints the server's own `example` rather than assembling a code; a roll reports no per-sheet count. |
 | B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | NOT STARTED | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
 | B5 | Purchase & Procurement Management | FE-25 | /buying/* | 35 /purchasing/* routes | purchasing.* | COMPLETE | §0.88–0.95 and §0.102. Purchase RETURN was missing from the backend entirely — built here: migration 0127, the service, three routes and a new permission. |
 | B5.1 | RFQ | FE-25 | /buying/quotes | /purchasing/rfqs/* | purchasing.manage_rfq, purchasing.award_rfq | COMPLETE | §0.95. The four-way split proved live. |
@@ -292,7 +292,7 @@ marked N/A or mapped, rather than dropping them.)
 | B12 | Wholesale / B2B Module | FE-20 | /customers | /customers, /dashboard/sales | customers.view | IN PROGRESS | Wholesale pricing flows at the till, the customer list marks wholesale accounts, and the sales day splits retail from wholesale so bulk orders do not distort retail figures. |
 | B13 | Online Order & Delivery Management | FE-32, FE-43 | /orders, /deliveries | /orders/*, /deliveries/* | order.view, delivery.view | NOT STARTED | Plan-gated: online_orders. |
 | B14 | Installment / EMI (কিস্তি) System | FE-44 | /money/installments | 7 /installments/* routes | installment.view / installment.manage | NOT STARTED | Plan-gated: installments. |
-| B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | NOT STARTED | Plan-gated: warranty. |
+| B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | IN PROGRESS | Plan-gated: warranty. Serial and warranty half COMPLETE (§0.107) — lookup-first, four states, an unknown serial is a plain 404. Service/repair is a separate lane. |
 | B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS | List and statement built. Loyalty not started |  |
 | C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/chart, /money/journals | /accounting/chart, /accounting/journals/* | accounting.view / accounting.create | COMPLETE | §0.104. The chart had NO route at all — added here. Journals: write, read, reverse, all live. |
 | C2 | Cash & Bank Management | FE-28 | /money/accounts, /money/transfers | 10 /treasury/* routes | accounting.view / manage_accounts | COMPLETE | §0.98. Accounts with the five kinds, transfers, and the unmatched count that leads here. |
@@ -333,7 +333,7 @@ marked N/A or mapped, rather than dropping them.)
 | G4 | Tax Templates Library | FE-35 | /platform/rates | /platform/jurisdictions/* | super-admin | NOT STARTED |  |
 | H1 | Security & Authentication | FE-02, FE-04, FE-05 | /login | /auth/* | public | COMPLETE | Refresh rotation, CSRF double-submit and both login challenges verified live. |
 | H2 | Offline-First Architecture & Sync Engine | FE-13 | /pos | /catalog/snapshot, /sync/push | sales.create | IN PROGRESS | The till holds the catalogue in memory. Queued offline sales are a desktop-till concern. |
-| H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | NOT STARTED | Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending. |
+| H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | COMPLETE | §0.107. Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending — and the screen distinguishes those two pendings. An enrolment code is `devices.manage`, asserted. |
 | H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | NOT STARTED |  |
 | H5 | SaaS Subscription, Billing & Feature Flags | FE-07, FE-62 | /settings/subscription | /subscription/*, /plans | subscription.view | IN PROGRESS | Entitlements drive navigation already; the billing screen is not built. |
 | H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | NOT STARTED |  |
@@ -345,7 +345,7 @@ marked N/A or mapped, rather than dropping them.)
 | I2 | Receipt & Invoice Template Customization | FE-67 | /settings/business | /companies/{id}/templates/{docType} | identity.edit | NOT STARTED |  |
 | I3 | Numbering Engine | — | — | — | — | N/A | Numbering is a backend engine. |
 | I4 | User Preferences | FE-10 | (header) | — | — | IN PROGRESS | Language preference persists per device. |
-| I5 | Point / Station Settings | FE-60 | /settings/devices | /devices/{id}/settings | devices.manage | NOT STARTED |  |
+| I5 | Point / Station Settings | FE-60 | /settings/devices | /devices/{id}/settings | devices.manage | COMPLETE | §0.107. Saved as a partial diff, so a field nobody touched is not written back. |
 | J1 | Confirmed Technology Stack | — | — | — | — | N/A | Technology stack. Next.js 16 + TS + Tailwind chosen accordingly. |
 | J2 | High-Level Architecture | — | — | — | — | N/A | Architecture. |
 | J3 | Data Flow | — | — | — | — | N/A | Data flow. |
@@ -2007,6 +2007,143 @@ The cross-check between the two statements is worth keeping: a balance sheet
 whose `current_earnings` disagreed with the profit and loss's `net_profit` would
 mean the two were describing different books, and neither would say so on its
 own.
+
+### 0.107 Tills, labels and serial numbers — and a permission that let a role in through a door it could not open
+
+Three screens: `/settings/devices`, `/products/labels`, `/stock/serials`.
+
+#### "Pending" means two different things, and only one of them is a fault
+
+A till reports `status` and `binding` separately, and the pair is the whole
+screen. On a **paired** binding, `pending` is the ordinary state between
+registering a counter and the machine enrolling itself — nothing is wrong and
+nobody should be sent to fix it. On a **session** binding, `pending` should not
+outlast the session that created it, so the same word means something has gone
+wrong.
+
+`terminalState` therefore answers `awaiting_machine` or `awaiting_registration`,
+never "pending". Collapsing them into one badge would send a manager to a till
+that is working correctly, which is worse than saying nothing.
+
+`pending_code` is read for the same reason: a screen that cannot tell whether a
+code is outstanding offers "get a code" to somebody who already has one, and the
+second code silently retires the first.
+
+`needsSigningUnit(market)` is `sa` only, and it is asked of the market rather
+than assumed. A Saudi till needs its unit before it can invoice; a Bangladeshi
+one does not, and showing that requirement everywhere would be inventing a
+regulatory obligation for markets that do not have it.
+
+#### The warranty answer is the server's, and there are four of them
+
+`under_warranty` is derived from the date on each request, never stored. A
+stored flag would be wrong every morning until a job ran, and the warranty desk
+is precisely where a stale answer costs the shop money. Nothing on the screen
+recomputes it from `warranty_until`: a second answer free to disagree with the
+first is the one thing a counter must not be given.
+
+Four states, not two. **Covered** and **expired** are the obvious pair;
+**sold with no warranty** and **never sold** look identical to a screen that
+only asks "is it in warranty", and they lead to completely different
+conversations with a customer. The lookup leads the screen and answers on its
+own, because somebody standing at a counter has a number in their hand and one
+question.
+
+A serial nobody has on file answers 404, and the screen says so in a sentence
+rather than showing an error. It is an ordinary answer at a counter — a unit
+this shop never sold.
+
+#### A roll is not a sheet
+
+`perSheet` returns null for a thermal roll rather than 1. "1 per sheet" invites
+somebody to work out how many sheets a roll needs, and the answer to that
+question does not exist.
+
+#### The defect: the labels link opened a screen its holder could not read
+
+The catalogue nav offered `/products/labels` to anyone holding
+**`label.print` or `label.manage`**. Every read that screen makes — the barcode
+scheme and the layouts — is gated on `label.print`. `label.manage` unlocks
+editing once you are inside; it is not a way in.
+
+No seeded role holds manage without print, which is why source reading never
+surfaced it. The role builder can make one, and that role would have seen the
+link, opened the screen, and been refused by the server before anything drew.
+The nav and the page guard now both ask for `label.print` alone, and the
+boundary is asserted rather than described:
+
+```
+ok label.print: GET /labels/scheme -> 200
+ok label.print: PUT /labels/scheme -> 403
+ok label.manage alone: GET /labels/scheme -> 403
+ok devices.view: GET /devices -> 200
+ok devices.view: POST an enrolment code -> 403
+ok serial.view: GET /serials -> 200
+ok serial.view: POST /serials -> 403
+```
+
+The three refusals are the ones worth keeping. An enrolment code is a
+credential — it lets an unknown machine become this shop's till — so seeing a
+till must not carry pairing one.
+
+#### A verification that was checking the wrong person
+
+Six assertions in this section reported 403 for the owner. The owner holds all
+110 permissions and every one of these is in `permission_catalogue`, so the
+grant was never the problem.
+
+`verify-against-api.mjs` signs in as a platform operator for its last section.
+That operator holds **zero** permissions by design — the file says so — and
+`token` is module level, so every request made after that section authenticates
+as the wrong person. The section had simply been appended below it.
+
+Fixed twice over: this section now runs before PLATFORM, and PLATFORM hands the
+tenant token back when it finishes. The restore is a no-op today, which is
+exactly why it is worth writing — three sessions append to the end of that file
+and none of them should have to know this.
+
+#### Two housekeeping repairs in the checking tools themselves
+
+`verify:rbac` builds two throwaway roles to prove the label split, and could not
+remove them: a **disabled account still holds its role**, rightly, so the server
+refuses with *"1 people still hold that role"* until the assignment itself is
+taken away. The teardown now releases the assignment, then retires the account,
+then removes the role, and reports how many it could not.
+
+Eleven `verify-*` accounts from runs predating the retirement fix were still
+active in the dev database; ten seats have been reclaimed. The fix itself was
+sound — deactivation answers 204 and the person leaves the default `/people`
+listing, which is why they looked un-retired.
+
+#### Verified live
+
+```
+ok GET /devices
+ok   till
+ok 2 tills; 0 awaiting a machine, 1 pending on a session binding
+ok GET /devices/stores
+ok GET /devices/{id}/settings
+ok GET /labels/scheme
+ok the scheme states its own next code (MEN-BLA-XL)
+ok GET /labels/templates
+ok   label layout
+ok 1 rolls report no per-sheet count
+ok GET /serials
+ok   serial
+ok no unsold unit claims a warranty
+ok an unknown serial is a plain not-found
+```
+
+Two of those shapes were being skipped — the database had no label layout and
+nothing tracked by serial, so the assertions never ran and the section still
+printed green. A roll and two unsold units were seeded **out of band**, not from
+the verification script: a checking tool that writes grows the database by a row
+per run, which is how the seat limit was reached the first time.
+
+The scheme's `example` is asserted non-empty because the screen prints the
+server's own next code rather than building one. A screen that assembled it
+would be a second implementation of the rule that mints barcodes, free to
+disagree with it.
 
 ### 0.8 Exact next task
 

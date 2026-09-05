@@ -164,6 +164,12 @@ if (!login.ok) {
 }
 const opened = await login.json();
 token = opened.access_token;
+// Kept so the platform section can hand it back. That section signs in as an
+// operator who deliberately holds ZERO permissions, and `token` is module
+// level, so every request made after it authenticates as the wrong person and
+// answers 403. Whoever appends the next section to the end of this file should
+// not have to know that.
+const tenantToken = token;
 
 // A challenge is a 200 with no token, and it is not a server fault: this email
 // opens more than one business, or the account has a second factor. Either way
@@ -3564,6 +3570,394 @@ console.log('\nTHE BUSINESS RECORD AND ITS BRANCHES');
   }
 }
 
+// --- item 22: the screens that had no frontend at all ----------------------
+//
+// Most of these lists are empty on a development seed, and an empty list is a
+// real answer worth asserting: it proves the route exists, is reachable by
+// somebody holding the permission the screen asks for, and answers the shape
+// the screen destructures. A 403 here would mean the screen renders a refusal
+// for the person it was built for, which is what these caught in the devices
+// block. Where a row does exist, its fields are checked.
+console.log('\nAPPROVALS, DELIVERIES, MONEY AND AFTER-SALES');
+{
+  const shapes = [
+    [
+      'GET /approvals',
+      `/approvals?company_id=${CO}`,
+      'approval',
+      ['id', 'subject', 'summary', 'status', 'current_step', 'steps_total', 'requested_at'],
+    ],
+    ['GET /approvals/mine', `/approvals/mine?company_id=${CO}`, null, null],
+    [
+      'GET /deliveries',
+      `/deliveries?company_id=${CO}`,
+      'delivery',
+      ['id', 'delivery_no', 'status', 'address', 'fee', 'is_cod', 'cod_amount'],
+    ],
+    [
+      'GET /assets',
+      `/assets?company_id=${CO}`,
+      'asset',
+      ['id', 'asset_no', 'name', 'cost', 'book_value', 'monthly_charge', 'months_due', 'currency'],
+    ],
+    [
+      'GET /investors',
+      `/investors?company_id=${CO}`,
+      'investor',
+      ['id', 'name', 'contributed', 'withdrawn', 'net', 'currency', 'is_active'],
+    ],
+    [
+      'GET /installments',
+      `/installments?company_id=${CO}`,
+      'instalment plan',
+      ['id', 'plan_no', 'status', 'financed', 'outstanding', 'tenure_months', 'currency'],
+    ],
+    [
+      'GET /service-jobs',
+      `/service-jobs?company_id=${CO}`,
+      'repair job',
+      ['id', 'job_no', 'kind', 'status', 'fault_reported', 'parts_cost', 'labour_cost', 'charged'],
+    ],
+    [
+      'GET /portal/return-requests',
+      `/portal/return-requests?company_id=${CO}`,
+      'return request',
+      ['id', 'request_no', 'kind', 'reason', 'items', 'status', 'created_at'],
+    ],
+    [
+      'GET /portal/contacts',
+      `/portal/contacts?company_id=${CO}`,
+      'supplier contact',
+      ['id', 'supplier_id', 'supplier_name', 'full_name', 'email', 'is_active', 'invited_at'],
+    ],
+  ];
+
+  for (const [label, path, noun, fields] of shapes) {
+    const body = await check(label, path, null);
+    if (!body) continue;
+    if (!noun) continue;
+    if (body.data?.[0]) expectFields(`  ${noun}`, body.data[0], fields);
+    else console.log(`  -  none on file; the ${noun} shape was not exercised`);
+  }
+
+  // The money account a capital movement and an asset disposal both resolve.
+  // `id` and `account_id` are BOTH uuids on this row and they are not
+  // interchangeable: the routes want the money account, and sending the chart
+  // account 404s with a message that names neither.
+  const treasury = await check(
+    'GET /treasury/accounts',
+    `/treasury/accounts?company_id=${CO}`,
+    null,
+  );
+  if (treasury?.data?.[0]) {
+    expectFields('  money account', treasury.data[0], [
+      'id',
+      'account_id',
+      'name',
+      'kind',
+      'currency',
+      'is_active',
+    ]);
+  } else {
+    console.log('  -  no cash or bank accounts; the money account shape was not exercised');
+  }
+}
+
+// --- the person, rather than the business -------------------------------
+//
+// Four features whose backend was complete and whose frontend was absent: no
+// forgot-password page behind the link sign-in already carried, no way to enrol
+// a second factor although signing in with one worked, a notification centre
+// nothing called, and a search route with no box. These assert the shapes the
+// new screens read.
+console.log('\nYOUR OWN ACCOUNT');
+{
+  const mfa = await check('GET /auth/mfa', '/auth/mfa', null);
+  expectFields('  second factor', mfa?.mfa, ['enabled', 'recovery_remaining']);
+
+  const sessions = await check('GET /auth/sessions', '/auth/sessions', null);
+  if (sessions?.data?.[0]) {
+    expectFields('  session', sessions.data[0], [
+      'id',
+      'created_at',
+      'expires_at',
+      'current',
+    ]);
+    // Exactly one session is the caller's own. The screen refuses to revoke
+    // that one, so more than one — or none — would make the guard meaningless.
+    const current = sessions.data.filter((s) => s.current).length;
+    if (current !== 1) {
+      console.log(`  x ${current} sessions claim to be the current one, want exactly 1`);
+      failures += 1;
+    } else {
+      console.log('  ok exactly one session is marked as this one');
+    }
+  }
+
+  const notes = await check('GET /notifications', '/notifications', null);
+  if (notes?.data?.[0]) {
+    expectFields('  notification', notes.data[0], [
+      'id',
+      'kind',
+      'severity',
+      'title',
+      'is_read',
+      'created_at',
+    ]);
+  } else {
+    console.log('  -  nothing has been notified; the notice shape was not exercised');
+  }
+  await check('GET /notifications/unread', '/notifications/unread', null);
+
+  const prefs = await check(
+    'GET /notifications/preferences',
+    '/notifications/preferences',
+    null,
+  );
+  if (prefs?.data?.[0]) {
+    expectFields('  preference', prefs.data[0], ['kind', 'in_app', 'email', 'sms', 'push']);
+  } else {
+    console.log('  -  no preferences on file; the preference shape was not exercised');
+  }
+
+  // Search is a lens over what the caller may already reach, so the shape
+  // matters more than the hits: a screen that grouped by a `kind` the route
+  // stopped sending would render every result under nothing.
+  const hits = (await call(`/search?company_id=${CO}&q=a`)).json;
+  if (hits?.data?.[0]) {
+    expectFields('  search hit', hits.data[0], ['kind', 'id', 'label']);
+    const KINDS = new Set([
+      'product', 'customer', 'supplier', 'invoice', 'order', 'employee', 'serial',
+    ]);
+    const strange = [...new Set(hits.data.map((h) => h.kind))].filter(
+      (k) => !KINDS.has(k),
+    );
+    if (strange.length > 0) {
+      console.log(`  x search returned kinds the screen cannot group: ${strange.join(', ')}`);
+      failures += 1;
+    } else {
+      console.log('  ok every hit is a kind the screen groups');
+    }
+  } else {
+    console.log('  -  nothing matched; the search hit shape was not exercised');
+  }
+}
+
+console.log("\nWHAT A BUSINESS PAYS, AND WHAT IT MAY ASK FOR");
+{
+  const sub = await check('GET /subscription', '/subscription', null);
+  expectFields('  subscription', sub?.subscription, [
+    'tier',
+    'cycle',
+    'price',
+    'currency',
+    'outstanding',
+    'limits',
+  ]);
+  // The tenant's own view carries the same ceilings AND counts the platform
+  // screen shows, because the business asks the same question of it.
+  expectFields('  allowances', sub?.subscription?.limits, [
+    'max_companies',
+    'max_stores',
+    'max_users',
+    'max_terminals',
+    'companies',
+    'stores',
+    'users',
+    'terminals',
+  ]);
+
+  // Every feature the entitlements route can name needs a translated label, or
+  // the plan screen renders a blank chip. This asserts the set the screen keys
+  // against still covers what the server sends.
+  const ent = await check(
+    'GET /subscription/entitlements',
+    '/subscription/entitlements',
+    null,
+  );
+  if (ent?.data?.[0]) {
+    expectFields('  entitlement', ent.data[0], ['feature', 'allowed', 'in_plan']);
+    const KEYED = new Set([
+      'analytics', 'api_access', 'approvals', 'assets', 'consolidation',
+      'einvoicing', 'installments', 'label_studio', 'loyalty', 'multi_company',
+      'online_orders', 'payroll', 'promotions', 'warranty', 'webhooks',
+      'wholesale',
+    ]);
+    const unkeyed = ent.data.map((e) => e.feature).filter((f) => !KEYED.has(f));
+    if (unkeyed.length > 0) {
+      console.log(
+        `  x the plan screen has no label for: ${unkeyed.join(', ')}`,
+      );
+      failures += 1;
+    } else {
+      console.log(`  ok all ${ent.data.length} features have a translated label`);
+    }
+  }
+
+  const tickets = await check('GET /support/tickets', '/support/tickets', null);
+  if (tickets?.data?.[0]) {
+    expectFields('  ticket', tickets.data[0], [
+      'id',
+      'ticket_no',
+      'subject',
+      'body',
+      'kind',
+      'priority',
+      'status',
+      'created_at',
+    ]);
+    // The thread lives on the detail route only. The support screen opens a
+    // ticket to read it, and renders the opening body plus `messages` — so a
+    // detail response without `messages` would silently lose the conversation.
+    const one = (await call(`/support/tickets/${tickets.data[0].id}`)).json;
+    if (one && !('messages' in one)) {
+      console.log('  -  this ticket has no replies; the thread was not exercised');
+    } else if (one?.messages?.[0]) {
+      expectFields('  ticket message', one.messages[0], [
+        'id',
+        'body',
+        'from_platform',
+        'created_at',
+      ]);
+    }
+  } else {
+    console.log('  -  no tickets raised; the ticket shape was not exercised');
+  }
+}
+
+console.log('\nTILLS, BARCODES AND SERIAL NUMBERS');
+{
+  const tills = await check('GET /devices', `/devices?company_id=${CO}`, null);
+  if (tills?.data?.[0]) {
+    expectFields('  till', tills.data[0], [
+      'id',
+      'store_id',
+      'store',
+      'terminal_label',
+      'status',
+      // Which decides what `pending` MEANS. On a paired till it is the normal
+      // state between registering the counter and the machine enrolling; on a
+      // session till it should never last. One word for both would send a
+      // manager to fix a till that is working correctly.
+      'binding',
+      // Whether a code is outstanding, so the screen offers "new code" rather
+      // than "get a code" and nobody issues a second one by accident.
+      'pending_code',
+    ]);
+
+    const pending = tills.data.filter((d) => d.status === 'pending');
+    const paired = pending.filter((d) => d.binding === 'paired');
+    const session = pending.filter((d) => d.binding === 'session');
+    console.log(
+      `  ok ${tills.data.length} tills; ${paired.length} awaiting a machine, ` +
+        `${session.length} pending on a session binding`,
+    );
+  } else {
+    console.log('  -  no tills; the terminal shape was not exercised');
+  }
+
+  await check('GET /devices/stores', `/devices/stores?company_id=${CO}`, null);
+
+  const first = tills?.data?.[0];
+  if (first) {
+    await check(
+      'GET /devices/{id}/settings',
+      `/devices/${first.id}/settings?company_id=${CO}`,
+      // Every field is optional on the way in, but the READ must state the
+      // device it belongs to, or a screen editing two tills could write one's
+      // settings onto the other.
+      ['device_id'],
+    );
+  }
+
+  const scheme = await check('GET /labels/scheme', `/labels/scheme?company_id=${CO}`, [
+    'parts',
+    'separator',
+    'symbology',
+    'part_length',
+    // The server's own example of what the NEXT code looks like. A screen
+    // building one would be a second implementation of the rule that mints
+    // them, free to disagree with it.
+    'example',
+  ]);
+  if (scheme && !String(scheme.example ?? '').trim()) {
+    console.log('  x the barcode scheme shows no example of what it produces');
+    failures += 1;
+  } else if (scheme) {
+    console.log(`  ok the scheme states its own next code (${scheme.example})`);
+  }
+
+  const templates = await check(
+    'GET /labels/templates',
+    `/labels/templates?company_id=${CO}`,
+    null,
+  );
+  if (templates?.data?.[0]) {
+    expectFields('  label layout', templates.data[0], [
+      'id',
+      'name',
+      'kind',
+      'width_mm',
+      'height_mm',
+      'fields',
+      'is_default',
+    ]);
+    // A roll has no grid, so it must not claim a per-sheet count: "1 per
+    // sheet" invites somebody to work out how many sheets a roll needs.
+    const rolls = templates.data.filter((t) => t.kind === 'thermal');
+    const claiming = rolls.filter((t) => t.per_sheet > 0);
+    if (claiming.length > 0) {
+      console.log(`  x ${claiming.length} thermal rolls report a per-sheet count`);
+      failures += 1;
+    } else if (rolls.length > 0) {
+      console.log(`  ok ${rolls.length} rolls report no per-sheet count`);
+    }
+  } else {
+    console.log('  -  no label layouts; the layout shape was not exercised');
+  }
+
+  const serials = await check('GET /serials', `/serials?company_id=${CO}`, null);
+  if (serials?.data?.[0]) {
+    expectFields('  serial', serials.data[0], [
+      'id',
+      'serial_no',
+      'variant_id',
+      'status',
+      // Derived from the date on the server, never stored, because a flag
+      // would be wrong every morning until a job ran -- and the warranty desk
+      // is exactly where a stale answer costs the shop money.
+      'under_warranty',
+    ]);
+
+    // A unit that has not been sold cannot be under warranty: the clock starts
+    // at the sale. If one claims to be, the derivation is reading the wrong
+    // date and a counter would honour a warranty that never began.
+    const unsoldButCovered = serials.data.filter(
+      (s) => !s.sold_at && s.under_warranty,
+    );
+    if (unsoldButCovered.length > 0) {
+      console.log(
+        `  x ${unsoldButCovered.length} unsold units report being under warranty`,
+      );
+      failures += 1;
+    } else {
+      console.log('  ok no unsold unit claims a warranty');
+    }
+  } else {
+    console.log('  -  nothing is tracked by serial; the serial shape was not exercised');
+  }
+
+  // A serial nobody has on file is an ordinary answer at a counter, not a
+  // fault, and the screen says so rather than showing an error.
+  const unknown = await call(`/serials/NOT-A-REAL-SERIAL?company_id=${CO}`);
+  if (unknown.status !== 404) {
+    console.log(`  x an unknown serial answered ${unknown.status}, want 404`);
+    failures += 1;
+  } else {
+    console.log('  ok an unknown serial is a plain not-found');
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {
@@ -3838,6 +4232,11 @@ console.log('\nPLATFORM (as an operator)');
     }
   }
 }
+
+// Back to the business identity. A no-op today because nothing follows, which
+// is exactly when it is worth writing: the section after this one will be
+// appended by somebody who never read this line.
+token = tenantToken;
 
 console.log(
   `\n${failures === 0 ? 'ALL SCREEN CONTRACTS VERIFIED' : `${failures} MISMATCHES`}`,

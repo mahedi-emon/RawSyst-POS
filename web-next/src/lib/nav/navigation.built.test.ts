@@ -87,7 +87,17 @@ describe('the sidebar offers only what exists', () => {
       '/', // the front door; redirects and renders nothing
       '/login',
       '/change-password', // sent here by sign-in when a password is one-time
+      '/forgot-password', // linked from sign-in, for somebody who cannot sign in
       '/nowhere', // sent here when nothing at all is reachable
+      // The three screens about the PERSON rather than the business. They are
+      // in the user menu and the header, not the sidebar, and deliberately so:
+      // every route behind them resolves the caller from their own token and
+      // has no user parameter, so there is no permission to name — and the
+      // sidebar requires one of every item it holds, precisely so that an item
+      // with none cannot render for somebody holding nothing.
+      '/settings/security', // the user menu
+      '/notifications', // the user menu
+      '/search', // the search box in the header
       '/products/[productId]', // a row on /products
       '/customers/[customerId]', // a row on /customers
       '/buying/orders/[poID]', // a row on /buying/orders
@@ -164,10 +174,17 @@ describe('the sidebar offers only what exists', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('leaves the unbuilt architecture in place rather than deleting it', () => {
+  it('leaves the architecture in place rather than deleting it', () => {
     // The map of the whole product is worth keeping: it is what says which
-    // screen comes next, and it carries the permissions each will need.
-    const unbuilt = ALL_ITEMS.filter((i) => !i.built);
-    expect(unbuilt.length).toBeGreaterThan(20);
+    // screen comes next, and it carries the permissions each will need. The
+    // temptation this guards against is deleting an unbuilt entry to make the
+    // built-check above pass.
+    //
+    // It used to assert that more than twenty entries were still unbuilt,
+    // which was a proxy that expired by design: every module completed brings
+    // the number down, and it went red at sixteen with nothing wrong. The
+    // count that does NOT decay is the size of the map itself, so that is what
+    // is asserted — entries move from unbuilt to built, and none disappear.
+    expect(ALL_ITEMS.length).toBeGreaterThanOrEqual(82);
   });
 });

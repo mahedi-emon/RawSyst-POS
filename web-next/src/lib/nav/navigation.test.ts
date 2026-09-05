@@ -320,6 +320,9 @@ const PRIMARY_READ: Record<string, string> = {
   loyalty: '/api/v1/loyalty/program',
   wallets: '/api/v1/wallets',
   periods: '/api/v1/accounting/periods',
+  devices: '/api/v1/devices',
+  labels: '/api/v1/labels/scheme',
+  serials: '/api/v1/serials',
   // `business` is deliberately absent. Every read that screen makes is
   // AccessAuthenticated -- /companies, /stores and the document templates all
   // are, for reasons each route records -- so there is no permission-gated

@@ -45,6 +45,12 @@ const SAME_IN_BOTH = new Set<string>([
   // A symbology's name is the same string in both, which the
   // still-in-English check cannot tell from a key nobody translated.
   'lbl.sym.datamatrix',
+  // The product's own name, standing alone as the author of a support reply.
+  // PROPER_NOUNS already strips it out of a sentence; a key whose WHOLE value
+  // is the brand is left identical in English and Bangla, which is the other
+  // arm of the same check. Arabic writes راوسيست, which is the scheme Mada
+  // follows -- a name that does have an Arabic form gets it.
+  'nx.sup.rawsyst',
 ]);
 
 /**

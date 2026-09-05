@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { RequireWorkspace } from '@/components/auth/guard';
 import { AppShell } from '@/components/shell/app-shell';
 import { CompanySwitch } from '@/components/shell/company-switch';
+import { GlobalSearch } from '@/components/shell/global-search';
 import { usePlanFeatures } from '@/lib/api/hooks';
 import { useSession } from '@/lib/auth/session';
 import { CompanyProvider, useCompany } from '@/lib/company/company-context';
@@ -36,7 +37,12 @@ function BusinessShell({ children }: { children: ReactNode }) {
       sections={sections}
       workspaceName="RawSyst"
       contextName={contextName}
-      headerExtra={<CompanySwitch />}
+      headerExtra={
+        <>
+          <GlobalSearch />
+          <CompanySwitch />
+        </>
+      }
     >
       {children}
     </AppShell>
