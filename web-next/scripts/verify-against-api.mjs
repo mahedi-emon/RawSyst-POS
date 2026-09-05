@@ -1243,7 +1243,7 @@ console.log('\nBUYING');
       };
       const first = await post(`/purchasing/payments?company_id=${CO}`, body);
       if (first.status !== 200 && first.status !== 201) {
-        console.log(`  x POST /purchasing/payments: HTTP ${first.status}`);
+        console.log(`  x POST /purchasing/payments: HTTP ${first.status} ${JSON.stringify(first.json)}`);
         failures += 1;
       } else {
         expectFields('POST /purchasing/payments', first.json, [
@@ -1279,6 +1279,173 @@ console.log('\nBUYING');
         }
       }
     }
+
+  // --- goods going back to a supplier (B5) ---
+  //
+  // Against the BILL, because a debit note has no meaning without the invoice
+  // it corrects. Goods refused at the door never entered stock and are already
+  // recorded as rejected on the receipt.
+  await check('GET /purchasing/returns', `/purchasing/returns?company_id=${CO}`, null);
+
+  const billForReturn = bills?.data?.[0];
+  if (!billForReturn) {
+    console.log('  -  no bill to claim against; returns were not exercised');
+  } else {
+    const returnable = await check(
+      'GET /purchasing/bills/{id}/returnable',
+      `/purchasing/bills/${billForReturn.id}/returnable?company_id=${CO}`,
+      null,
+    );
+    const line = returnable?.data?.[0];
+    if (!line) {
+      console.log('  -  that bill has no lines; the claim was not exercised');
+    } else {
+      expectFields('  returnable line', line, [
+        'bill_line_id',
+        // Cumulative across every earlier return. A screen that worked this
+        // out for itself would eventually claim the same pallet twice.
+        'qty_returnable',
+        // The SUPPLIER's price and the SUPPLIER's rate, which is what the
+        // debit note claims -- not what the stock is carrying.
+        'unit_cost',
+        'tax_rate',
+      ]);
+
+      // A claim with no reason is refused. An unexplained return is how the
+      // value of a pallet goes missing between a clerk and a driver.
+      const silent = await post(`/purchasing/returns?company_id=${CO}`, {
+        uuid: crypto.randomUUID(),
+        bill_id: billForReturn.id,
+        reason: '',
+        lines: [{ bill_line_id: line.bill_line_id, qty: '1' }],
+      });
+      if (silent.status === 400) {
+        console.log('  ok a return with no reason on it is refused');
+      } else {
+        console.log(`  x a return with no reason came back ${silent.status}, want 400`);
+        failures += 1;
+      }
+
+      const places = await call(`/purchasing/warehouses?company_id=${CO}`);
+      const rooms = places.json?.data ?? [];
+
+      // A business with two stock locations has to say which one the goods are
+      // leaving from -- the same rule a sale follows.
+      if (rooms.length > 1) {
+        const nowhere = await post(`/purchasing/returns?company_id=${CO}`, {
+          uuid: crypto.randomUUID(),
+          bill_id: billForReturn.id,
+          reason: 'verify:api -- faulty',
+          lines: [{ bill_line_id: line.bill_line_id, qty: '1' }],
+        });
+        if (nowhere.status === 400) {
+          console.log(
+            '  ok a return that does not say which shelf the goods left is refused',
+          );
+        } else {
+          console.log(`  x a return naming no location came back ${nowhere.status}`);
+          failures += 1;
+        }
+      }
+
+      // More than is left is refused, and the refusal says how much there is.
+      const greedy = await post(`/purchasing/returns?company_id=${CO}`, {
+        uuid: crypto.randomUUID(),
+        bill_id: billForReturn.id,
+        warehouse_id: rooms[0]?.id,
+        reason: 'verify:api -- faulty',
+        lines: [{ bill_line_id: line.bill_line_id, qty: '99999' }],
+      });
+      if (greedy.status === 409 || greedy.status === 400) {
+        console.log('  ok more than the bill carried cannot be sent back');
+      } else {
+        console.log(`  x an over-claim came back ${greedy.status}`);
+        failures += 1;
+      }
+
+      // The real one, from wherever the stock actually is.
+      const onHandRows = await call(`/stock/on-hand?company_id=${CO}&limit=100`);
+      const holding = (onHandRows.json?.data ?? []).find(
+        (h) => h.variant_id === line.variant_id && Number(h.on_hand) > 0,
+      );
+      const from = rooms.find((w) => w.name === holding?.location) ?? rooms[0];
+
+      const docUUID = crypto.randomUUID();
+      const claim = {
+        uuid: docUUID,
+        bill_id: billForReturn.id,
+        warehouse_id: from?.id,
+        returned_on: new Date().toISOString().slice(0, 10),
+        reason: 'verify:api -- one arrived faulty',
+        lines: [{ bill_line_id: line.bill_line_id, qty: '1' }],
+      };
+      const sent = await post(`/purchasing/returns?company_id=${CO}`, claim);
+
+      if (sent.status === 409) {
+        // The shelf is short. That refusal is the feature -- goods that are
+        // not there cannot go back -- so it is reported rather than failed.
+        console.log(
+          '  -  the shelf holds none of that line; the claim was not exercised',
+        );
+      } else if (sent.status !== 201) {
+        console.log(`  x POST /purchasing/returns: HTTP ${sent.status}`);
+        failures += 1;
+      } else {
+        expectFields('POST /purchasing/returns', sent.json, [
+          'id',
+          'return_no',
+          'subtotal_net',
+          'tax_total',
+          'total_inclusive',
+          // What the SHELF gave up, which the costing method decides and which
+          // is a different figure from the claim whenever freight was added on
+          // delivery or a cheaper batch has been bought since.
+          'stock_value',
+          'variance',
+          'lines',
+        ]);
+
+        await check(
+          'GET /purchasing/returns/{id}',
+          `/purchasing/returns/${sent.json.id}?company_id=${CO}`,
+          ['id', 'return_no', 'lines', 'stock_value', 'variance'],
+        );
+
+        // A retry claims once AND says what it said. Matching ids is not the
+        // same as replaying.
+        const retry = await post(`/purchasing/returns?company_id=${CO}`, claim);
+        const same =
+          retry.status === 200 &&
+          retry.json?.return_no === sent.json.return_no &&
+          retry.json?.total_inclusive === sent.json.total_inclusive &&
+          retry.json?.already_returned === true;
+        if (same) {
+          console.log('  ok a retried return claims once and replays the whole claim');
+        } else {
+          console.log(
+            `  x a retried return came back ${retry.status} as ${retry.json?.return_no}`,
+          );
+          failures += 1;
+        }
+
+        // And what is left to send back has fallen by what went.
+        const after = await call(
+          `/purchasing/bills/${billForReturn.id}/returnable?company_id=${CO}`,
+        );
+        const nowLeft = (after.json?.data ?? []).find(
+          (l) => l.bill_line_id === line.bill_line_id,
+        );
+        if (Number(nowLeft?.qty_returnable) === Number(line.qty_returnable) - 1) {
+          console.log('  ok what may go back falls by what went back');
+        } else {
+          console.log(
+            `  x returnable went from ${line.qty_returnable} to ${nowLeft?.qty_returnable}`,
+          );
+          failures += 1;
+        }
+      }
+    }
+  }
 
     const ageing = await check(
       'GET /purchasing/ageing',

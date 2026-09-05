@@ -290,6 +290,7 @@ const PRIMARY_READ: Record<string, string> = {
   'supplier-payments': '/api/v1/purchasing/bills',
   requisitions: '/api/v1/purchasing/requisitions',
   rfqs: '/api/v1/purchasing/rfqs',
+  'purchase-returns': '/api/v1/purchasing/returns',
 };
 
 describe('a link that appears leads somewhere', () => {

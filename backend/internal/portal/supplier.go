@@ -79,13 +79,13 @@ func (s *Service) SupplierHome(
 
 		var outstanding, overdue decimal.Decimal
 		if e := tx.QueryRow(ctx, `
-			SELECT coalesce(sum(b.total_inclusive - b.amount_paid), 0),
-			       coalesce(sum(b.total_inclusive - b.amount_paid)
+			SELECT coalesce(sum(greatest(b.total_inclusive - b.amount_paid - b.amount_credited, 0)), 0),
+			       coalesce(sum(greatest(b.total_inclusive - b.amount_paid - b.amount_credited, 0))
 			                FILTER (WHERE b.due_date < current_date), 0)
 			FROM purchase_bill b
 			WHERE b.company_id = $1 AND b.supplier_id = $2
 			  AND b.status <> 'cancelled'
-			  AND b.total_inclusive > b.amount_paid`,
+			  AND b.total_inclusive > b.amount_paid + b.amount_credited`,
 			c.CompanyID, *c.SupplierID).Scan(&outstanding, &overdue); e != nil {
 			return e
 		}

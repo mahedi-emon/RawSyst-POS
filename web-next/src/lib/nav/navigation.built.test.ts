@@ -97,6 +97,8 @@ describe('the sidebar offers only what exists', () => {
       '/buying/requisitions/new', // an action on /buying/requisitions
       '/buying/quotes/[rfqID]', // a row on /buying/quotes
       '/buying/quotes/new', // an action on /buying/quotes and on an approved request
+      '/buying/returns/[returnID]', // a row on /buying/returns
+      '/buying/returns/new', // an action on /buying/returns
       '/stock/adjustments/[adjustmentID]', // a row on /stock/adjustments
       '/stock/adjustments/new', // an action on /stock/adjustments
       '/stock/counts/[countID]', // an open count, from /stock/adjustments

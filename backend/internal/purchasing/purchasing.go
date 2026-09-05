@@ -326,7 +326,7 @@ func (s *Service) ListSuppliers(
 			       s.payment_terms_days, coalesce(s.credit_limit::text,''),
 			       coalesce(s.notes,''), s.is_active,
 			       coalesce((
-			         SELECT sum(b.total_inclusive - b.amount_paid)
+			         SELECT sum(greatest(b.total_inclusive - b.amount_paid - b.amount_credited, 0))
 			         FROM purchase_bill b
 			         WHERE b.supplier_id = s.id
 			           AND b.status IN ('matched','blocked','approved')

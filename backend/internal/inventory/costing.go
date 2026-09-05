@@ -420,8 +420,13 @@ func CheckAvailability(
 	if policy == PolicyAllowWarn {
 		return nil
 	}
+	// Worded for whatever is taking the stock, not for a sale.
+	//
+	// A purchase return uses this too -- sending back goods the shelf does not
+	// hold is the same shortfall wearing a different hat -- and "than this sale
+	// needs" would have read as nonsense on a debit note screen.
 	return errs.Newf(errs.CodeConflict,
-		"There are %s fewer %s in stock than this sale needs. Count the shelf "+
-			"and adjust the stock, or ask an owner to allow selling below zero.",
+		"There are %s fewer %s in stock than this needs. Count the shelf and "+
+			"adjust the stock, or ask an owner to allow stock to go below zero.",
 		result.ShortBy.String(), description)
 }

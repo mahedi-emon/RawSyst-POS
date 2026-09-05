@@ -27,8 +27,8 @@ func (s *Service) readBill(
 		SELECT b.id, b.supplier_id, s.legal_name, b.supplier_ref, b.po_id,
 		       p.po_number, b.bill_date::text, b.due_date::text, b.currency,
 		       b.subtotal_net::text, b.tax_total::text, b.total_inclusive::text,
-		       b.amount_paid::text,
-		       (b.total_inclusive - b.amount_paid)::text,
+		       b.amount_paid::text, b.amount_credited::text,
+		       greatest(b.total_inclusive - b.amount_paid - b.amount_credited, 0)::text,
 		       b.status, b.journal_entry_id IS NOT NULL
 		FROM purchase_bill b
 		JOIN supplier s ON s.id = b.supplier_id
@@ -36,7 +36,8 @@ func (s *Service) readBill(
 		WHERE b.id = $1`, billID,
 	).Scan(&b.ID, &b.SupplierID, &b.Supplier, &b.SupplierRef, &poID, &poNumber,
 		&b.BillDate, &b.DueDate, &b.Currency, &b.SubtotalNet, &b.TaxTotal,
-		&b.Total, &b.AmountPaid, &b.Outstanding, &b.Status, &b.Posted); err != nil {
+		&b.Total, &b.AmountPaid, &b.AmountCredited, &b.Outstanding, &b.Status,
+		&b.Posted); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Bill{}, errs.New(errs.CodeNotFound, "That bill was not found.")
 		}
@@ -153,7 +154,8 @@ func (s *Service) ListBills(
 			       coalesce(p.po_number,''), b.bill_date::text, b.due_date::text,
 			       b.currency, b.subtotal_net::text, b.tax_total::text,
 			       b.total_inclusive::text, b.amount_paid::text,
-			       (b.total_inclusive - b.amount_paid)::text, b.status,
+			       b.amount_credited::text,
+			       greatest(b.total_inclusive - b.amount_paid - b.amount_credited, 0)::text, b.status,
 			       b.journal_entry_id IS NOT NULL
 			FROM purchase_bill b
 			JOIN supplier s ON s.id = b.supplier_id
@@ -171,7 +173,7 @@ func (s *Service) ListBills(
 			if e := rows.Scan(&b.ID, &b.SupplierID, &b.Supplier, &b.SupplierRef,
 				&b.PONumber, &b.BillDate, &b.DueDate, &b.Currency,
 				&b.SubtotalNet, &b.TaxTotal, &b.Total, &b.AmountPaid,
-				&b.Outstanding, &b.Status, &b.Posted); e != nil {
+				&b.AmountCredited, &b.Outstanding, &b.Status, &b.Posted); e != nil {
 				return e
 			}
 			out = append(out, b)
@@ -439,7 +441,8 @@ func (s *Service) PaySupplier(
 			var outstanding, billRate decimal.Decimal
 			var ref, status string
 			if e := tx.QueryRow(ctx, `
-				SELECT total_inclusive - amount_paid, supplier_ref, status,
+				SELECT greatest(total_inclusive - amount_paid - amount_credited, 0),
+				       supplier_ref, status,
 				       fx_rate
 				FROM purchase_bill
 				WHERE id = $1 AND company_id = $2 AND supplier_id = $3
@@ -489,7 +492,10 @@ func (s *Service) PaySupplier(
 			if e := tx.QueryRow(ctx, `
 				UPDATE purchase_bill
 				SET amount_paid = amount_paid + $2,
-				    status = CASE WHEN amount_paid + $2 >= total_inclusive
+				    -- Credits count too. A bill part-returned and then paid
+				    -- for the rest is settled, and one that ignored the
+				    -- credit would sit in the ageing report for ever.
+				    status = CASE WHEN amount_paid + amount_credited + $2 >= total_inclusive
 				                  THEN 'paid' ELSE status END
 				WHERE id = $1
 				RETURNING status`, a.BillID, a.Amount).Scan(&newStatus); e != nil {
@@ -618,7 +624,7 @@ func (s *Service) alreadyPaid(
 
 	rows, err := tx.Query(ctx, `
 		SELECT a.bill_id, b.supplier_ref, a.amount::text,
-		       (b.total_inclusive - b.amount_paid)::text, b.status
+		       greatest(b.total_inclusive - b.amount_paid - b.amount_credited, 0)::text, b.status
 		FROM supplier_payment_allocation a
 		JOIN purchase_bill b ON b.id = a.bill_id
 		WHERE a.payment_id = $1`, p.ID)

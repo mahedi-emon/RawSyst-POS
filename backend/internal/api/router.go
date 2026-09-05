@@ -701,6 +701,21 @@ func (s *Server) Routes() []Route {
 			s.handleApproveBill,
 			"separate from recording, so the person accepting a discrepancy need not be the one who entered it"},
 
+		// Goods going back (B5). Against the BILL, because a debit note has no
+		// meaning without the invoice it corrects -- goods refused at the door
+		// never entered stock and are already recorded as rejected on the
+		// receipt.
+		{http.MethodGet, "/api/v1/purchasing/bills/{billID}/returnable", AccessPermission, "purchasing.view",
+			s.handleBillReturnable,
+			"what is left to send back on each line, cumulative across every earlier return"},
+		{http.MethodGet, "/api/v1/purchasing/returns", AccessPermission, "purchasing.view",
+			s.handleListPurchaseReturns, ""},
+		{http.MethodPost, "/api/v1/purchasing/returns", AccessPermission, "purchasing.return_goods",
+			s.handleReturnGoods,
+			"takes the stock out, raises the debit note and reduces what is owed, in one transaction"},
+		{http.MethodGet, "/api/v1/purchasing/returns/{returnID}", AccessPermission, "purchasing.view",
+			s.handleReadPurchaseReturn, ""},
+
 		{http.MethodPost, "/api/v1/purchasing/payments", AccessPermission, "purchasing.pay_supplier",
 			s.handlePaySupplier, ""},
 		{http.MethodPost, "/api/v1/purchasing/payments/{paymentID}/reverse", AccessPermission, "purchasing.pay_supplier",

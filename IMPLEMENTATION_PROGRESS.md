@@ -280,10 +280,10 @@ marked N/A or mapped, rather than dropping them.)
 | B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | IN PROGRESS | The grid is built and verified live; generating a matrix is not |  |
 | B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | NOT STARTED | Plan-gated: label_studio. |
 | B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | NOT STARTED | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
-| B5 | Purchase & Procurement Management | FE-25 | /buying/orders | 31 /purchasing/* routes | purchasing.* | NOT STARTED |  |
-| B5.1 | RFQ | FE-25 | /buying/quotes | /purchasing/rfqs/* | purchasing.manage_rfq, purchasing.award_rfq | NOT STARTED |  |
-| B5.2 | Three-Way Matching | FE-25 | /buying/bills | /purchasing/bills/* | purchasing.approve_bill | NOT STARTED | PO ↔ receipt ↔ bill matching. |
-| B6 | Supplier Management | FE-25 | /buying/suppliers | /purchasing/suppliers | purchasing.manage_suppliers | NOT STARTED |  |
+| B5 | Purchase & Procurement Management | FE-25 | /buying/* | 35 /purchasing/* routes | purchasing.* | COMPLETE | §0.88–0.95 and §0.102. Purchase RETURN was missing from the backend entirely — built here: migration 0127, the service, three routes and a new permission. |
+| B5.1 | RFQ | FE-25 | /buying/quotes | /purchasing/rfqs/* | purchasing.manage_rfq, purchasing.award_rfq | COMPLETE | §0.95. The four-way split proved live. |
+| B5.2 | Three-Way Matching | FE-25 | /buying/bills | /purchasing/bills/* | purchasing.approve_bill | COMPLETE | §0.93. All four dimensions shown, including the ones that passed. |
+| B6 | Supplier Management | FE-25 | /buying/suppliers | /purchasing/suppliers | purchasing.manage_suppliers | COMPLETE | §0.88. Retiring one is refused while money is owed. |
 | B7 | Point of Sale (POS) & Billing | FE-13, FE-14, FE-41 | /pos | 12 /pos/* routes, /shifts | sales.create | COMPLETE | A real sale posted end to end: counter token, shift, catalogue snapshot, tax split, idempotent replay. |
 | B8 | Hardware Integration (Showroom Cash-Counter Reality) | — | /pos | — | — | BLOCKED | Cash drawer, pole display and scales need the desktop till. A browser cannot reach them; scanners work as keyboards and do. |
 | B9 | Promotions, Discounts & Pricing Engine | FE-42 | /promotions | /promotions/*, /promotions/quote | promotion.view / promotion.manage | NOT STARTED | Cart carries promotion_id so redemption is recorded; the quote call is not wired yet. |
@@ -1642,6 +1642,113 @@ a total and produced `NaN` on screen, and "there is nothing coming back, so
 this is a sale rather than an exchange" never fired at all. Every comparison
 now asks `greaterThan(0)`, and the file says why.
 
+### 0.102 Purchase returns — a Blueprint feature the backend did not have
+
+Blueprint B5: *"Purchase Return (to Supplier): for defective/excess stock —
+auto-generates a Debit Note and instantly deducts inventory."*
+
+**It did not exist.** Thirty-one purchasing routes and none of them sent
+anything back. The backend sweep's row for B5 says "returns" and means
+`reversing.go`, which reverses a PAYMENT — a different fact about a different
+thing. So this was not a frontend task at all: migration 0127, a service, three
+routes, a permission, and only then a screen.
+
+#### Where the answers came from, rather than from me
+
+Every decision has a precedent in the repository, which is how a module this
+close to money and stock can be added without inventing accounting.
+
+| question | the repo's own answer |
+|---|---|
+| Against a receipt or a bill? | 0014: *"A credit or debit note has no meaning without the invoice it corrects."* Goods refused at the door are already `grn_line.qty_rejected` and never entered stock. |
+| How does it post? | The mirror of `purchase.credit` (0025 rule 3), which separates input tax from inventory value because *"merging them overstates stock while understating the reclaim."* |
+| Where does the difference go? | `cost_variance` — the account 0025 rule 11 was written for and 0048 repaired. |
+| Can it be returned twice? | Cumulative per line, as 0019 does for a customer return, exposed as a view so the rule is queryable. |
+| Its own permission? | Yes. 0032 gives the Store Manager `receive_goods` and not `record_bill`; a return is a claim against a bill they cannot read. |
+
+#### Two figures, kept apart on purpose
+
+The **supplier** is claimed what they billed: their price, their tax rate. That
+is their document and what they will argue with.
+
+The **stock** leaves at what the valuation says those units were worth — the
+costing method's answer, which differs whenever freight was added on receipt or
+a cheaper batch has been bought since. The integration test found this
+immediately: a return of 3 × 100.00 claimed 300.00 and released 240.00, because
+FIFO sent back the older, cheaper layer.
+
+Forcing them together would mean either claiming the wrong amount or parting the
+stock report from the balance sheet, so both post as they are and the gap goes
+to variance. `TestAReturnBooksTheGapBetweenTheClaimAndTheCost` puts freight on a
+delivery, returns one unit, and asserts the trial balance is still zero — which
+is the assertion that proves the variance line carried it rather than nothing.
+
+#### 🔴 Two bugs of my own, both found by running it
+
+**The header could not be written.** `purchase_return` is immutable from the
+moment it exists — the stock has left the building, so there is no state in
+which the document is half-written and correctable. Inserting it and then
+filling in the totals is an UPDATE, and the trigger refused it. The id is now
+minted in Go and the header written once, complete; the stock movements carry
+that id in `source_id`, which has no foreign key and so can be written first.
+
+**A return from an empty shelf silently claimed the money.**
+`inventory.Consume` REPORTS a shortfall rather than refusing one, because
+whether stock may go below zero is the company's policy and not the stock
+package's business. Skipping `CheckAvailability` meant a return raised against a
+back room that had never held the item took nothing out, valued the goods at
+zero, and still claimed the full amount from the supplier — posting the whole
+claim to variance while reading, on screen, as a successful return.
+
+Found by driving one against a location with no stock. `CheckAvailability` was
+also reworded: it said *"than this sale needs"*, which had no production caller
+at all and would have read as nonsense on a debit note.
+
+#### 🔴 And a third, found by the verification suite
+
+`verify:api` failed after 0127 with **"A payment of nothing is not a payment"**,
+raised on a bill whose outstanding had gone below zero.
+
+0127's service reduced a bill by writing the claim into `amount_paid`, because
+that is the column payables subtracts from. It works arithmetically and it is
+wrong twice: it tells the supplier portal and the ageing report that goods taken
+back were paid for, and on a bill paid BEFORE the return it pushes
+`total - paid` negative, which the payment screen then offers as something to
+settle.
+
+Migration 0128 gives a credit a column of its own, moves whatever 0127 put in
+the wrong one, and floors what is owed at zero — because a supplier who has been
+paid and then handed goods back owes the shop money, which is a debit balance on
+the supplier rather than a negative payable on one invoice.
+
+#### Verified live
+
+```
+ok GET /purchasing/bills/{id}/returnable
+ok   returnable line
+ok a return with no reason on it is refused
+ok a return that does not say which shelf the goods left is refused
+ok more than the bill carried cannot be sent back
+ok POST /purchasing/returns
+ok GET /purchasing/returns/{id}
+ok a retried return claims once and replays the whole claim
+ok what may go back falls by what went back
+```
+
+And the boundary, with the seeded roles printed rather than assumed:
+
+```
+-  Store Manager:    receive=true  return=false bill=false
+-  Purchase Manager: receive=true  return=true  bill=true
+ok store manager:    GET  /purchasing/returns -> 200
+ok store manager:    POST /purchasing/returns -> 403
+ok purchase manager: POST /purchasing/returns -> 400, past the gate
+```
+
+Eight integration tests, including the trial-balance tie-out on both the
+ordinary case and the freight case, and the one that proves a paid bill cannot
+be owed backwards.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1666,8 +1773,12 @@ Sales returns and exchanges are done (§0.101), with three live defects fixed on
 the way — including one that stopped the till selling at all in a shop with two
 stock locations.
 
-Next: **purchase returns**, then complete accounting, manual journals,
-receivables and payables.
+Purchase returns are done (§0.102) — and were a backend gap, not a frontend
+one: the feature did not exist and was built, with two migrations and eight
+tests.
+
+Next: **complete accounting and manual journals**, then receivables, payables
+and the financial statements.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

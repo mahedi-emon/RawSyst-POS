@@ -609,6 +609,81 @@ console.log('\nTAKING GOODS BACK, AND SWAPPING THEM');
   }
 }
 
+// --- unloading a lorry is not deciding what the shop claims back ---------
+//
+// `purchasing.return_goods` is its own verb rather than part of
+// `receive_goods`. Taking a delivery in is a warehouse act; sending one back
+// reduces what the business owes and produces a document the supplier will
+// argue with, so it went to the Owner and the Purchase Manager and not to the
+// Store Manager — who holds `receive_goods` and not `record_bill`, and a return
+// is a claim against a bill they cannot read.
+
+console.log('\nSENDING GOODS BACK, WHICH IS NOT RECEIVING THEM');
+{
+  const keeperRole = roleNamed(/Inventory|Warehouse/);
+  const storeRole = roleNamed(/Branch|Store/);
+  const buyerRole = roleNamed(/Purchase Manager/);
+
+  const who = (re, label) => {
+    const role = roles.find((r) => re.test(r.name));
+    if (!role) return;
+    const p = new Set(role.permissions ?? []);
+    console.log(
+      `  -  ${label}: receive=${p.has('purchasing.receive_goods')}` +
+        ` return=${p.has('purchasing.return_goods')}` +
+        ` bill=${p.has('purchasing.record_bill')}`,
+    );
+  };
+  who(/Branch|Store/, 'Store Manager');
+  who(/Purchase Manager/, 'Purchase Manager');
+  who(/Inventory|Warehouse/, 'Inventory Keeper');
+
+  const storeman = await staff('storeman', storeRole ?? keeperRole);
+  const buyer2 = await staff('buyer-returns', buyerRole);
+
+  if (!storeman || !buyer2) {
+    console.log('  -  roles not seeded; the return boundary was not exercised');
+  } else {
+    const anyBill = (await owner('GET', q('/purchasing/bills'))).json?.data?.[0];
+
+    // Reading a claim is `purchasing.view`, which they have.
+    expect(
+      'store manager: GET /purchasing/returns',
+      (await storeman.call('GET', q('/purchasing/returns'))).status,
+      200,
+    );
+
+    // Raising one is not.
+    expect(
+      'store manager: POST /purchasing/returns',
+      (
+        await storeman.call('POST', q('/purchasing/returns'), {
+          uuid: crypto.randomUUID(),
+          bill_id: anyBill?.id ?? '00000000-0000-0000-0000-000000000000',
+          reason: 'verify:rbac',
+          lines: [],
+        })
+      ).status,
+      403,
+    );
+
+    // The buyer may. A 403 here would mean the permission reached nobody.
+    const buyerTry = await buyer2.call('POST', q('/purchasing/returns'), {
+      uuid: crypto.randomUUID(),
+      bill_id: anyBill?.id ?? '00000000-0000-0000-0000-000000000000',
+      reason: 'verify:rbac',
+      lines: [],
+    });
+    if (buyerTry.status === 403) {
+      bad('purchase manager: POST /purchasing/returns -> 403, and they hold the verb');
+    } else {
+      // 400 is the right answer to a claim with no lines on it, and it proves
+      // the request got past the permission check.
+      ok(`purchase manager: POST /purchasing/returns -> ${buyerTry.status}, past the gate`);
+    }
+  }
+}
+
 console.log(
   `\n${failures === 0 ? 'EVERY BOUNDARY HELD' : `${failures} BOUNDARIES DID NOT HOLD`}`,
 );

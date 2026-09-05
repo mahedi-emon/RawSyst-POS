@@ -80,6 +80,11 @@ type Bill struct {
 	TaxTotal    string     `json:"tax_total"`
 	Total       string     `json:"total_inclusive"`
 	AmountPaid  string     `json:"amount_paid"`
+	// What was claimed back on this bill. Beside `amount_paid` rather than
+	// folded into it: a credit is not a payment, and a supplier portal that
+	// showed them as one would tell a supplier they had been paid for goods
+	// they had taken back.
+	AmountCredited string `json:"amount_credited"`
 	Outstanding string     `json:"outstanding"`
 	Status      string     `json:"status"`
 

@@ -332,6 +332,18 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.buying.bills',
       },
       {
+        id: 'purchase-returns',
+        labelKey: 'nx.nav.biz.buying.returns',
+        href: '/buying/returns',
+        built: true,
+        // Reading a claim is `purchasing.view`; raising one is its own verb,
+        // checked on the action screen. Taking a delivery in is a warehouse
+        // act; sending one back reduces what the business owes and produces a
+        // document the supplier will argue with.
+        permissions: ['purchasing.view'],
+        descriptionKey: 'nx.navd.biz.buying.returns',
+      },
+      {
         id: 'supplier-payments',
         labelKey: 'nx.nav.biz.buying.supplier-payments',
         href: '/buying/payments',
