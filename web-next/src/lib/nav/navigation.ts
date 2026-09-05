@@ -178,13 +178,21 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'shifts',
         labelKey: 'nx.nav.biz.selling.shifts',
         href: '/shifts',
-        permissions: ['sales.receive_payment'],
+        built: true,
+        // `report.view`, not the till's own permission. This is the
+        // supervisor's register: it carries the expected figure and the
+        // variance beside it, and a cashier who can read those can make
+        // tonight's drawer agree with the screen -- which leaves every
+        // variance reading zero and defeats the blind close entirely. The
+        // cashier has the till itself; they do not need this.
+        permissions: ['report.view'],
         descriptionKey: 'nx.navd.biz.selling.shifts',
       },
       {
         id: 'promotions',
         labelKey: 'nx.nav.biz.selling.promotions',
         href: '/promotions',
+        built: true,
         permissions: ['promotion.view'],
         feature: 'promotions',
         descriptionKey: 'nx.navd.biz.selling.promotions',
@@ -409,6 +417,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'loyalty',
         labelKey: 'nx.nav.biz.customers.loyalty',
         href: '/customers/loyalty',
+        built: true,
         permissions: ['loyalty.view'],
         feature: 'loyalty',
         descriptionKey: 'nx.navd.biz.customers.loyalty',
@@ -417,6 +426,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'wallets',
         labelKey: 'nx.nav.biz.customers.wallets',
         href: '/customers/wallets',
+        built: true,
         permissions: ['wallet.view'],
         feature: 'loyalty',
         descriptionKey: 'nx.navd.biz.customers.wallets',

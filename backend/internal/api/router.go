@@ -608,6 +608,16 @@ func (s *Server) Routes() []Route {
 		// reason the POS block above gives.
 		{http.MethodPost, "/api/v1/shifts", AccessPermission, "sales.receive_payment",
 			s.handleOpenShift, ""},
+		// The supervisor's register, and the only way to reach a session that
+		// is not the one a till is currently in. `report.view` rather than
+		// `sales.receive_payment` for the same reason the X report is: it
+		// carries the expected figure and the variance, and a cashier who can
+		// read those can make tonight's drawer agree with the screen.
+		{http.MethodGet, "/api/v1/shifts", AccessPermission, "report.view",
+			s.handleListShifts,
+			"the shifts a supervisor reviews the morning after; without it a " +
+				"blind close's variance was reachable only from the till that " +
+				"produced it"},
 		{http.MethodGet, "/api/v1/shifts/current", AccessPermission, "sales.receive_payment",
 			s.handleCurrentShift,
 			"a till restarted mid-shift has to find the session it is already in; " +
@@ -1337,6 +1347,10 @@ func (s *Server) Routes() []Route {
 				"changed a liability on a Saturday would be a change nobody could " +
 				"attribute"},
 
+		{http.MethodGet, "/api/v1/wallets", AccessPermission, "wallet.view",
+			s.handleListWallets,
+			"every customer holding store credit and what it comes to; the " +
+				"liability whole, rather than one customer at a time"},
 		{http.MethodGet, "/api/v1/wallets/{customerID}", AccessPermission, "wallet.view",
 			s.handleGetWallet, ""},
 		{http.MethodPost, "/api/v1/wallets/{customerID}/credit", AccessPermission, "wallet.manage",

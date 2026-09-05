@@ -1182,6 +1182,78 @@ if (!branchReports) {
   );
 }
 
+// --- a cashier counts the drawer; they do not read the target ------------
+//
+// The blind close asks a cashier to count without being told what the system
+// expects, because the difference is the only signal it produces. A cashier who
+// can read the expected figure can make tonight's drawer agree with it, and
+// then every variance is zero and the practice means nothing.
+//
+// So the shift REGISTER and the X report are `report.view`, while the till
+// itself is `sales.receive_payment`. This is the boundary the whole design of
+// the close rests on.
+
+console.log('\nCOUNTING A DRAWER IS NOT READING THE TARGET');
+const tillHand = await staff('cashier-shifts', cashierRole);
+if (!tillHand) {
+  console.log('  -  no Cashier seeded; the blind-close boundary was not exercised');
+} else {
+  expect(
+    'cashier: GET /shifts',
+    (await tillHand.call('GET', q('/shifts'))).status,
+    403,
+  );
+}
+
+// --- what the shop owes is not what a shop assistant gives away ----------
+//
+// Store credit and points are liabilities. Reading them is `wallet.view` and
+// `loyalty.view`, which a Cashier holds because a customer at the counter asks
+// what is left on their card. Changing them is the `manage` half: putting
+// credit on a wallet is giving money away, and expiring points reduces a
+// liability somebody could later be asked to explain.
+//
+// The seed gives `manage` to the Owner, the Store Manager and Customer Service
+// — the people who actually settle a complaint — and withholds it from the
+// Cashier, the Sales Executive and the Online Manager. So the Cashier is the
+// case worth proving: they see the balance and cannot move it.
+
+console.log('\nREADING A BALANCE IS NOT GIVING CREDIT AWAY');
+const tillCredit = await staff('cashier-credit', cashierRole);
+const someCustomer = (await owner('GET', q('/customers'))).json?.data?.[0];
+if (!tillCredit || !someCustomer) {
+  console.log('  -  no Cashier or no customers; the credit boundary was not exercised');
+} else {
+  expect(
+    'cashier: GET /wallets/{id}',
+    (await tillCredit.call('GET', q(`/wallets/${someCustomer.id}`))).status,
+    200,
+  );
+  expect(
+    'cashier: POST /wallets/{id}/credit',
+    (await tillCredit.call('POST', q(`/wallets/${someCustomer.id}/credit`), {
+      amount: '10.00',
+      reason: 'verify:rbac',
+    })).status,
+    403,
+  );
+  expect(
+    'cashier: POST /loyalty/expire',
+    (await tillCredit.call('POST', q('/loyalty/expire'), {})).status,
+    403,
+  );
+  expect(
+    'cashier: POST /promotions',
+    (await tillCredit.call('POST', q('/promotions'), {
+      code: 'VERIFY',
+      name: 'verify:rbac',
+      kind: 'percentage',
+      value: '10',
+    })).status,
+    403,
+  );
+}
+
 await retireSeeded();
 
 console.log(

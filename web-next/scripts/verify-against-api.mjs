@@ -3154,6 +3154,139 @@ console.log('\nANALYTICS, SAVED REPORTS AND EXPORTS');
   }
 }
 
+console.log('\nTILLS, DISCOUNTS, POINTS AND CREDIT');
+{
+  const shifts = await check('GET /shifts', `/shifts?company_id=${CO}`, null);
+  const shift = shifts?.data?.[0];
+  if (shift) {
+    expectFields('  shift', shift, [
+      'id',
+      'session_no',
+      'state',
+      // Who and where, not just an id. A supervisor asks "who was on number
+      // two last night", never "what is my session id".
+      'store',
+      'device',
+      'opened_by',
+      'opened_at',
+      'opening_float',
+      'blind_close',
+    ]);
+
+    // On an OPEN session the counted, expected and variance figures must be
+    // absent rather than zero: a drawer nobody has counted is not a drawer
+    // counted at nothing, and a zero would send a supervisor to every till.
+    const open = (shifts.data ?? []).filter((s) => s.state === 'open');
+    const zeroed = open.filter(
+      (s) =>
+        'counted_cash' in s || 'expected_cash' in s || 'variance' in s,
+    );
+    if (open.length === 0) {
+      console.log('  -  no open session; the uncounted-drawer case was not exercised');
+    } else if (zeroed.length > 0) {
+      console.log('  x an open session reports a counted or expected figure');
+      failures += 1;
+    } else {
+      console.log(`  ok ${open.length} open sessions report nothing counted yet`);
+    }
+  } else {
+    console.log('  -  no shifts in the window; the shift shape was not exercised');
+  }
+
+  const promos = await check('GET /promotions', `/promotions?company_id=${CO}`, null);
+  if (promos?.data?.[0]) {
+    expectFields('  promotion', promos.data[0], [
+      'id',
+      'code',
+      'name',
+      'kind',
+      // The scope in WORDS. A list that made a reader join a category, a brand
+      // and a variant in their head to learn what a discount touches is a list
+      // nobody checks.
+      'applies_to',
+      'is_active',
+      // What it has cost, on the row: "is this campaign working" is asked
+      // while looking at the list.
+      'times_used',
+      'discount_given',
+      'sales_generated',
+    ]);
+  } else {
+    console.log('  -  no promotions; the promotion shape was not exercised');
+  }
+
+  const program = await check(
+    'GET /loyalty/program',
+    `/loyalty/program?company_id=${CO}`,
+    [
+      'is_active',
+      'spend_per_point',
+      'point_value',
+      'currency',
+      // Whether a scheme was set up AT ALL. A company with none is not a
+      // company whose scheme earns nothing, and a form of defaults would read
+      // as a scheme somebody configured.
+      'exists',
+      // What the shop owes in points, as money. The figure an owner asks about.
+      'owed',
+      'points_outstanding',
+    ],
+  );
+  if (program && !program.exists) {
+    const zeroed = ['spend_per_point', 'point_value'].filter(
+      (k) => String(program[k] ?? '').trim() !== '',
+    );
+    if (zeroed.length > 0) {
+      console.log(
+        `  x no scheme exists and yet ${zeroed.join(', ')} carry a rate`,
+      );
+      failures += 1;
+    } else {
+      console.log('  ok a company with no scheme reports no rates, not zeros');
+    }
+  }
+
+  const members = await check(
+    'GET /loyalty/members',
+    `/loyalty/members?company_id=${CO}`,
+    null,
+  );
+  if (members?.data?.[0]) {
+    expectFields('  loyalty member', members.data[0], [
+      'customer_id',
+      'customer',
+      'points',
+      'worth',
+      'lifetime_spend',
+      'visits',
+      'segment',
+    ]);
+  }
+
+  const wallets = await check('GET /wallets', `/wallets?company_id=${CO}`, null);
+  if (wallets?.data) {
+    if (wallets.data[0]) {
+      expectFields('  wallet', wallets.data[0], [
+        'customer_id',
+        'customer',
+        'balance',
+        'currency',
+      ]);
+    }
+    // Nobody with an empty wallet. A page of names with zero beside most of
+    // them is not a list of what is owed.
+    const empty = wallets.data.filter((w) => Number(w.balance) === 0);
+    if (empty.length > 0) {
+      console.log(`  x ${empty.length} wallets with nothing on them are listed`);
+      failures += 1;
+    } else {
+      console.log('  ok only wallets holding something are listed');
+    }
+  }
+
+  await check('GET /gift-cards', `/gift-cards?company_id=${CO}`, null);
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {

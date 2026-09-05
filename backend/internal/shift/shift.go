@@ -166,6 +166,113 @@ func (s *Service) Open(
 	return out, err
 }
 
+// Past is one closed or open session as a supervisor reads it afterwards.
+//
+// A different shape from Session, which is what a TILL holds: this one names
+// the store, the till and the people, because a supervisor reading the morning
+// after is asking "who was on number two last night", not "what is my session
+// id". The money is the frozen close figures, never recomputed — a later
+// correction to history must not silently change what was reconciled on the
+// night, which is why 0024 stores `expected_cash` rather than deriving it.
+type Past struct {
+	ID        uuid.UUID `json:"id"`
+	SessionNo int64     `json:"session_no"`
+	State     string    `json:"state"`
+
+	StoreID  uuid.UUID `json:"store_id"`
+	Store    string    `json:"store"`
+	DeviceID uuid.UUID `json:"device_id"`
+	Device   string    `json:"device"`
+	OpenedBy string    `json:"opened_by"`
+	ClosedBy string    `json:"closed_by,omitempty"`
+
+	OpenedAt string `json:"opened_at"`
+	ClosedAt string `json:"closed_at,omitempty"`
+
+	OpeningFloat string `json:"opening_float"`
+
+	// All three are absent on a session that is still open: there is nothing
+	// counted yet, and a zero would read as a drawer counted at nothing.
+	CountedCash  string `json:"counted_cash,omitempty"`
+	ExpectedCash string `json:"expected_cash,omitempty"`
+	Variance     string `json:"variance,omitempty"`
+
+	BlindClose bool `json:"blind_close"`
+}
+
+// Sessions lists the shifts a supervisor reviews.
+//
+// This is the only way to reach a session that is not the one a till is
+// currently in. `Current` needs a terminal-bound token and `Peek` needs an id,
+// so before this existed the variance on last night's drawer — the single
+// signal a blind close produces — was unreachable from anywhere but the till
+// that produced it, and only while it was still standing there.
+//
+// Ordered newest first and bounded, because the question is always about
+// recent shifts. `from` and `to` narrow it; a store narrows it further.
+func (s *Service) Sessions(
+	ctx context.Context, tenantID, companyID uuid.UUID,
+	storeID *uuid.UUID, from, to time.Time, limit int,
+) ([]Past, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	out := []Past{}
+	err := s.pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT c.id, c.session_no, c.state,
+			       c.store_id, s.name, c.device_id, coalesce(d.terminal_label, ''),
+			       coalesce(o.full_name, ''), coalesce(z.full_name, ''),
+			       to_char(c.opened_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'),
+			       coalesce(to_char(c.closed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:00'), ''),
+			       c.opening_float, c.counted_cash, c.expected_cash, c.variance,
+			       c.blind_close
+			FROM cash_session c
+			JOIN store s ON s.id = c.store_id
+			LEFT JOIN device d ON d.id = c.device_id
+			LEFT JOIN app_user o ON o.id = c.opened_by
+			LEFT JOIN app_user z ON z.id = c.closed_by
+			WHERE c.company_id = $1
+			  AND ($2::uuid IS NULL OR c.store_id = $2)
+			  AND c.opened_at >= $3::date
+			  AND c.opened_at < ($4::date + 1)
+			ORDER BY c.opened_at DESC
+			LIMIT $5`,
+			companyID, storeID, from, to, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var p Past
+			var counted, expected, variance *decimal.Decimal
+			if e := rows.Scan(&p.ID, &p.SessionNo, &p.State,
+				&p.StoreID, &p.Store, &p.DeviceID, &p.Device,
+				&p.OpenedBy, &p.ClosedBy, &p.OpenedAt, &p.ClosedAt,
+				&p.OpeningFloat, &counted, &expected, &variance,
+				&p.BlindClose); e != nil {
+				return e
+			}
+			// Left absent rather than zeroed on an open session. A drawer that
+			// has not been counted is not a drawer counted at nothing, and the
+			// difference decides whether a supervisor goes and looks.
+			if counted != nil {
+				p.CountedCash = counted.StringFixed(2)
+			}
+			if expected != nil {
+				p.ExpectedCash = expected.StringFixed(2)
+			}
+			if variance != nil {
+				p.Variance = variance.StringFixed(2)
+			}
+			out = append(out, p)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
 // Current returns the open session on a till, if there is one.
 func (s *Service) Current(
 	ctx context.Context, tenantID, deviceID uuid.UUID,

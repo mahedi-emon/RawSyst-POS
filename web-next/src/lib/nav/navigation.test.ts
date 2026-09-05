@@ -56,8 +56,17 @@ describe('an employee sees only what they can use', () => {
 
     expect(items).toContain('pos');
     expect(items).toContain('sales');
-    expect(items).toContain('shifts');
     expect(items).toContain('customers');
+
+    // NOT the shift register, which used to be listed here because the entry
+    // was gated on the till's own permission and pointed at a screen that did
+    // not exist. It exists now, and it carries the expected drawer figure and
+    // the variance beside it -- so it is `report.view`, like the X report and
+    // for the same reason: a cashier who can read what the system expects can
+    // make tonight's drawer agree with it, and then the variance reads zero on
+    // every shift and the blind close signals nothing. The cashier has the
+    // till itself; this is the supervisor's morning-after view.
+    expect(items).not.toContain('shifts');
 
     // Nothing about money, staff or buying. Not greyed out -- absent.
     expect(items).not.toContain('payroll');
@@ -306,6 +315,10 @@ const PRIMARY_READ: Record<string, string> = {
   compliance: '/api/v1/compliance',
   analytics: '/api/v1/analytics/kpis',
   saved: '/api/v1/reports/saved',
+  shifts: '/api/v1/shifts',
+  promotions: '/api/v1/promotions',
+  loyalty: '/api/v1/loyalty/program',
+  wallets: '/api/v1/wallets',
 };
 
 describe('a link that appears leads somewhere', () => {

@@ -61,6 +61,60 @@ func (s *Service) Wallet(
 	return out, err
 }
 
+// Wallets lists every customer holding store credit, and what it comes to.
+//
+// The only way to see the liability whole. `Wallet` answers for one customer at
+// a time, so before this existed the total the business owed in credit was
+// reachable only by asking about each customer in turn — and a shop with two
+// thousand customers could not ask at all.
+//
+// Customers with NOTHING on their wallet are left out. A list of every customer
+// with a zero beside most of them is not a list of what is owed, and the empty
+// rows are the ones nobody is looking for.
+func (s *Service) Wallets(
+	ctx context.Context, scope Scope,
+) ([]Wallet, error) {
+	out := []Wallet{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		var currency string
+		if e := tx.QueryRow(ctx,
+			`SELECT base_currency FROM company WHERE id = $1`,
+			scope.CompanyID).Scan(&currency); e != nil {
+			return e
+		}
+
+		rows, e := tx.Query(ctx, `
+			SELECT c.id, c.name, sum(e.amount)
+			FROM store_credit_entry e
+			JOIN customer c ON c.id = e.customer_id
+			WHERE e.customer_id IS NOT NULL AND c.company_id = $1
+			GROUP BY c.id, c.name
+			HAVING sum(e.amount) <> 0
+			ORDER BY sum(e.amount) DESC, c.name`, scope.CompanyID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var w Wallet
+			var balance decimal.Decimal
+			if e := rows.Scan(&w.CustomerID, &w.Customer, &balance); e != nil {
+				return e
+			}
+			w.Balance = balance.StringFixed(2)
+			w.Currency = currency
+			// The entries are deliberately not loaded. A list of two thousand
+			// wallets carrying every movement each has ever had is a payload
+			// nobody reads and a query nobody can afford; the one-customer
+			// route is where a history is asked for.
+			out = append(out, w)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
 // Give puts credit on a customer's wallet without money changing hands.
 //
 // A goodwill gesture, or a refund the customer chose to take as credit. It
