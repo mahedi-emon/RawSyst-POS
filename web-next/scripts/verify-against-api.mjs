@@ -3698,6 +3698,111 @@ console.log('\nPLATFORM (as an operator)');
       console.log('  -  the sub-processor register is empty; the row shape was not exercised');
     }
 
+    // --- the regulatory registry, and the three screens over it ---
+
+    const rules = await check('GET /platform/rules', '/platform/rules', null);
+    if (rules?.data?.[0]) {
+      expectFields('  rule', rules.data[0], [
+        'id',
+        'rule_key',
+        'country',
+        'payload',
+        'effective_from',
+        'verified',
+        'release_blocker',
+      ]);
+      // The screen leads with the markets that cannot take a new client, which
+      // is release_blocker AND NOT verified -- not either one alone. A verified
+      // blocker blocks nothing, and an unverified ordinary rule blocks nothing.
+      const blocking = rules.data.filter((r) => r.release_blocker && !r.verified);
+      const markets = [...new Set(blocking.map((r) => r.country))];
+      console.log(
+        `  ok ${blocking.length} unchecked blockers across ${markets.length} market(s)`,
+      );
+    } else {
+      console.log('  -  the registry is empty; the rule shape was not exercised');
+    }
+
+    // A country is REQUIRED, and the screen renders the unchosen state
+    // differently from an empty one because of this. If the route ever starts
+    // answering every country, that distinction becomes a lie.
+    {
+      const none = (await call('/platform/jurisdictions')).json;
+      if ((none?.data ?? []).length !== 0) {
+        console.log(
+          '  -  /platform/jurisdictions now answers without a country; the screen still asks for one',
+        );
+      } else {
+        console.log('  ok jurisdictions answer nothing until a country is named');
+      }
+      const us = (await call('/platform/jurisdictions?country=us')).json;
+      if (us?.data?.[0]) {
+        expectFields('  jurisdiction', us.data[0], ['id', 'country', 'level', 'code', 'name']);
+      } else {
+        console.log('  -  no jurisdictions on file for us; the row shape was not exercised');
+      }
+    }
+
+    const batches = await check(
+      'GET /platform/jurisdictions/rates',
+      '/platform/jurisdictions/rates',
+      null,
+    );
+    if (batches?.data?.[0]) {
+      // The four fields that NAME a schedule. There is no batch id, so every
+      // action the screen offers sends these back; if one stopped arriving,
+      // review, activation and sign-off would all silently address nothing.
+      expectFields('  rate schedule', batches.data[0], [
+        'country',
+        'source_authority',
+        'source_document',
+        'treatment',
+        'effective_from',
+        'rates',
+        'reviewed',
+        'verified',
+        'status',
+      ]);
+    } else {
+      console.log('  -  no rate schedules imported; the batch shape was not exercised');
+    }
+
+    // --- what a client pays, and what their plan lets them do ---
+
+    if (firstTenant?.id) {
+      const sub = (
+        await call(`/platform/tenants/${firstTenant.id}/subscription`)
+      ).json;
+      expectFields('  subscription', sub?.subscription, [
+        'tier',
+        'cycle',
+        'price',
+        'currency',
+        'status',
+        'outstanding',
+        'limits',
+      ]);
+      // Ceilings AND the live counts, together. The screen renders a ceiling
+      // against what is in use, because "why can this client not add another
+      // till" is the question an operator opens it to answer.
+      expectFields('  allowances', sub?.subscription?.limits, [
+        'max_companies',
+        'max_stores',
+        'max_users',
+        'max_terminals',
+        'companies',
+        'stores',
+        'users',
+        'terminals',
+      ]);
+      // Money as a string. A price rendered through a float is how a bill for
+      // 0.30000000000000004 gets sent to a client.
+      if (typeof sub?.subscription?.price !== 'string') {
+        console.log('  x subscription price is not a string');
+        failures += 1;
+      }
+    }
+
     const jobs = await check('GET /platform/jobs/failed', '/platform/jobs/failed', null);
     if (jobs?.data?.[0]) {
       expectFields('  failed job', jobs.data[0], [

@@ -75,12 +75,17 @@ const PROPER_NOUNS =
  * sentence telling somebody to press "প্রবেশ" is telling them to press a key
  * that is not on their keyboard.
  *
+ * JSON is here for the reason PNG and SVG are allow-listed by key below: it is
+ * a data format, it is written JSON in Arabic and in Bangla, and an operator
+ * being told to type a value in a transliterated format name would be told
+ * about a format that does not exist.
+ *
  * Phrases rather than single words where the single word is ordinary English:
  * stripping "Code" or "Data" on its own would let a genuinely untranslated
  * sentence containing either hide behind this list forever.
  */
 const TECHNICAL_NAMES =
-  /Code 128|Data Matrix|EAN-13|EAN-8|EAN|UPC-A|UPC|IMEI|HTTPS|https|HTTP|Enter|Esc|GOSI|IBAN/g;
+  /Code 128|Data Matrix|EAN-13|EAN-8|EAN|UPC-A|UPC|IMEI|HTTPS|https|HTTP|Enter|Esc|GOSI|IBAN|JSON/g;
 
 describe('the string catalogue', () => {
   it('says everything in both languages', () => {
