@@ -106,9 +106,21 @@ const q = (p) => `${p}${p.includes('?') ? '&' : '?'}company_id=${CO}`;
 const roles = (await owner('GET', q('/people/roles'))).json?.data ?? [];
 const roleNamed = (re) => roles.find((r) => re.test(r.name));
 
-/** Creates a member of staff and signs in as them with the password issued. */
+/**
+ * Creates a member of staff and signs in as them with the password issued.
+ *
+ * Says WHY when it cannot. Every caller used to print "no such role seeded" on
+ * a null, and that sentence was wrong the day this database reached its plan's
+ * seat limit: the roles were all there, the accounts could not be made, and
+ * five boundaries silently stopped being checked while the run still ended
+ * "EVERY BOUNDARY HELD". A verification that quietly stops verifying is worse
+ * than one that fails.
+ */
 async function staff(label, role) {
-  if (!role) return null;
+  if (!role) {
+    console.log(`  -  no role matching ${label}; that boundary was not exercised`);
+    return null;
+  }
   const email = `verify-${label}-${Date.now()}@example.test`;
   const made = await owner('POST', q('/people'), {
     email,
@@ -116,9 +128,48 @@ async function staff(label, role) {
     role_id: role.id,
     company_id: CO,
   });
-  if (made.status !== 201 && made.status !== 200) return null;
+  if (made.status !== 201 && made.status !== 200) {
+    bad(
+      `could not create the ${role.name} used to test ${label}: ` +
+        `${made.status} ${made.json?.error?.message ?? ''}`.trim(),
+    );
+    return null;
+  }
   const signed = await login({ email, password: made.json.data.temporary_password });
-  return signed?.access_token ? { call: client(signed.access_token), email } : null;
+  if (!signed?.access_token) {
+    bad(`created the ${role.name} for ${label} but could not sign in as them`);
+    return null;
+  }
+  // Remembered so the run can put them back at the end. Nothing here deletes a
+  // person -- their name would be on whatever they touched -- but a disabled
+  // account does not hold a seat, and sixty-five of these had accumulated
+  // before anybody noticed the dev database was one account away from refusing
+  // to create any more.
+  // The account is under `person`, beside the one-time password.
+  seeded.push(made.json.data.person?.id);
+  return { call: client(signed.access_token), email };
+}
+
+/** Every throwaway account this run created, so the run can retire them. */
+const seeded = [];
+
+/**
+ * Disables everybody this run created.
+ *
+ * Called at the end, whatever happened. A verification tool that leaves a
+ * business one seat smaller every time it runs stops being usable on the
+ * database people actually develop against -- and the failure, when it comes,
+ * looks like the roles having disappeared rather than like a leak.
+ */
+async function retireSeeded() {
+  if (seeded.length === 0) return;
+  let retired = 0;
+  for (const id of seeded) {
+    if (!id) continue;
+    const off = await owner('POST', q(`/people/${id}/active`), { active: false });
+    if (off.status === 200 || off.status === 204) retired += 1;
+  }
+  console.log(`  -  retired ${retired} of the ${seeded.length} accounts this run created`);
 }
 
 // --- a cashier reaches the till and nothing else -------------------------
@@ -745,6 +796,127 @@ if (!auditor || !accountant) {
     ok(`accountant: POST /accounting/journals -> ${theirs.status}, past the gate`);
   }
 }
+
+// --- A6.2: rostering a branch is not learning what it is paid -----------
+//
+// A Store Manager holds `hr.view` and `hr.manage` and NOT `hr.view_pay`. They
+// roster their branch, record who was in, grant a day off — and never see a
+// salary. A6.2 puts it as staff being blockable from "other employees'
+// salaries", and the seed is deliberate: the Store Manager row in 0091 carries
+// two HR permissions and stops.
+//
+// What makes this worth proving on a live server rather than trusting: the
+// boundary is enforced by OMITTING the pay fields from the payload, not by a
+// screen choosing not to render them. A regression would not 500 and would not
+// 403. It would quietly start sending every salary in the business to somebody
+// who may not see one, and every screen would carry on working.
+//
+// So this asserts absence, field by field, on a payload that came back 200.
+
+console.log('\nROSTERING A BRANCH IS NOT SEEING WHAT IT PAYS');
+const manager = await staff('storemgr', roleNamed(/Store Manager/));
+const hr = await staff('hr', roleNamed(/HR Manager/));
+
+if (!manager) {
+  console.log('  -  no Store Manager role seeded; the pay boundary was not exercised');
+} else {
+  // The directory is theirs: they cannot roster people they cannot see.
+  const directory = await manager.call('GET', q('/employees'));
+  expect('store manager: GET /employees', directory.status, 200);
+
+  const rows = directory.json?.data ?? [];
+  if (rows.length === 0) {
+    console.log('  -  nobody is employed; the omitted-pay check had no row to read');
+  } else {
+    const PAY = [
+      'basic_salary',
+      'housing_allowance',
+      'transport_allowance',
+      'other_allowance',
+    ];
+    const leaked = [];
+    for (const row of rows) {
+      for (const field of PAY) {
+        // `in`, not a truthiness test. A salary of "0.00" is a real answer for
+        // a commission-only salesperson, and it must be absent here rather
+        // than present and zero — a zero would be believed.
+        if (field in row) leaked.push(`${row.full_name}.${field}`);
+      }
+    }
+    if (leaked.length > 0) {
+      bad(
+        `store manager sees pay they may not: ${leaked.slice(0, 4).join(', ')}` +
+          (leaked.length > 4 ? ` and ${leaked.length - 4} more` : ''),
+      );
+    } else {
+      ok(`store manager: no pay field on any of ${rows.length} staff records`);
+    }
+
+    // One record, the same rule. The screen reads this route too.
+    const one = await manager.call('GET', q(`/employees/${rows[0].id}`));
+    expect('store manager: GET /employees/{id}', one.status, 200);
+    if (one.status === 200 && 'basic_salary' in (one.json ?? {})) {
+      bad('store manager: reading one employee returns their salary');
+    } else if (one.status === 200) {
+      ok('store manager: one employee, still no salary');
+    }
+  }
+
+  // Rostering IS theirs. A boundary that also took away the job would be a
+  // different bug, so the permitted side is proved as well as the refused one.
+  expect('store manager: GET /attendance', (await manager.call('GET', q('/attendance'))).status, 200);
+  expect('store manager: GET /leave', (await manager.call('GET', q('/leave'))).status, 200);
+
+  // Money is not. Advances are behind hr.view_pay and payroll behind its own.
+  expect('store manager: GET /advances', (await manager.call('GET', q('/advances'))).status, 403);
+  expect('store manager: GET /payroll', (await manager.call('GET', q('/payroll'))).status, 403);
+  expect('store manager: GET /eosb', (await manager.call('GET', q('/eosb'))).status, 403);
+}
+
+if (!hr) {
+  console.log('  -  no HR Manager role seeded; the other side was not exercised');
+} else {
+  // The same route, a caller who may. Proving the omission is the PERMISSION
+  // and not the route having quietly stopped sending pay at all.
+  const theirs = await hr.call('GET', q('/employees'));
+  expect('hr manager: GET /employees', theirs.status, 200);
+  const row = theirs.json?.data?.[0];
+  if (!row) {
+    console.log('  -  nobody is employed; the visible-pay check had no row to read');
+  } else if ('basic_salary' in row) {
+    ok('hr manager: the same route carries pay for somebody holding hr.view_pay');
+  } else {
+    bad('hr manager holds hr.view_pay and got no pay fields; the route may have stopped sending them');
+  }
+
+  // C6 splits preparing from approving, and the seed gives HR the first only:
+  // computing a month is a calculation, committing the business to those
+  // figures is somebody else's signature.
+  expect('hr manager: GET /payroll', (await hr.call('GET', q('/payroll'))).status, 200);
+  let runs = (await hr.call('GET', q('/payroll'))).json?.data ?? [];
+  let draft = runs.find((r) => r.status === 'draft');
+  if (!draft) {
+    // Compute one to try approving. This script already seeds staff and awards
+    // an RFQ; a draft payroll posts nothing, which is the whole point of it
+    // being a draft, so it is the cheapest thing here to create.
+    const back = new Date();
+    back.setMonth(back.getMonth() - 3);
+    const period = `${back.getFullYear()}-${String(back.getMonth() + 1).padStart(2, '0')}`;
+    const made = await owner('POST', q('/payroll'), { period });
+    if (made.status === 201) draft = made.json;
+  }
+  if (draft) {
+    expect(
+      'hr manager: POST /payroll/{id}/approve',
+      (await hr.call('POST', q(`/payroll/${draft.id}/approve`), {})).status,
+      403,
+    );
+  } else {
+    console.log('  -  no draft run to try approving; the approval split was not exercised');
+  }
+}
+
+await retireSeeded();
 
 console.log(
   `\n${failures === 0 ? 'EVERY BOUNDARY HELD' : `${failures} BOUNDARIES DID NOT HOLD`}`,

@@ -114,6 +114,11 @@ describe('the sidebar offers only what exists', () => {
       '/money/reconcile/[statementID]', // a row on /money/reconcile
       '/money/journals/[journalID]', // a row on /money/journals
       '/money/journals/new', // an action on /money/journals
+      '/people/employees/[employeeID]', // a row on /people/employees, and a
+      // name in the expiry alert above it
+      '/people/employees/new', // an action on /people/employees
+      '/people/payroll/[runID]', // a row on /people/payroll, and where
+      // preparing a month lands
     ]);
 
     const orphans = [...ROUTES].filter(

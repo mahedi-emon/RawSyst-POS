@@ -4628,3 +4628,131 @@ Two optional internal screens, not blockers: the tax-schedule register
 (`GET /platform/jurisdictions/rates`, showing imported/reviewed/verified/active)
 and the regulatory registry, where EOSB can be verified when somebody qualified
 has read the Labour Law.
+
+# C5 / C6 — Employees, attendance, leave and payroll: COMPLETE
+
+Modules 10 and 11 of the ordered list. The backend for both had existed since
+0091; neither had a screen, and building the screens is what found that two of
+its routes had never worked.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend fix + frontend) |
+| **Screens** | `/people/employees`, `/people/employees/new`, `/people/employees/[employeeID]`, `/people/attendance`, `/people/payroll`, `/people/payroll/[runID]` |
+| **Migration** | `0129_a_day_not_worked_is_pay_not_earned.sql` |
+| **Permissions** | `hr.view`, `hr.manage`, `hr.view_pay`, `payroll.view`, `payroll.run`, `payroll.approve` — all **existing** |
+| **New account** | `2630 Staff Deductions Payable` → role `staff_deductions`, added to the provisioning chart and backfilled |
+| **i18n** | 210 keys × en/ar/bn |
+| **Tests** | 3 backend (absence), 3 backend (expiry), 39 frontend unit |
+
+## A month with an absence in it could not be approved
+
+Found by running a real month against the running server, not by reading source.
+
+`payroll.accrue` version 1 debited the gross and credited social insurance, the
+advance recovery and the net. A payslip has **five** deductions, not three:
+`absence_deduction` and `other_deduction` are subtracted to reach that net as
+well. So the entry was short by exactly their sum:
+
+    POST /payroll/{id}/approve -> 500
+    "This entry does not balance: debits total 16532.26 against credits
+     of 16370.97, a difference of 161.29."
+
+161.29 was one employee's one absent day. Mark anybody away for a single day and
+the month could not be booked, could not be paid, and had no way forward but
+deleting attendance that had been recorded correctly.
+
+Every existing payroll test pays people who were never away, which is why this
+stood. `TestAMonthWithAnAbsenceInItCanBeApproved` was proven to fail against the
+old rule — version 2 was expired in the database and the test reproduced the
+same 500, with the difference equal to the absence.
+
+### The two figures are not the same kind of thing
+
+A day not worked is pay that was never **earned**. Nobody is owed it and nobody
+holds it, so it credits the wage expense — the same account the gross debits.
+The net charge is then what staff actually earned, and both figures stay on the
+entry, so the payroll register still reconciles to the ledger line by line.
+Debiting a smaller number would have balanced equally well and lost the absence.
+
+`other_deduction` is the opposite: money the employee **earned** that the
+business keeps back. It is a liability, and 2630 was created for it. Nothing
+populates that field yet; it got a rule line anyway, because the day something
+does, the failure would be this same unbalanced entry again.
+
+The rule was **superseded, not edited** — 0015 forbids editing a posting rule,
+because an entry posted last March must stay explainable by the rule that made
+it.
+
+## `GET /employees/expiring` had never once answered
+
+C5 names an Iqama and ID expiry alert. The route was 500 on every call it had
+ever received: `current_date + ($2 || ' days')::interval` with `$2` bound as an
+int, which Postgres cannot plan. Nothing caught it because nothing called it —
+no screen, so no test and no person. Fixed to `make_interval(days => $2)` and
+covered by three tests, the first proven to fail on the old query.
+
+## The pay boundary is absence, not zero
+
+A6.2 requires staff to be blockable from "other employees' salaries", and the
+seeded Store Manager holds `hr.view` and `hr.manage` and **not** `hr.view_pay`:
+they roster their branch without learning what it is paid.
+
+The server enforces it by **omitting** the pay fields. That distinction is the
+whole design: a regression here would not 500 and would not 403 — it would
+quietly start sending every salary to somebody who may not see one, while every
+screen carried on working. So `verify:rbac` now asserts absence field by field
+on a 200 payload, and asserts the same route carries pay for an HR Manager, so
+the omission is proved to be the permission rather than the route having
+stopped sending pay at all.
+
+The frontend mirrors it in `maySeePay`, which asks whether the field **arrived**
+and never whether it is non-zero — a commission-only salesperson genuinely earns
+a basic of nothing, and must read as `0.00` to somebody entitled to see it and
+as nothing at all to somebody who is not. The salary column disappears rather
+than filling with dashes, and the hire form does not draw pay boxes it would
+then discard.
+
+## Nothing regulatory is invented
+
+* Social insurance rates come from `SA.GOSI.RATES`, resolved **at the period**
+  so re-running an old month gives the historically correct figure.
+* A run that could not compute it reports `gosi_unavailable` with the server's
+  own reason. The screen leads with that warning; showing `0.00` would state a
+  liability of nil for the month.
+* `totalCost` returns null rather than adding a zero, for the same reason.
+* End-of-service refuses on `SA.EOSB.ENTITLEMENT` still being a placeholder.
+* The wage file refuses while the Mudad layout is unverified. The button is
+  still offered, because everything around the file — every employee has an
+  IBAN, a social insurance number, an ID — is checked and worth checking; what
+  comes back is shown in the server's words.
+
+## Three smaller things the same pass found
+
+* **`Number('')` is 0, not NaN.** Caught by two of my own failing tests. Every
+  blank money field would have read as a genuine zero — the same trap as
+  `decimal.js` reporting zero as positive. `numberOf` returns null for blank.
+* **"has no a GOSI registration number".** The wage-file refusal supplied "no"
+  and each item supplied its own article. Shown to a payroll clerk, so it has to
+  read like English.
+* **`verify:rbac` leaked an account per role per run.** Sixty-five had
+  accumulated and the dev tenant was one account from its 75-seat plan limit.
+  Worse, `staff()` returned null on any failure and every caller printed "no
+  such role seeded" — five boundaries had silently stopped being checked while
+  the run still ended "EVERY BOUNDARY HELD". It now says why it could not seed,
+  and retires its own accounts at the end of the run.
+
+## Verified live
+
+    ALL SCREEN CONTRACTS VERIFIED     (verify:api, incl. a payslip that adds up)
+    EVERY BOUNDARY HELD               (verify:rbac, incl. the hr.view_pay split)
+    contract up to date: 468 routes, 110 permissions (103 route-gated)
+    957 internal/api tests, and every other backend package: green
+    277 web-next tests, 482 shared tests: green
+
+## Remaining
+
+`bonus` and `other_deduction` are computed as zero by every path today: nothing
+writes to them. The columns, the payslip lines and now the posting rule all
+carry them, so whatever populates them lands in a ledger that already balances.
+Recorded as unused rather than removed.

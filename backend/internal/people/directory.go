@@ -329,7 +329,12 @@ func (s *Service) ExpiringDocuments(
 		rows, e := tx.Query(ctx, employeeSelect+`
 			WHERE e.company_id = $1 AND e.status <> 'left'
 			  AND e.id_expires_on IS NOT NULL
-			  AND e.id_expires_on <= current_date + ($2 || ' days')::interval
+			  -- make_interval, not string concatenation. The parameter is an
+			  -- int and Postgres has no integer-append-text operator, so the
+			  -- old expression made this route answer 500 on every call it
+			  -- ever received. Nothing caught it because nothing called it:
+			  -- the alert it feeds had no screen until now.
+			  AND e.id_expires_on <= current_date + make_interval(days => $2)
 			ORDER BY e.id_expires_on`, scope.CompanyID, days)
 		if e != nil {
 			return e

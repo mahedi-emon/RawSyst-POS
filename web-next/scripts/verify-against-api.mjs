@@ -2441,6 +2441,237 @@ console.log('\nPLATFORM (hidden from a business owner, which is correct)');
   }
 }
 
+console.log('\nSTAFF, ATTENDANCE AND PAYROLL');
+{
+  const staff = await check('GET /employees', `/employees?company_id=${CO}`, null);
+  const person = staff?.data?.[0];
+  if (person) {
+    expectFields('  employee', person, [
+      'id',
+      'employee_no',
+      'full_name',
+      'joined_on',
+      'status',
+      // C5's alert, DERIVED on the server. A screen that recomputed it from
+      // the date would be a second answer that can disagree with the one the
+      // /employees/expiring route gives.
+      'id_expiring_soon',
+      'id_expired',
+      'is_saudi',
+      'commission_eligible',
+    ]);
+
+    // The pay fields are omitted for a caller without hr.view_pay, so they are
+    // checked only where they arrived at all. The owner holds it, so their
+    // absence here would mean the route stopped sending them.
+    if ('basic_salary' in person) {
+      expectFields('  employee pay', person, [
+        'basic_salary',
+        'housing_allowance',
+        'transport_allowance',
+        'other_allowance',
+        'currency',
+      ]);
+    } else {
+      console.log('  x the owner holds hr.view_pay and got no pay fields');
+      failures += 1;
+    }
+
+    await check(
+      'GET /employees/{id}',
+      `/employees/${person.id}?company_id=${CO}`,
+      ['id', 'employee_no', 'full_name', 'status'],
+    );
+  } else {
+    console.log('  -  nobody is employed; the employee shape was not exercised');
+  }
+
+  // The route that answered 500 on every call it ever received, because
+  // nothing had a screen to call it from.
+  const expiring = await check(
+    'GET /employees/expiring',
+    `/employees/expiring?company_id=${CO}&days=60`,
+    null,
+  );
+  if (expiring?.data?.[0]) {
+    expectFields('  expiring document', expiring.data[0], [
+      'id',
+      'full_name',
+      'id_expires_on',
+      'id_expiring_soon',
+      'id_expired',
+    ]);
+  } else {
+    console.log('  -  no document is close to expiry; the alert row was not exercised');
+  }
+
+  const month = new Date();
+  const first = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-01`;
+  const attendance = await check(
+    'GET /attendance',
+    `/attendance?company_id=${CO}&from=${first}`,
+    null,
+  );
+  if (attendance?.data?.[0]) {
+    expectFields('  attendance day', attendance.data[0], [
+      'id',
+      'employee_id',
+      'on_date',
+      'status',
+      'hours_worked',
+      'overtime_hours',
+      'late_minutes',
+    ]);
+  } else {
+    console.log('  -  no attendance this month; the day shape was not exercised');
+  }
+
+  const leave = await check('GET /leave', `/leave?company_id=${CO}`, null);
+  if (leave?.data?.[0]) {
+    expectFields('  leave request', leave.data[0], [
+      'id',
+      'employee_id',
+      'kind',
+      'is_paid',
+      'starts_on',
+      'ends_on',
+      'days',
+      'status',
+    ]);
+  } else {
+    console.log('  -  nobody has asked for leave; the request shape was not exercised');
+  }
+
+  const advances = await check('GET /advances', `/advances?company_id=${CO}`, null);
+  if (advances?.data?.[0]) {
+    expectFields('  advance', advances.data[0], [
+      'id',
+      'advance_no',
+      'employee_id',
+      'amount',
+      // What is still owed, which is the figure the screen shows. The amount
+      // lent stops being the answer the moment one instalment is recovered.
+      'outstanding',
+      'installments',
+      'currency',
+      'issued_on',
+    ]);
+  } else {
+    console.log('  -  nothing has been advanced; the advance shape was not exercised');
+  }
+
+  const runs = await check('GET /payroll', `/payroll?company_id=${CO}`, null);
+  const run = runs?.data?.[0];
+  if (run) {
+    expectFields('  payroll run', run, [
+      'id',
+      'run_no',
+      'period',
+      'status',
+      'currency',
+      'gross_total',
+      'deduction_total',
+      'net_total',
+      // The employer's own contribution, which is never deducted from anybody
+      // and which the cost figure on the screen is built from.
+      'employer_gosi',
+    ]);
+
+    const one = await check(
+      'GET /payroll/{id}',
+      `/payroll/${run.id}?company_id=${CO}`,
+      ['id', 'run_no', 'period', 'status', 'gross_total', 'net_total'],
+    );
+    const slip = one?.payslips?.[0];
+    if (slip) {
+      expectFields('  payslip', slip, [
+        'id',
+        'employee_id',
+        'employee',
+        'basic',
+        'housing',
+        'transport',
+        'other_allowance',
+        'overtime',
+        'commission',
+        'bonus',
+        'gross',
+        // All four deductions. The accrual rule left two of them out of its
+        // posting and a month with an absence could not be approved at all;
+        // a payslip missing one is the same omission the other way round.
+        'absence_deduction',
+        'gosi_employee',
+        'advance_recovery',
+        'other_deduction',
+        'deductions',
+        'net',
+        'gosi_employer',
+      ]);
+
+      // The payslip has to add up, or the screen is showing a total that
+      // disagrees with the lines above it.
+      const money = (v) => Math.round(Number(v) * 100);
+      const earnings =
+        money(slip.basic) +
+        money(slip.housing) +
+        money(slip.transport) +
+        money(slip.other_allowance) +
+        money(slip.overtime) +
+        money(slip.commission) +
+        money(slip.bonus);
+      const taken =
+        money(slip.absence_deduction) +
+        money(slip.gosi_employee) +
+        money(slip.advance_recovery) +
+        money(slip.other_deduction);
+      if (earnings !== money(slip.gross)) {
+        console.log(
+          `  x the payslip's earnings come to ${earnings / 100} against a gross of ${slip.gross}`,
+        );
+        failures += 1;
+      } else if (taken !== money(slip.deductions)) {
+        console.log(
+          `  x the payslip's deductions come to ${taken / 100} against a stated ${slip.deductions}`,
+        );
+        failures += 1;
+      } else if (money(slip.gross) - taken !== money(slip.net)) {
+        console.log(
+          `  x the payslip nets to ${(money(slip.gross) - taken) / 100} against a stated ${slip.net}`,
+        );
+        failures += 1;
+      } else {
+        console.log('  ok the payslip adds up: earnings, deductions and net agree');
+      }
+    } else {
+      console.log('  -  the run has no payslips; the slip shape was not exercised');
+    }
+
+    // A run that says social insurance is missing must SAY WHY. A screen
+    // showing a blank warning is worse than no warning.
+    if (run.gosi_unavailable && !run.gosi_blocked_reason) {
+      console.log('  x a run reports social insurance unavailable and gives no reason');
+      failures += 1;
+    } else if (run.gosi_unavailable) {
+      console.log('  ok the run names what stopped social insurance being computed');
+    }
+  } else {
+    console.log('  -  no payroll has been run; the run shape was not exercised');
+  }
+
+  const eosb = await check('GET /eosb', `/eosb?company_id=${CO}`, null);
+  if (eosb?.data?.[0]) {
+    expectFields('  end of service position', eosb.data[0], [
+      'employee_id',
+      'employee',
+      'months_of_service',
+      'accrued',
+      'currency',
+    ]);
+  } else {
+    console.log('  -  nobody is employed; the end-of-service shape was not exercised');
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {

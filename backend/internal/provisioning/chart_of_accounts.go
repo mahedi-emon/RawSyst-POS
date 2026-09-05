@@ -190,6 +190,11 @@ var defaultChart = []seedAccount{
 	// somebody is employed; accruing it monthly is what stops a shop
 	// discovering its size on the day somebody resigns.
 	{"2620", "End of Service Provision", "مخصص نهاية الخدمة", "liability", "eosb_provision", ""},
+	// What is held back from a wage the employee has already earned -- a staff
+	// purchase, a fine, a loan that is not a formal advance. The business is
+	// holding it and owes it onward, which makes it a liability and not a
+	// reduction in what employing somebody cost.
+	{"2630", "Staff Deductions Payable", "استقطاعات الموظفين", "liability", "staff_deductions", ""},
 	// An advance is a loan to the employee, not a cost of employing them.
 	{"1250", "Employee Advances", "سلف الموظفين", "asset", "employee_advances", ""},
 	{"5240", "Employer GOSI", "حصة صاحب العمل بالتأمينات", "expense", "employer_gosi", ""},

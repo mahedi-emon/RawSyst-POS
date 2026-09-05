@@ -759,12 +759,20 @@ func (s *Service) Approve(
 				"That run is %s, so it cannot be approved again.", status)
 		}
 
+		// Every deduction, not only the two that are owed to somebody. The
+		// gross is debited whole, so anything subtracted to reach the net has
+		// to appear on the credit side or the entry is short by exactly the
+		// figures left out — which is what happened to absence until 0129.
 		gosiEmployee, advanceRecovery := decimal.Zero, decimal.Zero
+		absence, otherDeduction := decimal.Zero, decimal.Zero
 		if e := tx.QueryRow(ctx, `
 			SELECT coalesce(sum(gosi_employee), 0),
-			       coalesce(sum(advance_recovery), 0)
+			       coalesce(sum(advance_recovery), 0),
+			       coalesce(sum(absence_deduction), 0),
+			       coalesce(sum(other_deduction), 0)
 			FROM payslip WHERE run_id = $1`, runID).
-			Scan(&gosiEmployee, &advanceRecovery); e != nil {
+			Scan(&gosiEmployee, &advanceRecovery, &absence,
+				&otherDeduction); e != nil {
 			return e
 		}
 
@@ -783,8 +791,10 @@ func (s *Service) Approve(
 		}, country, accounting.Transaction{
 			Amounts: accounting.Amounts{
 				"gross":            gross,
+				"absence":          absence,
 				"gosi_employee":    gosiEmployee,
 				"advance_recovery": advanceRecovery,
+				"other_deduction":  otherDeduction,
 				"net":              net,
 			},
 		})
@@ -1220,15 +1230,17 @@ func wageFileProblems(
 		if e := rows.Scan(&name, &noIBAN, &noGOSI, &noID); e != nil {
 			return nil, e
 		}
+		// No article on the items: the sentence supplies "no", and "has no a
+		// GOSI registration number" is what the two together produced.
 		var missing []string
 		if noIBAN {
-			missing = append(missing, "a bank account")
+			missing = append(missing, "bank account")
 		}
 		if noGOSI {
-			missing = append(missing, "a GOSI registration number")
+			missing = append(missing, "GOSI registration number")
 		}
 		if noID {
-			missing = append(missing, "a national ID or Iqama number")
+			missing = append(missing, "national ID or Iqama number")
 		}
 		out = append(out, fmt.Sprintf("%s has no %s",
 			name, strings.Join(missing, " and no ")))
