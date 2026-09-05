@@ -4977,3 +4977,111 @@ reports nothing — and the status route refuses without one, which
     contract up to date: 468 routes, 110 permissions (103 route-gated)
     957 internal/api tests: green
     320 web-next tests, 482 shared tests: green
+
+# D1 / D2 — Business reports, analytics and exports: COMPLETE
+
+Items 14 and 15. The tax return screen was already built; what was missing was
+everything around reporting — the analytics, the reports somebody keeps, and
+the two statements that could be read and never saved.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend additions + frontend) |
+| **Screens** | `/reports/analytics`, `/reports/saved` |
+| **Migration** | none |
+| **Permissions** | `report.view`, `report.save`, `report.export` — all **existing** |
+| **i18n** | 113 keys × en/ar/bn |
+| **Tests** | 4 backend, 19 frontend unit |
+
+## Two statements could be read and not saved
+
+`GET /reports/{kind}/export` took six reports away as CSV. The cash flow and the
+tax return had no export at all — and the tax return is the one statement a
+tax-registered business actually sits down with before filing, and the one most
+likely to be wanted as a file. Asking for it answered:
+
+    There is no "vat-return" report to export.
+
+for a report the saved-report table explicitly allows keeping.
+
+The return is prepared by a different service from the one that writes the
+exports, and neither package knew about the other — correctly, since a trial
+balance has nothing to do with a tax return. So `reports` declares a one-method
+interface with a shape of its own, `internal/api` holds the conversion, and the
+wiring happens where both are already arguments. The day the return gains a
+field, the adapter is what stops compiling, which is the right place to be asked
+whether the file should carry it.
+
+### The caveats go above the figures
+
+`Outstanding` names what a return does not include and why. In the file those
+lines come BEFORE the totals, not in a footer: a spreadsheet is scrolled,
+printed and forwarded, and a caveat under the figures is one somebody files
+without reading. The file also states, in itself, that nothing has been
+submitted — a CSV called "Tax return" that says nothing else invites exactly
+that assumption.
+
+The cash-flow export states its method for the same reason. A file labelled only
+"Cash flow" is read as an IAS 7 indirect statement by anybody who opens it in a
+spreadsheet, and this one is direct.
+
+## A blank figure is a question the shop cannot answer yet
+
+Three of D2's thirteen KPIs come back as an empty string on a young business:
+stock turnover needs a period of purchase history; repeat-customer share and
+customer value need customers who have come back. The server sends `""` rather
+than `0`, and the difference is the whole point — a shop told its repeat-customer
+rate is 0% concludes nobody returns, when the truth is that nobody has been given
+time to.
+
+`stated()` asks whether a figure arrived, never whether it is non-zero, and the
+screen renders an unstated one as a dash with a sentence. `"0.0"` stays a real
+answer: a month with no returns has a return rate of zero, and hiding it would
+hide a fact.
+
+The same distinction runs through the movers: `days_since_sold` is **-1** for
+something that has never sold, not 0, which would mean "sold today" — and a line
+that never sold reports no days of cover at all, because dividing a shelf by a
+sales rate of nothing is arithmetic on nothing. `verify:api` asserts both.
+
+## The forecast says what it is, next to the number
+
+`basis` comes back as *"sales over the last 90 days, repeated"* and is shown
+verbatim beside the figures. An owner ordering stock against a forecast has to
+know it is arithmetic on the past rather than a prediction; a forecast that hides
+its method gets trusted more than it deserves.
+
+## A saved report is a question, not a photograph
+
+The window is stored as a relative phrase — "last month" — never as two dates.
+Run in October it means September; the same report run in November means October.
+The screen shows the phrase AND what it resolves to today, because "last month"
+is unambiguous to whoever wrote it and not to whoever inherits it.
+
+The schedule rules are the database's, mirrored so the refusal never has to
+happen: a cadence with nobody to send to *"runs every week and reaches nobody"*,
+a weekly one needs a day, and a monthly one stops at the 28th because a schedule
+set for the 31st skips February and a shop that asked for monthly figures quietly
+gets eleven.
+
+### `Number('')` is 0, caught again
+
+A weekly schedule with no day chosen passed every range check as Sunday and would
+have been saved to send on a day nobody picked. Zero is a real answer here —
+Sunday — which is exactly why blank cannot be it. Found by a test written for the
+empty case before the code was.
+
+## Export offered only where it exists
+
+Twelve report kinds can be kept and eight can be exported, and the two lists
+spell themselves differently — the table writes `trial_balance`, the route takes
+`trial-balance`. `exportKindOf` returns null for the four with no export, so the
+screen shows no button rather than one that answers 400.
+
+## Verified live
+
+    ALL SCREEN CONTRACTS VERIFIED   (incl. all eight exports producing a file)
+    EVERY BOUNDARY HELD             (report.view vs report.save vs report.export)
+    contract up to date: 468 routes, 110 permissions (103 route-gated)
+    957 internal/api tests: green
+    339 web-next tests, 482 shared tests: green

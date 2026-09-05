@@ -40,9 +40,69 @@ import (
 // Service draws statements for a company.
 type Service struct {
 	pool *db.Pool
+	vat  VATPreparer
 }
 
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// TaxSupply is one treatment's worth of supplies on a return.
+type TaxSupply struct {
+	Treatment    string
+	NetAmount    string
+	TaxAmount    string
+	InvoiceCount int64
+}
+
+// TaxReturn is as much of a prepared return as an export has to write.
+//
+// A shape of its own rather than the tax service's, so this package does not
+// depend on that one. The conversion lives where both are already known --
+// which also makes it obvious, when the return gains a field, that the export
+// has to decide whether to carry it.
+type TaxReturn struct {
+	Country      string
+	From         string
+	To           string
+	BaseCurrency string
+	Model        string
+
+	Supplies       []TaxSupply
+	TotalNet       string
+	OutputTaxTotal string
+	InputTaxTotal  *string
+	NetPayable     *string
+
+	LedgerOutputTax string
+	Difference      string
+	Reconciled      bool
+
+	// Outstanding is what the return does not include and why. It goes into the
+	// file BEFORE the figures, because a spreadsheet somebody files from must
+	// not separate the totals from the reasons they are incomplete.
+	Outstanding []string
+	Filed       bool
+}
+
+// VATPreparer is whatever can draw a tax return for a period.
+//
+// An interface rather than the vat package itself, and OPTIONAL, so a caller
+// that only wants a trial balance does not have to construct a tax service and
+// a regulatory registry to get one. The export refuses politely when nothing
+// was wired, which is the honest answer: this build cannot produce that file.
+type VATPreparer interface {
+	PrepareReturn(ctx context.Context, tenantID, companyID uuid.UUID,
+		from, to time.Time) (TaxReturn, error)
+}
+
+// WithVAT lets the export take a tax return away as a file.
+//
+// The return is the report a tax-registered business most needs on paper: it is
+// what somebody sits down with before filing, and until now it was the one
+// statement in the product that could be read and not saved.
+func (s *Service) WithVAT(v VATPreparer) *Service {
+	s.vat = v
+	return s
+}
 
 // Scope narrows a statement.
 //

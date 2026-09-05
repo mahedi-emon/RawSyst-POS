@@ -319,7 +319,11 @@ func NewServer(
 		authz:        authz,
 		provisioning: prov,
 		sales:        salesSvc,
-		reports:      reportSvc,
+		// Wired here rather than at construction: the tax service is one of
+		// this function's own arguments, and a report export that could not
+		// produce the one statement a business files from was the only gap in
+		// the set.
+		reports:      reportSvc.WithVAT(NewVATForExport(vatSvc)),
 		vat:          vatSvc,
 		catalog:      catalogSvc,
 		sync:         syncEngine,

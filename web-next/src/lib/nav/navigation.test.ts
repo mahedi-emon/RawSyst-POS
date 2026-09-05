@@ -304,6 +304,8 @@ const PRIMARY_READ: Record<string, string> = {
   'tax-setup': '/api/v1/exchange-rates',
   einvoicing: '/api/v1/einvoicing/units',
   compliance: '/api/v1/compliance',
+  analytics: '/api/v1/analytics/kpis',
+  saved: '/api/v1/reports/saved',
 };
 
 describe('a link that appears leads somewhere', () => {

@@ -30,6 +30,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,6 +62,11 @@ var ExportKinds = map[string]string{
 	"trial-balance":   "Trial balance",
 	"profit-and-loss": "Profit and loss",
 	"balance-sheet":   "Balance sheet",
+	// Both of these are screens a person reads and, until now, the only two
+	// statements in the product that could not be taken away. The tax return
+	// especially: it is what somebody sits down with before filing.
+	"cash-flow":  "Cash flow",
+	"vat-return": "Tax return",
 }
 
 // FilenameFor is what the browser should save it as.
@@ -109,6 +115,10 @@ func (s *Service) ExportCSV(
 		err = s.exportProfitAndLoss(ctx, scope, q, out)
 	case "balance-sheet":
 		err = s.exportBalanceSheet(ctx, scope, q, out)
+	case "cash-flow":
+		err = s.exportCashFlow(ctx, scope, q, out)
+	case "vat-return":
+		err = s.exportVATReturn(ctx, scope, q, out)
 	}
 	if err != nil {
 		return err
@@ -394,4 +404,163 @@ func (q ExportQuery) period() (time.Time, time.Time) {
 	}
 	from := time.Date(on.Year(), on.Month(), 1, 0, 0, 0, 0, time.UTC)
 	return from, from.AddDate(0, 1, -1)
+}
+
+func (s *Service) exportCashFlow(
+	ctx context.Context, scope Scope, q ExportQuery, out *csv.Writer,
+) error {
+	from, to := q.period()
+	d, err := s.CashFlowFor(ctx, scope, from, to)
+	if err != nil {
+		return err
+	}
+	if err := header(out, "Cash flow", d.BaseCurrency,
+		d.From+" to "+d.To); err != nil {
+		return err
+	}
+	// Said in the file as well as on the screen. A statement labelled only
+	// "Cash flow" is read as an IAS 7 indirect one by anybody who opens it in
+	// a spreadsheet, and this is the direct method.
+	if err := out.Write([]string{"Method", d.Method}); err != nil {
+		return err
+	}
+	if err := out.Write(nil); err != nil {
+		return err
+	}
+	if err := out.Write([]string{"Direction", "Code", "Account",
+		"Amount"}); err != nil {
+		return err
+	}
+	for _, sec := range []struct {
+		name  string
+		lines []CashFlowLine
+	}{
+		{"In", d.In},
+		{"Out", d.Out},
+	} {
+		for _, l := range sec.lines {
+			if err := out.Write([]string{
+				sec.name, l.Code, l.Name, l.Amount,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	if err := out.Write(nil); err != nil {
+		return err
+	}
+	for _, t := range [][2]string{
+		{"Opening", d.Opening},
+		{"Net movement", d.NetTotal},
+		{"Closing", d.Closing},
+	} {
+		if err := out.Write([]string{t[0], "", "", t[1]}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// exportVATReturn writes a prepared return, caveats first.
+//
+// The Outstanding lines go ABOVE the figures rather than in a footer. A
+// spreadsheet is scrolled, printed and forwarded; a caveat at the bottom of one
+// is a caveat somebody files without reading, and this file exists to be filed
+// from.
+//
+// It also states, in the file, that nothing here has been submitted. A CSV
+// called "Tax return" that says nothing else invites exactly that assumption.
+func (s *Service) exportVATReturn(
+	ctx context.Context, scope Scope, q ExportQuery, out *csv.Writer,
+) error {
+	if s.vat == nil {
+		return errs.New(errs.CodeInvalidInput,
+			"This build cannot prepare a tax return, so there is nothing to "+
+				"export.")
+	}
+	from, to := q.period()
+	d, err := s.vat.PrepareReturn(ctx, scope.TenantID, scope.CompanyID, from, to)
+	if err != nil {
+		return err
+	}
+
+	if err := header(out, "Tax return", d.BaseCurrency, d.From+" to "+d.To); err != nil {
+		return err
+	}
+	if err := out.Write([]string{"Country", d.Country}); err != nil {
+		return err
+	}
+	if err := out.Write([]string{"Model", d.Model}); err != nil {
+		return err
+	}
+	if err := out.Write([]string{"Filed", boolWord(d.Filed)}); err != nil {
+		return err
+	}
+	if err := out.Write([]string{"Agrees with the ledger",
+		boolWord(d.Reconciled)}); err != nil {
+		return err
+	}
+
+	if len(d.Outstanding) > 0 {
+		if err := out.Write(nil); err != nil {
+			return err
+		}
+		if err := out.Write([]string{"Not included, and why"}); err != nil {
+			return err
+		}
+		for _, why := range d.Outstanding {
+			if err := out.Write([]string{"", why}); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := out.Write(nil); err != nil {
+		return err
+	}
+	if err := out.Write([]string{"Treatment", "Invoices", "Net",
+		"Tax"}); err != nil {
+		return err
+	}
+	for _, l := range d.Supplies {
+		if err := out.Write([]string{
+			l.Treatment, strconv.FormatInt(l.InvoiceCount, 10),
+			l.NetAmount, l.TaxAmount,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := out.Write(nil); err != nil {
+		return err
+	}
+	totals := [][2]string{
+		{"Total net", d.TotalNet},
+		{"Output tax", d.OutputTaxTotal},
+	}
+	// A sales tax has no input side at all, so an empty row would be wrong
+	// rather than merely blank -- it would state a recoverable figure of zero.
+	if d.InputTaxTotal != nil {
+		totals = append(totals, [2]string{"Input tax", *d.InputTaxTotal})
+	}
+	if d.NetPayable != nil {
+		totals = append(totals, [2]string{"Net payable", *d.NetPayable})
+	}
+	totals = append(totals,
+		[2]string{"Output tax in the ledger", d.LedgerOutputTax},
+		[2]string{"Difference", d.Difference},
+	)
+	for _, t := range totals {
+		if err := out.Write([]string{t[0], "", "", t[1]}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func boolWord(v bool) string {
+	if v {
+		return "Yes"
+	}
+	return "No"
 }

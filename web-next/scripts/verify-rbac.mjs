@@ -1141,6 +1141,47 @@ if (!cashier2) {
   );
 }
 
+// --- reading figures, keeping them, and sending them out are three things -
+//
+// `report.view` reads a report on a screen. `report.save` keeps one and gives
+// it a schedule, which emails figures out of the building every week without
+// anybody signing in. `report.export` takes one away as a file.
+//
+// The seeded Branch Manager holds the first and neither of the others, which
+// is the split worth proving: a shop floor manager reads their branch's numbers
+// all day and does not get to set up a standing email of them.
+
+console.log('\nREADING FIGURES IS NOT SENDING THEM OUT');
+const branchReports = await staff('reports', roleNamed(/Branch/));
+if (!branchReports) {
+  console.log('  -  no Branch Manager seeded; the report split was not exercised');
+} else {
+  expect(
+    'branch manager: GET /analytics/kpis',
+    (await branchReports.call('GET', q('/analytics/kpis'))).status,
+    200,
+  );
+  expect(
+    'branch manager: GET /reports/saved',
+    (await branchReports.call('GET', q('/reports/saved'))).status,
+    200,
+  );
+  expect(
+    'branch manager: PUT /reports/saved',
+    (await branchReports.call('PUT', q('/reports/saved'), {
+      name: 'verify:rbac should not exist',
+      kind: 'sales',
+      period: 'last_month',
+    })).status,
+    403,
+  );
+  expect(
+    'branch manager: GET /reports/sales/export',
+    (await branchReports.call('GET', q('/reports/sales/export'))).status,
+    403,
+  );
+}
+
 await retireSeeded();
 
 console.log(

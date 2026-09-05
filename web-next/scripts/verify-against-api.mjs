@@ -2954,6 +2954,206 @@ console.log('\nTAX, E-INVOICING AND COMPLIANCE');
   }
 }
 
+console.log('\nANALYTICS, SAVED REPORTS AND EXPORTS');
+{
+  const year = new Date().getFullYear();
+  const from = `${year}-01-01`;
+  const to = new Date().toISOString().slice(0, 10);
+  const period = `&from=${from}&to=${to}`;
+
+  const kpis = await check(
+    'GET /analytics/kpis',
+    `/analytics/kpis?company_id=${CO}${period}`,
+    [
+      'from',
+      'to',
+      'currency',
+      'revenue',
+      'gross_profit',
+      'gross_margin_pct',
+      'orders',
+      'average_order_value',
+      'units_per_transaction',
+      'discount_ratio_pct',
+      'return_rate_pct',
+      // These four come back EMPTY on a young business rather than zero, and
+      // the screen renders a dash with a reason. Present-but-blank is the
+      // contract; missing entirely would be a different bug.
+      'inventory_turnover',
+      'repeat_customer_pct',
+      'customer_lifetime_value',
+      'sales_per_store',
+      'sales_per_employee',
+    ],
+  );
+  if (kpis) {
+    const blank = [
+      'inventory_turnover',
+      'repeat_customer_pct',
+      'customer_lifetime_value',
+    ].filter((k) => String(kpis[k] ?? '').trim() === '');
+    if (blank.length > 0) {
+      console.log(
+        `  ok ${blank.length} figures this shop cannot answer yet come back blank, not zero`,
+      );
+    } else {
+      console.log('  -  every figure is answerable here; the blank case was not exercised');
+    }
+  }
+
+  const movers = await check(
+    'GET /analytics/movers',
+    `/analytics/movers?company_id=${CO}${period}`,
+    null,
+  );
+  if (movers?.data?.[0]) {
+    expectFields('  mover', movers.data[0], [
+      'variant_id',
+      'sku',
+      'product',
+      'sold_qty',
+      'revenue',
+      'profit',
+      'on_hand',
+      'velocity',
+      // -1 when it has never sold. Zero would mean "sold today", and a screen
+      // that read one as the other would call today's best seller dead stock.
+      'days_since_sold',
+    ]);
+    const never = movers.data.filter((m) => m.days_since_sold === -1);
+    if (never.length > 0) {
+      console.log(`  ok ${never.length} lines report never having sold as -1`);
+      const withCover = never.filter((m) => m.days_cover !== undefined);
+      if (withCover.length > 0) {
+        console.log('  x a line that never sold reports days of cover, which is arithmetic on nothing');
+        failures += 1;
+      } else {
+        console.log('  ok a line that never sold reports no cover at all');
+      }
+    }
+  } else {
+    console.log('  -  nothing to measure; the mover shape was not exercised');
+  }
+
+  const forecast = await check(
+    'GET /analytics/forecast',
+    `/analytics/forecast?company_id=${CO}${period}`,
+    null,
+  );
+  if (forecast?.data?.[0]) {
+    expectFields('  forecast line', forecast.data[0], [
+      'variant_id',
+      'sku',
+      'expected_demand',
+      'on_hand',
+      'shortfall',
+      // Said out loud, because an owner ordering against a number has to know
+      // it is arithmetic on the past rather than a prediction.
+      'basis',
+    ]);
+    if (!String(forecast.data[0].basis ?? '').trim()) {
+      console.log('  x the forecast does not say what it is based on');
+      failures += 1;
+    }
+  } else {
+    console.log('  -  nothing has sold; the forecast shape was not exercised');
+  }
+
+  const profit = await check(
+    'GET /analytics/profitability',
+    `/analytics/profitability?company_id=${CO}${period}`,
+    null,
+  );
+  if (profit?.data?.[0]) {
+    expectFields('  profitability line', profit.data[0], [
+      'label',
+      'revenue',
+      'cost',
+      'profit',
+      'margin_pct',
+      'units',
+    ]);
+  }
+
+  const workforce = await check(
+    'GET /reports/workforce',
+    `/reports/workforce?company_id=${CO}`,
+    ['total', 'saudi', 'non_saudi', 'saudi_share', 'expiring_soon', 'expired'],
+    (j) => j.workforce,
+  );
+  void workforce;
+
+  const saved = await check(
+    'GET /reports/saved',
+    `/reports/saved?company_id=${CO}`,
+    null,
+  );
+  if (saved?.data?.[0]) {
+    expectFields('  saved report', saved.data[0], [
+      'id',
+      'name',
+      'kind',
+      // A relative phrase, never two dates -- and what it resolves to TODAY,
+      // so the screen can show "1 - 30 September" beside "last month".
+      'period',
+      'from',
+      'to',
+      'is_active',
+    ]);
+  } else {
+    console.log('  -  no saved reports; the saved shape was not exercised');
+  }
+
+  // Every statement on a screen has to be takeable away. Two were not: the
+  // cash flow and the tax return, and the return is the one a business files
+  // from.
+  for (const kind of [
+    'sales',
+    'expenses',
+    'stock',
+    'trial-balance',
+    'profit-and-loss',
+    'balance-sheet',
+    'cash-flow',
+    'vat-return',
+  ]) {
+    const res = await fetch(
+      `${API}/reports/${kind}/export?company_id=${CO}${period}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (res.status !== 200) {
+      console.log(`  x exporting ${kind} answered ${res.status}`);
+      failures += 1;
+      continue;
+    }
+    const disposition = res.headers.get('content-disposition') ?? '';
+    if (!disposition.includes('.csv')) {
+      console.log(`  x exporting ${kind} does not offer a file: ${disposition}`);
+      failures += 1;
+      continue;
+    }
+    const body = await res.text();
+    if (kind === 'vat-return') {
+      // The caveats go ABOVE the totals. A spreadsheet is scrolled, printed
+      // and forwarded, and a caveat under the figures is one somebody files
+      // without reading.
+      const caveats = body.indexOf('Not included, and why');
+      const totals = body.indexOf('Output tax');
+      if (caveats !== -1 && totals !== -1 && caveats > totals) {
+        console.log('  x the tax return export buries its caveats under the totals');
+        failures += 1;
+        continue;
+      }
+      if (!body.includes('Filed')) {
+        console.log('  x the tax return export does not say it has not been filed');
+        failures += 1;
+        continue;
+      }
+    }
+    console.log(`  ok exporting ${kind} gives a file`);
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {
