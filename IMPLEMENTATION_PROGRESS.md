@@ -5085,3 +5085,338 @@ screen shows no button rather than one that answers 400.
     contract up to date: 468 routes, 110 permissions (103 route-gated)
     957 internal/api tests: green
     339 web-next tests, 482 shared tests: green
+
+# B7 / B16 — Tills, discounts, points and store credit: COMPLETE
+
+Item 16 of the ordered list. Four screens, and two routes that had to be built
+because the navigation had promised screens the API could not feed.
+
+| | |
+|---|---|
+| **Status** | COMPLETE (backend routes + frontend) |
+| **Screens** | `/shifts`, `/promotions`, `/customers/loyalty`, `/customers/wallets` |
+| **New routes** | `GET /api/v1/shifts` (`report.view`), `GET /api/v1/wallets` (`wallet.view`) |
+| **Migration** | none |
+| **Permissions** | all **existing** |
+| **i18n** | 97 keys × en/ar/bn |
+| **Tests** | 4 backend, 17 frontend unit |
+
+## The variance was reachable only from the till that produced it
+
+A blind close asks a cashier to count the drawer without being told what the
+system expects. The difference is the only signal the practice produces — and
+there was nowhere to read it. `GET /shifts/current` needs a token bound to a
+terminal; `GET /shifts/{sessionID}` needs an id only the till that opened it has
+ever held. So last night's variance was unreachable from the back office, and a
+supervisor reviewing in the morning had no route at all.
+
+`GET /shifts` is that route. Behind `report.view` for exactly the reason the X
+report is: it carries the expected figure beside the counted one, and a cashier
+who can read the target can make tonight's drawer agree with it, after which
+every variance reads zero and the blind close signals nothing.
+
+### A nav entry that offered it to the wrong person
+
+The `shifts` entry was gated on `sales.receive_payment` and pointed at a screen
+that did not exist, and `navigation.test.ts` asserted that a cashier could see
+it. Both were written when the link led nowhere. The entry is now `report.view`
+and the test asserts the opposite, with the reason recorded in it.
+
+### An open drawer shows nothing, not zero
+
+`counted_cash`, `expected_cash` and `variance` are absent on a session still
+running. A drawer nobody has counted is not a drawer counted at nothing, and the
+difference decides whether a supervisor walks over to it. `verify:api` asserts
+the absence.
+
+## What the business owes in credit could not be seen whole
+
+`GET /wallets/{customerID}` answered one customer at a time, so the store-credit
+liability could only be found by asking about every customer in turn — and a shop
+with two thousand customers could not ask at all.
+
+`GET /wallets` lists only customers holding something: a page of names with zero
+beside most of them is not a list of what is owed, and the empty rows are the
+ones nobody is looking for. The screen adds its total from those rows rather than
+fetching it separately, because a total that could disagree with the list under
+it is the worst kind of disagreement on a liability.
+
+## Four states, not on and off
+
+"Inactive" covers a promotion somebody switched off, one that has not started,
+and one that finished last month. An owner asking why a discount is not applying
+at the till needs to know which. `promotionState` separates them, and compares
+calendar days from the local date so a promotion that ends today still runs
+today.
+
+A loyalty scheme that does not exist shows as absent rather than as a form of
+zeros — `exists: false` arrives with empty rates, and a form full of defaults
+reads as a scheme somebody configured. A shop would start handing out points
+nobody can spend.
+
+## Verified
+
+    ALL SCREEN CONTRACTS VERIFIED   (shift, promotion, loyalty, wallet shapes)
+    EVERY BOUNDARY HELD             (cashier refused /shifts, /wallets credit,
+                                     /loyalty/expire and /promotions)
+    contract: 470 routes, 110 permissions (103 route-gated)
+    internal/api [S-T] and [A-B] chunks: green; the four new tests: green
+
+---
+
+# SESSION CHECKPOINT
+
+**Written 2026-09-05.** The session before this one was interrupted mid-shutdown
+and never wrote a checkpoint; this one recovers the state and records it.
+
+## Last completed module
+
+**Item 16 — remaining POS workflows** (tills, discounts, points, store credit).
+Commit `e81ac5d`.
+
+## Last completed screen/workflow
+
+`/customers/wallets` — the store-credit liability, whole, with gift cards beside
+it.
+
+## Everything completed in THIS working session (items 10–16)
+
+| # | Module | Commit |
+|---|---|---|
+| 10–11 | Payroll and Employees (C5/C6) | `0655869` |
+| 12 | Roles and granular permissions (A6.2) | `10c892b` |
+| 13 | Tax management and E7 compliance dashboard | `4c93b12` |
+| 14–15 | Tax reports, business reports, analytics, exports (D1/D2) | `b1173a1` |
+| 16 | Tills, discounts, points, store credit (B7/B16) | `e81ac5d` |
+
+### Screens added this session (17)
+
+`/people/employees`, `/people/employees/new`, `/people/employees/[employeeID]`,
+`/people/attendance`, `/people/payroll`, `/people/payroll/[runID]`,
+`/people/users`, `/people/roles`, `/people/roles/new`, `/people/roles/[roleID]`,
+`/settings/tax`, `/settings/einvoicing`, `/oversight/compliance`,
+`/reports/analytics`, `/reports/saved`, `/shifts`, `/promotions`,
+`/customers/loyalty`, `/customers/wallets`
+
+### Backend defects found by driving the running server, and fixed
+
+Nine. Every one was found by calling the API, not by reading source.
+
+1. **`payroll.accrue` could not balance a month with an absence.** The rule
+   credited three of the five payslip deductions, so approving a month in which
+   anybody was away answered 500 and the month could not be booked or paid.
+   Migration `0129`, superseding rather than editing the rule.
+2. **`GET /employees/expiring` had never once answered.** `current_date + ($2 ||
+   ' days')::interval` with `$2` bound as an int. C5's Iqama alert was 500 on
+   every call it ever received.
+3. **`GET /compliance` answered 500 for every business that had run payroll.**
+   `max(period)` on a DATE column scanned into a `*string`.
+4. **E7's people reading was blind to residency permits.** It counted the
+   document shelf only, so the dashboard said nothing was expiring while a
+   cashier was weeks from being unable to work legally.
+5. **`DELETE /roles/{id}` said a built-in role did not exist.** The lookup was
+   tenant-scoped and a template belongs to no tenant.
+6. **`GET /people/roles` could not say which roles are built-in or who holds
+   them.** A screen had to ask thirteen times to draw one table.
+7. **`catalog.edit` and `report.export` had no description at all**, so the role
+   builder showed raw identifiers under a heading called "other", in three
+   languages. Migration `0130`.
+8. **The cash flow and the tax return could not be exported.** The two
+   statements a business most wants as a file.
+9. **No route listed shifts, and none listed wallets.** Added this session.
+
+Plus: `verify:rbac` leaked an account per role per run until the dev tenant was
+one seat from its 75-person plan limit, while reporting the failure as "no such
+role seeded" — five boundaries had silently stopped being checked while the run
+still ended EVERY BOUNDARY HELD. Fixed to say why, and to retire its own
+accounts.
+
+## Current verified state
+
+| | |
+|---|---|
+| **Frontend routes (built pages)** | **88** (Next.js build output) |
+| **Nav entries marked built** | **53 of 82** |
+| **Frontend tests** | **356 passed / 23 files** (web-next) |
+| **Shared tests** | **482 passed / 29 files** (includes i18n coverage, locale, RTL) |
+| **Backend routes** | **470** |
+| **Permissions** | **110** (103 route-gated) |
+| **Migrations** | through **0130** |
+
+## Status by check
+
+* **Build** — `next build` compiles clean, 71 static pages generated, 88 routes.
+* **Typecheck** — `tsc --noEmit` clean.
+* **API contract** — `check:contract` clean at 470 routes / 110 permissions.
+* **i18n** — three catalogues in step; ~651 keys added this session
+  (210 + 101 + 130 + 113 + 97) across en/ar/bn. `coverage.test.ts` and
+  `locale.test.ts` both green — no English prose in screens, no untranslated
+  Bangla.
+* **RTL** — `rtl.test.ts` green. New screens use logical properties throughout;
+  the permission picker's chevron rotates rather than swapping glyph so the
+  direction reads correctly in Arabic.
+* **RBAC** — `verify:rbac` last run: **EVERY BOUNDARY HELD**, including the
+  `hr.view_pay` omission, the role-builder subset rule, `einvoicing.onboard`,
+  `report.save`/`report.export`, and the cashier refused the shift register.
+* **Live API** — `verify:api` last run: **ALL SCREEN CONTRACTS VERIFIED**.
+* **Backend tests** — 957 `internal/api` tests plus every other package were
+  green as of the item-15 commit; the `[S-T]` and `[A-B]` chunks and the four
+  new item-16 tests were green before shutdown.
+
+### ⚠ One thing NOT re-verified in this recovery session
+
+The dev Postgres (`localhost:5433`) and Docker Desktop are **not running** — the
+laptop was shut down. So the backend integration suite, `verify:api` and
+`verify:rbac` **could not be re-run** at the moment of this checkpoint. Every
+frontend check above WAS re-run and is green. The backend results quoted are from
+before shutdown, when they last ran.
+
+**First action next session:** start Docker Desktop, bring up Postgres on 5433,
+then re-run the item-16 backend chunks and both verification scripts before
+starting new work.
+
+## Blueprint status
+
+Both trackers are maintained, as required — the original 77-feature traceability
+and the grouped tracker. Neither has been replaced by the other.
+
+### The 23-item ordered module list
+
+| # | Module | Status |
+|---|---|---|
+| 1 | Expense configuration (heads, departments, recurring) | ✅ COMPLETE (earlier session) |
+| 2 | Bank reconciliation / treasury statements | ✅ COMPLETE |
+| 3 | Sales returns and exchanges | ✅ COMPLETE |
+| 4 | Purchase returns | ✅ COMPLETE |
+| 5 | Complete accounting | ✅ COMPLETE |
+| 6 | Manual journals | ✅ COMPLETE |
+| 7 | Receivables | ✅ COMPLETE |
+| 8 | Payables | ✅ COMPLETE |
+| 9 | Financial statements | ✅ COMPLETE |
+| 10 | Payroll | ✅ COMPLETE |
+| 11 | Employees | ✅ COMPLETE |
+| 12 | Roles + granular permissions | ✅ COMPLETE |
+| 13 | Tax management | ✅ COMPLETE |
+| 14 | Tax reports | ✅ COMPLETE |
+| 15 | Business reports | ✅ COMPLETE |
+| 16 | Remaining POS workflows | ✅ COMPLETE |
+| 17 | **Business settings** | ⏳ **NEXT** |
+| 18 | Hardware / device configuration | ⏳ not started |
+| 19 | Integrations | ⏳ not started |
+| 20 | Compliance / regulatory UI | ⏳ partly (dashboard done) |
+| 21 | Complete Platform Admin | ⏳ not started |
+| 22 | Any remaining Blueprint feature | ⏳ not started |
+| 23 | Final end-to-end integration pass | ⏳ not started |
+
+### Remaining unbuilt screens (29)
+
+**Settings (item 17):** `/settings/business`, `/money/periods`
+**Devices (18):** `/settings/devices`, `/products/labels`, `/stock/serials`
+**Integrations (19):** `/settings/integrations`, `/settings/imports`,
+`/money/gateways`
+**Compliance (20):** `/oversight/audit`, `/oversight/documents`,
+`/oversight/privacy`, `/oversight/backups`, `/oversight/groups`
+**Platform Admin (21):** `/platform/businesses/new`, `/platform/billing`,
+`/platform/rules`, `/platform/jurisdictions`, `/platform/rates`,
+`/platform/subprocessors`
+**Remaining Blueprint (22):** `/approvals`, `/deliveries`, `/customers/portal`,
+`/money/installments`, `/money/assets`, `/money/investors`,
+`/aftersales/service`, `/aftersales/requests`, `/settings/subscription`,
+`/settings/support`
+
+## IN PROGRESS
+
+Nothing is half-built. Item 16 is committed complete; item 17 has not been
+started.
+
+## Genuine blockers
+
+**One, and it is external.** The Fatoora one-time password: ZATCA issues a
+compliance certificate only against a password the taxpayer reads from their own
+portal. Software cannot generate it and fabricating one would be forging a
+credential. The entire workflow around it is built (`/settings/einvoicing`), and
+the screen says plainly what the user must fetch.
+
+Nothing else is blocked. Two regulatory values remain unverified in the register
+(`SA.EOSB.ENTITLEMENT`, `SA.WPS.WAGE_FILE_FORMAT`); both refuse rather than
+guess, both have complete UI around them, and neither stops a business trading.
+
+## Deliberate decisions worth remembering
+
+* **`Number('')` is 0, not NaN.** Caught three separate times this session — in
+  money fields, in a schedule day, and in rate parsing. Any blank-vs-zero
+  distinction needs an explicit emptiness check.
+* **Absence is not zero** is the recurring contract discovery of the whole
+  session: omitted pay fields (`hr.view_pay`), unstated KPIs on a young business,
+  an uncounted drawer, a loyalty scheme that does not exist, a sales tax with no
+  input side. In every case the server omits rather than zeroes, and the screen
+  must ask whether the field ARRIVED.
+* **`bonus` and `other_deduction`** are computed as zero by every path today;
+  nothing writes to them. Columns, payslip lines and the posting rule all carry
+  them. Recorded as unused rather than removed.
+* **`accounting.approve`** stays unused, and stays recorded as unused.
+* Four files are `gofmt`-unclean and were before this session
+  (`internal/catalog/service.go`, `internal/purchasing/billing.go`,
+  `internal/settlement/settlement.go`, `internal/workflow/workflow.go`).
+  Untouched — out of scope.
+
+## Backend/frontend contract discoveries this session
+
+* `POST /people` answers `{data: {person: {...}, temporary_password}}` — the id
+  is under `person`.
+* `POST /roles` and `PUT /roles/{id}` answer `{role: {...}}`, not the role.
+* Payroll and advances resolve a **`money_account` id**, not a chart-account id.
+  A chart id 404s with the same message.
+* `GET /einvoicing/units/{id}/onboarding` **requires** `?environment=`; it will
+  not default.
+* `PUT /exchange-rates` takes `as_of`, not `on_date`.
+* Saved-report kinds use underscores (`trial_balance`); export kinds use hyphens
+  (`trial-balance`). Four savable kinds have no export.
+* The dev tenant has a **75-person plan limit**; `POST /people` 409s at the
+  ceiling with `plan_limit_reached`.
+
+## Tool / skill usage this session
+
+| Tool | Purpose | Where | Result |
+|---|---|---|---|
+| **Serena** MCP | Symbol overview and content replacement | `web-next/src/lib/purchasing/returns.ts`, `navigation.ts` | Used for structured reads; bulk edits fell back to scripted Python, which handled CRLF and non-ASCII more reliably |
+| **Live API driving** (scratchpad Node scripts) | Discovery before building each screen | `drive-hr`, `drive-roles`, `drive-tax`, `drive-analytics`, `drive-pos`, `probe-*` | **The single highest-value technique.** All nine backend defects came from here; none from reading source |
+| **`verify:api` / `verify:rbac`** | Contract and boundary assertions | extended in all five modules | Both green; the RBAC script's own account leak was found and fixed |
+| **frontend-design / ui-ux-pro-max** (guidelines carried from earlier) | Restraint, hierarchy, no card walls | every new screen | Applied; nothing installed |
+| **shadcn / 21st.dev / Stitch MCPs** | Consulted as reference only | — | **Nothing installed**, per the standing brief not to add dependencies to claim usage |
+
+## Exact next task
+
+**Item 17 — Business settings.**
+
+Build `/settings/business` (company identity, market, addresses, branding,
+document templates, storefront disclosures — the `storefront.missing` list the
+compliance dashboard already reports) and `/money/periods` (accounting period
+lock and close, which the compliance dashboard's `open_ended_periods` reading
+already points at).
+
+Start by driving the live routes: `GET/PUT /companies/{companyID}`,
+`/companies/{companyID}/logo`, `/companies/{companyID}/templates/{docType}`,
+`GET/PUT /privacy/disclosure`, and the fiscal-period routes.
+
+**Note on the previously stated next task.** The plan carried into this session
+named "Expense heads → Departments → Recurring expenses" as next. That work is
+**already complete** — see *C3.1 — Departments and recurring expenses: COMPLETE*
+above, and item 1 of the ordered list. It should not be redone.
+
+## Next intended sequence after item 17
+
+18 Hardware / device configuration → 19 Integrations → 20 Compliance and
+regulatory UI (audit, documents, privacy, backups, groups) → 21 complete Platform
+Admin → 22 remaining Blueprint features → 23 final end-to-end integration and
+Blueprint reconciliation.
+
+## Commits in this session
+
+    e81ac5d  Let a supervisor read last night's drawer            (item 16)
+    b1173a1  Let the tax return be taken away as a file           (items 14–15)
+    4c93b12  Answer the compliance dashboard, and count the permits it is about  (item 13)
+    10c892b  Say which roles are the product's own, and stop pretending one is missing  (item 12)
+    0655869  Pay a month in which somebody was away               (items 10–11)
+
+Branch: `international-markets-and-counters`.
