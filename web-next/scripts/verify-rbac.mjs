@@ -1254,6 +1254,77 @@ if (!tillCredit || !someCustomer) {
   );
 }
 
+// --- closing a month and reopening one are different authorities ---------
+//
+// `accounting.close_period` closes. `accounting.reopen_period` reopens, and C10
+// puts the second at Owner level because reopening changes figures somebody has
+// already reported to somebody else. An accountant who could do both could
+// quietly restate a quarter that has been filed.
+
+console.log('\nCLOSING A MONTH IS NOT REOPENING ONE');
+const bookkeeper = await staff('periods', roleNamed(/Accountant/));
+const calendarYears = (await owner('GET', q('/accounting/periods'))).json?.years ?? [];
+const anyPeriod = calendarYears.flatMap((y) => y.periods)[0];
+
+if (!bookkeeper || !anyPeriod) {
+  console.log('  -  no Accountant or no calendar; the period split was not exercised');
+} else {
+  expect(
+    'accountant: GET /accounting/periods',
+    (await bookkeeper.call('GET', q('/accounting/periods'))).status,
+    200,
+  );
+  // They hold close_period, so this is not a 403 -- it either closes or refuses
+  // on the calendar's own rules, and both are past the gate.
+  const closing = await bookkeeper.call(
+    'POST', q(`/accounting/periods/${anyPeriod.id}/close`), {});
+  if (closing.status === 403) {
+    bad('accountant: POST close -> 403, and they hold accounting.close_period');
+  } else {
+    ok(`accountant: POST close -> ${closing.status}, past the gate`);
+  }
+  expect(
+    'accountant: POST reopen',
+    (await bookkeeper.call('POST', q(`/accounting/periods/${anyPeriod.id}/reopen`), {
+      reason: 'verify:rbac',
+    })).status,
+    403,
+  );
+}
+
+// --- the stationery is settings; the disclosures are privacy -------------
+
+console.log('\nWHAT A DOCUMENT SAYS IS A SETTING, NOT A DISCLOSURE');
+const branchHand = await staff('settings', roleNamed(/Branch/));
+if (!branchHand) {
+  console.log('  -  no Branch Manager seeded; the settings boundary was not exercised');
+} else {
+  // Reading the stationery is merely authenticated: every document surface
+  // needs it, so a cashier looking at an invoice must be able to fetch it.
+  expect(
+    'branch manager: GET templates',
+    (await branchHand.call('GET', q(`/companies/${CO}/templates`))).status,
+    200,
+  );
+  // Writing it is not.
+  expect(
+    'branch manager: PUT a template',
+    (await branchHand.call('PUT', q(`/companies/${CO}/templates/standard`), {
+      header_text: 'verify:rbac should not stick',
+      show_logo: true,
+      show_tax_number: true,
+    })).status,
+    403,
+  );
+  expect(
+    'branch manager: PUT /privacy/disclosure',
+    (await branchHand.call('PUT', q('/privacy/disclosure'), {
+      contact_email: 'verify@example.test',
+    })).status,
+    403,
+  );
+}
+
 await retireSeeded();
 
 console.log(

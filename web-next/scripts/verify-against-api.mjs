@@ -31,6 +31,32 @@ const TENANT = process.env.RAWSYST_DEV_TENANT ?? '';
 let token = '';
 let failures = 0;
 
+/**
+ * A write, for the few assertions that are about a REFUSAL rather than a shape.
+ *
+ * Used sparingly and only where the refusal is the contract: a settled field
+ * that answered 200 instead of 409 would let a screen report success on a
+ * change that never happened, and no amount of reading the GET would catch it.
+ */
+async function write(method, path, body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { status: res.status, json };
+}
+
 async function call(path) {
   const res = await fetch(API + path, {
     headers: { Authorization: `Bearer ${token}` },
@@ -3314,6 +3340,227 @@ console.log('\nTHE BRANCHES A SCREEN HAS TO NAME');
   } else {
     console.log('  x a company with a shop reports no branches');
     failures += 1;
+  }
+}
+
+console.log('\nBUSINESS SETTINGS AND THE ACCOUNTING CALENDAR');
+{
+  const templates = await check(
+    'GET /companies/{id}/templates',
+    `/companies/${CO}/templates?company_id=${CO}`,
+    null,
+  );
+  if (templates?.data?.[0]) {
+    expectFields('  document template', templates.data[0], [
+      'doc_type',
+      'header_text',
+      'header_text_ar',
+      'footer_text',
+      'return_policy',
+      'payment_terms',
+      'show_logo',
+      'show_tax_number',
+      // Whether anybody has set this one up, as opposed to it being defaults.
+      // A screen that could not tell would show four configured documents to a
+      // business that has configured none.
+      'configured',
+    ]);
+    const kinds = templates.data.map((t) => t.doc_type).sort();
+    console.log(`  ok stationery for ${kinds.length} document types: ${kinds.join(', ')}`);
+  } else {
+    console.log('  x no document templates at all');
+    failures += 1;
+  }
+
+  await check('GET /companies/{id}/logo', `/companies/${CO}/logo?company_id=${CO}`, null);
+
+  const privacyWrapper = await check(
+    'GET /privacy/disclosure',
+    `/privacy/disclosure?company_id=${CO}`,
+    // `missing` is the list the compliance dashboard reads too. Two lists would
+    // let the settings screen and the dashboard disagree about whether a
+    // business may trade online.
+    ['missing'],
+    (j) => j.disclosure,
+  );
+  // `check` hands back the whole response; the `pick` above only steers which
+  // object its field assertion looks at. Reading `.missing` off the wrapper
+  // silently found undefined and reported nothing missing on a storefront with
+  // six disclosures absent.
+  const privacy = privacyWrapper?.disclosure;
+  if (privacy) {
+    const owned = ['cr_number', 'vat_number'];
+    const here = (privacy.missing ?? []).filter((f) => !owned.includes(f));
+    const elsewhere = (privacy.missing ?? []).filter((f) => owned.includes(f));
+    console.log(
+      `  ok ${here.length} disclosures are fixable on the settings screen, ` +
+        `${elsewhere.length} come from the business record`,
+    );
+  }
+
+  const calendar = await check(
+    'GET /accounting/periods',
+    `/accounting/periods?company_id=${CO}`,
+    ['years'],
+  );
+  const year = calendar?.years?.[0];
+  if (year?.periods?.[0]) {
+    expectFields('  period', year.periods[0], [
+      'id',
+      'fiscal_year',
+      'period_no',
+      'starts_on',
+      'ends_on',
+      'state',
+      // Closing an empty month is hygiene; closing one with four hundred
+      // entries is a decision, and the screen must not make them look alike.
+      'entries',
+    ]);
+
+    // Periods must not overlap, or a posting date would fall in two of them
+    // and the one it landed in would depend on query order.
+    const all = calendar.years.flatMap((y) => y.periods)
+      .sort((a, b) => (a.starts_on < b.starts_on ? -1 : 1));
+    let overlapping = 0;
+    for (let i = 1; i < all.length; i += 1) {
+      if (all[i].starts_on <= all[i - 1].ends_on) overlapping += 1;
+    }
+    if (overlapping > 0) {
+      console.log(`  x ${overlapping} periods overlap the one before them`);
+      failures += 1;
+    } else {
+      console.log(`  ok ${all.length} periods, none overlapping`);
+    }
+  } else {
+    console.log('  -  no fiscal calendar; the period shape was not exercised');
+  }
+}
+
+console.log('\nTHE BUSINESS RECORD AND ITS BRANCHES');
+{
+  // Probed rather than asserted, because this route may not be in the build
+  // being checked. A 404 here is "this server does not have it yet", which is
+  // a different thing from "it answered wrongly" -- and a verification script
+  // that failed on the first is one people stop trusting on the second.
+  const probe = await call(`/companies/${CO}?company_id=${CO}`);
+  const record = probe.status === 200 ? probe.json : null;
+  if (probe.status === 404) {
+    console.log('  -  GET /companies/{id} is not in this build; skipped');
+  } else if (probe.status !== 200) {
+    console.log(`  x GET /companies/{id}: HTTP ${probe.status}`);
+    failures += 1;
+  } else {
+    console.log('  ok GET /companies/{id}');
+  }
+  const business = record?.business;
+  if (record && !business) {
+    console.log('  x the business record came back without a business on it');
+    failures += 1;
+  } else if (business) {
+    expectFields('  business', business, [
+      'id',
+      'legal_name',
+      'trade_name',
+      'country',
+      'market_name',
+      'base_currency',
+      'cr_number',
+      'vat_number',
+      'costing_method',
+      'fiscal_year_start_month',
+      // The map from field name to the sentence saying why it can no longer
+      // change. Absence from it means editable, so a screen without this has
+      // to guess -- and a guess here is a 409 it cannot explain.
+      'settled',
+    ]);
+
+    const settled = Object.keys(business.settled ?? {});
+    if (settled.length === 0) {
+      console.log('  -  nothing has settled on this company; the fixed-field case was not exercised');
+    } else {
+      // Every settled field must carry a REASON, not merely be listed. The
+      // screen shows the sentence instead of a greyed box, and an empty one
+      // would leave a field fixed with no explanation at all.
+      const silent = settled.filter((f) => !String(business.settled[f] ?? '').trim());
+      if (silent.length > 0) {
+        console.log(`  x ${silent.join(', ')} are settled and say no reason why`);
+        failures += 1;
+      } else {
+        console.log(`  ok ${settled.length} settled fields each carry their reason`);
+      }
+
+      // And naming one must be REFUSED rather than quietly ignored: a screen
+      // that sent it and got a 200 would report success on a change that never
+      // happened.
+      const probe = await write('PUT', `/companies/${CO}?company_id=${CO}`, {
+        [settled[0]]: 'verify:api probe',
+      });
+      if (probe.status !== 409) {
+        console.log(
+          `  x amending the settled field ${settled[0]} answered ${probe.status}, want 409`,
+        );
+        failures += 1;
+      } else if (!probe.json?.error?.fields?.[settled[0]]) {
+        console.log(`  x the refusal does not say why ${settled[0]} is settled`);
+        failures += 1;
+      } else {
+        console.log(`  ok amending a settled field is refused, with the reason`);
+      }
+    }
+  }
+
+  const branches = record?.branches ?? [];
+  if (record && branches[0]) {
+    expectFields('  branch', branches[0], [
+      'id',
+      'code',
+      'name',
+      'is_active',
+      'street',
+      'district',
+      'city',
+      'postal_code',
+      // As stored, and what actually gets printed. They differ: the document
+      // layer falls back to the company's country when a branch has none.
+      'country_code',
+      'effective_country_code',
+      // The server's answer, never derived on the client.
+      'can_invoice',
+      'incomplete',
+    ]);
+
+    // The trap worth asserting. A branch with NO country code of its own can
+    // still invoice, because the company's is used. Deriving `can_invoice`
+    // from `country_code` would report every such branch unable to invoice.
+    const inherited = branches.filter(
+      (b) => !String(b.country_code ?? '').trim() && b.effective_country_code,
+    );
+    if (inherited.length === 0) {
+      console.log('  -  every branch stores its own country; the fallback was not exercised');
+    } else {
+      const wronglyBlocked = inherited.filter((b) => !b.can_invoice && b.incomplete.length === 0);
+      if (wronglyBlocked.length > 0) {
+        console.log('  x a branch inheriting its country cannot invoice and says no reason');
+        failures += 1;
+      } else {
+        console.log(
+          `  ok ${inherited.length} branches inherit the company's country and still invoice`,
+        );
+      }
+    }
+
+    // A branch that cannot invoice has to say which parts are missing, or the
+    // screen shows a refusal nobody can act on.
+    const blocked = branches.filter((b) => !b.can_invoice);
+    const mute = blocked.filter((b) => (b.incomplete ?? []).length === 0);
+    if (mute.length > 0) {
+      console.log(`  x ${mute.length} branches cannot invoice and name nothing missing`);
+      failures += 1;
+    } else if (blocked.length > 0) {
+      console.log(`  ok ${blocked.length} branches that cannot invoice each say why`);
+    }
+  } else if (record) {
+    console.log('  -  no branches; the branch shape was not exercised');
   }
 }
 

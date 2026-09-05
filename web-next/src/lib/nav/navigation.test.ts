@@ -319,6 +319,14 @@ const PRIMARY_READ: Record<string, string> = {
   promotions: '/api/v1/promotions',
   loyalty: '/api/v1/loyalty/program',
   wallets: '/api/v1/wallets',
+  periods: '/api/v1/accounting/periods',
+  // `business` is deliberately absent. Every read that screen makes is
+  // AccessAuthenticated -- /companies, /stores and the document templates all
+  // are, for reasons each route records -- so there is no permission-gated
+  // primary read to line up against the nav entry's `identity.view`. Mapping
+  // it to one would assert a relationship that does not exist. The screen's
+  // own guard is what gates it, and the one gated read it makes
+  // (/privacy/disclosure) is asked for only when the caller holds privacy.view.
 };
 
 describe('a link that appears leads somewhere', () => {
