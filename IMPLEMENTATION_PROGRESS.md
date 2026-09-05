@@ -4537,8 +4537,14 @@ are ever raised at an offline terminal.
 
 ## The matrix
 
-Frontend is NOT STARTED across the board — this has been a backend programme.
-Every row below is the backend position.
+Every row below is the **backend** position, and it was true when written.
+
+**The line that used to stand here — "Frontend is NOT STARTED across the board"
+— is no longer true and has not been for a long time.** The frontend column now
+lives in *Frontend reconciliation against the original 77 features* at the end
+of this document: 64 COMPLETE, 3 PARTIAL, 7 NOT STARTED across six screens, 3
+N/A. This table is deliberately left as the backend record rather than widened,
+so that the two columns cannot drift into each other.
 
 | ID | Feature | Backend | Evidence / note |
 |---|---|---|---|
@@ -5609,3 +5615,191 @@ Blueprint reconciliation.
     0655869  Pay a month in which somebody was away               (items 10–11)
 
 Branch: `international-markets-and-counters`.
+
+---
+
+# Frontend reconciliation against the original 77 features
+
+**Written after item 22.** The matrix under *The matrix* above carries a backend
+column and nothing else — it was written during a backend programme and says so
+in its own header: "Frontend is NOT STARTED across the board." That sentence has
+been false for a long time and the table never caught up, which was the single
+largest inaccuracy in this document.
+
+This section adds the frontend column. It is written from the route list on disk
+and from what each screen actually calls, not from the nav flags — a flag is a
+claim, and `navigation.built.test.ts` exists because claims drift.
+
+## What "frontend COMPLETE" means in this table
+
+A page existing is not it. A row is COMPLETE only where the screen reads and
+writes the real routes, is gated by the permission the backend enforces, carries
+loading, empty and error states, is keyed in all three catalogues, and uses
+logical properties so Arabic mirrors. Where a screen covers part of a feature the
+row says which part.
+
+## The matrix, frontend column
+
+| ID | Feature | Frontend | Where |
+|---|---|---|---|
+| A4 | Super Admin control plane | COMPLETE | `/platform`, `/platform/businesses`, `/jobs`, `/support`, `/billing`, `/rules`, `/jurisdictions`, `/rates`, `/subprocessors` |
+| A4.1 | Super Admin credential security | COMPLETE | `/login` handles the MFA challenge; `/settings/security` enrols, disables, reissues recovery codes |
+| A4.2 | Owner account recovery | COMPLETE | `/forgot-password` — built this pass; sign-in had linked to it with no page behind it |
+| A5 | Business onboarding and provisioning | COMPLETE | `/platform/businesses/new`, with the one-time credential handover |
+| A6 | RBAC and custom role builder | COMPLETE | `/people/roles`, `/roles/new`, `/roles/[roleID]`, `/people/users` |
+| A7 | Multi-platform access | COMPLETE | `/settings/devices` |
+| A8 | Dashboard and KPI | COMPLETE | `/dashboard`; every tile drills through |
+| B1 | Product and catalog | COMPLETE | `/products`, `/products/[productId]` |
+| B2 | Variant matrix | COMPLETE | `/products/[productId]` |
+| B3 | Barcode engine and label studio | COMPLETE | `/products/labels` |
+| B4 | Inventory and warehouse | COMPLETE | `/stock` and its eight children |
+| B5 | Purchase and procurement | COMPLETE | `/buying/orders`, `/receipts`, `/requisitions` |
+| B5.1 | RFQ and supplier comparison | COMPLETE | `/buying/quotes`, `/quotes/[rfqID]` |
+| B5.2 | Three-way matching | COMPLETE | `/buying/bills/[billID]` |
+| B6 | Supplier management | COMPLETE | `/buying/suppliers`, `/ageing`, `/payments` |
+| B7 | POS and billing | COMPLETE | `/pos`, `/shifts` |
+| B8 | Hardware integration | COMPLETE (architecture) | `/settings/devices`; physical drivers stay client-side |
+| B9 | Promotions and pricing | COMPLETE | `/promotions` |
+| B10 | Returns, exchange, replacement | COMPLETE | `/pos/returns`, `/pos/exchanges`, `/buying/returns` |
+| B11 | Quotation to order to delivery | COMPLETE | `/orders`, `/orders/[orderID]`, `/deliveries` |
+| B12 | Wholesale and B2B | COMPLETE | `/orders`, `/customers`; MOQ and credit-limit refusals surface from the server |
+| B13 | Online order and delivery | COMPLETE | `/orders`, `/deliveries` — the status ladder and cash on delivery |
+| B14 | Instalment and EMI | COMPLETE, one documented gap | `/money/installments`; the receipt picker, below |
+| B15 | Warranty, serial, service | COMPLETE | `/aftersales/service`, `/stock/serials` |
+| B16 | CRM and loyalty | COMPLETE | `/customers`, `/customers/loyalty`, `/customers/wallets` |
+| C1 | Core accounting and ledger | COMPLETE | `/money/chart`, `/money/journals` |
+| C2 | Cash and bank | COMPLETE | `/money/accounts`, `/transfers`, `/receipts` |
+| C3.1 | Expense tracking | COMPLETE | `/money/expenses`, `/expenses/setup` |
+| C3.2 | Investment management | COMPLETE | `/money/investors` |
+| C4 | Receivables and payables | COMPLETE | `/customers/ageing`, `/buying/ageing` |
+| C5 | Employee and HR | COMPLETE | `/people/employees`, `/people/attendance` |
+| C6 | Payroll, commission, WPS | COMPLETE | `/people/payroll`, `/payroll/[runID]` |
+| C7 | Fixed assets | COMPLETE | `/money/assets` |
+| C8 | Shift and X/Z reports | COMPLETE | `/shifts` |
+| C9 | Posting engine | N/A | An engine. It has no screen and should not have one. |
+| C10 | Fiscal period and year-end | COMPLETE | `/money/periods`, `/money/journals` |
+| C11 | Bank reconciliation | COMPLETE | `/money/reconcile`, `/reconcile/[statementID]` |
+| C12 | Settlement and gateway | NOT STARTED | `/money/gateways` |
+| C13 | Costing and COGS | COMPLETE | `/reports/financials`, `/stock` |
+| C14 | Accounting-aware returns | COMPLETE | `/pos/returns` |
+| D1 | Reporting suite | COMPLETE | `/reports/financials`, `/reports/tax`, `/reports/saved` |
+| D2 | Analytics | COMPLETE | `/reports/analytics` |
+| D3 | Notification centre | COMPLETE | `/notifications` — built this pass; six routes had no caller |
+| D4 | Audit trail | NOT STARTED | `/oversight/audit` |
+| D5 | Approval centre | COMPLETE | `/approvals` — both queues, decide, escalate |
+| D6 | Document management | NOT STARTED | `/oversight/documents` |
+| D7 | Global search | COMPLETE | `/search` and the header box — built this pass; the route had no caller |
+| E1 | ZATCA e-invoicing | COMPLETE, external dependency | `/settings/einvoicing`; the Fatoora OTP is the taxpayer's to fetch |
+| E1.3 | Offline B2B rules 2 and 6 | N/A | Optional; the till issues simplified invoices only |
+| E2 | Saudi tax and VAT return | COMPLETE | `/settings/tax`, `/reports/tax` |
+| E3 | Saudi payment methods | NOT STARTED | `/money/gateways` |
+| E4 | PDPL privacy | PARTIAL | storefront disclosures on `/settings/business`; `/oversight/privacy` unbuilt |
+| E5 | E-commerce law and storefront | COMPLETE | `/settings/business` disclosures, `/customers/portal` |
+| E6 | Saudi labour and payroll | COMPLETE | `/people/payroll` |
+| E7 | Compliance dashboard | COMPLETE | `/oversight/compliance` |
+| E8 | Regulatory rule registry | COMPLETE | `/platform/rules`, `/jurisdictions`, `/rates` |
+| F1 | Workflow and approval engine | COMPLETE | `/approvals` |
+| F2 | Customer self-service portal | COMPLETE (staff side) | `/customers/portal`, `/aftersales/requests`. The customer-facing portal is a separate surface reached with a portal session — see the correction below |
+| F3 | Supplier portal | COMPLETE (staff side) | `/customers/portal` invites and revokes supplier contacts |
+| F4 | Multi-company and group | PARTIAL | the company switch is in the shell; `/oversight/groups` unbuilt |
+| G1 | Country configuration | COMPLETE | `/settings/business`; the market is shown and settled with its reason |
+| G2 | Multi-currency | COMPLETE | `formatMoney` throughout; rates on `/settings/tax` |
+| G3 | Multi-language and RTL | COMPLETE | three catalogues, logical properties, `rtl.test.ts` |
+| G4 | Tax templates library | COMPLETE | `/settings/tax`, `/platform/rules` |
+| H1 | Security and authentication | COMPLETE | `/login`, `/change-password`, `/forgot-password`, `/settings/security` |
+| H2 | Offline-first and sync | COMPLETE | `/pos` |
+| H3 | Device management | COMPLETE | `/settings/devices` |
+| H4 | Backup and DR | NOT STARTED | `/oversight/backups` |
+| H5 | Plans, entitlements, limits | COMPLETE | `/settings/subscription`, `/platform/billing` |
+| H6 | API and integration platform | NOT STARTED | `/settings/integrations` |
+| H7 | Import and export | PARTIAL | report exports work; `/settings/imports` unbuilt |
+| H8 | System health | COMPLETE | `/platform` |
+| H9 | Job and queue | COMPLETE | `/platform/jobs` |
+| H10 | Support ticketing | COMPLETE | `/settings/support`, `/platform/support` |
+| I1 | System and owner settings | COMPLETE | `/settings/business` |
+| I2 | Receipt and invoice templates | COMPLETE | `/settings/business` |
+| I3 | Numbering engine | N/A | An engine. The counters are deliberately not shown. |
+| I4 | User preferences | COMPLETE | language in the user menu; notification channels on `/notifications` |
+| I5 | Point and station settings | COMPLETE | `/settings/devices` |
+
+## Count
+
+| | |
+|---|---|
+| COMPLETE | 64 |
+| PARTIAL | 3 — E4, F4, H7 |
+| NOT STARTED | 7 — C12, D4, D6, E3, H4, H6, and the import half of H7 |
+| N/A, an engine or optional | 3 — C9, I3, E1.3 |
+
+Those seven rows are **six distinct screens**, because C12 and E3 are the same
+one: `/money/gateways`, `/oversight/audit`, `/oversight/documents`,
+`/oversight/privacy`, `/oversight/backups`, `/oversight/groups`,
+`/settings/integrations`, `/settings/imports`. Nav coverage is **74 of 82
+built**, and those eight entries are the eight.
+
+## Four features that the nav count could not see
+
+A feature with no nav entry cannot show up as unbuilt in it, so the flagged list
+was never the whole truth. Four backend-complete features had no frontend at all
+and no entry:
+
+* **Account recovery.** `POST /auth/forgot-password` and `/auth/reset-password`
+  were live and uncalled. Sign-in had always carried a "forgot your password"
+  link and there was no page behind it, so an owner locked out of their own
+  business met a dead link.
+* **MFA setup and sessions.** Signing in with a second factor worked, because
+  the login screen handles the challenge. Nothing could turn one on, show
+  recovery codes, or list and end sessions. Five routes, unreachable.
+* **The notification centre.** Six routes and no reference anywhere in
+  `web-next`.
+* **Global search.** `GET /search`, and no box.
+
+All four are built. They live in the user menu and the header rather than the
+sidebar: every route behind them resolves the caller from their own token and
+takes no user parameter, so there is no permission to name — and
+`navigation.test.ts` is right to require one of every sidebar item, because an
+item with no permission renders for somebody holding nothing. They are
+registered in `navigation.built.test.ts` as reached-otherwise, each with the
+place it is reached from.
+
+## Corrections this pass owes the tracker
+
+* **FE-56, "Customer portal administration", describes a screen that cannot
+  exist.** `GET /portal/contacts` is `supplier_portal_user` — suppliers only.
+  Customers sign in with a phone and a one-time code, and `POST /portal/code`
+  answers identically whether or not the number is on file, "so the portal
+  cannot be used to ask a shop who its customers are." There is deliberately no
+  customer portal account for staff to create, disable or reset. The screen
+  covers both halves and says so; the nav label read "Customer portal" and now
+  reads "Portal access". The Blueprint row needs the same correction — renaming
+  the label alone would leave the tracker claiming a feature the API refuses on
+  purpose.
+* **The nav flags are accurate and the prose rows are not.** A separate reconcile
+  pass found **61 rows reading NOT STARTED with the screen on disk** — 33 in
+  §0.5 and 28 in §0.6. The `built` flags themselves were checked against
+  `page.tsx` in both directions with zero discrepancies, so
+  `navigation.built.test.ts` is holding that line; the drift is in the prose
+  tables, not the map.
+
+## Gaps found and deliberately left open
+
+* **There is no `GET /receivables/receipts`.** `POST /installments/{id}/collect`
+  takes a `receipt_id`; receipts can be created and reversed but not listed. So
+  the instalments screen cannot offer a picker — it asks for the reference and
+  says where it comes from. One absent endpoint, not a UI decision.
+* **`POST /onboarding/stores` counts an upsert as an addition.** Its ceiling
+  check is `existing + len(payload) > ceiling` and it upserts by code, so a shop
+  at its plan ceiling re-submitting the branches it already has is refused. The
+  per-branch route added in `e0b467f` compares rather than sums and has a test
+  for amending at the ceiling; the wizard path still has the old arithmetic.
+
+## Verification at the time of writing
+
+    typecheck            clean
+    web-next tests       411 passed / 25 files
+    shared tests         482 passed / 29 files
+    build                clean, 113 routes, 92 static pages
+    check:contract       476 routes, 110 permissions (103 route-gated)
+    verify:api           ALL SCREEN CONTRACTS VERIFIED
+    verify:rbac          EVERY BOUNDARY HELD
+    nav coverage         74 of 82 built
