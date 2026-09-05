@@ -617,11 +617,19 @@ func TestPayingIsIdempotent(t *testing.T) {
 				"description": "Rent", "qty": "1", "unit_cost": "1000.00",
 			}},
 		})
-	billID, _ := decodeJSON(t, billed)["id"].(string)
+	bill := decodeJSON(t, billed)
+	billID, _ := bill["id"].(string)
+	// What the bill came to, read back rather than assumed. A line with no
+	// treatment is standard-rated and the rate comes from the regulatory
+	// register, so 1000.00 of rent is not a 1000.00 bill in a market that
+	// charges VAT. Writing the figure in would put a tax rate into a test
+	// about paying twice.
+	total := decimal.RequireFromString(bill["total_inclusive"].(string))
+	paid := decimal.RequireFromString("400.00")
 
 	payment := map[string]any{
 		"uuid": newUUID(), "supplier_id": f.supplierID, "method": "bank",
-		"allocations": []map[string]any{{"bill_id": billID, "amount": "400.00"}},
+		"allocations": []map[string]any{{"bill_id": billID, "amount": paid.StringFixed(2)}},
 	}
 
 	if first := h.do(t, "POST", f.path("/api/v1/purchasing/payments"), f.token, payment); first.StatusCode != 201 {
@@ -632,10 +640,12 @@ func TestPayingIsIdempotent(t *testing.T) {
 		t.Errorf("a repeated payment returned %d, want 200", second.StatusCode)
 	}
 
+	// Paid ONCE, whatever the bill came to. That is the property.
 	after := decodeJSON(t, h.do(t, "GET",
 		f.path("/api/v1/purchasing/bills/"+billID), f.token, nil))
-	if !amountsEqual(after["outstanding"].(string), "600.00") {
-		t.Errorf("outstanding is %v; the retry paid twice", after["outstanding"])
+	if !amountsEqual(after["outstanding"].(string), total.Sub(paid).StringFixed(2)) {
+		t.Errorf("outstanding is %v, want %s; the retry paid twice",
+			after["outstanding"], total.Sub(paid).StringFixed(2))
 	}
 }
 
@@ -648,7 +658,7 @@ func TestAgeingMeasuresFromTheDueDate(t *testing.T) {
 	h := newHarness(t)
 	f := seedBuying(t, h)
 
-	h.do(t, "POST", f.path("/api/v1/purchasing/bills"), f.token,
+	billed := h.do(t, "POST", f.path("/api/v1/purchasing/bills"), f.token,
 		map[string]any{
 			"uuid": newUUID(), "supplier_id": f.supplierID,
 			"supplier_ref": "INV-AGE", "bill_date": "2026-08-15",
@@ -656,6 +666,14 @@ func TestAgeingMeasuresFromTheDueDate(t *testing.T) {
 				"description": "Stock", "qty": "1", "unit_cost": "1000.00",
 			}},
 		})
+	// The whole bill, tax included, read back rather than assumed: a line with
+	// no treatment is standard-rated at whatever the register says on the bill
+	// date. What is being tested is which BUCKET the money lands in, and that
+	// answer must not move when a market changes its rate.
+	owed, _ := decodeJSON(t, billed)["total_inclusive"].(string)
+	if owed == "" {
+		t.Fatal("the bill did not say what it came to")
+	}
 
 	// Terms are 30 days, so on 2026-08-20 it is not yet due.
 	early := decodeJSON(t, h.do(t, "GET",
@@ -665,9 +683,9 @@ func TestAgeingMeasuresFromTheDueDate(t *testing.T) {
 		t.Fatal("the supplier does not appear in the ageing at all")
 	}
 	row, _ := rows[0].(map[string]any)
-	if !amountsEqual(row["not_due"].(string), "1000.00") {
-		t.Errorf("not_due is %v five days after a 30-day bill, want 1000.00",
-			row["not_due"])
+	if !amountsEqual(row["not_due"].(string), owed) {
+		t.Errorf("not_due is %v five days after a 30-day bill, want %s",
+			row["not_due"], owed)
 	}
 
 	// Forty days past due lands in 31–60.
@@ -675,8 +693,9 @@ func TestAgeingMeasuresFromTheDueDate(t *testing.T) {
 		f.path("/api/v1/purchasing/ageing?as_of=2026-10-25"), f.token, nil))
 	lateRows, _ := late["rows"].([]any)
 	lateRow, _ := lateRows[0].(map[string]any)
-	if !amountsEqual(lateRow["days_31_60"].(string), "1000.00") {
-		t.Errorf("a bill 40 days past due is in %v, want the 31-60 bucket", lateRow)
+	if !amountsEqual(lateRow["days_31_60"].(string), owed) {
+		t.Errorf("a bill 40 days past due is in %v, want %s in the 31-60 bucket",
+			lateRow, owed)
 	}
 }
 

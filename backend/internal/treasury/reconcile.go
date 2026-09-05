@@ -350,7 +350,13 @@ func (s *Service) Unmatch(
 			WHERE b.id = $1 AND st.id = b.statement_id AND st.company_id = $2`,
 			lineID, scope.CompanyID)
 		if err != nil {
-			return err
+			// Translated, not returned raw. A reconciled statement is frozen by
+			// a trigger, and undoing a match on one is a refusal the person
+			// needs to read -- "Reopen it first, which is recorded." Returned
+			// as it comes back, it reaches them as "Something went wrong on our
+			// side", which says the fault is ours and invites a retry that will
+			// fail the same way.
+			return db.Translate(err, "That statement line was not found.")
 		}
 		if tag.RowsAffected() == 0 {
 			return errs.New(errs.CodeNotFound, "That statement line was not found.")

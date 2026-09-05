@@ -410,6 +410,130 @@ if (!branch || !accountant) {
     200,
   );
 }
+// --- C11: a person who cannot see the bank ledger cannot reconcile it ----
+//
+// Migration 0081 gave reconciling its own verb and says why: `accounting.create`
+// already covers posting a journal entry, and a transfer is one. Reconciliation
+// is a different act -- it asserts that the books agree with an outside party,
+// which is the assertion an auditor relies on.
+//
+// It went to Owner, Accountant and Auditor, and deliberately not to the Store
+// Manager, whose role 0005 describes as unable to "see bank ledgers or true net
+// profit". The seeded Branch Manager turns out to hold no `accounting.*` at all,
+// which is that sentence enforced completely rather than partially -- and is
+// why the nav entry names `accounting.reconcile` rather than `accounting.view`.
+//
+// The Auditor is the sharper case, and the reason the permission exists at all:
+// they may reconcile and may not post. Somebody who could correct the books
+// they are checking is not checking them.
+
+console.log('\nPROVING THE BOOKS AGREE WITH THE BANK');
+const auditor = await staff('auditor', roleNamed(/Auditor/));
+
+if (!branch || !accountant || !auditor) {
+  console.log(
+    '  -  Branch Manager, Accountant or Auditor not seeded; the boundary was not exercised',
+  );
+} else {
+  const anyStatement = (await owner('GET', q('/treasury/statements'))).json?.data?.[0];
+  const bankAccount = (await owner('GET', q('/treasury/accounts'))).json?.data?.find(
+    (a) => a.kind === 'bank',
+  );
+
+  // A branch manager cannot see the bank at all: not the accounts, not the
+  // money moving between them, not the statements.
+  for (const [label, path] of [
+    ['GET /treasury/accounts', q('/treasury/accounts')],
+    ['GET /treasury/transfers', q('/treasury/transfers')],
+    ['GET /treasury/statements', q('/treasury/statements')],
+  ]) {
+    expect(`branch manager: ${label}`, (await branch.call('GET', path)).status, 403);
+  }
+  if (bankAccount) {
+    expect(
+      'branch manager: POST /treasury/statements',
+      (
+        await branch.call('POST', q('/treasury/statements'), {
+          account_id: bankAccount.id,
+          starts_on: '2026-09-01',
+          ends_on: '2026-09-30',
+          opening_balance: '0.00',
+          closing_balance: '10.00',
+          lines: [{ value_date: '2026-09-02', description: 'x', amount: '10.00' }],
+        })
+      ).status,
+      403,
+    );
+  }
+  if (anyStatement) {
+    // The signature itself, and the one that matters most: a reconciliation
+    // signed by somebody who cannot see the ledger it attests to is exactly the
+    // piece of paper C11 exists to prevent.
+    expect(
+      'branch manager: POST /treasury/statements/{id}/reconcile',
+      (
+        await branch.call(
+          'POST',
+          q(`/treasury/statements/${anyStatement.id}/reconcile`),
+          {},
+        )
+      ).status,
+      403,
+    );
+  }
+
+  // An auditor reads the bank and reconciles it.
+  for (const [label, path] of [
+    ['GET /treasury/accounts', q('/treasury/accounts')],
+    ['GET /treasury/statements', q('/treasury/statements')],
+  ]) {
+    expect(`auditor: ${label}`, (await auditor.call('GET', path)).status, 200);
+  }
+  if (anyStatement) {
+    expect(
+      'auditor: GET /treasury/statements/{id}',
+      (await auditor.call('GET', q(`/treasury/statements/${anyStatement.id}`))).status,
+      200,
+    );
+  }
+
+  // And does not post. Checking the books and being able to correct them are
+  // not the same job, and one person holding both is how a difference gets
+  // journalled away rather than explained.
+  if (bankAccount) {
+    expect(
+      'auditor: POST /treasury/transfers',
+      (
+        await auditor.call('POST', q('/treasury/transfers'), {
+          uuid: crypto.randomUUID(),
+          from_account_id: bankAccount.id,
+          to_account_id: bankAccount.id,
+          amount: '1.00',
+          moved_on: new Date().toISOString().slice(0, 10),
+        })
+      ).status,
+      403,
+    );
+  }
+  expect(
+    'auditor: POST /treasury/accounts',
+    (
+      await auditor.call('POST', q('/treasury/accounts'), {
+        kind: 'bank',
+        name: 'Not allowed',
+        currency: 'SAR',
+      })
+    ).status,
+    403,
+  );
+
+  expect(
+    'accountant: GET /treasury/statements',
+    (await accountant.call('GET', q('/treasury/statements'))).status,
+    200,
+  );
+}
+
 console.log(
   `\n${failures === 0 ? 'EVERY BOUNDARY HELD' : `${failures} BOUNDARIES DID NOT HOLD`}`,
 );

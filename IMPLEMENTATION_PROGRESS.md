@@ -295,7 +295,7 @@ marked N/A or mapped, rather than dropping them.)
 | B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | NOT STARTED | Plan-gated: warranty. |
 | B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS | List and statement built. Loyalty not started |  |
 | C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/journals | /accounting/journals/* | accounting.view / accounting.create | NOT STARTED | Manual journals still have no frontend caller. |
-| C2 | Cash & Bank Management | FE-28 | /money/accounts | 10 /treasury/* routes | accounting.view / manage_accounts | NOT STARTED |  |
+| C2 | Cash & Bank Management | FE-28 | /money/accounts, /money/transfers | 10 /treasury/* routes | accounting.view / manage_accounts | COMPLETE | §0.98. Accounts with the five kinds, transfers, and the unmatched count that leads here. |
 | C3 | Expense & Investment Management | FE-26 | /money/expenses, /money/expenses/setup | 16 /expenses/* routes | expense.view / expense.record / expense.manage_heads | IN PROGRESS | Expenses and the configuration behind them are done (§0.98, §0.99): period, voucher, recording, categories, departments, standing costs. Investors (C3.2) not started. |
 | C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/{id}, /customers/ageing | /customers/{id}/ledger, /open-invoices | customers.view | IN PROGRESS | The customer statement and unpaid-invoice list are built; the ageing reports are not |  |
 | C5 | Employee / HR Management | FE-29 | /people/employees | /employees/*, /attendance, /leave | hr.view / hr.manage | NOT STARTED | Plan-gated: payroll. |
@@ -304,7 +304,7 @@ marked N/A or mapped, rather than dropping them.)
 | C8 | Shift Management & Cash Drawer Reconciliation (X/Z Report) | FE-19, FE-41 | /shifts, /pos | 6 /shifts/* routes | sales.receive_payment, report.view | IN PROGRESS | Opening a session is COMPLETE in the till (validated live). Cash drop, close and X/Z are not. |
 | C9 | Double-Entry Accounting Engine | FE-27 | /money/journals | /accounting/journals | accounting.view | NOT STARTED |  |
 | C10 | Fiscal Period & Year-End Closing | FE-50 | /money/periods | /accounting/periods/*, /accounting/year-end | accounting.close_period / reopen_period | NOT STARTED |  |
-| C11 | Bank Reconciliation | FE-28 | /money/accounts | /treasury/statements/*, /treasury/lines/{id}/match | accounting.reconcile | NOT STARTED |  |
+| C11 | Bank Reconciliation | FE-28 | /money/reconcile, /money/reconcile/{id} | /treasury/statements/*, /treasury/lines/{id}/match | accounting.reconcile | COMPLETE | §0.100. Import, auto-match, match by hand, undo, sign-off refused while anything is unexplained. One backend defect fixed: the frozen-statement refusal arrived as a 500. |
 | C12 | Payment Settlement & Gateway Reconciliation | FE-51 | /money/gateways | /settlement/*, /payment-gateways/* | accounting.view, gateway.view | NOT STARTED |  |
 | C13 | Inventory Costing & COGS Engine | FE-21 | /stock | GET /stock/on-hand | inventory.view | NOT STARTED | Costing is a backend concern; the frontend shows value at cost on the dashboard already. |
 | C14 | Accounting-Aware Returns, Exchanges & Credit Notes | FE-18 | /sales/returns | /pos/returns | sales.refund | NOT STARTED |  |
@@ -1346,6 +1346,165 @@ accounts screen in §0.98 and caught by `locale.test.ts` once this module's keys
 were inserted. Arabic transliterates both; Bangla now does too
 (`আইব্যান`, `সুইফট`).
 
+### 0.100 Bank reconciliation — and a refusal that arrived as a crash
+
+Two screens: the statements brought in, and the working screen where a person
+pairs the bank's lines with the books and signs the result off.
+
+C11 opens with the sentence the module serves — *"Proves that what the software
+says is in the bank is actually what the bank says"* — and the service states
+the arithmetic that claim reduces to:
+
+    closing balance
+      - the ledger balance on that account at that date
+      = the unmatched items      <- and nothing else
+
+**Signing off is refused while anything is unexplained, and that refusal is the
+feature.** The service is blunt about why: a reconciliation that can be signed
+with a difference nobody accounts for *"is a piece of paper, and the auditor who
+relies on it has been misled by a screen."* So the button is present and refused
+rather than hidden, because the refusal names the amount and is the most useful
+sentence on the screen.
+
+**A rule's guess and a person's decision are different claims.** The importer
+auto-matches on exact amount within three days, and says what that is: *"It is
+usually right and it is occasionally very wrong — two identical supplier
+payments on the same day are indistinguishable to any rule."* Every row says
+which kind of match it carries, and either can be undone.
+
+#### Signed off and balancing are two questions, and they can disagree
+
+`status` is whether a person put their name to it. `difference` is recomputed
+from today's books every time the row is read. Driving it found a live case: a
+statement whose `status` was `reconciled` came back with `reconciled: false`,
+because a second statement imported afterwards changed the cumulative
+arithmetic underneath it.
+
+Conflating those two fields would either hide a real change or claim a sign-off
+nobody made, so the badge reads `status` and the figure reads `difference`, and
+a signed-off statement whose arithmetic has since moved says so.
+
+#### 🔴 Backend defect: a deliberate refusal reached the caller as a 500
+
+Found by driving the screens, not by reading the source.
+
+`POST /treasury/lines/{id}/match` on a signed-off statement answered **500 —
+"Something went wrong on our side."** The trigger that freezes a reconciled
+statement was working perfectly and had written the reason for the reader:
+
+> *"A reconciled statement cannot be changed. Reopen it first, which is
+> recorded."*
+
+The message never got out. The trigger raises with
+`USING ERRCODE = 'restrict_violation'` — SQLSTATE `23001` — and
+`db.Translate` knew only `P0001`, the default RAISE code. Everything else fell
+through to `CodeInternal`.
+
+That is worse than an unhelpful message. A 500 says the fault is ours, invites a
+retry that will fail identically, pages whoever watches the error rate, and
+hides a refusal working exactly as intended.
+
+**Two changes, both small:**
+
+| file | change |
+|---|---|
+| `internal/platform/db/db.go` | `Translate` routes `23001` through `classifyRaise`, exactly as it already did `P0001` |
+| `internal/treasury/reconcile.go` | `Unmatch` translates its driver error instead of returning it raw |
+
+**Two other triggers raise the same way** and had the same fault: a posted stock
+voucher (`0079`) and an invoiced order (`0085`). Both now surface their own
+sentence as a 409.
+
+`TestAReconciledStatementIsFrozen` already existed and did not catch this — it
+inserts straight into the table, so it proves the trigger fires and says nothing
+about what an HTTP caller is told. Its new pair,
+`TestAFrozenStatementRefusesRatherThanFailing`, goes through the route. It fails
+on the old code with the exact 500 and passes on the new.
+
+#### Pasting a statement, rather than retyping one
+
+There is no upload route and inventing one would be inventing a backend. What a
+bank sends is a CSV and what a person does with it is open it, tidy it and copy
+the rows — so the form takes the rows.
+
+Four fixed columns, `date, description, reference, amount`, stated above the
+box. Not a heuristic that finds the date column on its own: banks differ, and a
+heuristic right nine times in ten files a March charge in April on the tenth.
+
+**ISO dates only.** `03/04/2026` is the third of April in Dhaka and the fourth
+of March in California, and nothing in the row says which. Guessing would be
+silently wrong for half the markets this product sells into, so a non-ISO date
+is refused per row, naming the row.
+
+The arithmetic is checked beside the box as the paste lands. The API refuses a
+statement whose lines do not reach its own closing figure — *"Check that every
+line was imported"* — and that is a truncated paste nine times in ten. Finding
+it while pasting beats finding it in a 400.
+
+`parseStatement` and its friends are 22 tests in `lib/money/statement.test.ts`,
+including the one that matters: two lines of `0.10` and `0.20` total `0.30`,
+because this is a figure somebody will reconcile against a bank.
+
+#### Verified live
+
+```
+ok a till has no statement, and the import is refused
+ok a statement that does not reach its closing balance is refused
+ok a statement with no lines on it proves nothing, and is refused
+ok GET /treasury/statements/{id}
+ok   statement line
+ok   entry the bank has not seen
+ok a line can be paired by hand and unpaired again
+ok signing off is refused while something is unexplained, and says how much
+```
+
+#### Four tests that had a tax rate hidden inside them
+
+Running the full backend regression for this module turned up four failures in
+`internal/api` that had nothing to do with reconciliation, and everything to do
+with §0.92. They were a committed regression, and they had been sitting there
+because **migrations 0125 and 0126 had never been applied** — the API process
+still running was an older build, so every check since had been passing against
+a database one schema behind.
+
+Since §0.92 a bill line with no `tax_treatment` is standard-rated and priced
+from the regulatory register. So `1 × 1000.00` is not a 1000.00 bill in Saudi
+Arabia. Three tests said it was:
+
+| test | said | means |
+|---|---|---|
+| `TestASupplierWhoIsStillOwedMoneyCannotBeHidden` | the refusal contains `"1000"` | the refusal names the amount owed |
+| `TestASettledSupplierCanBeRetired` | pay `1000.00` | pay the bill off |
+| `TestPayingIsIdempotent` | outstanding is `600.00` | the retry paid once |
+| `TestAgeingMeasuresFromTheDueDate` | the bucket holds `1000.00` | the money landed in the 31–60 bucket |
+
+Each now reads `total_inclusive` back from the bill and works from that. The
+tests say what they mean, and they no longer carry a tax rate that a market can
+change — which is the rule for the product's own code and had no business being
+broken in its tests.
+
+#### The RBAC boundary, and the Auditor
+
+```
+ok branch manager: GET /treasury/accounts   -> 403
+ok branch manager: GET /treasury/statements -> 403
+ok branch manager: POST /treasury/statements/{id}/reconcile -> 403
+ok auditor:        GET /treasury/statements -> 200
+ok auditor:        POST /treasury/transfers -> 403
+ok auditor:        POST /treasury/accounts  -> 403
+```
+
+The Branch Manager assertion was written expecting `accounting.view` and was
+**wrong**: the seeded role holds no `accounting.*` at all. Role 0005 describes a
+store manager as unable to *"see bank ledgers or true net profit"*, and the seed
+enforces that completely rather than partially. The test now says what is true,
+which is also why the nav entry names `accounting.reconcile` rather than
+`accounting.view`.
+
+The **Auditor** is the sharper case and the reason the permission exists at all:
+they may reconcile and may not post. Somebody who could correct the books they
+are checking is not checking them.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1363,9 +1522,11 @@ Cash, bank and expenses are done (§0.98).
 Expense configuration is done (§0.99): categories with the input-VAT decision,
 departments, and standing costs with the generate pass.
 
-Next: **bank reconciliation and treasury statements** (C11 —
-`/treasury/statements/*`, `/treasury/lines/{id}/match`), then sales returns,
-purchase returns, accounting and manual journals.
+Bank reconciliation is done (§0.100), and fixing one backend defect on the way:
+a deliberate refusal was reaching callers as a 500 on three different triggers.
+
+Next: **sales returns**, then purchase returns, complete accounting, manual
+journals, receivables and payables.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

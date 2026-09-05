@@ -18,6 +18,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -425,6 +426,74 @@ func TestAReconciledStatementIsFrozen(t *testing.T) {
 	if err == nil {
 		t.Fatal("a line could be added to a reconciled statement. The lines " +
 			"are the evidence the sign-off was about.")
+	}
+}
+
+// ...and the refusal has to reach an HTTP caller as a refusal.
+//
+// The test above inserts straight into the table, so it proves the trigger
+// fires and says nothing about what a person is told. Driving the
+// reconciliation screens against a running server found the other half: match
+// and unmatch on a signed-off statement both answered 500.
+//
+// The trigger raises with `USING ERRCODE = 'restrict_violation'` rather than
+// the default `P0001`, and `db.Translate` knew only the default — so the
+// sentence written for the reader, "Reopen it first, which is recorded", was
+// thrown away and replaced with "Something went wrong on our side".
+//
+// That is worse than an unhelpful message. A 500 says the fault is ours, it
+// invites a retry that will fail identically, it pages whoever watches the
+// error rate, and it hides a refusal working exactly as intended. Two other
+// triggers raise the same way — a posted stock voucher and an invoiced order —
+// so all three were reporting a deliberate refusal as a server fault.
+func TestAFrozenStatementRefusesRatherThanFailing(t *testing.T) {
+	h := newHarness(t)
+	f := seedTreasury(t, h)
+
+	opening := f.ledgerAt(t, h, "1110", "2026-07-31")
+	resp := h.do(t, http.MethodPost, f.path("/api/v1/treasury/statements"), f.token,
+		map[string]any{
+			"account_id": f.bankID.String(),
+			"starts_on":  "2026-08-01", "ends_on": "2026-08-31",
+			"opening_balance": opening.StringFixed(2),
+			"closing_balance": opening.StringFixed(2),
+			"lines": []map[string]any{
+				{"value_date": "2026-08-05", "description": "In", "amount": "10.00"},
+				{"value_date": "2026-08-06", "description": "Out", "amount": "-10.00"},
+			},
+		})
+	st := decodeJSON(t, resp)
+	id, _ := st["id"].(string)
+	lines, _ := st["lines"].([]any)
+	if len(lines) == 0 {
+		t.Fatal("the statement came back with no lines")
+	}
+	first, _ := lines[0].(map[string]any)
+	lineID, _ := first["id"].(string)
+
+	if done := h.do(t, http.MethodPost,
+		f.path("/api/v1/treasury/statements/"+id+"/reconcile"), f.token, nil); done.StatusCode != http.StatusOK {
+		t.Fatalf("reconcile: %s", readBody(t, done))
+	}
+
+	// An empty journal line is how the route expresses "undo the match", so
+	// this exercises Unmatch, which returned its driver error raw.
+	undo := h.do(t, http.MethodPost,
+		f.path("/api/v1/treasury/lines/"+lineID+"/match"), f.token,
+		map[string]any{"journal_line_id": ""})
+	body := readBody(t, undo)
+
+	if undo.StatusCode >= 500 {
+		t.Fatalf("unmatching on a reconciled statement answered %d. The "+
+			"database refused on purpose; a 500 tells the caller it was our "+
+			"fault and to try again. Body: %s", undo.StatusCode, body)
+	}
+	if undo.StatusCode == http.StatusOK || undo.StatusCode == http.StatusNoContent {
+		t.Fatal("a reconciled statement's lines could be changed. They are " +
+			"the evidence the sign-off was about.")
+	}
+	if !strings.Contains(body, "Reopen it first") {
+		t.Fatalf("the refusal did not carry the reason a person needs. Body: %s", body)
 	}
 }
 

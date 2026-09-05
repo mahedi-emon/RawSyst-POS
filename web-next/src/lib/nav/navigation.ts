@@ -437,6 +437,19 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.money.transfers',
       },
       {
+        id: 'reconcile',
+        labelKey: 'nx.nav.biz.money.reconcile',
+        href: '/money/reconcile',
+        built: true,
+        // C11's own verb. `accounting.create` covers posting an entry;
+        // reconciling asserts that the books agree with an outside party,
+        // which is the assertion an auditor relies on, so migration 0081 gave
+        // it a permission of its own -- and deliberately withheld it from the
+        // Store Manager, who "cannot see bank ledgers".
+        permissions: ['accounting.reconcile'],
+        descriptionKey: 'nx.navd.biz.money.reconcile',
+      },
+      {
         id: 'receipts',
         labelKey: 'nx.nav.biz.money.receipts',
         href: '/money/receipts',

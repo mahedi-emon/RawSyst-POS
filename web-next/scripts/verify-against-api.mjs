@@ -429,6 +429,207 @@ console.log('\nCASH, BANK AND WHAT WAS SPENT');
     console.log('  -  nothing has been moved; the transfer shape was not exercised');
   }
 
+  // --- proving the books agree with the bank (C11) ---
+
+  const statements = await check(
+    'GET /treasury/statements',
+    `/treasury/statements?company_id=${CO}`,
+    null,
+  );
+
+  const bank = accounts?.data?.find(
+    (a) => a.is_active && ['bank', 'card_settlement', 'gateway'].includes(a.kind),
+  );
+  const till = accounts?.data?.find((a) => a.kind === `cash`);
+
+  if (!bank) {
+    console.log('  -  no bank account; reconciliation was not exercised');
+  } else {
+    // A till has no statement. This is what makes the account picker on the
+    // import form a filtered list rather than every money account.
+    if (till) {
+      const wrongKind = await post(`/treasury/statements?company_id=${CO}`, {
+        account_id: till.id,
+        starts_on: '2026-09-01',
+        ends_on: '2026-09-30',
+        opening_balance: '0.00',
+        closing_balance: '10.00',
+        lines: [{ value_date: '2026-09-02', description: 'x', amount: '10.00' }],
+      });
+      if (wrongKind.status === 400) {
+        console.log('  ok a till has no statement, and the import is refused');
+      } else {
+        console.log(`  x a till statement came back ${wrongKind.status}, want 400`);
+        failures += 1;
+      }
+    }
+
+    // The bank's own arithmetic, checked before anything is stored. The form
+    // checks it too, beside the box, because a statement that does not reach
+    // its own closing figure is a paste that stopped short.
+    const short = await post(`/treasury/statements?company_id=${CO}`, {
+      account_id: bank.id,
+      starts_on: '2026-09-01',
+      ends_on: '2026-09-30',
+      opening_balance: '1000.00',
+      closing_balance: '9999.00',
+      lines: [{ value_date: '2026-09-02', description: 'Charge', amount: '-25.00' }],
+    });
+    if (short.status === 400 && /does not add up/i.test(short.json?.error?.message ?? "")) {
+      console.log('  ok a statement that does not reach its closing balance is refused');
+    } else {
+      console.log(`  x a short statement came back ${short.status}, want 400`);
+      failures += 1;
+    }
+
+    const empty = await post(`/treasury/statements?company_id=${CO}`, {
+      account_id: bank.id,
+      starts_on: '2026-09-01',
+      ends_on: '2026-09-30',
+      opening_balance: '0.00',
+      closing_balance: '0.00',
+      lines: [],
+    });
+    if (empty.status === 400) {
+      console.log('  ok a statement with no lines on it proves nothing, and is refused');
+    } else {
+      console.log(`  x an empty statement came back ${empty.status}, want 400`);
+      failures += 1;
+    }
+
+    const stamp = String(Date.now()).slice(-6);
+    const brought = await post(`/treasury/statements?company_id=${CO}`, {
+      account_id: bank.id,
+      starts_on: '2026-09-01',
+      ends_on: '2026-09-30',
+      opening_balance: '0.00',
+      closing_balance: '-21.50',
+      reference: `VERIFY-${stamp}`,
+      lines: [
+        { value_date: '2026-09-02', description: 'Bank charge', reference: 'CHG-1', amount: '-25.00' },
+        { value_date: '2026-09-03', description: 'Interest', reference: 'INT-1', amount: '3.50' },
+      ],
+    });
+    if (brought.status !== 201) {
+      console.log(`  x POST /treasury/statements -> ${brought.status}, want 201`);
+      failures += 1;
+    } else {
+      expectFields('  statement', brought.json, [
+        'id',
+        'account',
+        'starts_on',
+        'ends_on',
+        'opening_balance',
+        'closing_balance',
+        // Whether anybody has signed it off, which is NOT the same question
+        // as whether the arithmetic currently comes out. The badge reads
+        // this and the figure reads `difference`.
+        'status',
+        // What the books say for the same account on the same date.
+        'ledger_balance',
+        // What is left once both exception lists are taken off. The figure
+        // the whole exercise is about.
+        'difference',
+        'reconciled',
+        'lines',
+      ]);
+
+      const detail = await check(
+        'GET /treasury/statements/{id}',
+        `/treasury/statements/${brought.json.id}?company_id=${CO}`,
+        ['id', 'lines', 'difference', 'ledger_balance'],
+      );
+      if (detail?.lines?.[0]) {
+        expectFields('  statement line', detail.lines[0], [
+          'id',
+          'value_date',
+          'description',
+          // Signed from the BANK\u2019s point of view: positive is money
+          // arriving. The paste box says so, because nothing else could.
+          'amount',
+        ]);
+      }
+
+      // C11\u2019s exception report, and the more useful of the two lists: the
+      // cheque that never cleared and the payment recorded twice.
+      const books = detail?.unmatched_in_books ?? [];
+      if (books[0]) {
+        expectFields('  entry the bank has not seen', books[0], [
+          'id',
+          'entry_date',
+          'entry_no',
+          'amount',
+        ]);
+      } else {
+        console.log('  -  the books hold nothing unmatched; that list was not exercised');
+      }
+
+      const line = (detail?.lines ?? []).find((l) => !l.matched_to);
+      if (line && books[0]) {
+        const paired = await post(
+          `/treasury/lines/${line.id}/match?company_id=${CO}`,
+          { journal_line_id: books[0].id },
+        );
+        // An empty journal line is how the route expresses "undo". One route
+        // rather than two, because a person toggles between them.
+        const undone = await post(
+          `/treasury/lines/${line.id}/match?company_id=${CO}`,
+          { journal_line_id: '' },
+        );
+        if (paired.status === 204 && undone.status === 204) {
+          console.log('  ok a line can be paired by hand and unpaired again');
+        } else {
+          console.log(
+            `  x pairing -> ${paired.status}, undoing -> ${undone.status}, want 204 and 204`,
+          );
+          failures += 1;
+        }
+      }
+
+      // Signing off is refused while anything is unexplained, and the refusal
+      // names the amount. That refusal is the feature: a reconciliation that
+      // could be signed with an unexplained difference is a piece of paper.
+      const signOff = await post(
+        `/treasury/statements/${brought.json.id}/reconcile?company_id=${CO}`,
+        {},
+      );
+      if (signOff.status === 409) {
+        console.log(
+          '  ok signing off is refused while something is unexplained, and says how much',
+        );
+      } else if (signOff.status === 200) {
+        console.log(
+          '  ok nothing was left unexplained, and the statement signed off',
+        );
+        // A signed-off statement is frozen by a trigger. The refusal has to
+        // reach the caller as a refusal: it used to arrive as a 500, because
+        // the trigger raises with `restrict_violation` and Translate knew
+        // only the default RAISE code.
+        const frozenLine = (detail?.lines ?? [])[0];
+        if (frozenLine) {
+          const frozen = await post(
+            `/treasury/lines/${frozenLine.id}/match?company_id=${CO}`,
+            { journal_line_id: '' },
+          );
+          if (frozen.status === 409 || frozen.status === 422) {
+            console.log('  ok a signed-off statement refuses a change, rather than failing');
+          } else {
+            console.log(
+              `  x changing a signed-off statement came back ${frozen.status}, want a refusal`,
+            );
+            failures += 1;
+          }
+        }
+      } else {
+        console.log(`  x signing off came back ${signOff.status}`);
+        failures += 1;
+      }
+    }
+  }
+  if (!statements?.data) {
+    console.log('  -  the statement list did not answer with data');
+  }
+
   // A PERIOD, not a page: totals for a date range with the expenses inside
   // it, because "what did we spend last month" is the question and a list
   // alone cannot answer it.

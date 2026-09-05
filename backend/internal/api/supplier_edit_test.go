@@ -5,6 +5,8 @@ package api
 import (
 	"strings"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 // Editing a supplier, and taking one off the list.
@@ -174,16 +176,31 @@ func TestASupplierWhoIsStillOwedMoneyCannotBeHidden(t *testing.T) {
 	h := newHarness(t)
 	f := seedBuying(t, h)
 
-	if resp := h.do(t, "POST", f.path("/api/v1/purchasing/bills"), f.token,
+	billed := h.do(t, "POST", f.path("/api/v1/purchasing/bills"), f.token,
 		map[string]any{
 			"uuid": newUUID(), "supplier_id": f.supplierID,
 			"supplier_ref": "OWED-1",
 			"lines": []map[string]any{{
 				"description": "Stock", "qty": "1", "unit_cost": "1000.00",
 			}},
-		}); resp.StatusCode != 201 {
-		t.Fatalf("bill: %s", readBody(t, resp))
+		})
+	if billed.StatusCode != 201 {
+		t.Fatalf("bill: %s", readBody(t, billed))
 	}
+	// What the bill actually came to, read back rather than assumed.
+	//
+	// A line with no treatment is standard-rated, and the RATE comes from the
+	// regulatory register at the bill date -- so 1000.00 of stock is not a
+	// 1000.00 bill in a market that charges VAT. Writing the total in here
+	// would be writing a tax rate into a test about retiring a supplier, and
+	// it would have to be edited every time a market's rate moved.
+	raw, _ := decodeJSON(t, billed)["total_inclusive"].(string)
+	if raw == "" {
+		t.Fatal("the bill did not say what it came to")
+	}
+	// Stored at four places and spoken at two. The refusal is written for a
+	// person, so it rounds; the comparison has to meet it there.
+	owed := decimal.RequireFromString(raw).StringFixed(2)
 
 	off := h.do(t, "POST",
 		f.path("/api/v1/purchasing/suppliers/"+f.supplierID+"/active"), f.token,
@@ -194,8 +211,8 @@ func TestASupplierWhoIsStillOwedMoneyCannotBeHidden(t *testing.T) {
 	}
 
 	// The refusal names the amount, so the person reading it knows what to do.
-	if body := readBody(t, off); !strings.Contains(body, "1000") {
-		t.Errorf("the refusal does not say how much is owed: %s", body)
+	if body := readBody(t, off); !strings.Contains(body, owed) {
+		t.Errorf("the refusal does not say how much is owed (%s): %s", owed, body)
 	}
 }
 
@@ -212,12 +229,16 @@ func TestASettledSupplierCanBeRetired(t *testing.T) {
 				"description": "Stock", "qty": "1", "unit_cost": "1000.00",
 			}},
 		})
-	billID, _ := decodeJSON(t, billed)["id"].(string)
+	bill := decodeJSON(t, billed)
+	billID, _ := bill["id"].(string)
+	// The whole bill, tax included. Paying the net would leave the VAT
+	// outstanding, and this test is about a supplier who has been settled.
+	due, _ := bill["total_inclusive"].(string)
 
 	if resp := h.do(t, "POST", f.path("/api/v1/purchasing/payments"), f.token,
 		map[string]any{
 			"uuid": newUUID(), "supplier_id": f.supplierID, "method": "bank",
-			"allocations": []map[string]any{{"bill_id": billID, "amount": "1000.00"}},
+			"allocations": []map[string]any{{"bill_id": billID, "amount": due}},
 		}); resp.StatusCode != 201 {
 		t.Fatalf("payment: %s", readBody(t, resp))
 	}

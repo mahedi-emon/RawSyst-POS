@@ -223,6 +223,7 @@ const PRIMARY_READ: Record<string, string> = {
   'expense-setup': '/api/v1/expenses/accounts',
   treasury: '/api/v1/treasury/accounts',
   'money-transfers': '/api/v1/treasury/transfers',
+  reconcile: '/api/v1/treasury/statements',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',

@@ -185,6 +185,12 @@ const (
 	pgCheckViolation      = "23514"
 	pgExclusionViolation  = "23P01"
 	pgRaiseException      = "P0001" // our own RAISE EXCEPTION from triggers
+	// Also ours. A trigger that says RAISE EXCEPTION ... USING ERRCODE =
+	// 'restrict_violation' is refusing on purpose, with a message written for
+	// the reader, exactly as P0001 does -- it has only picked a more precise
+	// code for the same act. Three do: a posted stock voucher, an invoiced
+	// order and a reconciled bank statement.
+	pgRestrictViolation = "23001"
 )
 
 // Translate converts a driver error into an application error.
@@ -234,7 +240,7 @@ func Translate(err error, notFoundMsg string) error {
 				"That would overlap an existing record covering the same period.")
 		case pgCheckViolation:
 			return errs.Wrap(err, errs.CodeInvalidInput, "That value is not allowed.")
-		case pgRaiseException:
+		case pgRaiseException, pgRestrictViolation:
 			// Triggers raise these deliberately with a message written for the
 			// user — immutability and period locks both surface this way.
 			return errs.Wrap(err, classifyRaise(pgErr.Message), pgErr.Message)
