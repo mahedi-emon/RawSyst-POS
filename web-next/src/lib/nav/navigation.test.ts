@@ -284,6 +284,7 @@ const PRIMARY_READ: Record<string, string> = {
   reconcile: '/api/v1/treasury/statements',
   chart: '/api/v1/accounting/chart',
   journals: '/api/v1/accounting/journals',
+  receivables: '/api/v1/receivables/ageing',
   suppliers: '/api/v1/purchasing/suppliers',
   'purchase-orders': '/api/v1/purchasing/orders',
   'goods-receipts': '/api/v1/purchasing/orders',

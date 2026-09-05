@@ -5854,6 +5854,57 @@ export const en = {
   'nx.jnl.reverseReason': 'Why it is being undone',
   'nx.jnl.reverseReasonHint': 'Its own reason, not this entry’s. The opposite entry is a separate fact in the ledger, and this is the only place that says what it was for.',
   'nx.jnl.cancelReverse': 'Leave it as it is',
+
+  // --- what customers owe, and taking it (web-next)
+  //
+  // Prefixed nx. because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when web/ is retired. ---
+  'nx.rage.title': 'What customers owe',
+  'nx.rage.subtitle': 'Who owes money, and for how long. Aged from the day it fell due, not the day it was invoiced.',
+  'nx.rage.caption': 'Customers with money outstanding, by how late it is',
+  'nx.rage.colCustomer': 'Customer',
+  'nx.rage.everything': 'Owed altogether',
+  'nx.rage.emptyTitle': 'Nobody owes anything',
+  'nx.rage.emptyDesc': 'Every invoice on account has been settled. A cash sale never appears here — it was paid at the counter.',
+  'nx.rage.overdueHint': 'Everything to the right of “not due yet” is late.',
+  'nx.rage.dueBasis': 'Aged from the due date. An invoice on 30 days raised 20 days ago is not late, and ageing it from the day it was issued would put a customer in a chasing queue they do not belong in.',
+  'nx.rage.takePayment': 'Take a payment',
+  'nx.rcpt.title': 'Take a payment',
+  'nx.rcpt.subtitle': 'Money coming in against invoices already issued. A counter sale is not this — it was paid when it was rung up.',
+  'nx.rcpt.customer': 'From whom',
+  'nx.rcpt.chooseCustomer': 'Choose a customer',
+  'nx.rcpt.method': 'How it arrived',
+  'nx.rcpt.mCash': 'Cash',
+  'nx.rcpt.mBank': 'Bank transfer',
+  'nx.rcpt.mCard': 'Card',
+  'nx.rcpt.mCheque': 'Cheque',
+  'nx.rcpt.reference': 'Reference',
+  'nx.rcpt.when': 'Received on',
+  'nx.rcpt.against': 'Against which invoices',
+  'nx.rcpt.againstHint': 'Allocated explicitly, because a customer paying is usually paying particular invoices — and guessing which would produce a statement they dispute.',
+  'nx.rcpt.colInvoice': 'Invoice',
+  'nx.rcpt.colDue': 'Due',
+  'nx.rcpt.colOutstanding': 'Still owed',
+  'nx.rcpt.colPaying': 'Paying',
+  'nx.rcpt.settleAll': 'Settle everything',
+  'nx.rcpt.clear': 'Clear',
+  'nx.rcpt.overAllocated': 'That is more than this invoice still owes.',
+  'nx.rcpt.total': 'Taking',
+  'nx.rcpt.take': 'Take it',
+  'nx.rcpt.taking': 'Taking',
+  'nx.rcpt.takeHint': 'It posts to the books at once and comes off the customer’s balance. A retry after a lost answer takes the money once.',
+  'nx.rcpt.needCustomer': 'Say who the money came from.',
+  'nx.rcpt.needAllocation': 'Nothing has been allocated to an invoice yet.',
+  'nx.rcpt.nothingOwed': 'This customer owes nothing on account.',
+  'nx.rcpt.done': 'Payment taken',
+  'nx.rcpt.receiptNo': 'Receipt {no}',
+  'nx.rcpt.settledCaption': 'What this payment settled',
+  'nx.rcpt.another': 'Take another',
+  'nx.rcpt.credited': 'Credited back',
+  'nx.rcpt.creditedHint': 'Goods brought back, shown apart from money paid — a customer querying their balance needs to tell the two apart.',
 } as const;
 
 /** Every string the interface can show. */
@@ -11736,6 +11787,57 @@ export const ar: Record<Key, string> = {
   'nx.jnl.reverseReason': 'سبب النقض',
   'nx.jnl.reverseReasonHint': 'سبب خاص به، لا سبب هذا القيد. فالقيد المعاكس واقعة مستقلة في الدفتر، وهذا هو الموضع الوحيد الذي يبيّن الغرض منه.',
   'nx.jnl.cancelReverse': 'اتركه كما هو',
+
+  // --- what customers owe, and taking it (web-next)
+  //
+  // Prefixed nx. because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when web/ is retired. ---
+  'nx.rage.title': 'ما على العملاء',
+  'nx.rage.subtitle': 'من عليه مبالغ، ومنذ متى. يُحسب العمر من تاريخ الاستحقاق لا من تاريخ الفوترة.',
+  'nx.rage.caption': 'العملاء الذين عليهم مبالغ، بحسب مدة التأخر',
+  'nx.rage.colCustomer': 'العميل',
+  'nx.rage.everything': 'الإجمالي المستحق',
+  'nx.rage.emptyTitle': 'لا أحد عليه شيء',
+  'nx.rage.emptyDesc': 'سُدّدت كل فاتورة على الحساب. أما البيع النقدي فلا يظهر هنا؛ فقد دُفع عند الكاشير.',
+  'nx.rage.overdueHint': 'كل ما على يمين «غير مستحق بعد» متأخر.',
+  'nx.rage.dueBasis': 'يُحسب العمر من تاريخ الاستحقاق. فالفاتورة بأجل ثلاثين يوما والصادرة قبل عشرين يوما ليست متأخرة، وحسابها من تاريخ الإصدار يضع العميل في قائمة مطالبة لا ينتمي إليها.',
+  'nx.rage.takePayment': 'استلام دفعة',
+  'nx.rcpt.title': 'استلام دفعة',
+  'nx.rcpt.subtitle': 'أموال واردة مقابل فواتير صدرت من قبل. أما بيع الكاشير فليس هذا؛ فقد دُفع عند تسجيله.',
+  'nx.rcpt.customer': 'من العميل',
+  'nx.rcpt.chooseCustomer': 'اختر عميلا',
+  'nx.rcpt.method': 'طريقة الاستلام',
+  'nx.rcpt.mCash': 'نقدا',
+  'nx.rcpt.mBank': 'تحويل بنكي',
+  'nx.rcpt.mCard': 'بطاقة',
+  'nx.rcpt.mCheque': 'شيك',
+  'nx.rcpt.reference': 'المرجع',
+  'nx.rcpt.when': 'تاريخ الاستلام',
+  'nx.rcpt.against': 'مقابل أي فواتير',
+  'nx.rcpt.againstHint': 'تُخصَّص صراحة، لأن العميل الذي يدفع يسدد عادة فواتير بعينها — والتخمين ينتج كشفا يعترض عليه.',
+  'nx.rcpt.colInvoice': 'الفاتورة',
+  'nx.rcpt.colDue': 'الاستحقاق',
+  'nx.rcpt.colOutstanding': 'المتبقي',
+  'nx.rcpt.colPaying': 'المدفوع',
+  'nx.rcpt.settleAll': 'تسديد الكل',
+  'nx.rcpt.clear': 'مسح',
+  'nx.rcpt.overAllocated': 'هذا أكثر مما تبقى على هذه الفاتورة.',
+  'nx.rcpt.total': 'المستلم',
+  'nx.rcpt.take': 'استلام',
+  'nx.rcpt.taking': 'جارٍ الاستلام',
+  'nx.rcpt.takeHint': 'يُرحَّل إلى الدفاتر فورا ويُخصم من رصيد العميل. وإعادة المحاولة بعد فقد الرد تستلم المبلغ مرة واحدة.',
+  'nx.rcpt.needCustomer': 'حدد من أتى منه المبلغ.',
+  'nx.rcpt.needAllocation': 'لم يُخصَّص شيء لأي فاتورة بعد.',
+  'nx.rcpt.nothingOwed': 'لا شيء على هذا العميل على الحساب.',
+  'nx.rcpt.done': 'تم الاستلام',
+  'nx.rcpt.receiptNo': 'إيصال {no}',
+  'nx.rcpt.settledCaption': 'ما سدّدته هذه الدفعة',
+  'nx.rcpt.another': 'استلام دفعة أخرى',
+  'nx.rcpt.credited': 'مُضاف دائنا',
+  'nx.rcpt.creditedHint': 'بضاعة أُعيدت، تُعرض منفصلة عن المبالغ المدفوعة — فالعميل الذي يستفسر عن رصيده يحتاج إلى التفريق بينهما.',
 };
 
 /**
@@ -17414,6 +17516,57 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.jnl.reverseReason': 'কেন বাতিল করা হচ্ছে',
   'nx.jnl.reverseReasonHint': 'এর নিজস্ব কারণ, এই এন্ট্রির নয়। উল্টো এন্ট্রিটি খাতায় আলাদা একটি ঘটনা, আর কীসের জন্য তা কেবল এখানেই লেখা থাকে।',
   'nx.jnl.cancelReverse': 'যেমন আছে থাক',
+
+  // --- what customers owe, and taking it (web-next)
+  //
+  // Prefixed nx. because the two front ends deliberately say different
+  // things: the old back office and this one describe the same modules in
+  // different words, and sharing a key would mean rewording one screen
+  // silently reworded the other. The prefix also makes the whole set
+  // deletable in one pass when web/ is retired. ---
+  'nx.rage.title': 'গ্রাহকদের কাছে পাওনা',
+  'nx.rage.subtitle': 'কার কাছে টাকা পাওনা, আর কত দিনের। বকেয়ার হিসাব দেয় হওয়ার দিন থেকে, চালানের দিন থেকে নয়।',
+  'nx.rage.caption': 'বকেয়া আছে এমন গ্রাহক, কত দেরি হয়েছে সে অনুসারে',
+  'nx.rage.colCustomer': 'গ্রাহক',
+  'nx.rage.everything': 'সব মিলিয়ে পাওনা',
+  'nx.rage.emptyTitle': 'কারও কাছে কিছু পাওনা নেই',
+  'nx.rage.emptyDesc': 'বাকিতে দেওয়া প্রতিটি চালানই মিটেছে। নগদ বিক্রয় এখানে আসে না — তা কাউন্টারেই মেটানো হয়েছে।',
+  'nx.rage.overdueHint': '“এখনও দেয় নয়”-এর ডানের সবকিছুই দেরি হয়ে গেছে।',
+  'nx.rage.dueBasis': 'বকেয়ার হিসাব দেয় হওয়ার তারিখ থেকে। ৩০ দিনের শর্তে ২০ দিন আগে দেওয়া চালান দেরি নয়, আর ইস্যুর দিন থেকে গুনলে গ্রাহককে এমন তাগাদার তালিকায় ফেলা হয় যেখানে তিনি পড়েন না।',
+  'nx.rage.takePayment': 'টাকা নিন',
+  'nx.rcpt.title': 'টাকা নিন',
+  'nx.rcpt.subtitle': 'আগে ইস্যু হওয়া চালানের বিপরীতে আসা টাকা। কাউন্টারের বিক্রয় এটি নয় — তা তখনই মেটানো হয়েছে।',
+  'nx.rcpt.customer': 'কার কাছ থেকে',
+  'nx.rcpt.chooseCustomer': 'একজন গ্রাহক বাছুন',
+  'nx.rcpt.method': 'কীভাবে এল',
+  'nx.rcpt.mCash': 'নগদ',
+  'nx.rcpt.mBank': 'ব্যাংক ট্রান্সফার',
+  'nx.rcpt.mCard': 'কার্ড',
+  'nx.rcpt.mCheque': 'চেক',
+  'nx.rcpt.reference': 'সূত্র',
+  'nx.rcpt.when': 'যেদিন পাওয়া গেল',
+  'nx.rcpt.against': 'কোন চালানের বিপরীতে',
+  'nx.rcpt.againstHint': 'স্পষ্ট করেই ভাগ করা হয়, কারণ গ্রাহক সাধারণত নির্দিষ্ট চালানই মেটান — অনুমান করলে এমন বিবরণী তৈরি হয় যা নিয়ে তিনি আপত্তি করবেন।',
+  'nx.rcpt.colInvoice': 'চালান',
+  'nx.rcpt.colDue': 'দেয়',
+  'nx.rcpt.colOutstanding': 'এখনও পাওনা',
+  'nx.rcpt.colPaying': 'দিচ্ছেন',
+  'nx.rcpt.settleAll': 'সবটা মেটান',
+  'nx.rcpt.clear': 'মুছুন',
+  'nx.rcpt.overAllocated': 'এই চালানে যতটা পাওনা, এটি তার চেয়ে বেশি।',
+  'nx.rcpt.total': 'নেওয়া হচ্ছে',
+  'nx.rcpt.take': 'নিন',
+  'nx.rcpt.taking': 'নেওয়া হচ্ছে',
+  'nx.rcpt.takeHint': 'এটি সঙ্গে সঙ্গেই খাতায় ওঠে আর গ্রাহকের জেরে কমে। উত্তর হারিয়ে গেলে আবার চাপলেও টাকা একবারই নেওয়া হয়।',
+  'nx.rcpt.needCustomer': 'টাকা কার কাছ থেকে এসেছে তা বলুন।',
+  'nx.rcpt.needAllocation': 'এখনও কোনো চালানে কিছু ভাগ করা হয়নি।',
+  'nx.rcpt.nothingOwed': 'এই গ্রাহকের বাকিতে কিছু পাওনা নেই।',
+  'nx.rcpt.done': 'টাকা নেওয়া হয়েছে',
+  'nx.rcpt.receiptNo': 'রসিদ {no}',
+  'nx.rcpt.settledCaption': 'এই টাকায় যা মিটল',
+  'nx.rcpt.another': 'আরেকটি নিন',
+  'nx.rcpt.credited': 'ক্রেডিট ফেরত',
+  'nx.rcpt.creditedHint': 'ফেরত দেওয়া পণ্য, দেওয়া টাকার থেকে আলাদা করে দেখানো — জের নিয়ে প্রশ্ন করলে গ্রাহকের এই দুটি আলাদা করে জানা দরকার।',
 };
 
 /**

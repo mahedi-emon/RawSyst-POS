@@ -401,6 +401,7 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'receivables',
         labelKey: 'nx.nav.biz.customers.receivables',
         href: '/customers/ageing',
+        built: true,
         permissions: ['accounting.view'],
         descriptionKey: 'nx.navd.biz.customers.receivables',
       },
@@ -490,7 +491,11 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         id: 'receipts',
         labelKey: 'nx.nav.biz.money.receipts',
         href: '/money/receipts',
+        built: true,
         permissions: ['sales.receive_payment'],
+        // The list it works from -- what each customer still owes -- is
+        // `customers.view`, and the screen is useless without it.
+        alsoNeeds: ['customers.view'],
         descriptionKey: 'nx.navd.biz.money.receipts',
       },
       {

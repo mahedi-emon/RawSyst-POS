@@ -1895,6 +1895,48 @@ The Auditor is the case `accounting.create` exists for: they read everything and
 reconcile the bank, and cannot post — because somebody who could correct the
 books they are checking is not checking them.
 
+### 0.105 Receivables — the same report, pointed the other way
+
+What suppliers are owed and what customers owe are one report in two
+directions. The five buckets, the em dashes, the weighting and the total are
+identical; the first column and the words are not.
+
+So the table came out into `components/money/ageing.tsx` and both screens use
+it. The alternative was two hundred lines written twice, and the second copy is
+where the em dash rule quietly stops matching.
+
+**A counter sale is never on this screen.** It was paid when it was rung up.
+Everything here is an invoice on account, which is the only kind that can be
+late — and the empty state says so, because "nobody owes anything" read as
+"nothing was sold" would be alarming for no reason.
+
+**The allocation is explicit, as it is on the supplier side.** A customer paying
+is usually paying particular invoices, and guessing which produces a statement
+they dispute. One press settles everything and every figure stays editable.
+
+**`credited` is its own column.** Goods brought back through a return, kept
+apart from money paid, because a customer querying their balance has to tell
+the two apart — and the API separates them for exactly that reason.
+
+#### Verified live, end to end
+
+The dev data had no debtor, so the first run reported honestly that it had
+exercised nothing. Rather than leave it there, a driver put one on account —
+a standard invoice settled to `customer_due` — and the whole path ran:
+
+```
+POST /pos/sales (on account)            -> 200.00 receivable
+GET  /receivables/ageing                -> not_due 200.00
+POST /receivables/receipts (over)       -> 400 "has 200.00 outstanding, less than the 999999.00 allocated"
+POST /receivables/receipts (unallocated)-> 400 "Say which invoices this payment settles"
+POST /receivables/receipts              -> RCT-2026-000001, settled 100.00, 100.00 left
+retry                                   -> 200, already_taken, same number
+GET  /receivables/ageing                -> not_due 100.00
+```
+
+`verify:api` now covers all of it, and still reports rather than passes when a
+company has no debtor to exercise it with.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1926,8 +1968,11 @@ tests.
 Core accounting and manual journals are done (§0.104), including a chart of
 accounts route that did not exist.
 
-Next: **receivables and payables**, then the financial statements, payroll and
-people.
+Receivables are done (§0.105) and payables were done in §0.94 — bills, the
+three-way match, supplier payments and the ageing.
+
+Next: **the financial statements**, then payroll, employees, and roles with
+granular permissions.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

@@ -953,6 +953,139 @@ console.log('\nCASH, BANK AND WHAT WAS SPENT');
   }
 }
 
+console.log('\nWHAT CUSTOMERS OWE, AND TAKING IT');
+{
+  // The mirror of the supplier ageing, and the same five buckets -- so the two
+  // screens share one table. Aged from the DUE date on both sides.
+  const owed = await check(
+    'GET /receivables/ageing',
+    `/receivables/ageing?company_id=${CO}`,
+    ['as_of', 'rows', 'total', 'base_currency'],
+  );
+  if (owed?.rows?.[0]) {
+    expectFields('  customer ageing row', owed.rows[0], [
+      'customer_id',
+      'customer',
+      'not_due',
+      'days_0_30',
+      'days_31_60',
+      'days_61_90',
+      'days_90_plus',
+      'total',
+    ]);
+  } else {
+    console.log('  -  nobody owes anything; the ageing row was not exercised');
+  }
+
+  const owing = owed?.rows?.[0]?.customer_id;
+  if (!owing) {
+    console.log('  -  no customer with a balance; taking a payment was not exercised');
+  } else {
+    const open = await check(
+      'GET /customers/{id}/open-invoices',
+      `/customers/${owing}/open-invoices?company_id=${CO}`,
+      null,
+    );
+    const invoice = open?.data?.[0];
+    if (!invoice) {
+      console.log('  -  that customer has no open invoice');
+    } else {
+      expectFields('  open invoice', invoice, [
+        'invoice_id',
+        'due_date',
+        // What came back off the account through a RETURN, apart from money
+        // paid: a customer querying their balance has to tell the two apart.
+        'credited',
+        'received',
+        'outstanding',
+      ]);
+
+      // More than the invoice owes is refused, so the figure on the screen is
+      // capped rather than the whole receipt being thrown away.
+      const tooMuch = await post(`/receivables/receipts?company_id=${CO}`, {
+        uuid: crypto.randomUUID(),
+        customer_id: owing,
+        method: 'cash',
+        allocations: [{ invoice_id: invoice.invoice_id, amount: '999999.00' }],
+      });
+      if (tooMuch.status === 400 || tooMuch.status === 409) {
+        console.log('  ok more than an invoice owes cannot be allocated to it');
+      } else {
+        console.log(`  x an over-allocation came back ${tooMuch.status}`);
+        failures += 1;
+      }
+
+      // Nothing allocated at all: a receipt has to say what it settles,
+      // because guessing produces a statement the customer disputes.
+      const unallocated = await post(`/receivables/receipts?company_id=${CO}`, {
+        uuid: crypto.randomUUID(),
+        customer_id: owing,
+        method: 'cash',
+        allocations: [],
+      });
+      if (unallocated.status === 400) {
+        console.log('  ok a receipt that settles nothing is refused');
+      } else {
+        console.log(`  x an unallocated receipt came back ${unallocated.status}`);
+        failures += 1;
+      }
+
+      const receiptUUID = crypto.randomUUID();
+      const body = {
+        uuid: receiptUUID,
+        customer_id: owing,
+        method: 'cash',
+        reference: 'verify:api',
+        received_on: new Date().toISOString().slice(0, 10),
+        allocations: [{ invoice_id: invoice.invoice_id, amount: invoice.outstanding }],
+      };
+      const taken = await post(`/receivables/receipts?company_id=${CO}`, body);
+      if (taken.status !== 201 && taken.status !== 200) {
+        console.log(`  x POST /receivables/receipts: HTTP ${taken.status}`);
+        failures += 1;
+      } else {
+        expectFields('POST /receivables/receipts', taken.json, [
+          'id',
+          // What a customer is read on the phone.
+          'receipt_number',
+          'amount',
+          // Which invoices it settled and what each is left owing, so a part
+          // payment reads differently from a settlement.
+          'settled',
+        ]);
+
+        const retry = await post(`/receivables/receipts?company_id=${CO}`, body);
+        if (
+          retry.json?.already_taken === true &&
+          retry.json?.receipt_number === taken.json.receipt_number
+        ) {
+          console.log('  ok the same receipt arriving twice takes the money once');
+        } else {
+          console.log(
+            `  x a retried receipt made ${retry.json?.receipt_number} beside ${taken.json.receipt_number}`,
+          );
+          failures += 1;
+        }
+
+        // And what they owed has fallen.
+        const after = await call(
+          `/customers/${owing}/open-invoices?company_id=${CO}`,
+        );
+        const still = (after.json?.data ?? []).find(
+          (i) => i.invoice_id === invoice.invoice_id,
+        );
+        if (!still || Number(still.outstanding) < Number(invoice.outstanding)) {
+          console.log('  ok what the customer owes falls by what was taken');
+        } else {
+          console.log(
+            `  x outstanding stayed at ${still?.outstanding} after a payment`,
+          );
+          failures += 1;
+        }
+      }
+    }
+  }
+}
 console.log('\nTHE LEDGER BY HAND');
 {
   // The chart of accounts. Nothing listed it until now: every posting path
