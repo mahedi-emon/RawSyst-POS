@@ -406,6 +406,18 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.money.expenses',
       },
       {
+        id: 'expense-setup',
+        labelKey: 'nx.nav.biz.money.expenseSetup',
+        href: '/money/expenses/setup',
+        built: true,
+        // The configuration permission, not the reading one. Somebody who may
+        // see what was spent has no business deciding which categories reclaim
+        // VAT, and `GET /expenses/accounts` -- the chart this screen picks
+        // from -- is behind the same permission for the same reason.
+        permissions: ['expense.manage_heads'],
+        descriptionKey: 'nx.navd.biz.money.expenseSetup',
+      },
+      {
         id: 'treasury',
         labelKey: 'nx.nav.biz.money.treasury',
         href: '/money/accounts',

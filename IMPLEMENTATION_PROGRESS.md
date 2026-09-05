@@ -296,7 +296,7 @@ marked N/A or mapped, rather than dropping them.)
 | B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS | List and statement built. Loyalty not started |  |
 | C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/journals | /accounting/journals/* | accounting.view / accounting.create | NOT STARTED | Manual journals still have no frontend caller. |
 | C2 | Cash & Bank Management | FE-28 | /money/accounts | 10 /treasury/* routes | accounting.view / manage_accounts | NOT STARTED |  |
-| C3 | Expense & Investment Management | FE-26 | /money/expenses | 16 /expenses/* routes | expense.view / expense.record | NOT STARTED |  |
+| C3 | Expense & Investment Management | FE-26 | /money/expenses, /money/expenses/setup | 16 /expenses/* routes | expense.view / expense.record / expense.manage_heads | IN PROGRESS | Expenses and the configuration behind them are done (§0.98, §0.99): period, voucher, recording, categories, departments, standing costs. Investors (C3.2) not started. |
 | C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/{id}, /customers/ageing | /customers/{id}/ledger, /open-invoices | customers.view | IN PROGRESS | The customer statement and unpaid-invoice list are built; the ageing reports are not |  |
 | C5 | Employee / HR Management | FE-29 | /people/employees | /employees/*, /attendance, /leave | hr.view / hr.manage | NOT STARTED | Plan-gated: payroll. |
 | C6 | Payroll, Commission & Saudi WPS Compliance | FE-29 | /people/payroll | /payroll/*, /commission-rules, /eosb | payroll.view / run / approve | NOT STARTED | Includes the Saudi WPS wage file. |
@@ -1233,6 +1233,119 @@ the stock `transfers` item, and the nav test caught it — as a money transfer
 being checked against the STOCK transfer’s permission. Ids key that map, and
 they are React keys and i18n suffixes too, so a collision is three bugs wearing
 one hat. Renamed, and now pinned per workspace.
+### 0.99 Expense configuration — categories, departments, standing costs
+
+One screen at `/money/expenses/setup`, three views, behind
+`expense.manage_heads`. It is the configuration every expense depends on, and
+it holds the one field in the module that is a tax position rather than a label.
+
+**`input_vat_recoverable` is asked as a question, not offered as a checkbox.**
+E2.3 restricts input VAT recovery by CATEGORY — entertainment, some vehicles,
+fuel — all of it or none of it, never apportioned within one. The API refuses a
+request that omits the field and says exactly why:
+
+> *"Defaulting either way is wrong: false silently stops a shop reclaiming VAT
+> it is entitled to, true silently claims VAT on entertainment. E2.3 makes this
+> a decision, so the request has to carry one."*
+
+A checkbox has a default. A select whose first option is empty does not, so the
+form is a select with two full answers — "Yes, it goes to input VAT" and "No, it
+becomes part of the cost" — and `verify:api` asserts that omitting it comes back
+400 with the field named.
+
+**Quarterly is monthly, three at a time.** The service accepts `weekly`,
+`monthly` and `yearly` and puts the answer in its own refusal: *"Use
+interval_count for anything else: monthly every 3 is quarterly."* Nobody signs a
+lease "monthly, every three", so the form offers the five cadences a business
+actually agrees to — weekly, fortnightly, monthly, quarterly, yearly — and sends
+the `frequency` + `interval_count` pair each one means. `describeCadence` reads
+a stored schedule back the same way, and falls through to "Every 4 months" for
+an interval no preset covers. There is no plural machinery in that fallback and
+none is needed: an interval of one is always a preset, so the number is never 1.
+
+**A schedule posts nothing.** Booking is `POST /expenses/recurring/generate`,
+which calls the same `Record` path a person typing an expense takes — so the
+tax treatment, numbering and audit record are the ones expenses already have.
+That is also why it is gated on `expense.record` and not on the permission that
+opens the screen: somebody who may not record an expense must not be able to
+make a schedule do it for them. The button appears only for somebody holding it,
+and running it twice is safe because the guard is a unique index on
+(schedule, due date) rather than a check the client performs.
+
+#### What driving it first corrected
+
+The frontend types were written from the migration and were wrong in five ways.
+All five were found by `scratchpad/drive-expcfg.mjs` against the running server,
+before a screen existed.
+
+| assumed | actually |
+|---|---|
+| `cadence`, `next_due` | `frequency`, `interval_count`, `next_due_on` |
+| `quarterly` is a frequency | refused — it is `monthly` with `interval_count: 3` |
+| a schedule needs no name | `name` is required: *"What it is for — \"Shop rent\", \"Internet\"."* |
+| both `active` toggles answer alike | a **category** answers 204 with no body; a **department** answers 200 with the row |
+| a category code can be edited | the UPDATE statement does not touch it, so the field is disabled rather than accepted and ignored |
+
+The last one is the kind that only shows up live: `PUT` with a different code
+returns 200 and the original code, which looks exactly like a successful save
+until somebody reloads. `verify:api` now pins it.
+
+#### Verified live
+
+```
+ok GET /expenses/accounts
+ok a category with no VAT decision is refused, and the field is named
+ok a category code is fixed once saved, and an edit cannot move it
+ok a category is retired rather than deleted, and comes back on request
+ok a department answers its toggle with the row, unlike a category
+ok quarterly is refused as a frequency, and the refusal says what to send
+ok quarterly is monthly every three, and stores as one
+ok a standing cost is paused rather than deleted
+ok booking what is due twice books nothing the second time
+```
+
+And the split itself, through a restricted category: `tax_recoverable "0.00"`,
+`tax_absorbed "30.00"`, `charge_amount "230.00"` on a net of 200 — which is
+E2.3 behaving, measured rather than assumed.
+
+#### The RBAC boundary, with real accounts
+
+`verify:rbac` gained a third section. The **Branch / Store Manager** role is the
+exact case: it holds `expense.view` and neither `expense.manage_heads` nor
+`expense.record`.
+
+```
+ok branch manager: GET /expenses            -> 200
+ok branch manager: GET /expenses/heads      -> 200
+ok branch manager: GET /expenses/accounts   -> 403
+ok branch manager: PUT /expenses/heads/{id} -> 403
+ok branch manager: POST /expenses/recurring/generate -> 403
+ok accountant:     GET /expenses/accounts   -> 200
+ok accountant:     POST /expenses/recurring/generate -> 200
+```
+
+`GET /expenses/accounts` being 403 for a branch manager is why the sidebar entry
+names `expense.manage_heads`: an entry shown on `expense.view` would be a link
+somebody follows into a refusal. The nav test pins that too — `expense-setup` is
+mapped to `/api/v1/expenses/accounts` in `PRIMARY_READ`, so the permission on
+the link and the permission on the route cannot drift apart.
+
+#### A tabs primitive, built once
+
+`components/ui/tabs.tsx`: a real `role="tablist"` with one tab stop and the
+arrow keys moving between tabs, mirrored in Arabic by the component rather than
+by renaming the key. `role="tab"` announces a promise about the keyboard, and
+the cheapest way to break it is to use the role without keeping it. Selection is
+carried by an underline rather than colour alone. The value lives in the URL
+(`?on=categories`), so the view can be sent to a colleague and Back undoes it.
+
+#### One pre-existing defect, fixed in passing
+
+The Bangla catalogue had `IBAN` and `SWIFT` untranslated — added with the money
+accounts screen in §0.98 and caught by `locale.test.ts` once this module's keys
+were inserted. Arabic transliterates both; Bangla now does too
+(`আইব্যান`, `সুইফট`).
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
@@ -1247,9 +1360,12 @@ Stock and orders are done (§0.96, §0.97).
 
 Cash, bank and expenses are done (§0.98).
 
-Next: **expense heads, departments and recurring costs** (the configuration
-behind the expense screen), then **bank reconciliation**, then returns,
-accounting and journals.
+Expense configuration is done (§0.99): categories with the input-VAT decision,
+departments, and standing costs with the generate pass.
+
+Next: **bank reconciliation and treasury statements** (C11 —
+`/treasury/statements/*`, `/treasury/lines/{id}/match`), then sales returns,
+purchase returns, accounting and manual journals.
 
 FE-16 and FE-21 are done: both closed links the product was already offering
 -- the products list opened a row at `/products/{id}` that did not exist, and

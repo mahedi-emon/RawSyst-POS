@@ -45,6 +45,26 @@ async function call(path) {
   return { status: res.status, json };
 }
 
+async function put(path, body) {
+  const res = await fetch(API + path, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { status: res.status, json };
+}
+
 /** A POST, optionally as somebody other than the current token. */
 async function post(path, body, as = null) {
   const res = await fetch(API + path, {
@@ -484,8 +504,237 @@ console.log('\nCASH, BANK AND WHAT WAS SPENT');
     console.log('  -  no expense heads seeded');
   }
 
-  await check('GET /expenses/departments', `/expenses/departments?company_id=${CO}`, null);
-  await check('GET /expenses/recurring', `/expenses/recurring?company_id=${CO}`, null);
+  // --- what an expense is booked TO, which the setup screen configures ---
+
+  // Behind `expense.manage_heads`, not `expense.view`: the chart a category
+  // posts to is a configuration decision, and the sidebar entry is gated on
+  // the same permission so the link and the screen behind it agree.
+  const ledger = await check(
+    'GET /expenses/accounts',
+    `/expenses/accounts?company_id=${CO}`,
+    ['id', 'code', 'name'],
+    (j) => j.data[0],
+  );
+
+  await check(
+    'GET /expenses/departments',
+    `/expenses/departments?company_id=${CO}&include_inactive=true`,
+    null,
+  );
+  const schedules = await check(
+    'GET /expenses/recurring',
+    `/expenses/recurring?company_id=${CO}`,
+    null,
+  );
+  if (schedules?.data?.[0]) {
+    expectFields('  standing cost', schedules.data[0], [
+      'id',
+      'name',
+      'head_id',
+      'amount',
+      'paid_from',
+      // A frequency AND an interval. Quarterly is monthly every three; the
+      // service refuses "quarterly" as a frequency and says so.
+      'frequency',
+      'interval_count',
+      'starts_on',
+      // Stored rather than derived, because "the same day next month" is a
+      // judgement somebody has to be able to see and override.
+      'next_due_on',
+      'is_active',
+    ]);
+  } else {
+    console.log('  -  no standing costs; the schedule shape was not exercised');
+  }
+
+  const suffix = String(Date.now()).slice(-6);
+  const account = ledger?.data?.[0];
+  if (!account) {
+    console.log('  -  no postable expense account; the category writes were not exercised');
+  } else {
+    // Omitting the VAT decision must be REFUSED, not defaulted. This is what
+    // makes the empty first option on the form correct rather than a
+    // nicety: "false silently stops a shop reclaiming VAT it is entitled to,
+    // true silently claims VAT on entertainment."
+    const undecided = await post(`/expenses/heads?company_id=${CO}`, {
+      code: `VAT${suffix}`,
+      name: 'Undecided',
+      account_id: account.id,
+    });
+    if (undecided.status === 400 && undecided.json?.error?.fields?.input_vat_recoverable) {
+      console.log('  ok a category with no VAT decision is refused, and the field is named');
+    } else {
+      console.log(
+        `  x a category with no VAT decision came back ${undecided.status}, want 400`,
+      );
+      failures += 1;
+    }
+
+    const made = await post(`/expenses/heads?company_id=${CO}`, {
+      code: `CFG${suffix}`,
+      name: 'Vehicle fuel',
+      name_ar: 'وقود المركبات',
+      account_id: account.id,
+      input_vat_recoverable: false,
+    });
+    if (made.status !== 201) {
+      console.log(`  x POST /expenses/heads -> ${made.status}, want 201`);
+      failures += 1;
+    } else {
+      expectFields('  new category', made.json, [
+        'id',
+        'code',
+        'account_code',
+        'input_vat_recoverable',
+        'is_active',
+        // What has gone through it, so a "where is my money going" list
+        // reads without a second request.
+        'spent',
+        'currency',
+      ]);
+
+      // The UPDATE statement does not touch the code. The form disables the
+      // field rather than sending a value that is accepted and ignored,
+      // which reads as a save that did not stick.
+      const edited = await put(`/expenses/heads/${made.json.id}?company_id=${CO}`, {
+        code: 'CHANGED',
+        name: 'Vehicle fuel and tolls',
+        account_id: account.id,
+        input_vat_recoverable: true,
+      });
+      if (edited.status === 200 && edited.json?.code === made.json.code) {
+        console.log('  ok a category code is fixed once saved, and an edit cannot move it');
+      } else {
+        console.log(
+          `  x PUT /expenses/heads -> ${edited.status}, code ${edited.json?.code}, want 200 and ${made.json.code}`,
+        );
+        failures += 1;
+      }
+
+      // Retire, never delete: expenses already booked to it have to keep
+      // saying what they were for. 204, with no body -- unlike the
+      // department toggle below, which answers with the row.
+      const retired = await post(
+        `/expenses/heads/${made.json.id}/active?company_id=${CO}`,
+        { active: false },
+      );
+      const withRetired = await call(
+        `/expenses/heads?company_id=${CO}&include_retired=true`,
+      );
+      const found = withRetired.json?.data?.find((h) => h.id === made.json.id);
+      if (retired.status === 204 && found && found.is_active === false) {
+        console.log('  ok a category is retired rather than deleted, and comes back on request');
+      } else {
+        console.log(
+          `  x retiring a category -> ${retired.status}, found ${JSON.stringify(found?.is_active)}`,
+        );
+        failures += 1;
+      }
+      await post(`/expenses/heads/${made.json.id}/active?company_id=${CO}`, {
+        active: true,
+      });
+    }
+  }
+
+  const dept = await post(`/expenses/departments?company_id=${CO}`, {
+    code: `D${suffix}`,
+    name: 'Kitchen',
+  });
+  if (dept.status !== 201) {
+    console.log(`  x POST /expenses/departments -> ${dept.status}, want 201`);
+    failures += 1;
+  } else {
+    expectFields('  new department', dept.json, ['id', 'code', 'name', 'is_active']);
+    const off = await post(
+      `/expenses/departments/${dept.json.id}/active?company_id=${CO}`,
+      { active: false },
+    );
+    if (off.status === 200 && off.json?.is_active === false) {
+      console.log('  ok a department answers its toggle with the row, unlike a category');
+    } else {
+      console.log(`  x retiring a department -> ${off.status}`);
+      failures += 1;
+    }
+    await post(`/expenses/departments/${dept.json.id}/active?company_id=${CO}`, {
+      active: true,
+    });
+  }
+
+  const headForSchedule = heads?.data?.find((h) => h.is_active) ?? heads?.data?.[0];
+  if (!headForSchedule) {
+    console.log('  -  no category to hang a standing cost on');
+  } else {
+    const day = new Date().toISOString().slice(0, 10);
+
+    // "quarterly" is not a frequency. The refusal names the field AND says
+    // what to use instead, which is why the form offers the words a business
+    // uses and sends the pair the API stores.
+    const badCadence = await post(`/expenses/recurring?company_id=${CO}`, {
+      name: 'Refused',
+      head_id: headForSchedule.id,
+      amount: '1.00',
+      paid_from: 'bank',
+      frequency: 'quarterly',
+      interval_count: 1,
+      starts_on: day,
+    });
+    if (badCadence.status === 400 && badCadence.json?.error?.fields?.frequency) {
+      console.log('  ok quarterly is refused as a frequency, and the refusal says what to send');
+    } else {
+      console.log(`  x quarterly as a frequency came back ${badCadence.status}, want 400`);
+      failures += 1;
+    }
+
+    const quarterly = await post(`/expenses/recurring?company_id=${CO}`, {
+      name: `Insurance ${suffix}`,
+      head_id: headForSchedule.id,
+      amount: '900.00',
+      paid_from: 'bank',
+      frequency: 'monthly',
+      interval_count: 3,
+      starts_on: day,
+    });
+    if (quarterly.status === 201 && quarterly.json?.interval_count === 3) {
+      console.log('  ok quarterly is monthly every three, and stores as one');
+    } else {
+      console.log(`  x monthly every three -> ${quarterly.status}`);
+      failures += 1;
+    }
+
+    if (quarterly.status === 201) {
+      const paused = await post(
+        `/expenses/recurring/${quarterly.json.id}/active?company_id=${CO}`,
+        { active: false },
+      );
+      if (paused.status === 200 && paused.json?.is_active === false) {
+        console.log('  ok a standing cost is paused rather than deleted');
+      } else {
+        console.log(`  x pausing a standing cost -> ${paused.status}`);
+        failures += 1;
+      }
+    }
+
+    // Booking is behind `expense.record`, not the configuration permission:
+    // it writes expenses, and running it twice is safe because the guard is
+    // a unique index on (schedule, due date) rather than a check anybody
+    // performs.
+    const booked = await post(`/expenses/recurring/generate?company_id=${CO}`, {});
+    if (booked.status === 200) {
+      expectFields('  generate', booked.json, ['created', 'skipped', 'expenses']);
+      const again = await post(`/expenses/recurring/generate?company_id=${CO}`, {});
+      if (again.status === 200 && again.json?.created === 0) {
+        console.log('  ok booking what is due twice books nothing the second time');
+      } else {
+        console.log(
+          `  x a second generate created ${again.json?.created}, want 0`,
+        );
+        failures += 1;
+      }
+    } else {
+      console.log(`  x POST /expenses/recurring/generate -> ${booked.status}`);
+      failures += 1;
+    }
+  }
 
   // paid_from is a role. An account id there is refused, which is what makes
   // the two-option select on the form correct rather than a simplification.

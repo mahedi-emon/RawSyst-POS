@@ -172,6 +172,11 @@ const PLATFORM = new Set([
   // A KeyboardEvent's `key`, which the browser defines.
   'ArrowUp',
   'ArrowDown',
+  // The two the tablist moves on, mirrored in Arabic by the component rather
+  // than by renaming the key -- the browser reports 'ArrowRight' for the
+  // physical right-hand key whichever way the page reads.
+  'ArrowLeft',
+  'ArrowRight',
   'PageUp',
   'PageDown',
   // An element's `tagName`, which the browser also defines and which it

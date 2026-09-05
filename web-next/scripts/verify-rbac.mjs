@@ -296,6 +296,120 @@ if (!keeper || !buyer) {
   }
 }
 
+// --- E2.3: seeing what was spent is not deciding what comes back --------
+//
+// `input_vat_recoverable` is a tax position, not a label. It decides whether
+// the VAT on every expense in a category goes to Input VAT Receivable or is
+// absorbed into the cost, and a wrong answer either overstates a VAT return
+// or quietly costs the business money it was entitled to reclaim.
+//
+// So the expense setup screen is behind `expense.manage_heads` rather than
+// `expense.view`, and the chart of accounts it picks from is gated the same
+// way. A Branch Manager may look at what their branch spent and may not
+// touch any of it. This proves the server agrees.
+
+console.log('\nWHAT WAS SPENT, AND WHO DECIDES WHAT COMES BACK');
+const branch = await staff('branch', roleNamed(/Branch/));
+const accountant = await staff('accountant', roleNamed(/Accountant/));
+
+if (!branch || !accountant) {
+  console.log('  -  Branch Manager or Accountant not seeded; the expense boundary was not exercised');
+} else {
+  const head = (await owner('GET', q('/expenses/heads'))).json?.data?.[0];
+
+  // Reading is theirs. The screens a branch manager opens all day depend on
+  // it, and refusing this would be refusing the wrong thing.
+  for (const [label, path] of [
+    ['GET /expenses', q('/expenses')],
+    ['GET /expenses/heads', q('/expenses/heads')],
+    ['GET /expenses/departments', q('/expenses/departments')],
+    ['GET /expenses/recurring', q('/expenses/recurring')],
+  ]) {
+    expect(`branch manager: ${label}`, (await branch.call('GET', path)).status, 200);
+  }
+
+  // Configuring is not. Including the chart of accounts itself, which is why
+  // the sidebar entry names `expense.manage_heads`: an entry shown on
+  // `expense.view` would be a link somebody follows into a 403.
+  expect(
+    'branch manager: GET /expenses/accounts',
+    (await branch.call('GET', q('/expenses/accounts'))).status,
+    403,
+  );
+  expect(
+    'branch manager: POST /expenses/heads',
+    (await branch.call('POST', q('/expenses/heads'), {
+      code: 'NOPE',
+      name: 'Not allowed',
+      account_id: head?.account_id,
+      input_vat_recoverable: true,
+    })).status,
+    403,
+  );
+  if (head) {
+    expect(
+      'branch manager: PUT /expenses/heads/{id}',
+      (await branch.call('PUT', q(`/expenses/heads/${head.id}`), {
+        name: head.name,
+        account_id: head.account_id,
+        // The field that would be changed: a branch manager marking
+        // entertainment reclaimable would overstate the return.
+        input_vat_recoverable: !head.input_vat_recoverable,
+      })).status,
+      403,
+    );
+    expect(
+      'branch manager: POST /expenses/heads/{id}/active',
+      (await branch.call('POST', q(`/expenses/heads/${head.id}/active`), {
+        active: false,
+      })).status,
+      403,
+    );
+  }
+  expect(
+    'branch manager: POST /expenses/departments',
+    (await branch.call('POST', q('/expenses/departments'), {
+      code: 'NOPE',
+      name: 'Not allowed',
+    })).status,
+    403,
+  );
+  expect(
+    'branch manager: POST /expenses/recurring',
+    (await branch.call('POST', q('/expenses/recurring'), {
+      name: 'Not allowed',
+      head_id: head?.id,
+      amount: '1.00',
+      paid_from: 'bank',
+      frequency: 'monthly',
+      interval_count: 1,
+      starts_on: new Date().toISOString().slice(0, 10),
+    })).status,
+    403,
+  );
+
+  // Booking a schedule is recording an expense, and it is gated as one. A
+  // person who may not record an expense must not be able to make a schedule
+  // do it for them, which is the reason the button is behind
+  // `expense.record` rather than the permission that opens the screen.
+  expect(
+    'branch manager: POST /expenses/recurring/generate',
+    (await branch.call('POST', q('/expenses/recurring/generate'), {})).status,
+    403,
+  );
+
+  // And the person the screen is actually for.
+  expect(
+    'accountant: GET /expenses/accounts',
+    (await accountant.call('GET', q('/expenses/accounts'))).status,
+    200,
+  );
+  expect(
+    'accountant: POST /expenses/recurring/generate',
+    (await accountant.call('POST', q('/expenses/recurring/generate'), {})).status,
+    200,
+  );
+}
 console.log(
   `\n${failures === 0 ? 'EVERY BOUNDARY HELD' : `${failures} BOUNDARIES DID NOT HOLD`}`,
 );

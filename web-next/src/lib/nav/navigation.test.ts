@@ -217,6 +217,10 @@ const PRIMARY_READ: Record<string, string> = {
   production: '/api/v1/stock/production',
   orders: '/api/v1/orders',
   expenses: '/api/v1/expenses',
+  // The chart of accounts a category posts to, which is the read this
+  // screen cannot work without and the one the API gates on the
+  // configuration permission rather than the reading one.
+  'expense-setup': '/api/v1/expenses/accounts',
   treasury: '/api/v1/treasury/accounts',
   'money-transfers': '/api/v1/treasury/transfers',
   suppliers: '/api/v1/purchasing/suppliers',
