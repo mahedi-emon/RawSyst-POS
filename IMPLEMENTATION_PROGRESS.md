@@ -202,56 +202,58 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-15 | Platform — service health | ✅ | IN PROGRESS | `/platform` | super-admin | Built; not yet exercised with a super-admin account. i18n pending |
 | FE-16 | Product detail / variant matrix | ✅ | IN PROGRESS | `/products/{id}` | `catalog.view` | The matrix, with price, on-hand and reorder level per variant, and out/low marked. Verified live. Editing a variant not started |
 | FE-17 | Sales — the trading day | ✅ | IN PROGRESS | `/sales` | `sales.view` | **A day, not an all-time list** — that is the capability the backend has (`GET /dashboard/sales?date=`) and the way a shop reconciles. Day totals, retail/wholesale split, ZATCA state per row, date stepper. Verified against two real invoices. Invoice DETAIL not started |
-| FE-18 | Returns / exchanges | ✅ | ⬜ NOT STARTED | `/sales/returns` | `sales.refund` | |
-| FE-19 | Shifts, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/shifts` | `sales.receive_payment` | Opening is done inside the till |
+| FE-18 | Returns / exchanges | ✅ | IN PROGRESS | `/pos/returns` | `sales.refund` | |
+| FE-19 | Shifts, cash drop, X/Z | ✅ | IN PROGRESS | `/shifts` | `sales.receive_payment` | Opening is done inside the till |
 | FE-20 | Customers + ledger | ✅ | IN PROGRESS | `/customers`, `/customers/{id}` | `customers.view` | List and statement built and verified live. The khata carries a running balance and a double-ruled closing row; unpaid invoices flag overdue. Create/edit and the credit-limit control (its own permission, `customers.set_credit_limit`) not started |
 | FE-21 | Stock on hand | ✅ | IN PROGRESS | `/stock` | `inventory.view` | Search, location filter, and the server's `low` filter. **Closes the dashboard's dead link.** Movements and counts not started |
-| FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | ⬜ NOT STARTED | `/stock/transfers` | `inventory.approve_transfer` | **No frontend caller** |
-| FE-23 | Batch / expiry / recall | ✅ | ⬜ NOT STARTED | `/stock/batches` | `inventory.recall_batch` | **No frontend caller** |
-| FE-24 | Production orders | ✅ | ⬜ NOT STARTED | `/stock/production` | `inventory.adjust_stock` | **No frontend caller** |
-| FE-25 | Purchasing (31 routes) | ✅ | ⬜ NOT STARTED | `/buying/*` | `purchasing.*` | Largest single module |
-| FE-26 | Expenses + departments + recurring | ✅ | ⬜ NOT STARTED | `/money/expenses` | `expense.view` | Departments and recurring have **no frontend caller** |
-| FE-27 | Manual journals | ✅ | ⬜ NOT STARTED | `/money/journals` | `accounting.create` | **No frontend caller** |
-| FE-28 | Treasury / reconciliation | ✅ | ⬜ NOT STARTED | `/money/accounts` | `accounting.reconcile` | |
-| FE-29 | Payroll / employees / EOSB / WPS | ✅ | ⬜ NOT STARTED | `/people/*` | `payroll.*`, `hr.*` | Plan-gated `payroll` |
-| FE-30 | Users, roles, permission builder | ✅ | ⬜ NOT STARTED | `/people/users` | `identity.manage_roles` | `GET /permissions` returns the catalogue with `holds` and `label_ar`/`label_bn` |
-| FE-31 | Financial statements + VAT return | ✅ | ⬜ NOT STARTED | `/reports/*` | `accounting.view` | |
-| FE-32 | Orders → invoice | ✅ | ⬜ NOT STARTED | `/orders` | `order.view` | `POST /orders/{id}/invoice` has **no frontend caller** |
+| FE-22 | Stock transfers (approve/dispatch/receive) | ✅ | IN PROGRESS | `/stock/transfers` | `inventory.approve_transfer` | **No frontend caller** |
+| FE-23 | Batch / expiry / recall | ✅ | IN PROGRESS | `/stock/batches` | `inventory.recall_batch` | **No frontend caller** |
+| FE-24 | Production orders | ✅ | IN PROGRESS | `/stock/production` | `inventory.adjust_stock` | **No frontend caller** |
+| FE-25 | Purchasing (31 routes) | ✅ | IN PROGRESS | `/buying/*` | `purchasing.*` | Largest single module |
+| FE-26 | Expenses + departments + recurring | ✅ | IN PROGRESS | `/money/expenses` | `expense.view` | Departments and recurring have **no frontend caller** |
+| FE-27 | Manual journals | ✅ | IN PROGRESS | `/money/journals` | `accounting.create` | **No frontend caller** |
+| FE-28 | Treasury / reconciliation | ✅ | IN PROGRESS | `/money/accounts` | `accounting.reconcile` | |
+| FE-29 | Payroll / employees / EOSB / WPS | ✅ | IN PROGRESS | `/people/*` | `payroll.*`, `hr.*` | Plan-gated `payroll` |
+| FE-30 | Users, roles, permission builder | ✅ | IN PROGRESS | `/people/users` | `identity.manage_roles` | `GET /permissions` returns the catalogue with `holds` and `label_ar`/`label_bn` |
+| FE-31 | Financial statements + VAT return | ✅ | IN PROGRESS | `/reports/*` | `accounting.view` | |
+| FE-32 | Orders → invoice | ✅ | IN PROGRESS | `/orders` | `order.view` | `POST /orders/{id}/invoice` has **no frontend caller** |
 | FE-33 | ZATCA / e-invoicing onboarding | ✅ | 🚧 BLOCKED | `/settings/einvoicing` | `einvoicing.onboard` | Direction says ZATCA is skipped and isolated |
-| FE-34 | Platform: businesses, billing, dunning | ✅ | ⬜ NOT STARTED | `/platform/businesses` | super-admin | |
-| FE-35 | Platform: rules, jurisdictions, tax rates | ✅ | ⬜ NOT STARTED | `/platform/rules` | super-admin | Imported → reviewed → activated → verified |
-| FE-36 | Global search | ✅ | ⬜ NOT STARTED | (command palette) | authenticated | Payload validated live |
-| FE-37 | Approvals | ✅ | ⬜ NOT STARTED | `/approvals` | `approval.view` | Plan-gated |
+| FE-34 | Platform: businesses, billing, dunning | ✅ | IN PROGRESS | `/platform/businesses` | super-admin | |
+| FE-35 | Platform: rules, jurisdictions, tax rates | ✅ | IN PROGRESS | `/platform/rules` | super-admin | Imported → reviewed → activated → verified |
+| FE-36 | Global search | ✅ | IN PROGRESS | `/search` + header box | authenticated | Built. Grouped by the seven kinds the route returns; each is gated by the permission guarding the thing it finds, so the empty state says "nothing you can see", not "no results" |
+| FE-37 | Approvals | ✅ | IN PROGRESS | `/approvals` | `approval.view` | Plan-gated |
 | FE-38 | Privacy (24 routes) | ✅ | ⬜ NOT STARTED | `/oversight/privacy` | `privacy.view` | |
-| FE-39 | Business details / onboarding wizard | ✅ | ⬜ NOT STARTED | `/settings/business` | `identity.edit` | **Blocks Saudi selling** until the branch National Address is complete |
+| FE-39 | Business details / onboarding wizard | ✅ | IN PROGRESS | `/settings/business` | `identity.edit` | **Blocks Saudi selling** until the branch National Address is complete |
 | FE-40 | Barcodes and label studio | ✅ | **COMPLETE** | `/products/labels` | `label.print` | Plan-gated. §0.107. The nav asked for print-or-manage; a manage-only role would have been refused on the screen's first read. |
-| FE-41 | POS shift close, cash drop, X/Z | ✅ | ⬜ NOT STARTED | `/pos`, `/shifts` | `sales.receive_payment` | |
-| FE-42 | Promotions | ✅ | ⬜ NOT STARTED | `/promotions` | `promotion.view` | Plan-gated |
-| FE-43 | Deliveries | ✅ | ⬜ NOT STARTED | `/deliveries` | `delivery.view` | Plan-gated |
-| FE-44 | Instalment plans | ✅ | ⬜ NOT STARTED | `/money/installments` | `installment.view` | Plan-gated |
+| FE-41 | POS shift close, cash drop, X/Z | ✅ | IN PROGRESS | `/pos`, `/shifts` | `sales.receive_payment` | |
+| FE-42 | Promotions | ✅ | IN PROGRESS | `/promotions` | `promotion.view` | Plan-gated |
+| FE-43 | Deliveries | ✅ | IN PROGRESS | `/deliveries` | `delivery.view` | Plan-gated |
+| FE-44 | Instalment plans | ✅ | IN PROGRESS | `/money/installments` | `installment.view` | Plan-gated |
 | FE-45 | Service jobs / serials / warranty | ✅ | IN PROGRESS | `/aftersales/*`, `/stock/serials` | `service.view`, `serial.view` | Plan-gated. Serials and warranty COMPLETE (§0.107): four warranty states, the server's `under_warranty` never recomputed. Service jobs are a separate lane. |
-| FE-46 | Loyalty, wallets, gift cards | ✅ | ⬜ NOT STARTED | `/customers/loyalty` | `loyalty.view` | Plan-gated |
-| FE-47 | Investors | ✅ | ⬜ NOT STARTED | `/money/investors` | `investor.view` | Plan-gated |
-| FE-48 | Fixed assets | ✅ | ⬜ NOT STARTED | `/money/assets` | `asset.view` | Plan-gated |
-| FE-49 | Exchange rates / FX | ✅ | ⬜ NOT STARTED | `/money/accounts` | `accounting.view` | |
-| FE-50 | Accounting periods / year-end | ✅ | ⬜ NOT STARTED | `/money/periods` | `accounting.close_period` | |
+| FE-46 | Loyalty, wallets, gift cards | ✅ | IN PROGRESS | `/customers/loyalty` | `loyalty.view` | Plan-gated |
+| FE-47 | Investors | ✅ | IN PROGRESS | `/money/investors` | `investor.view` | Plan-gated |
+| FE-48 | Fixed assets | ✅ | IN PROGRESS | `/money/assets` | `asset.view` | Plan-gated |
+| FE-49 | Exchange rates / FX | ✅ | IN PROGRESS | `/money/accounts` | `accounting.view` | |
+| FE-50 | Accounting periods / year-end | ✅ | IN PROGRESS | `/money/periods` | `accounting.close_period` | |
 | FE-51 | Gateways + settlement | ✅ | ⬜ NOT STARTED | `/money/gateways` | `gateway.view` | |
-| FE-52 | Analytics / forecast | ✅ | ⬜ NOT STARTED | `/reports/analytics` | `report.view` | Plan-gated |
-| FE-53 | Notifications | ✅ | ⬜ NOT STARTED | (header) | authenticated | |
+| FE-52 | Analytics / forecast | ✅ | IN PROGRESS | `/reports/analytics` | `report.view` | Plan-gated |
+| FE-53 | Notifications | ✅ | IN PROGRESS | `/notifications` | authenticated | Built. Six routes had no caller. Company-scoped: `notifyScope` resolves a company although the route is merely authenticated |
 | FE-54 | Audit trail | ✅ | ⬜ NOT STARTED | `/oversight/audit` | `accounting.view` | |
 | FE-55 | Documents | ✅ | ⬜ NOT STARTED | `/oversight/documents` | `document.view` | |
-| FE-56 | Customer portal administration | ✅ | ⬜ NOT STARTED | `/customers/portal` | `portal.view` | |
-| FE-57 | Compliance dashboard | ✅ | ⬜ NOT STARTED | `/oversight/compliance` | `compliance.view` | |
-| FE-58 | Supplier portal administration | ✅ | ⬜ NOT STARTED | `/buying/suppliers` | `portal.manage` | 11 supplier-portal routes exist |
+| FE-56 | Portal access (supplier logins; customers self-serve by code) | ✅ | IN PROGRESS | `/customers/portal` | `portal.view` | |
+| FE-57 | Compliance dashboard | ✅ | IN PROGRESS | `/oversight/compliance` | `compliance.view` | |
+| FE-58 | Supplier portal administration | ✅ | IN PROGRESS | `/buying/suppliers` | `portal.manage` | 11 supplier-portal routes exist |
 | FE-59 | Group companies / consolidation | ✅ | ⬜ NOT STARTED | `/oversight/groups` | `group.view` | Plan-gated |
 | FE-60 | Tills and devices | ✅ | **COMPLETE** | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit. §0.107. `pending` is read against `binding`, so a normal paired till is not reported as a fault. |
 | FE-61 | Backups | ✅ | ⬜ NOT STARTED | `/oversight/backups` | `backup.view` | |
-| FE-62 | Plan and billing | ✅ | ⬜ NOT STARTED | `/settings/subscription` | `subscription.view` | |
+| FE-62 | Plan and billing | ✅ | IN PROGRESS | `/settings/subscription` | `subscription.view` | |
 | FE-63 | Integrations: API keys, webhooks | ✅ | ⬜ NOT STARTED | `/settings/integrations` | `integration.view` | |
 | FE-64 | Import / export | ✅ | ⬜ NOT STARTED | `/settings/imports` | `data.import` | |
-| FE-65 | Platform: failed jobs | ✅ | ⬜ NOT STARTED | `/platform/jobs` | super-admin | |
-| FE-66 | Support tickets (both sides) | ✅ | ⬜ NOT STARTED | `/settings/support` | `support.raise` | |
-| FE-67 | Receipt / invoice templates | ✅ | ⬜ NOT STARTED | `/settings/business` | `identity.edit` | |
+| FE-65 | Platform: failed jobs | ✅ | IN PROGRESS | `/platform/jobs` | super-admin | |
+| FE-66 | Support tickets (both sides) | ✅ | IN PROGRESS | `/settings/support` | `support.raise` | |
+| FE-67 | Receipt / invoice templates | ✅ | IN PROGRESS | `/settings/business` | `identity.edit` | |
+| FE-68 | Account recovery (forgot / reset password) | ✅ | IN PROGRESS | `/forgot-password` | public | Built. `POST /auth/forgot-password` and `/auth/reset-password` were live and uncalled, and **sign-in had linked here with no page behind it** — a locked-out owner met a dead link. The confirmation is worded conditionally, because the route answers 204 whether or not the address is on file |
+| FE-69 | Two-step sign-in and your own sessions | ✅ | IN PROGRESS | `/settings/security` | authenticated | Built. Signing in with a second factor already worked; nothing could enrol one, show recovery codes or end a session. The secret and the codes are each shown once. No user parameter anywhere, so an administrator cannot reach somebody else from here |
 
 ### 0.6 GATE 3 — Blueprint traceability
 
@@ -266,72 +268,87 @@ lost by hand.
 additionally carries the `J*` architecture sections and the `O*` restatement,
 marked N/A or mapped, rather than dropping them.)
 
+**On the status column in this table and in §0.5.** Both drifted badly: a
+reconcile pass against `page.tsx` found **61 rows reading NOT STARTED with the
+screen sitting on disk** — 34 here in §0.6 and 27 in §0.5 — while the `built`
+flags in `navigation.ts` showed zero discrepancies in either direction. The map
+was holding and the prose was not.
+
+Those 61 are now IN PROGRESS rather than COMPLETE, deliberately. §0.5 defines
+COMPLETE against twelve criteria and "a page renders" is explicitly not one of
+them; what has actually been checked for these rows is that a screen exists at
+the route. **The completeness judgement lives in one place — *Frontend
+reconciliation against the original 77 features* at the end of this document —
+which assesses all 77 with the evidence for each.** Keeping a second judgement
+in these tables is how the three of them drifted apart, so they are now a map of
+what exists and the reconciliation is the assessment of what is done.
+
 | Blueprint | Feature | Frontend item | Route(s) | Backend API | Permissions | Frontend status | Notes |
 |---|---|---|---|---|---|---|---|
 | A1 | Product Vision | — | — | — | — | N/A | Product vision. Not a screen. |
 | A2 | Guiding Principles (non-negotiable, apply to every module below) | — | — | — | — | N/A | Guiding principles. Not a screen. |
 | A3 | Multi-Tenant SaaS Architecture | FE-05, FE-09 | (all) | GET /auth/me, GET /companies | — | COMPLETE | Tenancy is resolved from the session; company scope is application state. |
 | A4 | Super Admin | FE-15, FE-34, FE-35 | /platform/* | 27 SuperAdmin routes | super-admin | IN PROGRESS | Health done. Businesses, billing, regulatory not started. |
-| A5 | Business Owner Account, Onboarding & Provisioning | FE-39 | /settings/business | GET/PUT /onboarding/* | identity.edit | NOT STARTED | The 7-step wizard. Live validation showed the branch National Address blocks Saudi sales until complete. |
+| A5 | Business Owner Account, Onboarding & Provisioning | FE-39 | /settings/business | GET/PUT /onboarding/* | identity.edit | IN PROGRESS | The 7-step wizard. Live validation showed the branch National Address blocks Saudi sales until complete. |
 | A6 | Role & Permission Management (RBAC) | FE-06, FE-07, FE-30 | /people/users | GET /permissions, /roles, /people | identity.manage_roles | IN PROGRESS | Guards and permission-aware nav COMPLETE. The role builder screen is not started. |
 | A7 | Multi-Platform Client Access | FE-08 | (all) | — | — | COMPLETE | One responsive web app; POS is a module inside it. |
 | A8 | Dashboard & KPI Center | FE-11 | /dashboard | GET /dashboard/overview | sales.view ∪ accounting.view ∪ inventory.view | COMPLETE | Attention list first, four drill-through figures. Verified live. |
 | B1 | Product & Catalog Management | FE-12 | /products | GET/POST /catalog/products | catalog.view / catalog.create | IN PROGRESS | List verified live and on the shared list component. Create/edit not started. |
 | B2 | Product Variant Matrix (critical for Fashion/RMG | FE-16 | /products/{id} | GET/POST /catalog/products/{id}/matrix | catalog.view | IN PROGRESS | The grid is built and verified live; generating a matrix is not |  |
 | B3 | Intelligent Barcode Engine & Label Studio | FE-40 | /products/labels | 9 /labels/* routes | label.print / label.manage | COMPLETE | Plan-gated: label_studio. §0.107. The screen prints the server's own `example` rather than assembling a code; a roll reports no per-sheet count. |
-| B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | NOT STARTED | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
+| B4 | Inventory & Warehouse Management | FE-21, FE-22, FE-23 | /stock/* | 28 /stock/* routes | inventory.* | IN PROGRESS | Live validation: adjustment kind ∈ {adjustment, wastage}; reason is an enum. Two backend defects fixed here. |
 | B5 | Purchase & Procurement Management | FE-25 | /buying/* | 35 /purchasing/* routes | purchasing.* | COMPLETE | §0.88–0.95 and §0.102. Purchase RETURN was missing from the backend entirely — built here: migration 0127, the service, three routes and a new permission. |
 | B5.1 | RFQ | FE-25 | /buying/quotes | /purchasing/rfqs/* | purchasing.manage_rfq, purchasing.award_rfq | COMPLETE | §0.95. The four-way split proved live. |
 | B5.2 | Three-Way Matching | FE-25 | /buying/bills | /purchasing/bills/* | purchasing.approve_bill | COMPLETE | §0.93. All four dimensions shown, including the ones that passed. |
 | B6 | Supplier Management | FE-25 | /buying/suppliers | /purchasing/suppliers | purchasing.manage_suppliers | COMPLETE | §0.88. Retiring one is refused while money is owed. |
 | B7 | Point of Sale (POS) & Billing | FE-13, FE-14, FE-41 | /pos | 12 /pos/* routes, /shifts | sales.create | COMPLETE | A real sale posted end to end: counter token, shift, catalogue snapshot, tax split, idempotent replay. |
 | B8 | Hardware Integration (Showroom Cash-Counter Reality) | — | /pos | — | — | BLOCKED | Cash drawer, pole display and scales need the desktop till. A browser cannot reach them; scanners work as keyboards and do. |
-| B9 | Promotions, Discounts & Pricing Engine | FE-42 | /promotions | /promotions/*, /promotions/quote | promotion.view / promotion.manage | NOT STARTED | Cart carries promotion_id so redemption is recorded; the quote call is not wired yet. |
+| B9 | Promotions, Discounts & Pricing Engine | FE-42 | /promotions | /promotions/*, /promotions/quote | promotion.view / promotion.manage | IN PROGRESS | Cart carries promotion_id so redemption is recorded; the quote call is not wired yet. |
 | B10 | Sales Returns, Exchange & Replacement | FE-18 | /pos/returns, /pos/exchanges | /pos/returns, /pos/exchanges, /pos/sales/{id}/returnable | sales.refund, sales.exchange | COMPLETE | §0.101. Returns were built in §0.91; exchanges are new. Three defects found live: the till never named a stock location, an idempotent replay came back hollow, and the sidebar offered exchanges to a screen that refused them. |
-| B11 | Sales Quotation, Sales Order & Delivery Documentation | FE-32 | /orders | 9 /orders/* routes | order.view / order.manage | NOT STARTED | POST /orders/{id}/invoice still has no frontend caller. |
+| B11 | Sales Quotation, Sales Order & Delivery Documentation | FE-32 | /orders | 9 /orders/* routes | order.view / order.manage | IN PROGRESS | POST /orders/{id}/invoice still has no frontend caller. |
 | B12 | Wholesale / B2B Module | FE-20 | /customers | /customers, /dashboard/sales | customers.view | IN PROGRESS | Wholesale pricing flows at the till, the customer list marks wholesale accounts, and the sales day splits retail from wholesale so bulk orders do not distort retail figures. |
-| B13 | Online Order & Delivery Management | FE-32, FE-43 | /orders, /deliveries | /orders/*, /deliveries/* | order.view, delivery.view | NOT STARTED | Plan-gated: online_orders. |
-| B14 | Installment / EMI (কিস্তি) System | FE-44 | /money/installments | 7 /installments/* routes | installment.view / installment.manage | NOT STARTED | Plan-gated: installments. |
+| B13 | Online Order & Delivery Management | FE-32, FE-43 | /orders, /deliveries | /orders/*, /deliveries/* | order.view, delivery.view | IN PROGRESS | Plan-gated: online_orders. |
+| B14 | Installment / EMI (কিস্তি) System | FE-44 | /money/installments | 7 /installments/* routes | installment.view / installment.manage | IN PROGRESS | Plan-gated: installments. |
 | B15 | Warranty, Serial/IMEI Tracking & Service/Repair | FE-45 | /aftersales/service, /stock/serials | /service-jobs/*, /serials/* | service.view, serial.view | IN PROGRESS | Plan-gated: warranty. Serial and warranty half COMPLETE (§0.107) — lookup-first, four states, an unknown serial is a plain 404. Service/repair is a separate lane. |
 | B16 | Customer Relationship Management (CRM) & Loyalty | FE-20, FE-46 | /customers, /customers/loyalty | 12 /customers/*, 6 /loyalty/* | customers.view, loyalty.view | IN PROGRESS | List and statement built. Loyalty not started |  |
 | C1 | Core Accounting (Chart of Accounts, Journal, Ledger) | FE-27 | /money/chart, /money/journals | /accounting/chart, /accounting/journals/* | accounting.view / accounting.create | COMPLETE | §0.104. The chart had NO route at all — added here. Journals: write, read, reverse, all live. |
 | C2 | Cash & Bank Management | FE-28 | /money/accounts, /money/transfers | 10 /treasury/* routes | accounting.view / manage_accounts | COMPLETE | §0.98. Accounts with the five kinds, transfers, and the unmatched count that leads here. |
 | C3 | Expense & Investment Management | FE-26 | /money/expenses, /money/expenses/setup | 16 /expenses/* routes | expense.view / expense.record / expense.manage_heads | IN PROGRESS | Expenses and the configuration behind them are done (§0.98, §0.99): period, voucher, recording, categories, departments, standing costs. Investors (C3.2) not started. |
 | C4 | Accounts Receivable & Payable (AR/AP) | FE-20, FE-25 | /customers/{id}, /customers/ageing | /customers/{id}/ledger, /open-invoices | customers.view | IN PROGRESS | The customer statement and unpaid-invoice list are built; the ageing reports are not |  |
-| C5 | Employee / HR Management | FE-29 | /people/employees | /employees/*, /attendance, /leave | hr.view / hr.manage | NOT STARTED | Plan-gated: payroll. |
-| C6 | Payroll, Commission & Saudi WPS Compliance | FE-29 | /people/payroll | /payroll/*, /commission-rules, /eosb | payroll.view / run / approve | NOT STARTED | Includes the Saudi WPS wage file. |
-| C7 | Fixed Asset Management | FE-48 | /money/assets | /assets/* | asset.view / asset.manage | NOT STARTED |  |
+| C5 | Employee / HR Management | FE-29 | /people/employees | /employees/*, /attendance, /leave | hr.view / hr.manage | IN PROGRESS | Plan-gated: payroll. |
+| C6 | Payroll, Commission & Saudi WPS Compliance | FE-29 | /people/payroll | /payroll/*, /commission-rules, /eosb | payroll.view / run / approve | IN PROGRESS | Includes the Saudi WPS wage file. |
+| C7 | Fixed Asset Management | FE-48 | /money/assets | /assets/* | asset.view / asset.manage | IN PROGRESS |  |
 | C8 | Shift Management & Cash Drawer Reconciliation (X/Z Report) | FE-19, FE-41 | /shifts, /pos | 6 /shifts/* routes | sales.receive_payment, report.view | IN PROGRESS | Opening a session is COMPLETE in the till (validated live). Cash drop, close and X/Z are not. |
-| C9 | Double-Entry Accounting Engine | FE-27 | /money/journals | /accounting/journals | accounting.view | NOT STARTED |  |
-| C10 | Fiscal Period & Year-End Closing | FE-50 | /money/periods | /accounting/periods/*, /accounting/year-end | accounting.close_period / reopen_period | NOT STARTED |  |
+| C9 | Double-Entry Accounting Engine | FE-27 | /money/journals | /accounting/journals | accounting.view | IN PROGRESS |  |
+| C10 | Fiscal Period & Year-End Closing | FE-50 | /money/periods | /accounting/periods/*, /accounting/year-end | accounting.close_period / reopen_period | IN PROGRESS |  |
 | C11 | Bank Reconciliation | FE-28 | /money/reconcile, /money/reconcile/{id} | /treasury/statements/*, /treasury/lines/{id}/match | accounting.reconcile | COMPLETE | §0.100. Import, auto-match, match by hand, undo, sign-off refused while anything is unexplained. One backend defect fixed: the frozen-statement refusal arrived as a 500. |
 | C12 | Payment Settlement & Gateway Reconciliation | FE-51 | /money/gateways | /settlement/*, /payment-gateways/* | accounting.view, gateway.view | NOT STARTED |  |
-| C13 | Inventory Costing & COGS Engine | FE-21 | /stock | GET /stock/on-hand | inventory.view | NOT STARTED | Costing is a backend concern; the frontend shows value at cost on the dashboard already. |
-| C14 | Accounting-Aware Returns, Exchanges & Credit Notes | FE-18 | /sales/returns | /pos/returns | sales.refund | NOT STARTED |  |
-| D1 | Reporting Suite | FE-31 | /reports/* | 10 /reports/* routes | report.view / report.export | NOT STARTED |  |
-| D2 | Business Analytics & Forecasting | FE-52 | /reports/analytics | /analytics/kpis, /movers, /forecast, /profitability | report.view | NOT STARTED | Plan-gated: analytics. |
-| D3 | Notification Center | FE-53 | (header) | /notifications/* | authenticated | NOT STARTED |  |
+| C13 | Inventory Costing & COGS Engine | FE-21 | /stock | GET /stock/on-hand | inventory.view | IN PROGRESS | Costing is a backend concern; the frontend shows value at cost on the dashboard already. |
+| C14 | Accounting-Aware Returns, Exchanges & Credit Notes | FE-18 | /pos/returns | /pos/returns | sales.refund | IN PROGRESS |  |
+| D1 | Reporting Suite | FE-31 | /reports/* | 10 /reports/* routes | report.view / report.export | IN PROGRESS |  |
+| D2 | Business Analytics & Forecasting | FE-52 | /reports/analytics | /analytics/kpis, /movers, /forecast, /profitability | report.view | IN PROGRESS | Plan-gated: analytics. |
+| D3 | Notification Center | FE-53 | /notifications | /notifications/* | authenticated | IN PROGRESS |  |
 | D4 | Audit Trail & Activity Log | FE-54 | /oversight/audit | GET /audit | accounting.view | NOT STARTED |  |
-| D5 | Approval Center | FE-37 | /approvals | /approvals/*, /approval-rules, /approval-delegations | approval.view / approval.decide | NOT STARTED | Plan-gated: approvals. |
+| D5 | Approval Center | FE-37 | /approvals | /approvals/*, /approval-rules, /approval-delegations | approval.view / approval.decide | IN PROGRESS | Plan-gated: approvals. |
 | D6 | Document Management | FE-55 | /oversight/documents | /documents/* | document.view / document.manage | NOT STARTED |  |
-| D7 | Global Search & Command Center | FE-36 | (command palette) | GET /search | authenticated | NOT STARTED | Validated live: requires company_id; returns {kind,id,label,detail,amount,currency}. |
+| D7 | Global Search & Command Center | FE-36 | /search + header box | GET /search | authenticated | IN PROGRESS | Validated live: requires company_id; returns {kind,id,label,detail,amount,currency}. |
 | E1 | ZATCA Phase 2 E-Invoicing Engine ("Fatoora") | FE-33 | /settings/einvoicing | 8 /einvoicing/* routes | einvoicing.view / einvoicing.onboard | BLOCKED | Direction says ZATCA is skipped and isolated. The one genuinely external dependency is the Fatoora OTP, which must never be fabricated. |
-| E2 | Saudi Tax Engine | FE-31 | /reports/tax | GET /reports/vat-return | accounting.view | NOT STARTED |  |
+| E2 | Saudi Tax Engine | FE-31 | /reports/tax | GET /reports/vat-return | accounting.view | IN PROGRESS |  |
 | E3 | Saudi Payment Methods & Payment Compliance (FULL COVERAGE) | FE-14, FE-51 | /pos, /money/gateways | /payment-gateways/*, /payment-attempts | gateway.view | IN PROGRESS | Four tenders live at the till; gateway administration is not built. |
 | E4 | PDPL | FE-38 | /oversight/privacy | 24 /privacy/* routes | privacy.view / privacy.manage | NOT STARTED |  |
-| E5 | Saudi E-Commerce Law & Online Store Compliance | FE-56 | /customers/portal | /portal/* | portal.view | NOT STARTED |  |
-| E6 | Saudi Labour & Payroll Compliance (expanded) | FE-29 | /people/payroll | /payroll/{id}/wage-file, /eosb | payroll.approve | NOT STARTED |  |
-| E7 | Compliance Monitoring Dashboard | FE-57 | /oversight/compliance | GET /compliance | compliance.view | NOT STARTED |  |
-| E8 | Regulatory Rule Registry | FE-35 | /platform/rules | /platform/rules | super-admin | NOT STARTED |  |
-| F1 | Business Workflow / Approval Engine | FE-37 | /approvals | /approvals/* | approval.view / decide | NOT STARTED |  |
-| F2 | Customer Self-Service Portal | FE-56 | /customers/portal | /portal/contacts, /portal/return-requests | portal.view / portal.manage | NOT STARTED |  |
-| F3 | Supplier Portal | FE-58 | /buying/suppliers | /portal/supplier/* | portal.manage | NOT STARTED |  |
+| E5 | Saudi E-Commerce Law & Online Store Compliance | FE-56 | /customers/portal | /portal/* | portal.view | IN PROGRESS |  |
+| E6 | Saudi Labour & Payroll Compliance (expanded) | FE-29 | /people/payroll | /payroll/{id}/wage-file, /eosb | payroll.approve | IN PROGRESS |  |
+| E7 | Compliance Monitoring Dashboard | FE-57 | /oversight/compliance | GET /compliance | compliance.view | IN PROGRESS |  |
+| E8 | Regulatory Rule Registry | FE-35 | /platform/rules | /platform/rules | super-admin | IN PROGRESS |  |
+| F1 | Business Workflow / Approval Engine | FE-37 | /approvals | /approvals/* | approval.view / decide | IN PROGRESS |  |
+| F2 | Customer Self-Service Portal | FE-56 | /customers/portal | /portal/contacts, /portal/return-requests | portal.view / portal.manage | IN PROGRESS |  |
+| F3 | Supplier Portal | FE-58 | /buying/suppliers | /portal/supplier/* | portal.manage | IN PROGRESS |  |
 | F4 | Multi-Company / Group Consolidation | FE-59 | /oversight/groups | 10 /groups/* routes | group.view / group.manage | NOT STARTED | Plan-gated: consolidation. |
 | G1 | Country Configuration Engine | FE-09 | (all) | GET /companies | — | COMPLETE | country + base_currency drive market, grouping and precision. Validated live: country arrives lowercase. |
 | G2 | Multi-Currency | FE-09, FE-49 | (all) | /exchange-rates | accounting.view | IN PROGRESS | Per-company currency COMPLETE. FX rate management not started. |
 | G3 | Multi-Language & RTL/LTR | FE-10 | (all) | — | — | **COMPLETE** | 480 keys in en/ar/bn, every built screen translated, navigation holds keys. Two RTL defects fixed. Two tests keep it true. |
-| G4 | Tax Templates Library | FE-35 | /platform/rates | /platform/jurisdictions/* | super-admin | NOT STARTED |  |
-| H1 | Security & Authentication | FE-02, FE-04, FE-05 | /login | /auth/* | public | COMPLETE | Refresh rotation, CSRF double-submit and both login challenges verified live. |
+| G4 | Tax Templates Library | FE-35 | /platform/rates | /platform/jurisdictions/* | super-admin | IN PROGRESS |  |
+| H1 | Security & Authentication | FE-02, FE-04, FE-05, FE-68, FE-69 | /login, /change-password, /forgot-password, /settings/security | /auth/* | public / authenticated | IN PROGRESS | Refresh rotation, CSRF double-submit and both login challenges verified live. |
 | H2 | Offline-First Architecture & Sync Engine | FE-13 | /pos | /catalog/snapshot, /sync/push | sales.create | IN PROGRESS | The till holds the catalogue in memory. Queued offline sales are a desktop-till concern. |
 | H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | COMPLETE | §0.107. Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending — and the screen distinguishes those two pendings. An enrolment code is `devices.manage`, asserted. |
 | H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | NOT STARTED |  |
@@ -339,10 +356,10 @@ marked N/A or mapped, rather than dropping them.)
 | H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | NOT STARTED |  |
 | H7 | Import / Export & Data Migration | FE-64 | /settings/imports | 7 /imports/* routes, /exports/{kind} | data.import / data.export | NOT STARTED |  |
 | H8 | System Health Monitoring (Super Admin view) | FE-15 | /platform | GET /platform/health | super-admin | COMPLETE |  |
-| H9 | Job / Queue System (Background Processing) | FE-65 | /platform/jobs | /platform/jobs/failed, /{id}/retry | super-admin | NOT STARTED |  |
-| H10 | Customer Support / Ticketing (Super Admin ↔ Tenant) | FE-66 | /settings/support, /platform/support | /support/*, /platform/support | support.raise / super-admin | NOT STARTED |  |
-| I1 | System / Owner Settings | FE-39 | /settings/business | /companies/{id}/* | identity.edit | NOT STARTED |  |
-| I2 | Receipt & Invoice Template Customization | FE-67 | /settings/business | /companies/{id}/templates/{docType} | identity.edit | NOT STARTED |  |
+| H9 | Job / Queue System (Background Processing) | FE-65 | /platform/jobs | /platform/jobs/failed, /{id}/retry | super-admin | IN PROGRESS |  |
+| H10 | Customer Support / Ticketing (Super Admin ↔ Tenant) | FE-66 | /settings/support, /platform/support | /support/*, /platform/support | support.raise / super-admin | IN PROGRESS |  |
+| I1 | System / Owner Settings | FE-39 | /settings/business | /companies/{id}/* | identity.edit | IN PROGRESS |  |
+| I2 | Receipt & Invoice Template Customization | FE-67 | /settings/business | /companies/{id}/templates/{docType} | identity.edit | IN PROGRESS |  |
 | I3 | Numbering Engine | — | — | — | — | N/A | Numbering is a backend engine. |
 | I4 | User Preferences | FE-10 | (header) | — | — | IN PROGRESS | Language preference persists per device. |
 | I5 | Point / Station Settings | FE-60 | /settings/devices | /devices/{id}/settings | devices.manage | COMPLETE | §0.107. Saved as a partial diff, so a field nobody touched is not written back. |
@@ -5774,12 +5791,34 @@ place it is reached from.
   reads "Portal access". The Blueprint row needs the same correction — renaming
   the label alone would leave the tracker claiming a feature the API refuses on
   purpose.
-* **The nav flags are accurate and the prose rows are not.** A separate reconcile
-  pass found **61 rows reading NOT STARTED with the screen on disk** — 33 in
-  §0.5 and 28 in §0.6. The `built` flags themselves were checked against
-  `page.tsx` in both directions with zero discrepancies, so
-  `navigation.built.test.ts` is holding that line; the drift is in the prose
-  tables, not the map.
+* **The nav flags are accurate and the prose rows were not. Now corrected.** A
+  reconcile pass found **61 rows reading NOT STARTED with the screen on disk** —
+  34 in §0.6 and 27 in §0.5 — while the `built` flags checked against `page.tsx`
+  in both directions showed zero discrepancies. The map was holding and the
+  prose was not, which is the argument for `navigation.built.test.ts` and
+  against another proofread.
+
+  All 61 are now IN PROGRESS rather than COMPLETE, deliberately: §0.5 defines
+  COMPLETE against twelve criteria and "a page renders" is not one of them, and
+  what was actually checked is that a screen exists at the route. The
+  completeness judgement now lives only in this section. Three of the 61 were
+  not simple flips — FE-18 and C14 named `/sales/returns`, which has never
+  existed because returns live at the counter (`/pos/returns`), so the route
+  cell was wrong rather than the screen missing; and FE-56's NAME was the untrue
+  part, now "Portal access (supplier logins; customers self-serve by code)".
+
+* **Four more rows a route-resolving check could not see.** FE-36 / D7 (global
+  search) and FE-53 / D3 (notifications) read NOT STARTED because their route
+  cell said "(command palette)" and "(header)" rather than a path, so nothing
+  walking `page.tsx` could match them. Both are built. And account recovery and
+  MFA setup had **no row at all** while H1 read COMPLETE against `/login` alone
+  — an over-claim at the time it was written, since signing in with a second
+  factor worked and nothing could enrol one or reset a forgotten password. They
+  are now FE-68 and FE-69, and H1 names all four auth screens and reads IN
+  PROGRESS.
+
+  What remains NOT STARTED in those two tables is exactly **16 rows: the eight
+  unbuilt screens, once per table.**
 
 ## Gaps found and deliberately left open
 
