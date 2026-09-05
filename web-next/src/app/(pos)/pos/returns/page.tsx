@@ -338,8 +338,14 @@ function ReturnsScreen() {
                             // till never works this out for itself.
                             max={cap}
                             aria-label={`${l.description} — ${t('nx.ret.colReturning')}`}
+                            // 44px. The counter is a touch screen and this is
+                            // the only control on it a cashier has to hit
+                            // accurately -- the exchange screen next door uses
+                            // the same, and a return typed on a tablet with a
+                            // customer waiting is not the place to be four
+                            // pixels short.
                             className={cn(
-                              'num h-10 w-20 rounded-sm border border-input bg-input-bg',
+                              'num h-11 w-20 rounded-sm border border-input bg-input-bg',
                               'text-center text-body tabular-nums [direction:ltr]',
                             )}
                           />

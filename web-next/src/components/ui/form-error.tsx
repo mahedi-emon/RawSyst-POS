@@ -18,6 +18,18 @@
 // Both are needed and they do different jobs: the summary says "this did not
 // save, and here is why", the inline error says "this field, this problem".
 // A summary alone leaves somebody hunting; inline alone leaves them unaware.
+//
+// # Each item goes to its field
+//
+// A summary that names four problems and leaves somebody to find four boxes
+// has done half the job. Where a `Field` was given the API's own name for it,
+// the item becomes a control that focuses that box -- which is the difference
+// between "your VAT number is wrong" and being put in front of the VAT number.
+//
+// A button rather than an `<a href>`: the target is a form control on this
+// page, not a document location, and an anchor to an id that turns out not to
+// exist is a broken link. This simply does nothing when the field was not
+// named, and the item still reads as text.
 
 import { useEffect, useRef } from 'react';
 
@@ -66,15 +78,33 @@ export function FormError({
     >
       <p className="text-body font-medium text-critical-fg">{message}</p>
 
-      {entries.length > 0 && (
+      {entries.length > 0 ? (
         <ul className="mt-1.5 list-disc ps-4 text-caption text-critical-fg">
           {entries.map(([field, detail]) => (
-            <li key={field}>{detail}</li>
+            <li key={field}>
+              <button
+                type="button"
+                onClick={() => {
+                  const box = document.getElementById(`field-${field}`);
+                  if (!box) return;
+                  box.focus();
+                  box.scrollIntoView({ block: 'center' });
+                }}
+                className={cn(
+                  'text-start underline underline-offset-2',
+                  'hover:no-underline',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2',
+                  'focus-visible:outline-[var(--ry-focus)]',
+                )}
+              >
+                {detail}
+              </button>
+            </li>
           ))}
         </ul>
-      )}
+      ) : null}
 
-      {action && <div className="mt-2">{action}</div>}
+      {action ? <div className="mt-2">{action}</div> : null}
 
       <p className="sr-only">{t('nx.err.notSaved')}</p>
     </div>

@@ -223,9 +223,10 @@ function DepartmentForm({
           void save();
         }}
       >
-        <FormError message={error} />
+        <FormError message={error} fields={fieldErrors} />
 
         <Field
+          name="code"
           label={t('nx.expcfg.colCode')}
           hint={t('nx.expcfg.headCodeHint')}
           error={fieldErrors.code}
@@ -240,7 +241,7 @@ function DepartmentForm({
           />
         </Field>
 
-        <Field label={t('nx.expcfg.colName')} error={fieldErrors.name} required>
+        <Field name="name" label={t('nx.expcfg.colName')} error={fieldErrors.name} required>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}

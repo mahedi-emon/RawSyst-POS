@@ -272,9 +272,10 @@ function ImportForm({
           void save();
         }}
       >
-        <FormError message={error} />
+        <FormError message={error} fields={fieldErrors} />
 
         <Field
+          name="account_id"
           label={t('nx.rec.account')}
           hint={t('nx.rec.accountHint')}
           error={fieldErrors.account_id}
@@ -299,13 +300,14 @@ function ImportForm({
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('nx.rec.from')} error={fieldErrors.starts_on} required>
+          <Field name="starts_on" label={t('nx.rec.from')} error={fieldErrors.starts_on} required>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </Field>
-          <Field label={t('nx.rec.to')} error={fieldErrors.ends_on} required>
+          <Field name="ends_on" label={t('nx.rec.to')} error={fieldErrors.ends_on} required>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </Field>
           <Field
+            name="opening_balance"
             label={t('nx.rec.opening')}
             error={fieldErrors.opening_balance}
             required
@@ -318,6 +320,7 @@ function ImportForm({
             />
           </Field>
           <Field
+            name="closing_balance"
             label={t('nx.rec.closing')}
             error={fieldErrors.closing_balance}
             required

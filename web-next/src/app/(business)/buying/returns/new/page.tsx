@@ -129,7 +129,7 @@ function NewReturnScreen() {
         description={t('nx.pret.newSubtitle')}
       />
 
-      <FormError message={error} className="mb-4" />
+      <FormError message={error} fields={fieldErrors} className="mb-4" />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="min-w-0">
@@ -229,6 +229,7 @@ function NewReturnScreen() {
           <Panel>
             <div className="flex flex-col gap-4">
               <Field
+                name="bill_id"
                 label={t('nx.pret.bill')}
                 hint={t('nx.pret.billHint')}
                 error={fieldErrors.bill_id}
@@ -260,6 +261,7 @@ function NewReturnScreen() {
                   one stock location has one answer and the server finds it. */}
               {places.length > 1 ? (
                 <Field
+                  name="warehouse_id"
                   label={t('nx.pret.warehouse')}
                   hint={t('nx.pret.warehouseHint')}
                   error={fieldErrors.warehouse_id}
@@ -279,7 +281,7 @@ function NewReturnScreen() {
                 </Field>
               ) : null}
 
-              <Field label={t('nx.pret.when')} error={fieldErrors.returned_on}>
+              <Field name="returned_on" label={t('nx.pret.when')} error={fieldErrors.returned_on}>
                 <Input
                   type="date"
                   value={returnedOn}
@@ -288,6 +290,7 @@ function NewReturnScreen() {
               </Field>
 
               <Field
+                name="reason"
                 label={t('nx.pret.reason')}
                 hint={t('nx.pret.reasonHint')}
                 error={fieldErrors.reason}

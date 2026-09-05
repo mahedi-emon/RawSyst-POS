@@ -285,9 +285,10 @@ function CategoryForm({
           void save();
         }}
       >
-        <FormError message={error} />
+        <FormError message={error} fields={fieldErrors} />
 
         <Field
+          name="code"
           label={t('nx.expcfg.headCode')}
           hint={t('nx.expcfg.headCodeHint')}
           error={fieldErrors.code}
@@ -305,7 +306,7 @@ function CategoryForm({
           />
         </Field>
 
-        <Field label={t('nx.expcfg.headName')} error={fieldErrors.name} required>
+        <Field name="name" label={t('nx.expcfg.headName')} error={fieldErrors.name} required>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -323,6 +324,7 @@ function CategoryForm({
         </Field>
 
         <Field
+          name="account_id"
           label={t('nx.expcfg.account')}
           hint={t('nx.expcfg.accountHint')}
           error={fieldErrors.account_id}
@@ -339,6 +341,7 @@ function CategoryForm({
         </Field>
 
         <Field
+          name="input_vat_recoverable"
           label={t('nx.expcfg.vatQuestion')}
           hint={head ? t('nx.expcfg.vatChangeHint') : t('nx.expcfg.vatHint')}
           error={fieldErrors.input_vat_recoverable}

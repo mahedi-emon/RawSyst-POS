@@ -46,6 +46,18 @@ function useField(): FieldContextValue {
 }
 
 export interface FieldProps {
+  /**
+   * The API's own name for this field, when it has one.
+   *
+   * Gives the control a predictable id -- `field-account_id` -- so the refusal
+   * summary at the top of the form can send somebody straight to it. Without
+   * one the id is generated and reachable by nothing, which leaves a person
+   * who has just been told "that account is not this business's" to find the
+   * account box themselves.
+   *
+   * Optional: a field with no server-side name has nothing to be linked from.
+   */
+  name?: string;
   label: ReactNode;
   /** Guidance shown before anything goes wrong. */
   hint?: ReactNode;
@@ -57,6 +69,7 @@ export interface FieldProps {
 }
 
 export function Field({
+  name,
   label,
   hint,
   error,
@@ -66,7 +79,9 @@ export function Field({
 }: FieldProps) {
   const t = useT();
   const base = useId();
-  const id = `${base}-control`;
+  // A name when there is one, so the summary can reach it; a generated id
+  // otherwise, which is what uniqueness needs when nobody is linking.
+  const id = name ? `field-${name}` : `${base}-control`;
   const hintId = `${base}-hint`;
   const errorId = `${base}-error`;
 

@@ -357,9 +357,10 @@ function StandingForm({
           void save();
         }}
       >
-        <FormError message={error} />
+        <FormError message={error} fields={fieldErrors} />
 
         <Field
+          name="name"
           label={t('nx.expcfg.standingName')}
           hint={t('nx.expcfg.standingNameHint')}
           error={fieldErrors.name}
@@ -368,7 +369,7 @@ function StandingForm({
           <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </Field>
 
-        <Field label={t('nx.exp.head')} error={fieldErrors.head_id} required>
+        <Field name="head_id" label={t('nx.exp.head')} error={fieldErrors.head_id} required>
           <Select value={headID} onChange={(e) => setHeadID(e.target.value)}>
             <option value="">{t('nx.exp.chooseHead')}</option>
             {heads.map((h) => (
@@ -387,7 +388,7 @@ function StandingForm({
           </p>
         ) : null}
 
-        <Field label={t('nx.expcfg.amount')} error={fieldErrors.amount} required>
+        <Field name="amount" label={t('nx.expcfg.amount')} error={fieldErrors.amount} required>
           <Input
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -397,6 +398,7 @@ function StandingForm({
         </Field>
 
         <Field
+          name="paid_from"
           label={t('nx.exp.paidFrom')}
           hint={t('nx.exp.paidFromHint')}
           error={fieldErrors.paid_from}
@@ -409,7 +411,7 @@ function StandingForm({
           </Select>
         </Field>
 
-        <Field label={t('nx.expcfg.every')} error={fieldErrors.frequency} required>
+        <Field name="frequency" label={t('nx.expcfg.every')} error={fieldErrors.frequency} required>
           <Select value={preset} onChange={(e) => setPreset(e.target.value)}>
             {PRESETS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -420,6 +422,7 @@ function StandingForm({
         </Field>
 
         <Field
+          name="starts_on"
           label={t('nx.expcfg.startsOn')}
           hint={t('nx.expcfg.startsOnHint')}
           error={fieldErrors.starts_on}
@@ -433,6 +436,7 @@ function StandingForm({
         </Field>
 
         <Field
+          name="ends_on"
           label={t('nx.expcfg.endsOn')}
           hint={t('nx.expcfg.endsOnHint')}
           error={fieldErrors.ends_on}

@@ -1749,6 +1749,50 @@ Eight integration tests, including the trial-balance tie-out on both the
 ordinary case and the freight case, and the one that proves a paid bill cannot
 be owed backwards.
 
+### 0.103 A design pass, and what the tools actually changed
+
+Run against the screens built in §0.99–§0.102 rather than as a sweep, because a
+checklist applied to a finished product finds nothing and a checklist applied to
+what was just written finds things.
+
+| tool | what it was asked | what came back | what changed |
+|---|---|---|---|
+| `ui-ux-pro-max --domain ux` | error summary validation form | **High**: "move focus to its heading after failed submit; **link each item to its invalid field**; retain inline errors" | The first two were already right. The third was not — see below. |
+| `ui-ux-pro-max --domain ux` | quantity stepper numeric input touch | **Medium**: 44×44 minimum, 8px between targets | The returns screen's quantity box was 40px; the exchange screen's was 44. Matched. |
+| `ui-ux-pro-max --domain ux` | data table dense financial figures | Medium: horizontal scroll rather than overflow | Already: `DataTable` owns its scroll container so a wide table never scrolls the page. |
+| `vercel-react-best-practices` | `rerender-derived-state-no-effect` | derive during render, never in an effect | Already: `claim`, `settlement` and `readiness` are all computed in render. |
+| `vercel-react-best-practices` | `rendering-conditional-render` | ternary, never `&&` | Already, in every new screen. Two `&&` in `FormError` fixed while it was open. |
+| `vercel-react-best-practices` | `client-swr-dedup` | one request across instances | Already: `useSellFrom` and `LocationPicker` both read `/stock/locations` and React Query serves one. |
+
+#### The one real gap: a summary that named four problems and reached none of them
+
+`FormError` already took focus on a refusal and already kept the inline errors
+beside their fields — both halves of the guideline. What it did not do was let
+somebody GET to the field: the items were plain text, and the control ids come
+from `useId()`, which is unique and addressable by nothing.
+
+So `Field` gained an optional `name`, which is the API's own name for the field
+and becomes the control's id — `field-account_id`. `FormError` renders each item
+as a control that focuses and scrolls to it.
+
+A button rather than an `<a href>`: the target is a form control on this page,
+not a document location, and an anchor to an id that turns out not to exist is a
+broken link. Where the field was not named it simply does nothing and the item
+still reads as text, which is exactly what it did before.
+
+Wired through the five forms written this session. The difference is between
+telling somebody their VAT number is wrong and putting them in front of it.
+
+#### What the component MCPs were not used for
+
+shadcn, 21st.dev, Stitch, Skiper and UIverse were consulted as reference and
+nothing was installed from any of them. The brief is explicit that the product
+must not look copied from them, and this codebase already has its own
+primitives — `Panel`, `DataTable`, `Field`, `Button`, and now `Tabs` — written
+against its own tokens. Pulling in a component would have meant a second design
+language beside the first, and a dependency added to claim a tool was used is
+the thing the brief names as forbidden.
+
 ### 0.8 Exact next task
 
 **FE-25 purchasing is COMPLETE** — suppliers, orders, receiving, bills with
