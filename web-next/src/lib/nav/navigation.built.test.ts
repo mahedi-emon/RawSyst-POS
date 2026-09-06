@@ -58,8 +58,65 @@ function guardOf(file: string): string[] | null {
   return [...(match[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
 }
 
-const ROUTES = new Set(builtRoutes(APP));
+/**
+ * The portal is a different application that happens to share a build.
+ *
+ * `/portal/*` is signed into with a phone and a one-time code, or a supplier's
+ * password. There is no staff session, no permission catalogue and no sidebar
+ * — the shell is a header and a row of tabs, and the person using it is a
+ * customer standing in a shop rather than somebody who works there.
+ *
+ * So these routes are excluded from the sidebar check rather than listed in
+ * `reachedOtherwise`. That list means "a staff screen reached from another
+ * staff screen", and putting a customer portal in it would make the list say
+ * something untrue about who can open these.
+ *
+ * They are not unchecked: the portal's own tabs are asserted below, in both
+ * directions, against the same filesystem read.
+ */
+const PORTAL = (route: string): boolean =>
+  route === '/portal' || route.startsWith('/portal/');
+
+const ALL_BUILT = builtRoutes(APP);
+const ROUTES = new Set(ALL_BUILT.filter((r) => !PORTAL(r)));
+const PORTAL_ROUTES = new Set(ALL_BUILT.filter(PORTAL));
 const ALL_ITEMS = [...BUSINESS_NAV, ...PLATFORM_NAV].flatMap((s) => s.items);
+
+/** The tabs the portal shell offers, read out of its layout. */
+function portalTabs(): string[] {
+  const layout = fs.readFileSync(
+    path.join(APP, '(portal)', 'layout.tsx'),
+    'utf8',
+  );
+  return [...layout.matchAll(/href: '(\/portal[^']*)'/g)].map(
+    (m) => m[1] as string,
+  );
+}
+
+describe('the portal offers only what exists', () => {
+  it('found the portal', () => {
+    // The same guard on the guard as below: an empty set would pass every
+    // assertion here for the wrong reason.
+    expect(PORTAL_ROUTES.has('/portal')).toBe(true);
+    expect(PORTAL_ROUTES.has('/portal/supplier')).toBe(true);
+  });
+
+  it('never offers a tab with no page behind it', () => {
+    const dead = portalTabs().filter((href) => !PORTAL_ROUTES.has(href));
+    expect(dead).toEqual([]);
+  });
+
+  it('never builds a portal screen nothing reaches', () => {
+    // The two sign-in pages are reached by the link a shop sends out, not by a
+    // tab — a customer who is not signed in has no tabs at all.
+    const entryPoints = new Set(['/portal', '/portal/supplier']);
+    const tabs = new Set(portalTabs());
+    const orphans = [...PORTAL_ROUTES].filter(
+      (r) => !tabs.has(r) && !entryPoints.has(r),
+    );
+    expect(orphans).toEqual([]);
+  });
+});
 
 describe('the sidebar offers only what exists', () => {
   it('found the app directory', () => {
