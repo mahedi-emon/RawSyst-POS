@@ -3670,6 +3670,71 @@ console.log('\nAPPROVALS, DELIVERIES, MONEY AND AFTER-SALES');
 // a second factor although signing in with one worked, a notification centre
 // nothing called, and a search route with no box. These assert the shapes the
 // new screens read.
+// --- H6: what lets another system act on this business --------------------
+console.log('\nKEYS AND CALLBACKS');
+{
+  const keys = await check('GET /api-keys', `/api-keys?company_id=${CO}`, null);
+  if (keys?.data?.[0]) {
+    expectFields('  api key', keys.data[0], [
+      'id',
+      'name',
+      'key_prefix',
+      'permissions',
+      'created_at',
+    ]);
+    // The list must never carry the key itself. A screen cannot leak what it
+    // was not sent, and this is the assertion that keeps it that way if the
+    // payload ever grows a field.
+    const leaked = keys.data.filter((k) => 'secret' in k || 'key' in k);
+    if (leaked.length > 0) {
+      console.log('  x /api-keys returned a secret; the list must carry a prefix only');
+      failures += 1;
+    } else {
+      console.log('  ok the list carries a prefix and never the key');
+    }
+  } else {
+    console.log('  -  no api keys; the key shape was not exercised');
+  }
+
+  // The event vocabulary travels WITH the list, which is what stops the form
+  // offering an event the server would refuse. If it stopped arriving, the
+  // webhook form would render an empty set of checkboxes and look broken.
+  const hooks = await check('GET /webhooks', `/webhooks?company_id=${CO}`, null);
+  if (!Array.isArray(hooks?.events)) {
+    console.log('  x /webhooks carries no `events` vocabulary; the form has nothing to offer');
+    failures += 1;
+  } else {
+    console.log(`  ok ${hooks.events.length} events travel with the list`);
+  }
+  if (hooks?.data?.[0]) {
+    expectFields('  endpoint', hooks.data[0], [
+      'id',
+      'name',
+      'url',
+      'is_active',
+      'events',
+      'queued',
+      'failed',
+    ]);
+    const deliveries = (
+      await call(`/webhooks/${hooks.data[0].id}/deliveries?company_id=${CO}`)
+    ).json;
+    if (deliveries?.data?.[0]) {
+      expectFields('  delivery', deliveries.data[0], [
+        'id',
+        'event',
+        'status',
+        'attempts',
+        'created_at',
+      ]);
+    } else {
+      console.log('  -  nothing delivered yet; the delivery shape was not exercised');
+    }
+  } else {
+    console.log('  -  no callbacks registered; the endpoint shape was not exercised');
+  }
+}
+
 console.log('\nYOUR OWN ACCOUNT');
 {
   const mfa = await check('GET /auth/mfa', '/auth/mfa', null);
