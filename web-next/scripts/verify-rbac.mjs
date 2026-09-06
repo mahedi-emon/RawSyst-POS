@@ -1750,6 +1750,131 @@ console.log('\nREADING THE OVERSIGHT REGISTERS IS NOT WRITING TO THEM');
       : `  -  removed the ${built.length} roles this run built`,
   );
 }
+
+// --- configuring a card connection, and importing records ----------------
+
+console.log('\nSEEING A CARD CONNECTION IS NOT CONFIGURING ONE');
+{
+  const built = [];
+  async function role(name, permissions) {
+    const made = await owner('POST', q('/roles'), {
+      name: `verify:rbac ${name}`,
+      description: 'Created by verify:rbac and removed at the end of it',
+      permissions,
+    });
+    if (made.status !== 200 && made.status !== 201) {
+      bad(`could not build the ${name} role: ${made.status}`);
+      return null;
+    }
+    const r = made.json?.role;
+    if (r?.id) built.push(r.id);
+    return r ? { id: r.id, name: r.name } : null;
+  }
+
+  const firstSeat = seeded.length;
+  const looker = await staff('gateway-reader', await role('gateway reader', ['gateway.view']));
+  const outsider = await staff('no-cards', await role('shop floor three', ['sales.view']));
+
+  if (looker) {
+    expect(
+      'gateway.view: GET /payment-gateways',
+      (await looker.call('GET', q('/payment-gateways'))).status,
+      200,
+    );
+    expect(
+      'gateway.view: GET /payment-attempts',
+      (await looker.call('GET', q('/payment-attempts'))).status,
+      200,
+    );
+
+    // Configuring one is gateway.manage. Whoever can do it can point a shop's
+    // card takings at a different account.
+    expect(
+      'gateway.view: POST a connection',
+      (await looker.call('POST', q('/payment-gateways'), {
+        provider: 'terminal',
+        label: 'verify:rbac should not stick',
+        mode: 'test',
+        settings: { address: '198.51.100.1:8080', terminal_id: 'X' },
+        methods: ['mada'],
+        is_active: false,
+      })).status,
+      403,
+    );
+    const anyGateway = (await owner('GET', q('/payment-gateways'))).json?.gateways?.[0];
+    if (anyGateway) {
+      expect(
+        'gateway.view: POST a check',
+        (await looker.call('POST', q(`/payment-gateways/${anyGateway.id}/check`), {}))
+          .status,
+        403,
+      );
+    }
+
+    // The reason this screen carries two permissions rather than one. Banking
+    // a day's card takings is an accounting act, so somebody who looks after
+    // the card machine does not get the deposits with it -- and gating the
+    // whole page on both would hide the machine from the person who minds it.
+    expect(
+      'gateway.view alone: GET /settlement/pending',
+      (await looker.call('GET', q('/settlement/pending'))).status,
+      403,
+    );
+
+    // Importing records is a different permission again.
+    expect(
+      'without data.import: GET /imports',
+      (await looker.call('GET', q('/imports'))).status,
+      403,
+    );
+  }
+
+  if (outsider) {
+    expect(
+      'without gateway.view: GET /payment-gateways',
+      (await outsider.call('GET', q('/payment-gateways'))).status,
+      403,
+    );
+
+    // Ordering that matters. This tenant's plan does not include groups, so
+    // the route answers 402 to somebody who holds group.view. Somebody who
+    // does NOT hold it must still be refused on the permission -- a 402 here
+    // would tell a caller with no business knowing it what the plan contains.
+    const refused = await outsider.call('GET', q('/groups'));
+    if (refused.status === 402) {
+      bad(
+        'groups answers 402 to a caller without group.view, which tells them ' +
+          'what the plan does and does not include',
+      );
+    } else {
+      expect('without group.view: GET /groups', refused.status, 403);
+    }
+  }
+
+  const mine = new Set(seeded.slice(firstSeat).filter(Boolean));
+  const staffed = (await owner('GET', q('/people?limit=200'))).json?.data ?? [];
+  for (const person of staffed) {
+    if (!mine.has(person.id)) continue;
+    for (const held of person.roles ?? []) {
+      if (built.includes(held.role_id)) {
+        await owner('DELETE', q(`/people/roles/${held.id}`));
+      }
+    }
+  }
+  for (const id of mine) {
+    await owner('POST', q(`/people/${id}/active`), { active: false });
+  }
+  let left = 0;
+  for (const id of built) {
+    const gone = await owner('DELETE', q(`/roles/${id}`));
+    if (gone.status !== 204 && gone.status !== 200) left += 1;
+  }
+  console.log(
+    left > 0
+      ? `  -  ${left} of ${built.length} roles built by this run could NOT be removed`
+      : `  -  removed the ${built.length} roles this run built`,
+  );
+}
 await retireSeeded();
 
 console.log(

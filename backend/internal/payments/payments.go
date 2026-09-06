@@ -276,6 +276,28 @@ type NewGateway struct {
 }
 
 // SaveGateway creates or edits one.
+// checkedOK says whether this connection has already answered a check.
+//
+// A brand new one (no id yet) never has. An edit is asked of the stored row,
+// because `last_check_ok` is the server's record of a real attempt and is not
+// something the caller can assert about itself.
+func checkedOK(
+	ctx context.Context, s *Service, scope Scope, id uuid.UUID,
+) bool {
+	if id == uuid.Nil {
+		return false
+	}
+	var ok *bool
+	if err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT last_check_ok FROM payment_gateway
+			WHERE id = $1 AND company_id = $2`, id, scope.CompanyID).Scan(&ok)
+	}); err != nil {
+		return false
+	}
+	return ok != nil && *ok
+}
+
 func (s *Service) SaveGateway(
 	ctx context.Context, scope Scope, in NewGateway,
 ) (Gateway, error) {
@@ -311,6 +333,18 @@ func (s *Service) SaveGateway(
 	if len(missing) > 0 {
 		return Gateway{}, errs.Newf(errs.CodeInvalidInput,
 			"%s still needs: %s.", provider.Name, strings.Join(missing, ", "))
+	}
+
+	// A live connection cannot be switched on until it has answered once.
+	// `payment_gateway_live_was_checked` enforces it, and enforcing it in the
+	// database is right -- but the violation reached a caller as "That value is
+	// not allowed", which names neither the value nor what to do about it. The
+	// order is configure, check, then activate, and the refusal now says so.
+	if in.IsActive && in.Mode == "live" && !checkedOK(ctx, s, scope, in.ID) {
+		return Gateway{}, errs.New(errs.CodeInvalidInput,
+			"Check the connection before switching it on. A live card "+
+				"connection that has never answered would fail at the counter, "+
+				"with a customer waiting.")
 	}
 
 	var sealed []byte
@@ -515,7 +549,17 @@ func (s *Service) Check(
 	ok := true
 	if e := adapter.Check(ctx, s.client, cfg); e != nil {
 		ok = false
-		note = e.Error()
+		// The message, not the error. `Error()` renders as "code: message",
+		// so this stored "unavailable: The card machine did not answer" and
+		// the shopkeeper read the code along with the sentence written for
+		// them. Anything without a user-safe message falls back to its own
+		// string rather than leaving the note blank, because a failed check
+		// with no reason is the one thing worse than a wordy one.
+		if known := errs.As(e); known != nil && known.Message != "" {
+			note = known.Message
+		} else {
+			note = e.Error()
+		}
 	}
 
 	if err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {

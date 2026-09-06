@@ -4438,6 +4438,207 @@ console.log('\nWHAT HAPPENED, WHAT IS HELD, AND WHETHER IT COULD BE RESTORED');
   }
 }
 
+console.log('\nTAKING A CARD, BRINGING RECORDS IN, AND READING BOOKS TOGETHER');
+{
+  const catalogue = await check(
+    'GET /payment-providers',
+    `/payment-providers?company_id=${CO}`,
+    ['providers'],
+  );
+  const providers = catalogue?.providers ?? [];
+  if (providers.length > 0) {
+    expectFields('  provider', providers[0], ['key', 'name', 'fields', 'methods']);
+    // The form is built from this, field by field. A provider with no fields
+    // would render an empty form somebody could submit.
+    const fieldless = providers.filter((p) => (p.fields ?? []).length === 0);
+    if (fieldless.length > 0) {
+      console.log(`  x ${fieldless.length} providers name no fields at all`);
+      failures += 1;
+    } else {
+      console.log(`  ok ${providers.length} providers each name the fields they need`);
+    }
+    // The sealed half is marked, so the screen knows which box to make a
+    // password field and which value it must never try to read back.
+    const sealed = providers.filter((p) => (p.fields ?? []).some((f) => f.secret));
+    console.log(`  ok ${sealed.length} of them have a sealed field, marked as such`);
+  }
+
+  const gateways = await check(
+    'GET /payment-gateways',
+    `/payment-gateways?company_id=${CO}`,
+    ['gateways'],
+  );
+  if (gateways?.gateways?.[0]) {
+    expectFields('  connection', gateways.gateways[0], [
+      'id',
+      'provider',
+      'label',
+      'mode',
+      'settings',
+      'is_active',
+      // Whether a key is stored. The key itself must never appear.
+      'has_secret',
+    ]);
+
+    // The secret must not be on the wire under any name. A payload that grew
+    // one would hand every key to anybody who can read this list.
+    const leaking = gateways.gateways.filter((g) =>
+      ['secret', 'secret_key', 'api_key', 'password'].some((k) => k in g),
+    );
+    if (leaking.length > 0) {
+      console.log(`  x ${leaking.length} connections carry a secret in the listing`);
+      failures += 1;
+    } else {
+      console.log('  ok no connection carries a key back');
+    }
+
+    // Three answers, not two. `last_check_ok` is absent until a check runs,
+    // and a screen reading absent as false calls a new connection broken.
+    const unchecked = gateways.gateways.filter(
+      (g) => typeof g.last_check_ok !== 'boolean',
+    );
+    const failing = gateways.gateways.filter((g) => g.last_check_ok === false);
+    console.log(
+      `  ok ${unchecked.length} never checked, ${failing.length} not answering, ` +
+        `${gateways.gateways.length - unchecked.length - failing.length} answering`,
+    );
+
+    // The constraint the screen turns into a sequence: nothing can be live AND
+    // switched on without having answered. If one ever is, the screen's
+    // "configure, check, switch on" ordering is describing a rule that is no
+    // longer enforced.
+    const onWithoutAnswering = gateways.gateways.filter(
+      (g) => g.is_active && g.mode === 'live' && g.last_check_ok !== true,
+    );
+    if (onWithoutAnswering.length > 0) {
+      console.log(
+        `  x ${onWithoutAnswering.length} live connections are switched on ` +
+          'without having answered a check',
+      );
+      failures += 1;
+    } else {
+      console.log('  ok nothing is live and switched on without having answered');
+    }
+
+    // And the refusal says which step is missing. It used to be "That value is
+    // not allowed", which names neither the value nor the remedy.
+    const early = await post(`/payment-gateways?company_id=${CO}`, {
+      provider: gateways.gateways[0].provider,
+      label: 'verify:api should not stick',
+      mode: 'live',
+      settings: gateways.gateways[0].settings,
+      methods: gateways.gateways[0].methods,
+      is_active: true,
+    });
+    const said = early.json?.error?.message ?? '';
+    if (early.status !== 400) {
+      console.log(`  x switching on an unchecked live connection answered ${early.status}`);
+      failures += 1;
+    } else if (!/check/i.test(said)) {
+      console.log(`  x the refusal does not name the step that is missing: ${said}`);
+      failures += 1;
+    } else {
+      console.log('  ok switching one on too early is refused, and says why');
+    }
+  } else {
+    console.log('  -  no card connection; the connection shape was not exercised');
+  }
+
+  await check('GET /payment-attempts', `/payment-attempts?company_id=${CO}`, ['attempts']);
+  await check('GET /settlement/pending', `/settlement/pending?company_id=${CO}`, null);
+
+  const shapes = await check('GET /imports/shapes', `/imports/shapes?company_id=${CO}`, null);
+  if (shapes?.data?.[0]) {
+    expectFields('  import shape', shapes.data[0], [
+      'kind',
+      'label',
+      // What the screen builds its column check from. A shape with no required
+      // columns would accept any file and fail row by row instead.
+      'required',
+      'optional',
+    ]);
+    const shapeless = shapes.data.filter((s) => (s.required ?? []).length === 0);
+    if (shapeless.length > 0) {
+      console.log(`  x ${shapeless.length} import kinds require no columns at all`);
+      failures += 1;
+    } else {
+      console.log(
+        `  ok ${shapes.data.length} import kinds each name the columns they need`,
+      );
+    }
+  }
+
+  const imports = await check('GET /imports', `/imports?company_id=${CO}`, null);
+  if (imports?.data?.[0]) {
+    expectFields('  import', imports.data[0], [
+      'id',
+      'kind',
+      'status',
+      'total_rows',
+      'valid_rows',
+      'error_rows',
+    ]);
+    // Counts that do not add up would make "import 1,847 of 2,000" a lie.
+    const odd = imports.data.filter(
+      (b) => b.valid_rows + b.error_rows > b.total_rows,
+    );
+    if (odd.length > 0) {
+      console.log(`  x ${odd.length} imports count more rows than the file had`);
+      failures += 1;
+    } else {
+      console.log(`  ok ${imports.data.length} imports count their rows consistently`);
+    }
+  } else {
+    console.log('  -  nothing has been imported; the batch shape was not exercised');
+  }
+
+  // The distinction this whole screen rests on: a plan refusal is 402, not
+  // 403. The caller holds group.view; what is missing is commercial. A screen
+  // that showed "you may not" would send somebody to their manager to ask for
+  // a permission they already have.
+  const groups = await call(`/groups?company_id=${CO}`);
+  if (groups.status === 402) {
+    console.log(
+      `  ok group consolidation is refused commercially, not by permission ` +
+        `(${groups.json?.error?.code})`,
+    );
+  } else if (groups.status === 200) {
+    console.log('  -  this plan includes groups; the 402 path was not exercised');
+    if (groups.json?.data?.[0]) {
+      expectFields('  group', groups.json.data[0], [
+        'id',
+        'name',
+        'presentation_currency',
+        'members',
+      ]);
+      const member = groups.json.data[0].members?.[0];
+      if (member) {
+        expectFields('  member', member, [
+          'company_id',
+          'name',
+          // Decimal on the wire and decimal on the screen: three subsidiaries
+          // at 33.33 each is where a float starts producing 99.99000000001.
+          'ownership_pct',
+          'is_parent',
+        ]);
+        if (typeof member.ownership_pct !== 'string') {
+          console.log('  x ownership is not a string');
+          failures += 1;
+        }
+      }
+    }
+  } else if (groups.status === 403) {
+    console.log(
+      '  x groups answered 403 for a caller holding group.view; a commercial ' +
+        'refusal must not read as a permission one',
+    );
+    failures += 1;
+  } else {
+    console.log(`  x GET /groups: HTTP ${groups.status}`);
+    failures += 1;
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {
