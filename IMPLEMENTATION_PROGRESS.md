@@ -222,7 +222,7 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-35 | Platform: rules, jurisdictions, tax rates | ✅ | IN PROGRESS | `/platform/rules` | super-admin | Imported → reviewed → activated → verified |
 | FE-36 | Global search | ✅ | IN PROGRESS | `/search` + header box | authenticated | Built. Grouped by the seven kinds the route returns; each is gated by the permission guarding the thing it finds, so the empty state says "nothing you can see", not "no results" |
 | FE-37 | Approvals | ✅ | IN PROGRESS | `/approvals` | `approval.view` | Plan-gated |
-| FE-38 | Privacy (24 routes) | ✅ | ⬜ NOT STARTED | `/oversight/privacy` | `privacy.view` | |
+| FE-38 | Privacy (24 routes) | ✅ | **COMPLETE** | `/oversight/privacy` | `privacy.view` | §0.108. Six registers behind tabs, led by the two statutory clocks. `days_left` and `hours_left` are the server's and are never recomputed. |
 | FE-39 | Business details / onboarding wizard | ✅ | IN PROGRESS | `/settings/business` | `identity.edit` | **Blocks Saudi selling** until the branch National Address is complete |
 | FE-40 | Barcodes and label studio | ✅ | **COMPLETE** | `/products/labels` | `label.print` | Plan-gated. §0.107. The nav asked for print-or-manage; a manage-only role would have been refused on the screen's first read. |
 | FE-41 | POS shift close, cash drop, X/Z | ✅ | IN PROGRESS | `/pos`, `/shifts` | `sales.receive_payment` | |
@@ -235,20 +235,20 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-48 | Fixed assets | ✅ | IN PROGRESS | `/money/assets` | `asset.view` | Plan-gated |
 | FE-49 | Exchange rates / FX | ✅ | IN PROGRESS | `/money/accounts` | `accounting.view` | |
 | FE-50 | Accounting periods / year-end | ✅ | IN PROGRESS | `/money/periods` | `accounting.close_period` | |
-| FE-51 | Gateways + settlement | ✅ | ⬜ NOT STARTED | `/money/gateways` | `gateway.view` | |
+| FE-51 | Gateways + settlement | ✅ | **COMPLETE** | `/money/gateways` | `gateway.view` + `accounting.view` | §0.108. Two permissions on one screen: the connections are gateway.view, the deposits accounting.view. Never-checked, answering and not-answering are three states, not two. |
 | FE-52 | Analytics / forecast | ✅ | IN PROGRESS | `/reports/analytics` | `report.view` | Plan-gated |
 | FE-53 | Notifications | ✅ | IN PROGRESS | `/notifications` | authenticated | Built. Six routes had no caller. Company-scoped: `notifyScope` resolves a company although the route is merely authenticated |
-| FE-54 | Audit trail | ✅ | ⬜ NOT STARTED | `/oversight/audit` | `accounting.view` | |
-| FE-55 | Documents | ✅ | ⬜ NOT STARTED | `/oversight/documents` | `document.view` | |
+| FE-54 | Audit trail | ✅ | **COMPLETE** | `/oversight/audit` | `accounting.view` | §0.108. The filter is built from the verbs the trail returns with the rows, so it cannot go stale. before/after shown as recorded. |
+| FE-55 | Documents | ✅ | **COMPLETE** | `/oversight/documents` | `document.view` | §0.108. A business could not file its own papers at all until this pass; two attachment kinds the schema permits were unreachable. |
 | FE-56 | Portal access (supplier logins; customers self-serve by code) | ✅ | IN PROGRESS | `/customers/portal` | `portal.view` | |
 | FE-57 | Compliance dashboard | ✅ | IN PROGRESS | `/oversight/compliance` | `compliance.view` | |
 | FE-58 | Supplier portal administration | ✅ | IN PROGRESS | `/buying/suppliers` | `portal.manage` | 11 supplier-portal routes exist |
-| FE-59 | Group companies / consolidation | ✅ | ⬜ NOT STARTED | `/oversight/groups` | `group.view` | Plan-gated |
+| FE-59 | Group companies / consolidation | ✅ | **COMPLETE** | `/oversight/groups` | `group.view` | Plan-gated, and §0.108 is mostly about that: the dev tenant's plan answers 402, so the commercial refusal is the state that is proved live and the populated screen is built from the service's types. |
 | FE-60 | Tills and devices | ✅ | **COMPLETE** | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit. §0.107. `pending` is read against `binding`, so a normal paired till is not reported as a fault. |
-| FE-61 | Backups | ✅ | ⬜ NOT STARTED | `/oversight/backups` | `backup.view` | |
+| FE-61 | Backups | ✅ | **COMPLETE** | `/oversight/backups` | `backup.view` | §0.108. "Finished" and "verified" are kept apart, and the risk sentence is the server's own. |
 | FE-62 | Plan and billing | ✅ | IN PROGRESS | `/settings/subscription` | `subscription.view` | |
 | FE-63 | Integrations: API keys, webhooks | ✅ | ⬜ NOT STARTED | `/settings/integrations` | `integration.view` | |
-| FE-64 | Import / export | ✅ | ⬜ NOT STARTED | `/settings/imports` | `data.import` | |
+| FE-64 | Import / export | ✅ | **COMPLETE** | `/settings/imports` | `data.import` | §0.108. Staged, checked and committed as three visible acts; the columns come from `/imports/shapes`. |
 | FE-65 | Platform: failed jobs | ✅ | IN PROGRESS | `/platform/jobs` | super-admin | |
 | FE-66 | Support tickets (both sides) | ✅ | IN PROGRESS | `/settings/support` | `support.raise` | |
 | FE-67 | Receipt / invoice templates | ✅ | IN PROGRESS | `/settings/business` | `identity.edit` | |
@@ -322,20 +322,20 @@ what exists and the reconciliation is the assessment of what is done.
 | C9 | Double-Entry Accounting Engine | FE-27 | /money/journals | /accounting/journals | accounting.view | IN PROGRESS |  |
 | C10 | Fiscal Period & Year-End Closing | FE-50 | /money/periods | /accounting/periods/*, /accounting/year-end | accounting.close_period / reopen_period | IN PROGRESS |  |
 | C11 | Bank Reconciliation | FE-28 | /money/reconcile, /money/reconcile/{id} | /treasury/statements/*, /treasury/lines/{id}/match | accounting.reconcile | COMPLETE | §0.100. Import, auto-match, match by hand, undo, sign-off refused while anything is unexplained. One backend defect fixed: the frozen-statement refusal arrived as a 500. |
-| C12 | Payment Settlement & Gateway Reconciliation | FE-51 | /money/gateways | /settlement/*, /payment-gateways/* | accounting.view, gateway.view | NOT STARTED |  |
+| C12 | Payment Settlement & Gateway Reconciliation | FE-51 | /money/gateways | /settlement/*, /payment-gateways/* | accounting.view, gateway.view | COMPLETE | §0.108. Two payments defects fixed here: switching on an unchecked live connection said "That value is not allowed", and a failed check stored its error code in the shopkeeper's sentence. |
 | C13 | Inventory Costing & COGS Engine | FE-21 | /stock | GET /stock/on-hand | inventory.view | IN PROGRESS | Costing is a backend concern; the frontend shows value at cost on the dashboard already. |
 | C14 | Accounting-Aware Returns, Exchanges & Credit Notes | FE-18 | /pos/returns | /pos/returns | sales.refund | IN PROGRESS |  |
 | D1 | Reporting Suite | FE-31 | /reports/* | 10 /reports/* routes | report.view / report.export | IN PROGRESS |  |
 | D2 | Business Analytics & Forecasting | FE-52 | /reports/analytics | /analytics/kpis, /movers, /forecast, /profitability | report.view | IN PROGRESS | Plan-gated: analytics. |
 | D3 | Notification Center | FE-53 | /notifications | /notifications/* | authenticated | IN PROGRESS |  |
-| D4 | Audit Trail & Activity Log | FE-54 | /oversight/audit | GET /audit | accounting.view | NOT STARTED |  |
+| D4 | Audit Trail & Activity Log | FE-54 | /oversight/audit | GET /audit | accounting.view | COMPLETE | §0.108. Append-only, and the screen says which fields moved without rewriting either side. |
 | D5 | Approval Center | FE-37 | /approvals | /approvals/*, /approval-rules, /approval-delegations | approval.view / approval.decide | IN PROGRESS | Plan-gated: approvals. |
-| D6 | Document Management | FE-55 | /oversight/documents | /documents/* | document.view / document.manage | NOT STARTED |  |
+| D6 | Document Management | FE-55 | /oversight/documents | /documents/* | document.view / document.manage | COMPLETE | §0.108. `company` and `warranty` were permitted by the schema and refused by the service; both fixed, with a test that reads the CHECK rather than repeating it. |
 | D7 | Global Search & Command Center | FE-36 | /search + header box | GET /search | authenticated | IN PROGRESS | Validated live: requires company_id; returns {kind,id,label,detail,amount,currency}. |
 | E1 | ZATCA Phase 2 E-Invoicing Engine ("Fatoora") | FE-33 | /settings/einvoicing | 8 /einvoicing/* routes | einvoicing.view / einvoicing.onboard | BLOCKED | Direction says ZATCA is skipped and isolated. The one genuinely external dependency is the Fatoora OTP, which must never be fabricated. |
 | E2 | Saudi Tax Engine | FE-31 | /reports/tax | GET /reports/vat-return | accounting.view | IN PROGRESS |  |
 | E3 | Saudi Payment Methods & Payment Compliance (FULL COVERAGE) | FE-14, FE-51 | /pos, /money/gateways | /payment-gateways/*, /payment-attempts | gateway.view | IN PROGRESS | Four tenders live at the till; gateway administration is not built. |
-| E4 | PDPL | FE-38 | /oversight/privacy | 24 /privacy/* routes | privacy.view / privacy.manage | NOT STARTED |  |
+| E4 | PDPL | FE-38 | /oversight/privacy | 25 /privacy/* routes | privacy.view / privacy.manage | COMPLETE | §0.107–108. Subject requests, breaches, consent, the processing register, retention and holds, and the published notice. /privacy/subprocessors is deliberately open to anyone signed in, and that is asserted. |
 | E5 | Saudi E-Commerce Law & Online Store Compliance | FE-56 | /customers/portal | /portal/* | portal.view | IN PROGRESS |  |
 | E6 | Saudi Labour & Payroll Compliance (expanded) | FE-29 | /people/payroll | /payroll/{id}/wage-file, /eosb | payroll.approve | IN PROGRESS |  |
 | E7 | Compliance Monitoring Dashboard | FE-57 | /oversight/compliance | GET /compliance | compliance.view | IN PROGRESS |  |
@@ -343,7 +343,7 @@ what exists and the reconciliation is the assessment of what is done.
 | F1 | Business Workflow / Approval Engine | FE-37 | /approvals | /approvals/* | approval.view / decide | IN PROGRESS |  |
 | F2 | Customer Self-Service Portal | FE-56 | /customers/portal | /portal/contacts, /portal/return-requests | portal.view / portal.manage | IN PROGRESS |  |
 | F3 | Supplier Portal | FE-58 | /buying/suppliers | /portal/supplier/* | portal.manage | IN PROGRESS |  |
-| F4 | Multi-Company / Group Consolidation | FE-59 | /oversight/groups | 10 /groups/* routes | group.view / group.manage | NOT STARTED | Plan-gated: consolidation. |
+| F4 | Multi-Company / Group Consolidation | FE-59 | /oversight/groups | 10 /groups/* routes | group.view / group.manage | COMPLETE | §0.108. Plan-gated: 402 is treated as a commercial refusal distinct from a permission one, and a caller without group.view still gets 403 so nobody learns the plan's contents. |
 | G1 | Country Configuration Engine | FE-09 | (all) | GET /companies | — | COMPLETE | country + base_currency drive market, grouping and precision. Validated live: country arrives lowercase. |
 | G2 | Multi-Currency | FE-09, FE-49 | (all) | /exchange-rates | accounting.view | IN PROGRESS | Per-company currency COMPLETE. FX rate management not started. |
 | G3 | Multi-Language & RTL/LTR | FE-10 | (all) | — | — | **COMPLETE** | 480 keys in en/ar/bn, every built screen translated, navigation holds keys. Two RTL defects fixed. Two tests keep it true. |
@@ -351,10 +351,10 @@ what exists and the reconciliation is the assessment of what is done.
 | H1 | Security & Authentication | FE-02, FE-04, FE-05, FE-68, FE-69 | /login, /change-password, /forgot-password, /settings/security | /auth/* | public / authenticated | IN PROGRESS | Refresh rotation, CSRF double-submit and both login challenges verified live. |
 | H2 | Offline-First Architecture & Sync Engine | FE-13 | /pos | /catalog/snapshot, /sync/push | sales.create | IN PROGRESS | The till holds the catalogue in memory. Queued offline sales are a desktop-till concern. |
 | H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | COMPLETE | §0.107. Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending — and the screen distinguishes those two pendings. An enrolment code is `devices.manage`, asserted. |
-| H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | NOT STARTED |  |
+| H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | COMPLETE | §0.108. A backup that ran is not a backup that restores, and the screen keeps the two apart. |
 | H5 | SaaS Subscription, Billing & Feature Flags | FE-07, FE-62 | /settings/subscription | /subscription/*, /plans | subscription.view | IN PROGRESS | Entitlements drive navigation already; the billing screen is not built. |
 | H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | NOT STARTED |  |
-| H7 | Import / Export & Data Migration | FE-64 | /settings/imports | 7 /imports/* routes, /exports/{kind} | data.import / data.export | NOT STARTED |  |
+| H7 | Import / Export & Data Migration | FE-64 | /settings/imports | 7 /imports/* routes, /exports/{kind} | data.import / data.export | COMPLETE | §0.108. Nothing is written until the person commits, and a partial import says how many rows would be left behind. |
 | H8 | System Health Monitoring (Super Admin view) | FE-15 | /platform | GET /platform/health | super-admin | COMPLETE |  |
 | H9 | Job / Queue System (Background Processing) | FE-65 | /platform/jobs | /platform/jobs/failed, /{id}/retry | super-admin | IN PROGRESS |  |
 | H10 | Customer Support / Ticketing (Super Admin ↔ Tenant) | FE-66 | /settings/support, /platform/support | /support/*, /platform/support | support.raise / super-admin | IN PROGRESS |  |
@@ -2161,6 +2161,161 @@ The scheme's `example` is asserted non-empty because the screen prints the
 server's own next code rather than building one. A screen that assembled it
 would be a second implementation of the rule that mints barcodes, free to
 disagree with it.
+
+### 0.108 The last six screens, and five defects underneath them
+
+`/oversight/privacy`, `/oversight/audit`, `/oversight/documents`,
+`/oversight/backups`, `/money/gateways` and `/settings/imports`. **Nav is 82 of
+82 built.**
+
+#### Two clocks that are not ours
+
+PDPL gives a subject request a statutory deadline and a personal-data breach a
+notification window. Both are counted by the server — `days_left` and
+`hours_left` — and read here. A deadline this product worked out itself would
+be a second answer to a regulatory question, free to disagree with the register
+the request was filed against.
+
+They are never converted into each other. An incident with four hours left and
+a request with four days left are both urgent; expressing one in the other's
+unit would invent a precision the deadline does not have.
+
+`waiting_on_subject` is separated from the rest because the clock does not stop
+when the shop is waiting for the person to answer, and a queue mixing the two
+has somebody chasing work that is not theirs to do. It can still be overdue —
+waiting is not an excuse the deadline recognises.
+
+#### A backup that ran is not a backup that restores
+
+The backend pins that sentence with a test of the same name. So "finished" and
+"verified" are different words on the screen, and a run that finished without
+being checked is reported as work still to do. A verification that ran and
+*failed* is worse than none — it is a file known to be unreadable — so it reads
+as a failure rather than as unverified.
+
+The risk sentence is the server's own, printed as written. Recomposing it from
+the parts would produce a second opinion on a question that needs one answer.
+
+#### The filter that cannot go stale
+
+`GET /audit` returns the verbs actually present in this tenant's trail alongside
+the rows. The filter is built from that, so it never offers one the log cannot
+contain and never omits one a new module started writing. The verb itself is
+printed **as recorded** — an auditor comparing the screen against an export
+needs the same string in both, and a friendlier rendering would put a word in
+the record that nobody wrote.
+
+`before` and `after` come over raw, deliberately, so the reader sees the record
+rather than a rendering of it. The screen adds only *which* fields moved.
+
+#### A plan refusal is not a permission refusal
+
+`GET /groups` answers **402 `feature_not_in_plan`** to a caller holding
+`group.view` perfectly well: this tenant's plan does not sell consolidation.
+This is H5's 402-vs-403 distinction finally surfacing in a screen, and it
+matters because the two have different remedies. "You may not do that" sends
+somebody to their manager to ask for a permission they already hold, and the
+manager cannot grant what was never sold.
+
+So the refusal has its own state, in the server's words, saying outright that
+this is not about permission.
+
+`verify:rbac` pins the ordering too: a caller **without** `group.view` is
+refused 403, not 402 — otherwise somebody with no business knowing it learns
+what the plan contains.
+
+**Dependency, stated rather than worked around.** The populated group screen
+could not be driven live: the dev tenant's plan excludes the module, and
+granting it (`PUT /platform/tenants/{id}/features`) was denied by this session's
+permissions. The refusal path is proved live; the populated path is built from
+the service's own types and remains unexercised.
+
+#### Five defects, all found by driving
+
+**A business could not file its own papers.** `document_entity_valid` permits
+sixteen kinds of record; `entityTables` listed fourteen. `company` and
+`warranty` were accepted by the database and refused by the service — and
+`company` is the commercial registration, the licences, the municipality
+permit, the documents a shop is asked for at short notice. The map's own
+comment claimed `company` was "checked by a different predicate below". There
+was no such predicate.
+
+**A mistyped sensitivity was a 500.** `classification` is the `data_class`
+enum, so an unknown value reached the insert and returned SQLSTATE 22P02. Now a
+400 naming the four allowed values. That one also corrected this screen: the
+field had been built as a document *kind* (licence, contract, receipt) and
+`data_class` is how sensitive the **content** is — what the retention regime
+and the erasure path read.
+
+**Every download in the product answered 401.** A plain `<a href="/api/v1/…">`
+cannot authenticate: the rewrite makes the API same-origin so the browser sends
+the refresh cookie, but the API reads the bearer header and the access token
+lives in memory. `api.download` fetches with the token, keeps the same silent
+retry every other call has, and takes the filename from `Content-Disposition`.
+`/reports/saved` was the broken one.
+
+**Switching on a card connection said nothing useful.**
+`payment_gateway_live_was_checked` refuses to activate a live connection that
+has never answered — correctly — but the violation reached the caller as "That
+value is not allowed". It now names the sequence, and the screen offers one
+step at a time rather than a toggle that refuses.
+
+**A failed check stored its error code.** `note = e.Error()` renders as
+"code: message", so a shopkeeper read *"unavailable: The card machine did not
+answer"*. It is the message alone now.
+
+#### And one rotting assertion in the checking tool itself
+
+`verify:api` asserted `201` on a POS exchange unconditionally, and began failing
+because that section rings up a real sale on every run and had sold the dev
+shop's replacement variant down to zero. *"There are 1 fewer Abaya, Black in
+stock than this needs"* is the server being right. A check that reads correct
+behaviour as a mismatch teaches people to ignore it. It now picks a replacement
+that is actually on the shelf and says so when none is.
+
+Same family as the seat leak: **a verification that writes eventually breaks
+itself.** Every fixture these six screens needed was seeded out of band for that
+reason, and no credential was invented — the card machine fixture is an address
+in the documentation range, which honestly does not answer.
+
+#### Verified live
+
+```
+ok every one of 200 entries uses one of the 31 verbs the trail offers
+ok 1 documents that never expire report no countdown
+ok every document carries one of the four sensitivities
+ok a mistyped sensitivity is refused, not reported as our fault
+ok it says where it stands: "Backed up and verified."
+ok 1 of 2 finished backups are proved readable, 1 never checked
+ok 8 providers each name the fields they need
+ok no connection carries a key back
+ok nothing is live and switched on without having answered
+ok switching one on too early is refused, and says why
+ok 6 import kinds each name the columns they need
+ok group consolidation is refused commercially, not by permission
+```
+
+The gateway assertion worth keeping above the others is that no listing carries
+a secret under any name: a payload that grew one would hand every key to
+anybody who can read the list.
+
+#### Not verified, and why
+
+`document_attachment_test.go` pins the invariant that every kind the CHECK
+permits is reachable. It has **not been run.** The dev database records a stale
+hash for migration `0103_tenant_market` — applied on 4 September from a
+pre-commit draft, while the committed file is the only version in git history —
+so the schema matches and the recorded hash does not, and the test harness
+refuses to migrate. Correcting that one row was denied by this session's
+permissions, and routing it through another session would have been laundering
+a permission decision. **It blocks every backend integration test, for every
+session, not just this one.** The guard is behaving correctly: it cannot tell a
+pre-commit draft from somebody editing applied history, and that is the failure
+it exists to catch.
+
+The fixes behind that test were driven against the running API instead: filing a
+company document succeeded, another business's id answered 404, and a mistyped
+class answered 400.
 
 ### 0.8 Exact next task
 
