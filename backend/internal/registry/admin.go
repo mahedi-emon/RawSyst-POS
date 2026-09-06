@@ -578,3 +578,59 @@ func (s *Service) ImportRates(
 	}
 	return out, nil
 }
+
+// --- who publishes the rules -------------------------------------------
+
+// Authority is a body whose published documents legal values come from.
+type Authority struct {
+	Code    string `json:"code"`
+	Country string `json:"country"`
+	Name    string `json:"name"`
+	URL     string `json:"url,omitempty"`
+}
+
+// Authorities lists the bodies a rule may be sourced from.
+//
+// `regulatory_rule.source_authority` is a FOREIGN KEY to this table, and the
+// screen that records a rule offered a free text box over it. An operator
+// holding the official document and typing "Ministry of Human Resources"
+// rather than the code `mhrsd` was refused with "A referenced record does not
+// exist" -- a sentence that names no field and lists no allowed value, on the
+// one workflow that unblocks a market.
+//
+// So the list exists to be offered rather than guessed at. Ordered by country
+// then name, which is how the picker groups them.
+func (s *Service) Authorities(
+	ctx context.Context, country string,
+) ([]Authority, error) {
+	country = strings.ToLower(strings.TrimSpace(country))
+
+	out := []Authority{}
+	tx, err := s.pool.Raw().Begin(ctx)
+	if err != nil {
+		return nil, db.Translate(err, "")
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	rows, err := tx.Query(ctx, `
+		SELECT code, country, name, coalesce(url, '')
+		FROM regulatory_authority
+		WHERE ($1 = '' OR lower(country) = $1)
+		ORDER BY country, name`, country)
+	if err != nil {
+		return nil, db.Translate(err, "Those authorities could not be read.")
+	}
+	for rows.Next() {
+		var a Authority
+		if e := rows.Scan(&a.Code, &a.Country, &a.Name, &a.URL); e != nil {
+			rows.Close()
+			return nil, db.Translate(e, "")
+		}
+		out = append(out, a)
+	}
+	rows.Close()
+	if e := rows.Err(); e != nil {
+		return nil, db.Translate(e, "")
+	}
+	return out, tx.Commit(ctx)
+}

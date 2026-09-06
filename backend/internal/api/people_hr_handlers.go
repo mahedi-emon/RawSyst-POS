@@ -845,9 +845,13 @@ func (s *Server) handleSetCommissionRule(w http.ResponseWriter, r *http.Request)
 		Basis      string `json:"basis"`
 		EmployeeID string `json:"employee_id"`
 		StoreID    string `json:"store_id"`
+		CategoryID string `json:"category_id"`
+		BrandID    string `json:"brand_id"`
+		VariantID  string `json:"variant_id"`
 		Rate       string `json:"rate"`
 		Tiers      string `json:"tiers"`
 		From       string `json:"effective_from"`
+		To         string `json:"effective_to"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
@@ -869,6 +873,21 @@ func (s *Server) handleSetCommissionRule(w http.ResponseWriter, r *http.Request)
 		httpx.Error(w, r, err)
 		return
 	}
+	categoryID, err := optionalUUID(req.CategoryID, "category_id")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	brandID, err := optionalUUID(req.BrandID, "brand_id")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	variantID, err := optionalUUID(req.VariantID, "variant_id")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
 	rate := decimal.Zero
 	if req.Rate != "" {
 		if rate, err = parseAmount(req.Rate, "rate", 0); err != nil {
@@ -885,14 +904,53 @@ func (s *Server) handleSetCommissionRule(w http.ResponseWriter, r *http.Request)
 	if from != nil {
 		when = *from
 	}
+	to, err := optionalDate(req.To, "effective_to")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
 
 	out, err := s.people.SetCommissionRule(r.Context(), scope, req.Name,
-		req.Basis, employeeID, storeID, rate, req.Tiers, when)
+		req.Basis, people.CommissionScope{
+			EmployeeID: employeeID, StoreID: storeID,
+			CategoryID: categoryID, BrandID: brandID, VariantID: variantID,
+		}, rate, req.Tiers, when, to)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, out)
+}
+
+// handleSetCommissionRuleActive stops a scheme paying, or starts it again.
+//
+// The only way to stop a scheme with no end date. `commissionFor` reads
+// `is_active` and nothing could clear it, so a shop that configured the wrong
+// rate on its first day had no way to stop it.
+func (s *Server) handleSetCommissionRuleActive(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Active bool `json:"is_active"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	scope, err := hrScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	id, err := parseUUID(chi.URLParam(r, "ruleID"), "ruleID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if err := s.people.SetCommissionRuleActive(
+		r.Context(), scope, id, req.Active); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleListCommissionRules(w http.ResponseWriter, r *http.Request) {

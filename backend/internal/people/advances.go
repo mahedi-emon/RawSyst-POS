@@ -413,17 +413,41 @@ type CommissionRule struct {
 	Basis      string     `json:"basis"`
 	EmployeeID *uuid.UUID `json:"employee_id,omitempty"`
 	StoreID    *uuid.UUID `json:"store_id,omitempty"`
+	// CategoryID, BrandID and VariantID narrow which TAKINGS the scheme pays
+	// on -- a null is "any", as `commissionFor` reads them.
+	//
+	// They were columns the payroll engine filtered on and nothing could
+	// write, so a shop could be told its scheme covered one department and had
+	// no way to say so. Carried on the read as well as the write, because a
+	// list that omits a rule's scope shows two schemes as identical when they
+	// pay different money.
+	CategoryID *uuid.UUID `json:"category_id,omitempty"`
+	BrandID    *uuid.UUID `json:"brand_id,omitempty"`
+	VariantID  *uuid.UUID `json:"variant_id,omitempty"`
 	Rate       string     `json:"rate"`
 	Tiers      string     `json:"tiers"`
 	From       string     `json:"effective_from"`
 	To         string     `json:"effective_to,omitempty"`
 }
 
+// CommissionScope is the optional narrowing of a scheme.
+//
+// Its own type rather than five more positional arguments: SetCommissionRule
+// already took seven, and a call site passing three consecutive `*uuid.UUID`
+// values in the wrong order would compile and pay the wrong people.
+type CommissionScope struct {
+	EmployeeID *uuid.UUID
+	StoreID    *uuid.UUID
+	CategoryID *uuid.UUID
+	BrandID    *uuid.UUID
+	VariantID  *uuid.UUID
+}
+
 // SetCommissionRule creates a scheme.
 func (s *Service) SetCommissionRule(
 	ctx context.Context, scope Scope, name, basis string,
-	employeeID, storeID *uuid.UUID, rate decimal.Decimal, tiers string,
-	from time.Time,
+	on CommissionScope, rate decimal.Decimal, tiers string,
+	from time.Time, to *time.Time,
 ) (CommissionRule, error) {
 	if strings.TrimSpace(name) == "" {
 		return CommissionRule{}, errs.Validation("Give the scheme a name.").
@@ -445,16 +469,25 @@ func (s *Service) SetCommissionRule(
 		tiers = "[]"
 	}
 
+	if to != nil && to.Before(from) {
+		return CommissionRule{}, errs.Validation(
+			"A scheme cannot end before it starts.").
+			WithField("effective_to", "Leave it empty for a scheme with no end date.")
+	}
+
 	var out CommissionRule
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		var id uuid.UUID
 		if e := tx.QueryRow(ctx, `
 			INSERT INTO commission_rule
 			  (tenant_id, company_id, name, basis, employee_id, store_id,
-			   rate, tiers, effective_from, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10) RETURNING id`,
+			   category_id, brand_id, variant_id,
+			   rate, tiers, effective_from, effective_to, created_by)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14)
+			RETURNING id`,
 			scope.TenantID, scope.CompanyID, strings.TrimSpace(name), basis,
-			employeeID, storeID, rate, tiers, from, scope.UserID).
+			on.EmployeeID, on.StoreID, on.CategoryID, on.BrandID, on.VariantID,
+			rate, tiers, from, to, scope.UserID).
 			Scan(&id); e != nil {
 			return db.Translate(e, "That commission scheme could not be saved.")
 		}
@@ -463,6 +496,34 @@ func (s *Service) SetCommissionRule(
 		return e
 	})
 	return out, db.Translate(err, "")
+}
+
+// SetCommissionRuleActive switches a scheme on or off.
+//
+// Switched off rather than deleted, for the same reason an approval rule is:
+// a payslip names the scheme that paid it, and deleting one would leave a
+// figure on somebody's payslip that nothing in the product can explain.
+//
+// This is the only way to stop a scheme that has no end date, and until it
+// existed a shop that configured the wrong rate on day one had no way to stop
+// it paying -- `commissionFor` reads `is_active`, and nothing could clear it.
+func (s *Service) SetCommissionRuleActive(
+	ctx context.Context, scope Scope, id uuid.UUID, active bool,
+) error {
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		tag, e := tx.Exec(ctx, `
+			UPDATE commission_rule SET is_active = $3
+			WHERE id = $1 AND company_id = $2`, id, scope.CompanyID, active)
+		if e != nil {
+			return e
+		}
+		if tag.RowsAffected() == 0 {
+			return errs.New(errs.CodeNotFound,
+				"That commission scheme was not found.")
+		}
+		return nil
+	})
+	return db.Translate(err, "")
 }
 
 // CommissionRules lists schemes.
@@ -491,6 +552,7 @@ func (s *Service) CommissionRules(
 
 const commissionSelect = `
 	SELECT c.id, c.name, c.is_active, c.basis, c.employee_id, c.store_id,
+	       c.category_id, c.brand_id, c.variant_id,
 	       c.rate, c.tiers::text, c.effective_from, c.effective_to
 	FROM commission_rule c`
 
@@ -513,7 +575,8 @@ func scanCommission(row scanner) (CommissionRule, error) {
 	var from time.Time
 	var to *time.Time
 	if err := row.Scan(&c.ID, &c.Name, &c.IsActive, &c.Basis, &c.EmployeeID,
-		&c.StoreID, &rate, &c.Tiers, &from, &to); err != nil {
+		&c.StoreID, &c.CategoryID, &c.BrandID, &c.VariantID,
+		&rate, &c.Tiers, &from, &to); err != nil {
 		return CommissionRule{}, err
 	}
 	c.Rate = rate.String()

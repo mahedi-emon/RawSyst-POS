@@ -429,3 +429,20 @@ func (s *Server) handleActivateRates(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"activated": n})
 }
+
+// handleListAuthorities answers who publishes the rules.
+//
+// `regulatory_rule.source_authority` is a foreign key, and the screen that
+// records a rule offered a free text box over it. Somebody holding the
+// official document and typing the authority's NAME rather than its code was
+// refused with "A referenced record does not exist" -- on the one workflow
+// that takes a market from blocked to trading.
+func (s *Server) handleListAuthorities(w http.ResponseWriter, r *http.Request) {
+	out, err := s.rules.Authorities(
+		r.Context(), r.URL.Query().Get("country"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}

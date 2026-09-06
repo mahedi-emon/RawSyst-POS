@@ -506,6 +506,58 @@ func (s *Server) Routes() []Route {
 		// catalog.view and is deliberately denied catalog.view_cost_price, so a
 		// payload carrying cost would defeat the masking the permission exists
 		// for — correctly gated, and leaking anyway.
+		// --- how the catalogue is arranged (B1) ---
+		//
+		// `POST /catalog/products` has always accepted category_id, brand_id
+		// and unit_id, and nothing could list or create any of the three. So
+		// the three parameters took an id no part of the product could
+		// produce, a shop could not put its stock into departments, and a
+		// commission scheme scoped to a department -- which the payroll engine
+		// filters on -- could not be written.
+		//
+		// Reading is catalog.view: a till showing a menu of departments needs
+		// it, and a cashier holds it. Writing is catalog.edit rather than
+		// catalog.create, because arranging the catalogue is a different job
+		// from adding stock to it, done by a different person in any shop with
+		// more than one.
+		{http.MethodGet, "/api/v1/catalog/categories", AccessPermission, "catalog.view",
+			s.handleListCategories, "the department tree, parents before children"},
+		{http.MethodPost, "/api/v1/catalog/categories", AccessPermission, "catalog.edit",
+			s.handleCreateCategory, ""},
+		{http.MethodPut, "/api/v1/catalog/categories/{categoryID}", AccessPermission, "catalog.edit",
+			s.handleUpdateCategory,
+			"renames and may move one; moving rewrites the stored ancestry of everything beneath it"},
+		{http.MethodPost, "/api/v1/catalog/categories/{categoryID}/active", AccessPermission, "catalog.edit",
+			s.handleSetCategoryActive,
+			"retired rather than deleted: the foreign key is ON DELETE RESTRICT, " +
+				"so a department anything was ever filed under cannot be removed. " +
+				"Retiring one retires the branch beneath it"},
+
+		{http.MethodGet, "/api/v1/catalog/brands", AccessPermission, "catalog.view",
+			s.handleListBrands, ""},
+		{http.MethodPost, "/api/v1/catalog/brands", AccessPermission, "catalog.edit",
+			s.handleCreateBrand, ""},
+		{http.MethodPut, "/api/v1/catalog/brands/{brandID}", AccessPermission, "catalog.edit",
+			s.handleUpdateBrand, ""},
+		{http.MethodPost, "/api/v1/catalog/brands/{brandID}/active", AccessPermission, "catalog.edit",
+			s.handleSetBrandActive, ""},
+
+		{http.MethodGet, "/api/v1/catalog/tax-treatments", AccessPermission, "catalog.view",
+			s.handleListTaxTreatments,
+			"which treatments this company's country allows, and which of them " +
+				"oblige an exemption reason. A form that guessed would offer " +
+				"zero_rated in a US catalogue and be refused on save"},
+		{http.MethodGet, "/api/v1/catalog/units", AccessPermission, "catalog.view",
+			s.handleListUnits, "how this company counts and measures what it sells"},
+		{http.MethodPost, "/api/v1/catalog/units", AccessPermission, "catalog.edit",
+			s.handleCreateUnit, ""},
+		{http.MethodPut, "/api/v1/catalog/units/{unitID}", AccessPermission, "catalog.edit",
+			s.handleUpdateUnit,
+			"the code does not move once set: it appears on an invoice line, " +
+				"and changing it would rewrite every document already issued"},
+		{http.MethodPost, "/api/v1/catalog/units/{unitID}/active", AccessPermission, "catalog.edit",
+			s.handleSetUnitActive, ""},
+
 		{http.MethodPost, "/api/v1/catalog/products", AccessPermission, "catalog.create",
 			s.handleCreateProduct, ""},
 		{http.MethodGet, "/api/v1/catalog/products", AccessPermission, "catalog.view",
@@ -1584,7 +1636,13 @@ func (s *Server) Routes() []Route {
 			s.handleListCommissionRules, "the commission schemes in force"},
 		{http.MethodPost, "/api/v1/commission-rules", AccessPermission, "payroll.run",
 			s.handleSetCommissionRule,
-			"creates a scheme, flat or tiered, by employee or store"},
+			"creates a scheme, flat or tiered, scoped by employee, store, " +
+				"category, brand or product"},
+		{http.MethodPost, "/api/v1/commission-rules/{ruleID}/active", AccessPermission, "payroll.run",
+			s.handleSetCommissionRuleActive,
+			"stops a scheme paying, or starts it again. Switched off rather " +
+				"than deleted: a payslip names the scheme that paid it, and " +
+				"deleting one would leave a figure nothing can explain"},
 
 		// --- the Approval Centre (D5) and the approval engine (F1) ---
 		//
@@ -2342,6 +2400,12 @@ func (s *Server) Routes() []Route {
 			s.handleListRules,
 			"every legal value the product holds, with its source and whether " +
 				"anybody has verified it"},
+		{http.MethodGet, "/api/v1/platform/authorities", AccessSuperAdmin, "",
+			s.handleListAuthorities,
+			"the bodies a legal value may be sourced from. source_authority is " +
+				"a foreign key, and the screen offered a free text box over it: " +
+				"typing an authority's name rather than its code was refused " +
+				"with \"A referenced record does not exist\""},
 		{http.MethodPost, "/api/v1/platform/rules", AccessSuperAdmin, "",
 			s.handleRecordRule,
 			"records a legal value against the document it came from; a " +
