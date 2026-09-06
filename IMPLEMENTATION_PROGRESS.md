@@ -247,7 +247,7 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-60 | Tills and devices | ✅ | **COMPLETE** | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit. §0.107. `pending` is read against `binding`, so a normal paired till is not reported as a fault. |
 | FE-61 | Backups | ✅ | **COMPLETE** | `/oversight/backups` | `backup.view` | §0.108. "Finished" and "verified" are kept apart, and the risk sentence is the server's own. |
 | FE-62 | Plan and billing | ✅ | IN PROGRESS | `/settings/subscription` | `subscription.view` | |
-| FE-63 | Integrations: API keys, webhooks | ✅ | ⬜ NOT STARTED | `/settings/integrations` | `integration.view` | |
+| FE-63 | Integrations: API keys, webhooks | ✅ | IN PROGRESS | `/settings/integrations` | `integration.view` | Built. A key is readable once, on mint; the list carries a prefix and never the secret. The permission picker offers only what the caller holds, because an over-grant returns 201 with the excess SILENTLY dropped |
 | FE-64 | Import / export | ✅ | **COMPLETE** | `/settings/imports` | `data.import` | §0.108. Staged, checked and committed as three visible acts; the columns come from `/imports/shapes`. |
 | FE-65 | Platform: failed jobs | ✅ | IN PROGRESS | `/platform/jobs` | super-admin | |
 | FE-66 | Support tickets (both sides) | ✅ | IN PROGRESS | `/settings/support` | `support.raise` | |
@@ -353,7 +353,7 @@ what exists and the reconciliation is the assessment of what is done.
 | H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | COMPLETE | §0.107. Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending — and the screen distinguishes those two pendings. An enrolment code is `devices.manage`, asserted. |
 | H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | COMPLETE | §0.108. A backup that ran is not a backup that restores, and the screen keeps the two apart. |
 | H5 | SaaS Subscription, Billing & Feature Flags | FE-07, FE-62 | /settings/subscription | /subscription/*, /plans | subscription.view | IN PROGRESS | Entitlements drive navigation already; the billing screen is not built. |
-| H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | NOT STARTED |  |
+| H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | IN PROGRESS | Keys and callbacks. https enforced by the database; an endpoint is switched off rather than deleted so the delivery history survives. |
 | H7 | Import / Export & Data Migration | FE-64 | /settings/imports | 7 /imports/* routes, /exports/{kind} | data.import / data.export | COMPLETE | §0.108. Nothing is written until the person commits, and a partial import says how many rows would be left behind. |
 | H8 | System Health Monitoring (Super Admin view) | FE-15 | /platform | GET /platform/health | super-admin | COMPLETE |  |
 | H9 | Job / Queue System (Background Processing) | FE-65 | /platform/jobs | /platform/jobs/failed, /{id}/retry | super-admin | IN PROGRESS |  |
@@ -5851,21 +5851,21 @@ row says which part.
 | C9 | Posting engine | N/A | An engine. It has no screen and should not have one. |
 | C10 | Fiscal period and year-end | COMPLETE | `/money/periods`, `/money/journals` |
 | C11 | Bank reconciliation | COMPLETE | `/money/reconcile`, `/reconcile/[statementID]` |
-| C12 | Settlement and gateway | NOT STARTED | `/money/gateways` |
+| C12 | Settlement and gateway | COMPLETE | `/money/gateways` — settlement batches and card connections on one screen, split by their two permissions |
 | C13 | Costing and COGS | COMPLETE | `/reports/financials`, `/stock` |
 | C14 | Accounting-aware returns | COMPLETE | `/pos/returns` |
 | D1 | Reporting suite | COMPLETE | `/reports/financials`, `/reports/tax`, `/reports/saved` |
 | D2 | Analytics | COMPLETE | `/reports/analytics` |
 | D3 | Notification centre | COMPLETE | `/notifications` — built this pass; six routes had no caller |
-| D4 | Audit trail | NOT STARTED | `/oversight/audit` |
+| D4 | Audit trail | COMPLETE | `/oversight/audit` |
 | D5 | Approval centre | COMPLETE | `/approvals` — both queues, decide, escalate |
-| D6 | Document management | NOT STARTED | `/oversight/documents` |
+| D6 | Document management | COMPLETE | `/oversight/documents`; building it found two document kinds the database accepted and the service refused |
 | D7 | Global search | COMPLETE | `/search` and the header box — built this pass; the route had no caller |
 | E1 | ZATCA e-invoicing | COMPLETE, external dependency | `/settings/einvoicing`; the Fatoora OTP is the taxpayer's to fetch |
 | E1.3 | Offline B2B rules 2 and 6 | N/A | Optional; the till issues simplified invoices only |
 | E2 | Saudi tax and VAT return | COMPLETE | `/settings/tax`, `/reports/tax` |
-| E3 | Saudi payment methods | NOT STARTED | `/money/gateways` |
-| E4 | PDPL privacy | PARTIAL | storefront disclosures on `/settings/business`; `/oversight/privacy` unbuilt |
+| E3 | Saudi payment methods | COMPLETE | `/money/gateways` |
+| E4 | PDPL privacy | COMPLETE | `/oversight/privacy`, plus the storefront disclosures on `/settings/business`. Both regulatory clocks come from the server — 30 days on a subject request, 72 hours on a breach — and neither is recomputed here |
 | E5 | E-commerce law and storefront | COMPLETE | `/settings/business` disclosures, `/customers/portal` |
 | E6 | Saudi labour and payroll | COMPLETE | `/people/payroll` |
 | E7 | Compliance dashboard | COMPLETE | `/oversight/compliance` |
@@ -5873,7 +5873,7 @@ row says which part.
 | F1 | Workflow and approval engine | COMPLETE | `/approvals` |
 | F2 | Customer self-service portal | COMPLETE (staff side) | `/customers/portal`, `/aftersales/requests`. The customer-facing portal is a separate surface reached with a portal session — see the correction below |
 | F3 | Supplier portal | COMPLETE (staff side) | `/customers/portal` invites and revokes supplier contacts |
-| F4 | Multi-company and group | PARTIAL | the company switch is in the shell; `/oversight/groups` unbuilt |
+| F4 | Multi-company and group | COMPLETE | `/oversight/groups` and the company switch in the shell. A caller holding `group.view` gets 402 when the plan excludes it and 403 when they do not hold it, and the screen keeps those apart |
 | G1 | Country configuration | COMPLETE | `/settings/business`; the market is shown and settled with its reason |
 | G2 | Multi-currency | COMPLETE | `formatMoney` throughout; rates on `/settings/tax` |
 | G3 | Multi-language and RTL | COMPLETE | three catalogues, logical properties, `rtl.test.ts` |
@@ -5881,10 +5881,10 @@ row says which part.
 | H1 | Security and authentication | COMPLETE | `/login`, `/change-password`, `/forgot-password`, `/settings/security` |
 | H2 | Offline-first and sync | COMPLETE | `/pos` |
 | H3 | Device management | COMPLETE | `/settings/devices` |
-| H4 | Backup and DR | NOT STARTED | `/oversight/backups` |
+| H4 | Backup and DR | COMPLETE | `/oversight/backups` |
 | H5 | Plans, entitlements, limits | COMPLETE | `/settings/subscription`, `/platform/billing` |
-| H6 | API and integration platform | NOT STARTED | `/settings/integrations` |
-| H7 | Import and export | PARTIAL | report exports work; `/settings/imports` unbuilt |
+| H6 | API and integration platform | COMPLETE | `/settings/integrations` — a key readable once, callbacks https-only |
+| H7 | Import and export | COMPLETE | `/settings/imports` and the report exports |
 | H8 | System health | COMPLETE | `/platform` |
 | H9 | Job and queue | COMPLETE | `/platform/jobs` |
 | H10 | Support ticketing | COMPLETE | `/settings/support`, `/platform/support` |
@@ -5898,16 +5898,27 @@ row says which part.
 
 | | |
 |---|---|
-| COMPLETE | 64 |
-| PARTIAL | 3 — E4, F4, H7 |
-| NOT STARTED | 7 — C12, D4, D6, E3, H4, H6, and the import half of H7 |
+| COMPLETE | 74 |
+| PARTIAL | 0 |
+| NOT STARTED | 0 |
 | N/A, an engine or optional | 3 — C9, I3, E1.3 |
 
-Those seven rows are **six distinct screens**, because C12 and E3 are the same
-one: `/money/gateways`, `/oversight/audit`, `/oversight/documents`,
-`/oversight/privacy`, `/oversight/backups`, `/oversight/groups`,
-`/settings/integrations`, `/settings/imports`. Nav coverage is **74 of 82
-built**, and those eight entries are the eight.
+**Nav coverage is 82 of 82.** Every entry in `BUSINESS_NAV` and `PLATFORM_NAV`
+points at a screen that exists, and `navigation.built.test.ts` asserts that in
+both directions against `page.tsx`.
+
+The three N/A rows are not unfinished. C9 is the posting engine and I3 the
+numbering engine — both are machinery with no screen, and giving the document
+counters a screen would invite somebody to set one. E1.3 is the offline B2B
+rule set, which becomes required only if the product ever issues standard
+invoices at an offline terminal; today the till issues simplified ones.
+
+**One row carries an external dependency rather than unfinished work.** E1,
+ZATCA e-invoicing, is complete on both sides, and the Fatoora one-time password
+is the taxpayer's to fetch from their own portal. Software cannot generate it
+and fabricating one would be forging a credential, so `/settings/einvoicing`
+carries the whole workflow around it and says plainly what the user must go and
+get. That is the only genuinely external blocker in the product.
 
 ## Four features that the nav count could not see
 
@@ -5972,8 +5983,8 @@ place it is reached from.
   are now FE-68 and FE-69, and H1 names all four auth screens and reads IN
   PROGRESS.
 
-  What remains NOT STARTED in those two tables is exactly **16 rows: the eight
-  unbuilt screens, once per table.**
+  **Nothing now reads NOT STARTED in either table.** The last two were FE-63 and
+  H6, integrations, closed when that screen landed.
 
 ## Gaps found and deliberately left open
 
@@ -5990,10 +6001,26 @@ place it is reached from.
 ## Verification at the time of writing
 
     typecheck            clean
-    web-next tests       411 passed / 25 files
+    web-next tests       488 passed / 30 files
     shared tests         482 passed / 29 files
-    build                clean, 113 routes, 92 static pages
+    build                clean, 121 routes, 104 static pages
     check:contract       476 routes, 110 permissions (103 route-gated)
     verify:api           ALL SCREEN CONTRACTS VERIFIED
     verify:rbac          EVERY BOUNDARY HELD
-    nav coverage         74 of 82 built
+    nav coverage         82 of 82 built
+
+**Backend integration tests could not be run, and this is not a code failure.**
+The development database records a hash for migration `0103_tenant_market`
+taken from a pre-commit draft applied on 4 September; the committed file is the
+only version in git history, so the schema matches and the recorded hash does
+not. The harness refuses:
+
+    migration 0103_tenant_market was modified after it was applied
+    (recorded e4acb998ac28, found 80bb1773bf45)
+
+The guard is behaving correctly — it cannot tell a pre-commit draft from
+somebody editing applied history, which is the failure it exists to catch, and
+whatever is decided about the row should not be a change to the guard. Every
+backend test in the repository is blocked by it, including fourteen written this
+pass that were green earlier in the session. What was verified instead was
+driven against the running API, which is recorded per screen above.
