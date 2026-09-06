@@ -4592,6 +4592,41 @@ console.log('\nTAKING A CARD, BRINGING RECORDS IN, AND READING BOOKS TOGETHER');
     console.log('  -  nothing has been imported; the batch shape was not exercised');
   }
 
+  // The screen holds no export list: `/imports/shapes` publishes it beside the
+  // import shapes. This asserts every published kind actually answers, which
+  // is what a copied list cannot promise -- the first version of that screen
+  // copied `reports.ExportKinds`, a different list on a different route, and
+  // six of its eight kinds did not exist here.
+  {
+    const published = shapes?.exports ?? [];
+    if (published.length === 0) {
+      console.log('  x /imports/shapes publishes no exports; the screen would offer none');
+      failures += 1;
+    } else {
+      expectFields('  exportable', published[0], ['kind', 'label', 'filename']);
+      const dead = [];
+      for (const x of published) {
+        const res = await call(`/exports/${x.kind}?company_id=${CO}`);
+        if (res.status !== 200) dead.push(`${x.kind} -> ${res.status}`);
+      }
+      if (dead.length > 0) {
+        console.log(`  x published exports that do not answer: ${dead.join(', ')}`);
+        failures += 1;
+      } else {
+        console.log(`  ok all ${published.length} published exports answer`);
+      }
+    }
+    // A kind nobody defined is refused rather than reaching a method that was
+    // never meant to be exported, which is what the fixed list is for.
+    const made = await call(`/exports/not-a-real-report?company_id=${CO}`);
+    if (made.status === 200) {
+      console.log('  x an export kind nobody defined answered 200');
+      failures += 1;
+    } else {
+      console.log(`  ok an undefined export kind is refused (${made.status})`);
+    }
+  }
+
   // The distinction this whole screen rests on: a plan refusal is 402, not
   // 403. The caller holds group.view; what is missing is commercial. A screen
   // that showed "you may not" would send somebody to their manager to ask for

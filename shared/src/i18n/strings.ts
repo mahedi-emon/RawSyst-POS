@@ -7969,6 +7969,19 @@ export const en = {
   'nx.grp.colAmount': "Amount",
   'nx.grp.noStatementTitle': "Nothing to combine",
   'nx.grp.noStatementDesc': "No member has posted anything in this period.",
+  'nx.imp.exportTitle': "Take records away",
+  'nx.imp.exportDesc': "A spreadsheet of what is on file. The same figures the screens show, in a form somebody can open in Excel.",
+  'nx.imp.from': "From",
+  'nx.imp.to': "To",
+  'nx.imp.periodHint': "Used only where the report covers a period",
+  'nx.imp.xSales': "Sales",
+  'nx.imp.xExpenses': "Expenses",
+  'nx.imp.xStock': "Stock",
+  'nx.imp.xTrialBalance': "Trial balance",
+  'nx.imp.xProfitAndLoss': "Profit and loss",
+  'nx.imp.xBalanceSheet': "Balance sheet",
+  'nx.imp.xCashFlow': "Cash flow",
+  'nx.imp.xVatReturn': "Tax return",
 } as const;
 
 /** Every string the interface can show. */
@@ -15966,6 +15979,19 @@ export const ar: Record<Key, string> = {
   'nx.grp.colAmount': "المبلغ",
   'nx.grp.noStatementTitle': "لا شيء للجمع",
   'nx.grp.noStatementDesc': "لم يسجّل أي عضو شيئًا في هذه الفترة.",
+  'nx.imp.exportTitle': "تصدير السجلات",
+  'nx.imp.exportDesc': "جدول بما هو محفوظ. نفس الأرقام التي تعرضها الشاشات، بصيغة يمكن فتحها في إكسل.",
+  'nx.imp.from': "من",
+  'nx.imp.to': "إلى",
+  'nx.imp.periodHint': "يُستخدم فقط حين يغطي التقرير فترة",
+  'nx.imp.xSales': "المبيعات",
+  'nx.imp.xExpenses': "المصروفات",
+  'nx.imp.xStock': "المخزون",
+  'nx.imp.xTrialBalance': "ميزان المراجعة",
+  'nx.imp.xProfitAndLoss': "الأرباح والخسائر",
+  'nx.imp.xBalanceSheet': "الميزانية العمومية",
+  'nx.imp.xCashFlow': "التدفق النقدي",
+  'nx.imp.xVatReturn': "الإقرار الضريبي",
 };
 
 /**
@@ -23759,6 +23785,19 @@ export const bn: Partial<Record<Key, string>> = {
   'nx.grp.colAmount': "পরিমাণ",
   'nx.grp.noStatementTitle': "একত্র করার কিছু নেই",
   'nx.grp.noStatementDesc': "এই সময়ে কোনো সদস্য কিছু লেখেনি।",
+  'nx.imp.exportTitle': "রেকর্ড নিয়ে যান",
+  'nx.imp.exportDesc': "নথিতে যা আছে তার একটি স্প্রেডশিট। পর্দায় যে হিসাব দেখা যায় সেটিই, এক্সেলে খোলার মতো করে।",
+  'nx.imp.from': "থেকে",
+  'nx.imp.to': "পর্যন্ত",
+  'nx.imp.periodHint': "শুধু সেই প্রতিবেদনে ব্যবহৃত হয় যা একটি সময়কাল জুড়ে",
+  'nx.imp.xSales': "বিক্রয়",
+  'nx.imp.xExpenses': "খরচ",
+  'nx.imp.xStock': "মজুদ",
+  'nx.imp.xTrialBalance': "রেওয়ামিল",
+  'nx.imp.xProfitAndLoss': "লাভ-ক্ষতি",
+  'nx.imp.xBalanceSheet': "স্থিতিপত্র",
+  'nx.imp.xCashFlow': "নগদ প্রবাহ",
+  'nx.imp.xVatReturn': "কর বিবরণী",
 };
 
 /**

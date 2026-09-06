@@ -35,6 +35,7 @@ import { api } from '@/lib/api/client';
 import { messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
 import { useCompanyScope } from '@/lib/company/company-context';
+import type { Exportable } from '@/lib/data/transfer';
 import {
   headerColumns,
   missingColumns,
@@ -45,7 +46,9 @@ import {
   type ImportBatch,
   type Shape,
 } from '@/lib/data/transfer';
+import { saveAs } from '@/lib/download';
 import { useT, type Key } from '@/lib/i18n/locale';
+
 
 /**
  * Which column feeds which field.
@@ -92,9 +95,19 @@ function ImportsScreen() {
   const [csv, setCsv] = useState('');
   const [filename, setFilename] = useState('');
   const [openID, setOpenID] = useState<string | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const picked = useRef<HTMLInputElement>(null);
 
-  const shapes = useApiList<Shape>(scope ? '/imports/shapes' : null, scope ?? undefined);
+  // One request, two answers. `/imports/shapes` carries the export list beside
+  // the import shapes, so the screen holds no copy of either -- which is just
+  // as well: the copy I first wrote here was of `reports.ExportKinds`, a
+  // DIFFERENT list belonging to a different route, and six of the eight kinds
+  // it offered did not exist here.
+  const shapes = useApi<{ data: Shape[]; exports: Exportable[] }>(
+    scope ? '/imports/shapes' : null,
+    scope ?? undefined,
+  );
   const batches = useApiList<ImportBatch>(scope ? '/imports' : null, scope ?? undefined);
   const open = useApi<ImportBatch>(
     scope && openID ? `/imports/${openID}` : null,
@@ -102,6 +115,7 @@ function ImportsScreen() {
   );
 
   const kinds = shapes.data?.data ?? [];
+  const exportable = shapes.data?.exports ?? [];
   const rows = batches.data?.data ?? [];
   const shape = kinds.find((s) => s.kind === kind) ?? null;
 
@@ -127,6 +141,26 @@ function ImportsScreen() {
   }
 
   const q = `?company_id=${scope?.company_id ?? ''}`;
+
+  async function takeAway(kind: string) {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Sent only when both are given. The route reads them where the export
+      // covers a period and ignores them where it does not, so there is
+      // nothing here that needs to know which is which.
+      const range = from && to ? `&from=${from}&to=${to}` : '';
+      const { blob, filename } = await api.download(
+        `/exports/${kind}?company_id=${scope.company_id}${range}`,
+      );
+      saveAs(blob, filename);
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function choose(file: File) {
     setFilename(file.name);
@@ -235,6 +269,33 @@ function ImportsScreen() {
       <PageHeader title={t('nx.imp.title')} description={t('nx.imp.subtitle')} />
 
       <FormError message={error} className="mb-4" />
+
+      <Panel
+        className="mb-6"
+        title={t('nx.imp.exportTitle')}
+        description={t('nx.imp.exportDesc')}
+      >
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <Field name="export_from" label={t('nx.imp.from')} hint={t('nx.imp.periodHint')}>
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </Field>
+          <Field name="export_to" label={t('nx.imp.to')}>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </Field>
+        </div>
+        <ul className="flex flex-wrap gap-2">
+          {exportable.map((x) => (
+            <li key={x.kind}>
+              {/* The server's own label. It names what is in the file --
+                  "Sales, line by line" rather than "Sales" -- which is the
+                  difference between choosing one and guessing. */}
+              <Button disabled={busy} onClick={() => void takeAway(x.kind)}>
+                {x.label}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </Panel>
 
       <Panel
         className="mb-6"

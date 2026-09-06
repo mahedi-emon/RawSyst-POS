@@ -121,3 +121,19 @@ export function headerColumns(line: string): string[] {
     .map((c) => c.trim().replace(/^"|"$/g, '').trim())
     .filter(Boolean);
 }
+
+/**
+ * One thing that can be taken away as a spreadsheet.
+ *
+ * Published alongside the import shapes on `/imports/shapes`, so a screen
+ * offering exports holds no list of its own. Worth saying why that matters: a
+ * copy of the WRONG list is indistinguishable from a copy of the right one
+ * until somebody clicks, and `reports.ExportKinds` is a different list on a
+ * different route with overlapping names.
+ */
+export interface Exportable {
+  kind: string;
+  label: string;
+  /** What the download is called, so four of them are tellable apart. */
+  filename: string;
+}
