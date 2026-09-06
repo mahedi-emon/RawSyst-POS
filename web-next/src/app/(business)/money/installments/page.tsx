@@ -19,23 +19,25 @@
 // # Collecting needs a receipt that already exists
 //
 // `POST .../collect` takes a `receipt_id`, not an amount on its own: the money
-// arrives through the receivables side and this marks it against the schedule,
-// oldest instalment first. There is no `GET /receivables/receipts`, so this
-// screen cannot offer a list to pick from and does not pretend to — it asks for
-// the receipt and says where the reference comes from.
+// arrives as a customer receipt, which posts the cash, and this only marks off
+// the schedule — oldest instalment first. Recording an amount here without a
+// receipt would count the money twice.
 //
-// # Accruing is company-wide, and says how much it earned
-//
-// It earns the finance income on instalments now due and charges the late fees.
-// Running it twice in a morning is safe and should read as "nothing further was
-// due", not as a failure.
+// This screen used to ask somebody to TYPE that id, because there was no
+// `GET /receivables/receipts` and nothing in the product could tell you one.
+// There is now, and the picker offers `?unapplied=true` — only receipts
+// belonging to this plan's customer that still have money left on them to
+// collect. That filter is the difference between a picker and a list of things
+// the server will refuse: a receipt already spent against a schedule, or one
+// that has been reversed, cannot collect, and offering it would teach the user
+// that the picker lies.
 
 import { CalendarClock } from 'lucide-react';
 import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Textarea } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
@@ -57,6 +59,18 @@ interface Due {
   waived: string;
   late_fee: string;
   state: string;
+}
+
+/** One receipt the picker may offer. `unapplied` is what is left on it to
+ *  collect against a schedule -- the amount less what `installment_payment`
+ *  already claims. */
+interface Receipt {
+  id: string;
+  receipt_number: string;
+  received_on: string;
+  amount: string;
+  unapplied: string;
+  currency: string;
 }
 
 interface Plan {
@@ -130,6 +144,20 @@ function InstallmentsScreen() {
   const rows = data?.data ?? [];
   const open = plan.data;
 
+  // Only this customer's receipts, and only those with money left on them.
+  // Fetched while the collect form is open rather than with the plan: a list
+  // nobody is looking at is a request nobody asked for.
+  const receipts = useApiList<Receipt>(
+    collecting && open && scope ? '/receivables/receipts' : null,
+    {
+      company_id: scope?.company_id,
+      customer_id: open?.customer_id,
+      unapplied: 'true',
+    },
+  );
+  const offered = receipts.data?.data ?? [];
+  const chosen = offered.find((r) => r.id === receiptId) ?? null;
+
   function reset() {
     setCollecting(false);
     setCancelling(false);
@@ -148,7 +176,7 @@ function InstallmentsScreen() {
     setNote(null);
     try {
       await api.post(`/installments/${openId}/collect?company_id=${scope.company_id}`, {
-        receipt_id: receiptId.trim(),
+        receipt_id: receiptId,
         amount,
       });
       reset();
@@ -443,16 +471,56 @@ function InstallmentsScreen() {
                   <Field
                     name="receipt_id"
                     label={t('nx.ins.receipt')}
-                    hint={t('nx.ins.receiptHint')}
+                    hint={
+                      receipts.isLoading
+                        ? t('nx.ins.receiptLoading')
+                        : offered.length === 0
+                          ? t('nx.ins.receiptNoneHint')
+                          : t('nx.ins.receiptPickHint')
+                    }
                   >
-                    <Input
-                      dir="ltr"
+                    <Select
                       value={receiptId}
-                      onChange={(e) => setReceiptId(e.target.value)}
+                      onChange={(e) => {
+                        setReceiptId(e.target.value);
+                        // The amount defaults to what is left on the receipt,
+                        // which is the figure in almost every collection. It
+                        // stays editable for a customer paying part of one.
+                        const picked = offered.find((r) => r.id === e.target.value);
+                        if (picked) setAmount(picked.unapplied);
+                      }}
                       required
-                    />
+                      disabled={offered.length === 0}
+                    >
+                      <option value="">
+                        {offered.length === 0
+                          ? t('nx.ins.receiptNone')
+                          : t('nx.ins.receiptChoose')}
+                      </option>
+                      {offered.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {t('nx.ins.receiptOption', {
+                            number: r.receipt_number,
+                            date: r.received_on,
+                            left: r.unapplied,
+                            currency: r.currency,
+                          })}
+                        </option>
+                      ))}
+                    </Select>
                   </Field>
-                  <Field name="amount" label={t('nx.ins.amountTaken')}>
+                  <Field
+                    name="amount"
+                    label={t('nx.ins.amountTaken')}
+                    hint={
+                      chosen
+                        ? t('nx.ins.amountLeftHint', {
+                            left: chosen.unapplied,
+                            currency: chosen.currency,
+                          })
+                        : undefined
+                    }
+                  >
                     <Input
                       inputMode="decimal"
                       dir="ltr"
@@ -483,7 +551,7 @@ function InstallmentsScreen() {
                   <>
                     <Button
                       busy={busy}
-                      disabled={receiptId.trim() === '' || amount.trim() === ''}
+                      disabled={receiptId === '' || amount.trim() === ''}
                       onClick={() => void collect()}
                     >
                       {t('nx.ins.markCollected')}

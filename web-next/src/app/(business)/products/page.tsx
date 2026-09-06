@@ -9,6 +9,14 @@
 //
 // What stays here is what is actually about products: the columns, the words,
 // and the permission that opens each action.
+//
+// # Both "add" buttons used to do nothing
+//
+// The header button and the empty state's button were rendered, gated on
+// `catalog.create`, and carried no handler of any kind. `POST /catalog/products`
+// was live and uncalled, so a business owner could not add one item to their own
+// catalogue while the screen told them twice that they could. Both now open
+// `/products/new`.
 
 import { PackagePlus, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -89,7 +97,7 @@ function ProductsScreen() {
         description={t('nx.cat.subtitle')}
         actions={
           <Can permission="catalog.create">
-            <Button variant="primary">
+            <Button variant="primary" onClick={() => router.push('/products/new')}>
               <Plus aria-hidden="true" />
               {t('nx.cat.newProduct')}
             </Button>
@@ -118,7 +126,12 @@ function ProductsScreen() {
             action={
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Can permission="catalog.create">
-                  <Button variant="primary">{t('nx.cat.addProduct')}</Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => router.push('/products/new')}
+                  >
+                    {t('nx.cat.addProduct')}
+                  </Button>
                 </Can>
                 <Can permission="data.import">
                   <Button asChild variant="secondary">

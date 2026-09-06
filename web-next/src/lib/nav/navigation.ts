@@ -215,6 +215,18 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.catalogue.products',
       },
       {
+        // Departments, brands and units. `catalog.view` reads it, and the
+        // buttons that change anything need `catalog.edit` -- which is the
+        // route's own split: arranging the catalogue is a different job from
+        // adding stock to it.
+        id: 'arrangement',
+        labelKey: 'nx.nav.biz.catalogue.arrangement',
+        href: '/products/arrangement',
+        built: true,
+        permissions: ['catalog.view'],
+        descriptionKey: 'nx.navd.biz.catalogue.arrangement',
+      },
+      {
         id: 'labels',
         labelKey: 'nx.nav.biz.catalogue.labels',
         href: '/products/labels',
@@ -613,6 +625,19 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.staff.payroll',
       },
       {
+        // `payroll.view` reads the schemes; changing one needs `payroll.run`,
+        // which is the same split the routes use. Beside payroll rather than
+        // under settings, because a commission scheme is a thing a payroll run
+        // reads and the two are looked at together.
+        id: 'commission',
+        labelKey: 'nx.nav.biz.staff.commission',
+        href: '/people/commission',
+        built: true,
+        permissions: ['payroll.view'],
+        feature: 'payroll',
+        descriptionKey: 'nx.navd.biz.staff.commission',
+      },
+      {
         id: 'users',
         labelKey: 'nx.nav.biz.staff.users',
         href: '/people/users',
@@ -777,6 +802,20 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         built: true,
         permissions: ['devices.view'],
         descriptionKey: 'nx.navd.biz.settings.devices',
+      },
+      {
+        // The thresholds, and who covers for whom. Gated on `approval.view`,
+        // the lowest of the three permissions involved: the rules tab needs
+        // `approval.manage_rules` and carries its own guard, and arranging
+        // cover needs `approval.decide`. Gating the entry on manage_rules
+        // would hide cover from every approver who actually arranges it.
+        id: 'approval-setup',
+        labelKey: 'nx.nav.biz.settings.approvals',
+        href: '/settings/approvals',
+        built: true,
+        permissions: ['approval.view'],
+        feature: 'approvals',
+        descriptionKey: 'nx.navd.biz.settings.approvals',
       },
       {
         // Not `tax`: the reports section already uses that id for the return,

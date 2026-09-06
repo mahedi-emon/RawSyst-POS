@@ -99,6 +99,10 @@ describe('the sidebar offers only what exists', () => {
       '/notifications', // the user menu
       '/search', // the search box in the header
       '/products/[productId]', // a row on /products
+      // Both buttons on /products used to be dead. `POST /catalog/products`
+      // was live and uncalled, so nobody could add an item to their own
+      // catalogue while the screen offered to twice.
+      '/products/new', // the New product button on /products, and its empty state
       '/customers/[customerId]', // a row on /customers
       '/buying/orders/[poID]', // a row on /buying/orders
       '/buying/bills/[billID]', // a row on /buying/bills

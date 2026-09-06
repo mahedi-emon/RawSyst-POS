@@ -242,7 +242,15 @@ if (products?.page) {
   expectFields('  page envelope', products.page, ['cursor', 'has_more', 'limit']);
 }
 
-const productId = products?.data?.[0]?.id;
+// A product with variants, not merely the first product. A product created
+// and not yet given variants is a real state -- `/products/new` lands the user
+// on exactly that -- and picking it here checked an empty matrix and reported
+// the screen contract broken when nothing was.
+const withVariants = (products?.data ?? []).find((p) => p.variant_count > 0);
+const productId = withVariants?.id;
+if (!productId && (products?.data ?? []).length > 0) {
+  console.log('  -  no product has variants yet; the matrix shape was not exercised');
+}
 if (productId) {
   await check(
     'GET /catalog/products/{id}/matrix',
@@ -4949,10 +4957,132 @@ console.log('\nPLATFORM (as an operator)');
   }
 }
 
-// Back to the business identity. A no-op today because nothing follows, which
-// is exactly when it is worth writing: the section after this one will be
-// appended by somebody who never read this line.
+// Back to the business identity, because the sections below are the shop's.
 token = tenantToken;
+
+console.log('\nHOW THE CATALOGUE IS ARRANGED  (/products/arrangement)');
+const departments = await check(
+  'GET /catalog/categories',
+  `/catalog/categories?company_id=${CO}`,
+  ['id', 'name', 'depth', 'sort_order', 'is_active', 'product_count'],
+  (j) => j.data[0],
+);
+// `parent_id` is omitted on a top-level department rather than sent as null,
+// so it cannot be in the required list -- but the screen indents on `depth`,
+// and a tree whose depths were all zero would render flat and look correct.
+if ((departments?.data ?? []).every((c) => c.depth === 0)) {
+  console.log('  -  nothing is nested; the indentation was not exercised');
+}
+await check(
+  'GET /catalog/brands',
+  `/catalog/brands?company_id=${CO}`,
+  ['id', 'name', 'is_active', 'product_count'],
+  (j) => j.data[0],
+);
+await check(
+  'GET /catalog/units',
+  `/catalog/units?company_id=${CO}`,
+  ['id', 'code', 'name', 'allows_fraction', 'is_active', 'product_count'],
+  (j) => j.data[0],
+);
+
+console.log('\nWHAT A NEW PRODUCT MAY BE  (/products/new)');
+const treatments = await check(
+  'GET /catalog/tax-treatments',
+  `/catalog/tax-treatments?company_id=${CO}`,
+  ['country', 'model', 'treatments'],
+);
+if (treatments) {
+  expectFields('  treatment', treatments.treatments?.[0], ['code', 'needs_reason']);
+  // The form defaults to `standard` where the country has one. A country whose
+  // list did not include it would leave the select empty on first render.
+  if (!(treatments.treatments ?? []).some((t) => t.code === 'standard')) {
+    console.log(
+      `  -  ${treatments.country} has no "standard" treatment; the form falls back to the first`,
+    );
+  }
+}
+
+console.log('\nAPPROVALS, CONFIGURED  (/settings/approvals)');
+const approvalRules = await check('GET /approval-rules', `/approval-rules?company_id=${CO}`);
+if (approvalRules?.data?.length) {
+  expectFields('  rule', approvalRules.data[0], [
+    'id',
+    'name',
+    'is_active',
+    'subject',
+    'condition',
+    'action',
+    'steps',
+    'priority',
+  ]);
+} else {
+  console.log('  -  no rules configured; the row shape was not exercised');
+}
+const cover = await check(
+  'GET /approval-delegations',
+  `/approval-delegations?company_id=${CO}`,
+);
+if (cover?.data?.length) {
+  expectFields('  cover', cover.data[0], [
+    'id',
+    'from',
+    'to',
+    'from_user_id',
+    'to_user_id',
+    'starts_on',
+    'ends_on',
+    'live',
+  ]);
+} else {
+  console.log('  -  nobody is covering for anybody; the row shape was not exercised');
+}
+
+console.log('\nCOMMISSION SCHEMES  (/people/commission)');
+const schemes = await check('GET /commission-rules', `/commission-rules?company_id=${CO}`);
+if (schemes?.data?.length) {
+  expectFields('  scheme', schemes.data[0], [
+    'id',
+    'name',
+    'is_active',
+    'basis',
+    'rate',
+    'tiers',
+    'effective_from',
+  ]);
+} else {
+  console.log('  -  no schemes configured; the row shape was not exercised');
+}
+
+console.log('\nTHE RECEIPT AN INSTALMENT IS COLLECTED AGAINST');
+const takings = await check(
+  'GET /receivables/receipts',
+  `/receivables/receipts?company_id=${CO}`,
+);
+if (takings?.data?.length) {
+  expectFields('  receipt', takings.data[0], [
+    'id',
+    'receipt_number',
+    'customer_id',
+    'customer',
+    'received_on',
+    'method',
+    'amount',
+    'unapplied',
+    'currency',
+  ]);
+} else {
+  console.log('  -  nothing has been received; the row shape was not exercised');
+}
+// The filter the picker actually uses. Its absence is what made the
+// instalments screen ask somebody to type a UUID.
+const offered = await call(`/receivables/receipts?company_id=${CO}&unapplied=true`);
+if (offered.status !== 200) {
+  console.log(`  x ?unapplied=true: HTTP ${offered.status}`);
+  failures += 1;
+} else {
+  console.log('  ok ?unapplied=true narrows to what can still be collected');
+}
 
 console.log(
   `\n${failures === 0 ? 'ALL SCREEN CONTRACTS VERIFIED' : `${failures} MISMATCHES`}`,

@@ -65,6 +65,17 @@ interface Rule {
 
 const MARKETS = ['sa', 'bd', 'us'] as const;
 
+/** A body whose published documents a legal value comes from.
+ *
+ *  `regulatory_rule.source_authority` is a foreign key to these, which is why
+ *  the form offers them rather than taking whatever is typed. */
+interface Authority {
+  code: string;
+  country: string;
+  name: string;
+  url?: string;
+}
+
 function RulesScreen() {
   const t = useT();
   const [country, setCountry] = useUrlState('country');
@@ -89,6 +100,25 @@ function RulesScreen() {
     verified: false,
     notes: '',
   });
+
+  // Who publishes the rules, for the picker below.
+  //
+  // `source_authority` is a FOREIGN KEY, and this form used to offer a free
+  // text box over it: an operator holding the official document and typing
+  // "Ministry of Human Resources" rather than the code `mhrsd` was refused
+  // with "A referenced record does not exist" -- a sentence naming no field
+  // and listing no allowed value, on the one workflow that takes a market from
+  // blocked to trading.
+  //
+  // Narrowed to the country the FORM has chosen, not the country the list is
+  // filtered by: they are different questions, and offering ZATCA while
+  // recording a Bangladeshi rule would produce the same refusal by a longer
+  // route.
+  const authorities = useApiList<Authority>(
+    '/platform/authorities',
+    form.country ? { country: form.country } : undefined,
+  );
+  const offered = authorities.data?.data ?? [];
 
   const rows = data?.data ?? [];
 
@@ -269,16 +299,27 @@ function RulesScreen() {
               <Field
                 name="source_authority"
                 label={t('nx.plat.ruAuthority')}
-                hint={t('nx.plat.ruAuthorityHint')}
+                hint={
+                  form.country === ''
+                    ? t('nx.plat.ruAuthorityPickCountry')
+                    : t('nx.plat.ruAuthorityHint')
+                }
               >
-                <Input
-                  dir="ltr"
+                <Select
                   value={form.source_authority}
                   onChange={(e) =>
                     setForm({ ...form, source_authority: e.target.value })
                   }
                   required
-                />
+                  disabled={form.country === '' || offered.length === 0}
+                >
+                  <option value="">{t('nx.plat.ruChooseAuthority')}</option>
+                  {offered.map((a) => (
+                    <option key={a.code} value={a.code}>
+                      {a.name}
+                    </option>
+                  ))}
+                </Select>
               </Field>
               <Field name="source_document" label={t('nx.plat.ruDocument')}>
                 <Input
