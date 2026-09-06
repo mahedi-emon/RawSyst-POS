@@ -270,17 +270,60 @@ func (s *Service) CollectInstalment(
 
 		// The receipt must belong to this plan's customer, or the money would
 		// settle one person's schedule out of another's payment.
-		var ok bool
-		if e := tx.QueryRow(ctx, `
-			SELECT true FROM customer_receipt r
+		//
+		// And it must be able to AFFORD what is being marked off. Ownership was
+		// the only thing checked here, so a 100 receipt could mark off 500 of
+		// instalments, and the same receipt could be presented again on the
+		// next collection and mark off another 100 — five times over, with one
+		// payment. The schedule settled, the plan closed, and the money never
+		// arrived. Nothing downstream would notice: the receipt posts the cash
+		// on its own path, and `installment_payment` is the memo of what the
+		// receipt was FOR, so an inflated memo is invisible in the ledger and
+		// visible only as a customer who stops paying a plan the product says
+		// is finished.
+		//
+		// The receipt is locked, not merely read: two collections racing on one
+		// receipt would each see the other's spend as absent.
+		var receiptAmount, alreadyUsed decimal.Decimal
+		var reversal bool
+		e = tx.QueryRow(ctx, `
+			SELECT r.amount,
+			       r.reverses_id IS NOT NULL
+			         OR EXISTS (SELECT 1 FROM customer_receipt x
+			                    WHERE x.reverses_id = r.id),
+			       coalesce((SELECT sum(p.amount) FROM installment_payment p
+			                 WHERE p.receipt_id = r.id), 0)
+			FROM customer_receipt r
 			JOIN installment_plan p ON p.customer_id = r.customer_id
-			WHERE r.id = $1 AND p.id = $2`,
-			receiptID, planID).Scan(&ok); e != nil {
-			if errors.Is(e, pgx.ErrNoRows) {
-				return errs.New(errs.CodeInvalidInput,
-					"That receipt belongs to a different customer.")
-			}
+			WHERE r.id = $1 AND p.id = $2
+			FOR UPDATE OF r`,
+			receiptID, planID).Scan(&receiptAmount, &reversal, &alreadyUsed)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return errs.New(errs.CodeInvalidInput,
+				"That receipt belongs to a different customer.")
+		}
+		if e != nil {
 			return e
+		}
+
+		// A reversal is not money, and neither is a receipt somebody has put
+		// right. Marking a schedule off with one would record a collection
+		// that has been undone.
+		if reversal {
+			return errs.New(errs.CodeInvalidInput,
+				"That receipt has been reversed, so there is no money on it to collect.")
+		}
+
+		spendable := receiptAmount.Sub(alreadyUsed)
+		if amount.GreaterThan(spendable) {
+			if !spendable.IsPositive() {
+				return errs.Newf(errs.CodeInvalidInput,
+					"All %s of that receipt has already been collected against a plan.",
+					receiptAmount.StringFixed(2))
+			}
+			return errs.Newf(errs.CodeInvalidInput,
+				"That receipt has %s left on it, which is less than the %s being collected.",
+				spendable.StringFixed(2), amount.StringFixed(2))
 		}
 
 		// Oldest first. A customer paying one instalment when two are overdue

@@ -758,3 +758,143 @@ func (s *Service) Snapshot(
 	})
 	return out, err
 }
+
+// --- Listing what has been received -------------------------------------
+
+// ReceiptFilter narrows the receipt list.
+//
+// `UnappliedOnly` is the filter the instalments screen actually needs: a plan
+// is collected against a receipt that still has money left on it to collect,
+// and offering a picker full of receipts the collect route would refuse is
+// worse than offering no picker at all.
+type ReceiptFilter struct {
+	CustomerID    *uuid.UUID
+	From          *time.Time
+	To            *time.Time
+	Method        string
+	UnappliedOnly bool
+	Limit         int
+}
+
+// ListedReceipt is one receipt as it appears in a list.
+//
+// Deliberately not `Receipt`: that struct carries the full allocation detail,
+// which a list of two hundred would fetch two hundred times to show a picker.
+// What a picker needs is who paid, when, how much, and how much of it is still
+// unspent.
+type ListedReceipt struct {
+	ID            uuid.UUID `json:"id"`
+	ReceiptNumber string    `json:"receipt_number"`
+	CustomerID    uuid.UUID `json:"customer_id"`
+	Customer      string    `json:"customer"`
+	ReceivedOn    string    `json:"received_on"`
+	Method        string    `json:"method"`
+	Reference     string    `json:"reference,omitempty"`
+	Amount        string    `json:"amount"`
+	// Unapplied is what is left on the receipt to mark off an instalment
+	// schedule with -- the amount less what has already been collected against
+	// a plan on this same receipt.
+	//
+	// NOT the invoice allocation. A receipt's amount IS the sum of its invoice
+	// allocations by construction (`TakePayment` derives one from the other),
+	// so that figure is always zero and says nothing. What can be exhausted is
+	// the instalment side, which is why `CollectInstalment` now refuses to
+	// spend past it.
+	Unapplied string `json:"unapplied"`
+	Currency  string `json:"currency"`
+	// Reversal is true when this document exists to put another receipt right,
+	// and Reversed when another one has put THIS one right. Both are shown:
+	// a reversed receipt is not a receipt anybody may collect against, and
+	// hiding it would make a number in the ledger unexplainable.
+	Reversal bool `json:"reversal"`
+	Reversed bool `json:"reversed"`
+}
+
+// ListReceipts answers what has been received, newest first.
+//
+// # Why this exists
+//
+// `POST /installments/{id}/collect` takes a `receipt_id`, and until this route
+// there was no way to find one: receipts could be created and reversed and
+// never listed, so the instalments screen asked somebody to type a UUID it
+// gave them no way to look up. One absent endpoint, and the screen above it
+// was unusable for the case it exists for.
+//
+// # Unapplied is derived, not stored
+//
+// The same argument as the receivable itself: a cached remaining figure is a
+// second source of truth, and it disagrees with the first the moment a
+// collection is written outside the path that maintains it. It is the amount
+// less what `installment_payment` already claims against this receipt.
+//
+// A reversal (`reverses_id IS NOT NULL`) has no unapplied part — it is not
+// money to spend — and neither has a receipt that has itself been reversed.
+func (s *Service) ListReceipts(
+	ctx context.Context, scope Scope, f ReceiptFilter,
+) ([]ListedReceipt, error) {
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+
+	out := []ListedReceipt{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT cr.id, cr.receipt_number, cr.customer_id, c.name,
+			       cr.received_on::text, cr.method, coalesce(cr.reference,''),
+			       round(cr.amount, 2)::text,
+			       round(
+			         GREATEST(
+			           cr.amount - coalesce((
+			             SELECT sum(p.amount) FROM installment_payment p
+			             WHERE p.receipt_id = cr.id
+			           ), 0),
+			           0
+			         ), 2)::text,
+			       cr.currency,
+			       cr.reverses_id IS NOT NULL,
+			       EXISTS (
+			         SELECT 1 FROM customer_receipt r WHERE r.reverses_id = cr.id
+			       )
+			FROM customer_receipt cr
+			JOIN customer c ON c.id = cr.customer_id
+			WHERE cr.company_id = $1
+			  AND ($2::uuid IS NULL OR cr.customer_id = $2)
+			  AND ($3::date IS NULL OR cr.received_on >= $3)
+			  AND ($4::date IS NULL OR cr.received_on <= $4)
+			  AND ($5 = '' OR cr.method = $5)
+			  AND (NOT $6 OR (
+			        cr.reverses_id IS NULL
+			    AND NOT EXISTS (
+			          SELECT 1 FROM customer_receipt r WHERE r.reverses_id = cr.id
+			        )
+			    AND cr.amount > coalesce((
+			          SELECT sum(p.amount) FROM installment_payment p
+			          WHERE p.receipt_id = cr.id
+			        ), 0)
+			  ))
+			ORDER BY cr.received_on DESC, cr.created_at DESC
+			LIMIT $7`,
+			scope.CompanyID, f.CustomerID, f.From, f.To, f.Method,
+			f.UnappliedOnly, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var r ListedReceipt
+			if e := rows.Scan(&r.ID, &r.ReceiptNumber, &r.CustomerID, &r.Customer,
+				&r.ReceivedOn, &r.Method, &r.Reference, &r.Amount, &r.Unapplied,
+				&r.Currency, &r.Reversal, &r.Reversed); e != nil {
+				return e
+			}
+			out = append(out, r)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, db.Translate(err, "Those receipts could not be read.")
+	}
+	return out, nil
+}

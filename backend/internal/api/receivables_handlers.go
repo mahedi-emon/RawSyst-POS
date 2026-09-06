@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -418,6 +419,71 @@ func (s *Server) handleReverseCustomerPayment(w http.ResponseWriter, r *http.Req
 }
 
 // --- Ageing --------------------------------------------------------------
+
+// --- GET /api/v1/receivables/receipts ------------------------------------
+
+// handleListCustomerReceipts answers what has been received.
+//
+// The counterpart of the POST that was already here. Its absence is why the
+// instalments screen asked somebody to type a receipt UUID: a plan is
+// collected against a receipt id, and nothing in the product could tell you
+// one. `?unapplied=true` is the filter that screen wants — a receipt already
+// spent settling invoices would be refused, and offering it in a picker
+// teaches the user that the picker lies.
+func (s *Server) handleListCustomerReceipts(w http.ResponseWriter, r *http.Request) {
+	scope, err := s.customerScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	q := r.URL.Query()
+	f := receivables.ReceiptFilter{
+		Method:        strings.TrimSpace(q.Get("method")),
+		UnappliedOnly: q.Get("unapplied") == "true",
+	}
+
+	if raw := q.Get("customer_id"); raw != "" {
+		id, e := parseUUID(raw, "customer_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		f.CustomerID = &id
+	}
+	for _, d := range []struct {
+		key  string
+		into **time.Time
+	}{{"from", &f.From}, {"to", &f.To}} {
+		raw := q.Get(d.key)
+		if raw == "" {
+			continue
+		}
+		when, e := time.Parse("2006-01-02", raw)
+		if e != nil {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"Dates look like 2026-08-16."))
+			return
+		}
+		*d.into = &when
+	}
+	if raw := q.Get("limit"); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n <= 0 {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"A limit is a whole number above zero."))
+			return
+		}
+		f.Limit = n
+	}
+
+	out, err := s.receivables.ListReceipts(r.Context(), scope, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
 
 func (s *Server) handleCustomerAgeing(w http.ResponseWriter, r *http.Request) {
 	scope, err := s.customerScope(r)

@@ -678,10 +678,39 @@ func (s *Service) CommitStores(ctx context.Context, companyID uuid.UUID) ([]uuid
 
 	err = s.pool.Tx(ctx, func(tx pgx.Tx) error {
 		// The plan ceiling, checked here rather than trusted from the client.
-		var existing, ceiling int
+		//
+		// Counted as ADDITIONS, not as the size of the payload. The insert
+		// below upserts on (company_id, code), so this step is re-runnable by
+		// design — somebody stepping back through setup to correct a branch
+		// address resubmits every branch they already have. Summing
+		// `existing + len(payload)` made that arithmetic wrong for exactly the
+		// shop that had finished: a tenant at its ceiling could no longer fix
+		// a typo in its own address, and the refusal said its plan was full
+		// when the submission added nothing at all.
+		//
+		// Codes are compared uppercased because that is how the insert stores
+		// them, and deduplicated because a payload naming the same code twice
+		// is one store.
+		wanted := make([]string, 0, len(v.Stores))
+		seen := map[string]bool{}
+		for _, st := range v.Stores {
+			code := strings.ToUpper(strings.TrimSpace(st.Code))
+			if code == "" || seen[code] {
+				continue
+			}
+			seen[code] = true
+			wanted = append(wanted, code)
+		}
+
+		var existing, alreadyHere, ceiling int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM store WHERE company_id = $1`, companyID).
 			Scan(&existing); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM store WHERE company_id = $1 AND code = ANY($2)`,
+			companyID, wanted).Scan(&alreadyHere); err != nil {
 			return err
 		}
 		if err := tx.QueryRow(ctx,
@@ -689,10 +718,10 @@ func (s *Service) CommitStores(ctx context.Context, companyID uuid.UUID) ([]uuid
 			Scan(&ceiling); err != nil {
 			return err
 		}
-		if existing+len(v.Stores) > ceiling {
+		if after := existing + (len(wanted) - alreadyHere); after > ceiling {
 			return errs.Newf(errs.CodeLimitReached,
 				"Your plan allows %d stores and this would make %d.",
-				ceiling, existing+len(v.Stores))
+				ceiling, after)
 		}
 
 		created = created[:0]

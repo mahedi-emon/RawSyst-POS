@@ -896,6 +896,12 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/customers/{customerID}/open-invoices", AccessPermission, "customers.view",
 			s.handleCustomerOpenInvoices, "what a receipt can be allocated against"},
 
+		{http.MethodGet, "/api/v1/receivables/receipts", AccessPermission, "customers.view",
+			s.handleListCustomerReceipts,
+			"what has been received. Reading is customers.view, not sales.receive_payment: " +
+				"choosing a receipt to collect an instalment against is a lookup, and " +
+				"requiring the authority to TAKE money in order to LOOK at one would " +
+				"leave the instalments screen unusable for everybody who may collect but not receipt"},
 		{http.MethodPost, "/api/v1/receivables/receipts", AccessPermission, "sales.receive_payment",
 			s.handleTakeCustomerPayment,
 			"taking money in is separate from managing the customer record; idempotent on a client-assigned uuid"},

@@ -37,10 +37,14 @@ func TestACompanysOwnPapersCanBeFiled(t *testing.T) {
 			"entity_type": "company",
 			// A company's own id IS the company id. Anything else is another
 			// business's record and must not be reachable from here.
-			"entity_id":      f.companyID.String(),
-			"file_name":      "commercial-registration.txt",
-			"data":           base64.StdEncoding.EncodeToString([]byte("CR 1010101010")),
-			"classification": "licence",
+			"entity_id": f.companyID.String(),
+			"file_name": "commercial-registration.txt",
+			"data":      base64.StdEncoding.EncodeToString([]byte("CR 1010101010")),
+			// `classification` is the SENSITIVITY of the file, not what kind of
+			// paper it is -- public, internal, personal or sensitive_personal.
+			// Omitted here on purpose, so defaultClass decides from the entity
+			// type, which is the path a screen takes when the uploader says
+			// nothing.
 		})
 	defer filed.Body.Close()
 	if filed.StatusCode != http.StatusOK && filed.StatusCode != http.StatusCreated {
@@ -76,7 +80,7 @@ func TestFilingAgainstAnotherBusinessIsRefused(t *testing.T) {
 			"entity_id":      uuid.NewString(),
 			"file_name":      "not-ours.txt",
 			"data":           base64.StdEncoding.EncodeToString([]byte("x")),
-			"classification": "licence",
+			"classification": "internal",
 		})
 	defer refused.Body.Close()
 	if refused.StatusCode != http.StatusNotFound {
@@ -122,7 +126,7 @@ func TestEveryPermittedAttachmentKindIsReachable(t *testing.T) {
 				"entity_id":      uuid.NewString(),
 				"file_name":      "probe.txt",
 				"data":           base64.StdEncoding.EncodeToString([]byte("x")),
-				"classification": "other",
+				"classification": "internal",
 			})
 		body := readBody(t, res)
 		res.Body.Close()

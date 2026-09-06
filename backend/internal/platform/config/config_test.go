@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/base64"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -15,8 +17,66 @@ func encodedKey(fill byte) string {
 	return base64.StdEncoding.EncodeToString(m)
 }
 
+// read is every variable Load consults. The list exists so withEnv can clear
+// the ones a test does not name.
+//
+// Without it these tests read whatever the developer happens to have exported,
+// and the documented development shell exports RAWSYST_DATA_ENCRYPTION_KEYS —
+// so TestTheKeyIsRequiredOutsideDevelopment, whose whole subject is a MISSING
+// key, passed or failed depending on which terminal ran it. A configuration
+// test that consults the ambient configuration is testing the machine.
+var read = []string{
+	"RAWSYST_ACCESS_TOKEN_TTL",
+	"RAWSYST_DATA_ENCRYPTION_KEYS",
+	"RAWSYST_DATA_REGION",
+	"RAWSYST_DB_DSN",
+	"RAWSYST_DB_MAX_CONNS",
+	"RAWSYST_DB_MAX_CONN_IDLE_TIME",
+	"RAWSYST_DB_MAX_CONN_LIFETIME",
+	"RAWSYST_DB_MIN_CONNS",
+	"RAWSYST_ENV",
+	"RAWSYST_HTTP_ADDR",
+	"RAWSYST_HTTP_IDLE_TIMEOUT",
+	"RAWSYST_HTTP_READ_TIMEOUT",
+	"RAWSYST_HTTP_SHUTDOWN_TIMEOUT",
+	"RAWSYST_HTTP_WRITE_TIMEOUT",
+	"RAWSYST_JWT_ISSUER",
+	"RAWSYST_JWT_SECRET",
+	"RAWSYST_METRICS_ENABLED",
+	"RAWSYST_METRICS_TOKEN",
+	"RAWSYST_REDIS_ADDR",
+	"RAWSYST_REDIS_DB",
+	"RAWSYST_REDIS_PASSWORD",
+	"RAWSYST_REDIS_TLS",
+	"RAWSYST_REFRESH_TOKEN_TTL",
+	"RAWSYST_S3_ACCESS_KEY_ID",
+	"RAWSYST_S3_BUCKET",
+	"RAWSYST_S3_ENDPOINT",
+	"RAWSYST_S3_PATH_STYLE",
+	"RAWSYST_S3_REGION",
+	"RAWSYST_S3_SECRET_ACCESS_KEY",
+	"RAWSYST_SENTRY_DSN",
+	"RAWSYST_SENTRY_SAMPLE_RATE",
+	"RAWSYST_SERVICE_NAME",
+	"RAWSYST_ZATCA_ENVIRONMENT",
+}
+
 func withEnv(t *testing.T, kv map[string]string) {
 	t.Helper()
+
+	// Start from nothing the developer's shell can reach into. t.Setenv
+	// registers the restore, so unsetting after it still puts the original
+	// value back when the test ends.
+	for _, k := range read {
+		if _, named := kv[k]; named {
+			continue
+		}
+		t.Setenv(k, "")
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("clearing %s: %v", k, err)
+		}
+	}
+
 	// A minimum viable configuration, so each test only varies what it means to.
 	base := map[string]string{
 		"RAWSYST_DB_DSN":     "postgres://localhost/x",
@@ -29,6 +89,26 @@ func withEnv(t *testing.T, kv map[string]string) {
 	}
 	for k, v := range kv {
 		t.Setenv(k, v)
+	}
+}
+
+// The guard for the defect above: every variable Load reads must be in `read`,
+// or withEnv leaves it ambient and some future test silently reads the machine.
+func TestEveryVariableLoadReadsCanBeCleared(t *testing.T) {
+	source, err := os.ReadFile("config.go")
+	if err != nil {
+		t.Fatalf("reading config.go: %v", err)
+	}
+	known := map[string]bool{}
+	for _, k := range read {
+		known[k] = true
+	}
+	for _, m := range regexp.MustCompile(`RAWSYST_[A-Z0-9_]+`).
+		FindAllString(string(source), -1) {
+		if !known[m] {
+			t.Errorf("Load reads %s and withEnv cannot clear it: add it to `read`", m)
+			known[m] = true // report each name once
+		}
 	}
 }
 
