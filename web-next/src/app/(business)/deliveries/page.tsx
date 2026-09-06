@@ -36,6 +36,7 @@ import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
+import { blockedBy, collectsCash, needsDriver, nextStates } from '@/lib/aftersales/delivery';
 import { messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
@@ -79,25 +80,6 @@ const STATUS_TONE: Record<string, 'neutral' | 'info' | 'caution' | 'positive' | 
     failed: 'critical',
     returned: 'neutral',
   };
-
-/** The rung after this one, and the two ways out of the ladder. */
-function nextStates(status: string): readonly string[] {
-  switch (status) {
-    case 'pending':
-      return ['assigned'];
-    case 'assigned':
-      return ['picked_up', 'failed'];
-    case 'picked_up':
-      return ['out_for_delivery', 'failed'];
-    case 'out_for_delivery':
-      return ['delivered', 'failed'];
-    case 'failed':
-      return ['returned', 'assigned'];
-    default:
-      // delivered and returned are ends. Nothing follows them.
-      return [];
-  }
-}
 
 function DeliveriesScreen() {
   const t = useT();
@@ -156,13 +138,10 @@ function DeliveriesScreen() {
     }
   }
 
-  // A driver is required for everything except the two states the constraint
-  // exempts, and a failure must say why.
-  const needsDriver = target !== '' && target !== 'pending' && target !== 'returned';
-  const blocked =
-    target === '' ||
-    (needsDriver && driverId === '') ||
-    (target === 'failed' && note.trim() === '');
+  // The three rules delivery's CHECK constraints enforce, asserted in
+  // lib/aftersales/delivery.test.ts rather than restated here.
+  const driverRequired = needsDriver(target);
+  const blocked = blockedBy({ target, driverId, note }) !== null;
 
   const columns: Column<Delivery>[] = [
     {
@@ -277,7 +256,7 @@ function DeliveriesScreen() {
               </Select>
             </Field>
 
-            {needsDriver ? (
+            {driverRequired ? (
               <Field
                 name="driver_id"
                 label={t('nx.del.driver')}
@@ -313,7 +292,7 @@ function DeliveriesScreen() {
 
           {/* Only for a delivery that actually carries cash, and only at the
               point it arrives. */}
-          {open.is_cod && target === 'delivered' ? (
+          {collectsCash(open.is_cod, target) ? (
             <div className="mt-4">
               <Checkbox
                 checked={collectedCOD}
