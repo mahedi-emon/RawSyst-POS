@@ -1466,6 +1466,167 @@ console.log('\nPRINTING A LABEL IS NOT DESIGNING ONE');
   }
 }
 
+
+// --- reading a register is not keeping one -------------------------------
+
+console.log('\nREADING A PRIVACY REGISTER IS NOT KEEPING ONE');
+{
+  const built = [];
+  async function role(name, permissions) {
+    const made = await owner('POST', q('/roles'), {
+      name: `verify:rbac ${name}`,
+      description: 'Created by verify:rbac and removed at the end of it',
+      permissions,
+    });
+    if (made.status !== 200 && made.status !== 201) {
+      bad(`could not build the ${name} role: ${made.status}`);
+      return null;
+    }
+    const r = made.json?.role;
+    if (r?.id) built.push(r.id);
+    return r ? { id: r.id, name: r.name } : null;
+  }
+
+  const firstSeat = seeded.length;
+  const reader = await staff('privacy-reader', await role('privacy reader', ['privacy.view']));
+  // Somebody with no privacy permission at all, to test the one route that is
+  // deliberately open to anybody signed in.
+  const outsider = await staff('privacy-outsider', await role('shop floor', ['sales.view']));
+
+  if (reader) {
+    // Every register opens. A boundary check that only proves refusals passes
+    // happily on a product nobody can use.
+    for (const register of [
+      'requests',
+      'incidents',
+      'consents',
+      'activities',
+      'retention',
+      'holds',
+      'destructions',
+      'settings',
+      'disclosure',
+    ]) {
+      expect(
+        `privacy.view: GET /privacy/${register}`,
+        (await reader.call('GET', q(`/privacy/${register}`))).status,
+        200,
+      );
+    }
+
+    // And nothing may be written. Each of these is a different register, and
+    // a permission model that got one right and one wrong would leave a
+    // reader able to log a breach or place a hold on somebody's data.
+    expect(
+      'privacy.view: POST a consent',
+      (await reader.call('POST', q('/privacy/consents'), {
+        subject_type: 'customer',
+        subject_id: '00000000-0000-0000-0000-000000000000',
+        lawful_basis: 'consent',
+        purpose: 'marketing',
+        channel: 'sms',
+        proof: 'verify:rbac should not stick',
+      })).status,
+      403,
+    );
+    expect(
+      'privacy.view: POST a subject request',
+      (await reader.call('POST', q('/privacy/requests'), {
+        kind: 'access',
+        subject_type: 'customer',
+        subject_name: 'verify:rbac',
+        subject_contact: 'verify@example.test',
+      })).status,
+      403,
+    );
+    expect(
+      'privacy.view: POST a breach',
+      (await reader.call('POST', q('/privacy/incidents'), {
+        title: 'verify:rbac should not stick',
+        what_happened: 'x',
+        data_categories: 'x',
+        severity: 'low',
+        discovered_at: new Date().toISOString(),
+      })).status,
+      403,
+    );
+    expect(
+      'privacy.view: PUT the processing register',
+      (await reader.call('PUT', q('/privacy/activities'), {
+        name: 'verify:rbac should not stick',
+        purpose: 'x',
+        lawful_basis: 'consent',
+        data_categories: 'x',
+        subject_categories: 'x',
+      })).status,
+      403,
+    );
+    expect(
+      'privacy.view: POST a legal hold',
+      (await reader.call('POST', q('/privacy/holds'), {
+        name: 'verify:rbac should not stick',
+        reason: 'x',
+      })).status,
+      403,
+    );
+    // The published notice is the one a shop's customers read. Whoever can
+    // change it can change what the business has told the public it will do.
+    expect(
+      'privacy.view: PUT the published notice',
+      (await reader.call('PUT', q('/privacy/disclosure'), {
+        contact_email: 'verify@example.test',
+      })).status,
+      403,
+    );
+    expect(
+      'privacy.view: PUT the privacy settings',
+      (await reader.call('PUT', q('/privacy/settings'), { data_region: 'sa' })).status,
+      403,
+    );
+  }
+
+  if (outsider) {
+    // Deliberately open to anyone signed in, and asserted so that narrowing it
+    // to privacy.view is a failure here rather than a blank panel on a screen
+    // somebody without that permission is entitled to read.
+    expect(
+      'no privacy permission: GET /privacy/subprocessors',
+      (await outsider.call('GET', q('/privacy/subprocessors'))).status,
+      200,
+    );
+    expect(
+      'no privacy permission: GET /privacy/consents',
+      (await outsider.call('GET', q('/privacy/consents'))).status,
+      403,
+    );
+  }
+
+  // Holders first: a disabled account still holds its role, so the role
+  // cannot be removed until the assignment itself is taken away.
+  const mine = new Set(seeded.slice(firstSeat).filter(Boolean));
+  const staffed = (await owner('GET', q('/people?limit=200'))).json?.data ?? [];
+  for (const person of staffed) {
+    if (!mine.has(person.id)) continue;
+    for (const held of person.roles ?? []) {
+      if (built.includes(held.role_id)) {
+        await owner('DELETE', q(`/people/roles/${held.id}`));
+      }
+    }
+  }
+  for (const id of mine) {
+    await owner('POST', q(`/people/${id}/active`), { active: false });
+  }
+  let left = 0;
+  for (const id of built) {
+    const gone = await owner('DELETE', q(`/roles/${id}`));
+    if (gone.status !== 204 && gone.status !== 200) left += 1;
+  }
+  console.log(
+    left > 0
+      ? `  -  ${left} of ${built.length} roles built by this run could NOT be removed`
+      : `  -  removed the ${built.length} roles this run built`,
+  );
+}
 await retireSeeded();
 
 console.log(

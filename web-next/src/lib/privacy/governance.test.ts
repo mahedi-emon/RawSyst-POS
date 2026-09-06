@@ -252,10 +252,11 @@ describe('what is collected but never disposed of', () => {
 });
 
 describe('records that are stamped rather than deleted', () => {
-  it('reads the withdrawal stamp, not the granted flag', () => {
-    // A withdrawn consent keeps granted: true, because it records that
-    // permission was once given. A screen reading the flag would show a
-    // withdrawn permission as live.
+  it('refuses a consent that either column calls withdrawn', () => {
+    // The server sets granted false and stamps withdrawn_at together, and the
+    // schema requires them to agree, so on a healthy row either answers. Both
+    // are checked because the redundancy costs nothing and being wrong means
+    // marketing to somebody who said stop.
     const c = (over: Partial<Consent>): Consent => ({
       id: 'c1',
       subject_type: 'customer',

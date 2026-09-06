@@ -20,9 +20,10 @@
 //
 // # Withdrawal is a record, not a deletion
 //
-// A withdrawn consent keeps `granted: true` and gains a `withdrawn_at`, because
-// the register has to show that permission was once given and then taken away.
-// Every state here reads the stamp rather than the flag.
+// A withdrawn consent keeps its row and gains a `withdrawn_at`, so the register
+// shows that permission was given and then taken away. Both dates are printed
+// for that reason: the withdrawal is the record, and a row showing only the
+// grant would read as though it still stood.
 
 import { ShieldCheck } from 'lucide-react';
 import { Suspense, useState } from 'react';

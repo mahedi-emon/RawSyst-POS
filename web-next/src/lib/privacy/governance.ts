@@ -281,10 +281,11 @@ export function activityRefused(activity: Activity): boolean {
 /**
  * Whether a consent still stands.
  *
- * `granted` and `withdrawn_at` are both sent, and a withdrawn grant is stamped
- * rather than deleted, so the record of having once been given is kept. The
- * screen reads the stamp, not the flag: a row that says granted with a
- * withdrawal date on it is a record of a withdrawal.
+ * Driven live: withdrawing sets `granted` to false AND stamps `withdrawn_at`,
+ * and the schema requires the two to agree, so on a healthy row either would
+ * answer. Both are read anyway. The redundancy costs nothing, and the harm it
+ * guards against -- marketing to somebody who said stop -- is the exact thing
+ * this register exists to prevent.
  */
 export function consentStands(consent: Consent): boolean {
   return consent.granted && !consent.withdrawn_at;

@@ -4036,6 +4036,212 @@ console.log('\nTILLS, BARCODES AND SERIAL NUMBERS');
   }
 }
 
+console.log('\nTHE PRIVACY REGISTERS, AND THE TWO CLOCKS ON THEM');
+{
+  const requests = await check('GET /privacy/requests', `/privacy/requests?company_id=${CO}`, null);
+  if (requests?.data?.[0]) {
+    expectFields('  subject request', requests.data[0], [
+      'id',
+      'request_no',
+      'kind',
+      'status',
+      'subject_name',
+      'received_at',
+      'due_at',
+      // The statutory clock, counted by the server. The screen prints this
+      // rather than subtracting due_at from today, because a deadline this
+      // product worked out itself would be a second answer to a regulatory
+      // question -- and the register was filed against the server's.
+      'days_left',
+      // A hold stops an erasure. Without this the queue cannot say why a
+      // request it keeps showing has not moved.
+      'legal_hold_applied',
+    ]);
+
+    // Sent always, not omitempty: a request due TODAY has days_left 0, and a
+    // field that disappeared at zero would drop the most urgent row on the
+    // screen. This is the assertion that pins that.
+    const live = requests.data.filter(
+      (r) => r.status !== 'fulfilled' && r.status !== 'refused',
+    );
+    const unclocked = live.filter((r) => typeof r.days_left !== 'number');
+    if (unclocked.length > 0) {
+      console.log(`  x ${unclocked.length} open requests carry no days_left`);
+      failures += 1;
+    } else {
+      console.log(`  ok ${live.length} open requests each state their own deadline`);
+    }
+
+    // An extended request is counted against the new date. Showing the
+    // original would have somebody reporting a breach of a deadline that
+    // legitimately moved.
+    const extended = requests.data.filter((r) => r.extended_to);
+    if (extended.length > 0) {
+      console.log(`  ok ${extended.length} extended, and each names the date it moved to`);
+    }
+  } else {
+    console.log('  -  nobody has asked; the request shape was not exercised');
+  }
+
+  const incidents = await check(
+    'GET /privacy/incidents',
+    `/privacy/incidents?company_id=${CO}`,
+    null,
+  );
+  if (incidents?.data?.[0]) {
+    expectFields('  breach', incidents.data[0], [
+      'id',
+      'incident_no',
+      'title',
+      'severity',
+      'status',
+      'discovered_at',
+      'notify_due_at',
+      // Hours, not days. The notification window is three days, so a count
+      // rounded to days would report "1 day left" for anything between one
+      // hour and thirty-six.
+      'hours_left',
+    ]);
+
+    // Absence is not zero. An incident still under investigation may not know
+    // how many people it touched, and a screen printing 0 would say it
+    // touched nobody -- which is a different report to make to an authority.
+    const counted = incidents.data.filter((i) => 'subjects_affected' in i);
+    const zeroed = counted.filter((i) => i.subjects_affected === 0);
+    if (zeroed.length > 0) {
+      console.log(
+        `  -  ${zeroed.length} breaches report exactly 0 people affected; ` +
+          'the screen must not read that as "not yet counted"',
+      );
+    }
+    console.log(
+      `  ok ${incidents.data.length} breaches; ${counted.length} state a count`,
+    );
+  } else {
+    console.log('  -  no breaches recorded; the breach shape was not exercised');
+  }
+
+  const consents = await check(
+    'GET /privacy/consents',
+    `/privacy/consents?company_id=${CO}`,
+    null,
+  );
+  if (consents?.data?.[0]) {
+    expectFields('  consent', consents.data[0], [
+      'id',
+      'subject_type',
+      'subject_id',
+      'lawful_basis',
+      'purpose',
+      'channel',
+      'granted',
+      'granted_at',
+      // Why it can be shown to somebody who disputes it. A consent register
+      // that cannot say how consent was obtained proves nothing.
+      'proof',
+    ]);
+
+    // The contract the screen turns on. Withdrawing sets granted false AND
+    // stamps withdrawn_at; the schema requires the two to agree. A row where
+    // they disagreed would be a consent that is live and withdrawn at once,
+    // and whichever column a caller happened to read would decide whether
+    // somebody who said stop gets marketed to.
+    const disagreeing = consents.data.filter(
+      (c) => c.granted === Boolean(c.withdrawn_at),
+    );
+    if (disagreeing.length > 0) {
+      console.log(
+        `  x ${disagreeing.length} consents where granted and withdrawn_at disagree`,
+      );
+      failures += 1;
+    } else {
+      const off = consents.data.filter((c) => c.withdrawn_at).length;
+      console.log(
+        `  ok granted and withdrawn_at agree on all ${consents.data.length}` +
+          ` (${off} withdrawn, and each keeps its row)`,
+      );
+    }
+  } else {
+    console.log('  -  no consent on file; the consent shape was not exercised');
+  }
+
+  const activities = await check(
+    'GET /privacy/activities',
+    `/privacy/activities?company_id=${CO}`,
+    null,
+  );
+  if (activities?.data?.[0]) {
+    expectFields('  processing record', activities.data[0], [
+      'id',
+      'name',
+      'purpose',
+      'lawful_basis',
+      'data_categories',
+      'subject_categories',
+      'cross_border',
+    ]);
+
+    // The database refuses a cross-border entry naming no destination and no
+    // safeguard, so anything already stored must satisfy it. A row that did
+    // not would mean the constraint had been bypassed.
+    const bad = activities.data.filter(
+      (a) =>
+        a.cross_border &&
+        (!String(a.destination_country ?? '').trim() ||
+          !String(a.transfer_safeguard ?? '').trim()),
+    );
+    if (bad.length > 0) {
+      console.log(`  x ${bad.length} cross-border records name no destination or safeguard`);
+      failures += 1;
+    } else {
+      console.log('  ok every cross-border record says where and under what protection');
+    }
+  } else {
+    console.log('  -  the register is empty; the activity shape was not exercised');
+  }
+
+  await check('GET /privacy/retention', `/privacy/retention?company_id=${CO}`, null);
+
+  const holds = await check('GET /privacy/holds', `/privacy/holds?company_id=${CO}`, null);
+  if (holds?.data?.[0]) {
+    expectFields('  legal hold', holds.data[0], ['id', 'name', 'reason', 'placed_at']);
+  } else {
+    console.log('  -  no holds in place; the hold shape was not exercised');
+  }
+
+  await check('GET /privacy/destructions', `/privacy/destructions?company_id=${CO}`, null);
+
+  const settings = await check(
+    'GET /privacy/settings',
+    `/privacy/settings?company_id=${CO}`,
+    ['dpo_external', 'data_region'],
+    (j) => j?.settings,
+  );
+  if (settings?.settings?.data_region) {
+    console.log(`  ok data is held in ${settings.settings.data_region}`);
+  }
+
+  const disclosure = await check(
+    'GET /privacy/disclosure',
+    `/privacy/disclosure?company_id=${CO}`,
+    // `missing` is what stops the notice being published, and the screen
+    // leads with it rather than showing the fields that ARE filled in.
+    ['missing'],
+    (j) => j?.disclosure,
+  );
+  const missing = disclosure?.disclosure?.missing;
+  if (missing && !Array.isArray(missing)) {
+    console.log('  x the disclosure does not say what is missing as a list');
+    failures += 1;
+  } else if (missing) {
+    console.log(
+      missing.length === 0
+        ? '  ok the published notice has everything it needs'
+        : `  ok the notice names its own ${missing.length} blockers (${missing.join(', ')})`,
+    );
+  }
+}
+
 console.log('\nPLATFORM (as an operator)');
 {
   const ops = await fetch(`${API}/auth/login`, {
