@@ -41,6 +41,7 @@ import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
 import { useCompanyScope } from '@/lib/company/company-context';
+import { saveAs } from '@/lib/download';
 import { useT, type Key } from '@/lib/i18n/locale';
 import {
   CADENCES,
@@ -175,13 +176,32 @@ function SavedScreen() {
     }
   }
 
-  function exportHref(report: SavedReport): string | null {
+  /**
+   * Fetches the export with the token and hands it to the browser.
+   *
+   * This was an `<a href="/api/v1/...">` and it answered 401 every time.
+   * Rewriting the API to the same origin makes the browser send the refresh
+   * cookie, which is not what the API reads -- it takes the bearer header and
+   * nothing else, and the access token lives in memory. So the link looked
+   * like a download and produced a refusal with nothing on screen to explain
+   * it. Verified against the running server before and after.
+   */
+  async function exportReport(report: SavedReport) {
     const kindPath = exportKindOf(report.kind);
-    if (!kindPath || !scope) return null;
-    return (
-      `/api/v1/reports/${kindPath}/export` +
-      `?company_id=${scope.company_id}&from=${report.from}&to=${report.to}`
-    );
+    if (!kindPath || !scope) return;
+    setBusy(true);
+    setFormError(null);
+    try {
+      const { blob, filename } = await api.download(
+        `/reports/${kindPath}/export` +
+          `?company_id=${scope.company_id}&from=${report.from}&to=${report.to}`,
+      );
+      saveAs(blob, filename);
+    } catch (e) {
+      setFormError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const columns: Column<SavedReport>[] = [
@@ -272,16 +292,18 @@ function SavedScreen() {
       header: t('nx.sav.colActions'),
       width: 'w-52',
       cell: (r) => {
-        const href = mayExport ? exportHref(r) : null;
+        const exportable = mayExport && exportKindOf(r.kind) !== null;
         return (
           <span className="flex flex-wrap gap-2">
-            {href ? (
-              <a
-                href={href}
-                className="inline-flex min-h-11 items-center text-body text-primary underline underline-offset-2 hover:no-underline"
+            {exportable ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => void exportReport(r)}
               >
                 {t('nx.sav.download')}
-              </a>
+              </Button>
             ) : null}
             {mayKeep ? (
               <Button

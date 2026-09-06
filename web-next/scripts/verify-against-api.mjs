@@ -2182,8 +2182,37 @@ console.log('\nSHIFT (at a counter, which is the only way these routes answer)')
           }
         }
 
+        // The replacement has to be something actually on the shelf. This
+        // asserted 201 unconditionally and started failing once the dev shop
+        // had been sold down -- by this very section, which rings up a sale on
+        // every run. A 409 saying "there are 1 fewer Abaya, Black in stock
+        // than this needs" is the server being RIGHT, and a check that reads
+        // correct behaviour as a mismatch trains people to ignore it.
+        //
+        // The catalogue snapshot carries no stock on purpose: it is the till's
+        // offline copy, and what is on the shelf is a different question asked
+        // of a different route.
+        let replacement = null;
+        if (sellFrom) {
+          for (const candidate of sellable.slice(1)) {
+            const stock = await call(
+              `/stock/availability?company_id=${CO}` +
+                `&variant_id=${candidate.id}&warehouse_id=${sellFrom}`,
+            );
+            if (Number(stock.json?.available_to_sell ?? 0) >= 1) {
+              replacement = candidate;
+              break;
+            }
+          }
+        }
+
         if (sellable.length < 2) {
           console.log('  -  fewer than two sellable items; the exchange was not exercised');
+        } else if (!replacement) {
+          console.log(
+            '  -  nothing on the shelf can serve as a replacement; the exchange ' +
+              'was not exercised',
+          );
         } else {
           const saleUUID = crypto.randomUUID();
           const sold = await post(
@@ -2243,11 +2272,11 @@ console.log('\nSHIFT (at a counter, which is the only way these routes answer)')
                   doc_type: 'simplified',
                   lines: [
                     {
-                      variant_id: sellable[1].id,
-                      description: sellable[1].name,
+                      variant_id: replacement.id,
+                      description: replacement.name,
                       qty: '1',
-                      unit_price: sellable[1].price,
-                      tax_treatment: sellable[1].tax_treatment,
+                      unit_price: replacement.price,
+                      tax_treatment: replacement.tax_treatment,
                     },
                   ],
                 },
@@ -2255,7 +2284,7 @@ console.log('\nSHIFT (at a counter, which is the only way these routes answer)')
                   {
                     method: 'cash',
                     amount: Math.abs(
-                      Number(sellable[1].price) - Number(line.gross_returnable),
+                      Number(replacement.price) - Number(line.gross_returnable),
                     ).toFixed(2),
                   },
                 ],
@@ -4239,6 +4268,173 @@ console.log('\nTHE PRIVACY REGISTERS, AND THE TWO CLOCKS ON THEM');
         ? '  ok the published notice has everything it needs'
         : `  ok the notice names its own ${missing.length} blockers (${missing.join(', ')})`,
     );
+  }
+}
+
+console.log('\nWHAT HAPPENED, WHAT IS HELD, AND WHETHER IT COULD BE RESTORED');
+{
+  const trail = await check('GET /audit', `/audit?company_id=${CO}&limit=200`, [
+    'data',
+    // The verbs actually present in this tenant's trail, sent WITH the rows so
+    // the filter offers what is there. A screen holding its own list goes
+    // stale the day a module ships, and a filter that quietly stopped
+    // offering a verb would hide the entries somebody came to find.
+    'actions',
+  ]);
+  if (trail?.data?.[0]) {
+    expectFields('  audit entry', trail.data[0], [
+      'occurred_at',
+      'action',
+      'entity_type',
+    ]);
+
+    // The invariant the filter rests on. A verb in the rows and absent from
+    // the vocabulary is one nobody can filter to.
+    const vocabulary = new Set(trail.actions ?? []);
+    const unlisted = [
+      ...new Set(trail.data.map((r) => r.action).filter((a) => !vocabulary.has(a))),
+    ];
+    if (unlisted.length > 0) {
+      console.log(
+        `  x ${unlisted.length} verbs appear in the trail and not in its own ` +
+          `vocabulary (${unlisted.slice(0, 4).join(', ')})`,
+      );
+      failures += 1;
+    } else {
+      console.log(
+        `  ok every one of ${trail.data.length} entries uses one of the ` +
+          `${vocabulary.size} verbs the trail offers`,
+      );
+    }
+
+    // An entry carrying both sides is an amendment; one side is a creation or
+    // a removal; neither is something that changed no stored row. The screen
+    // tells those apart, so at least one shape has to be exercised.
+    const withBoth = trail.data.filter((r) => r.before != null && r.after != null);
+    const oneSided = trail.data.filter(
+      (r) => (r.before == null) !== (r.after == null),
+    );
+    console.log(
+      `  ok ${withBoth.length} amendments and ${oneSided.length} one-sided ` +
+        'entries carry evidence',
+    );
+  } else {
+    console.log('  -  the trail is empty; the entry shape was not exercised');
+  }
+
+  const documents = await check('GET /documents', `/documents?company_id=${CO}`, null);
+  if (documents?.data?.[0]) {
+    expectFields('  document', documents.data[0], [
+      'id',
+      'entity_type',
+      'file_name',
+      'content_type',
+      'byte_size',
+      // What makes this a register rather than a folder: proof that the file
+      // is the one that was filed.
+      'checksum',
+      'classification',
+    ]);
+
+    // Absence is not zero. A permanent document omits `days_to_expiry`
+    // entirely, and reading the missing field as 0 would file every one of
+    // them as expiring this morning.
+    const permanent = documents.data.filter((d) => !d.expires_on);
+    const wronglyClocked = permanent.filter((d) => 'days_to_expiry' in d);
+    if (wronglyClocked.length > 0) {
+      console.log(
+        `  x ${wronglyClocked.length} documents with no expiry still report a countdown`,
+      );
+      failures += 1;
+    } else {
+      console.log(
+        `  ok ${permanent.length} documents that never expire report no countdown`,
+      );
+    }
+
+    // `classification` is the data_class enum -- how sensitive the CONTENT is,
+    // which the retention regime and the erasure path read. Not a document
+    // kind, and not free text.
+    const CLASSES = new Set(['public', 'internal', 'personal', 'sensitive_personal']);
+    const odd = documents.data.filter((d) => !CLASSES.has(d.classification));
+    if (odd.length > 0) {
+      console.log(
+        `  x ${odd.length} documents carry a sensitivity outside the enum ` +
+          `(${[...new Set(odd.map((d) => d.classification))].join(', ')})`,
+      );
+      failures += 1;
+    } else {
+      console.log('  ok every document carries one of the four sensitivities');
+    }
+  } else {
+    console.log('  -  nothing is filed; the document shape was not exercised');
+  }
+
+  // A sensitivity the enum does not have used to reach the insert and come
+  // back as a 500, telling somebody who mistyped one word that the fault was
+  // ours. Safe to assert from here: the write is refused, so nothing is
+  // stored and the run leaves no rows behind.
+  {
+    const res = await post(`/documents?company_id=${CO}`, {
+      entity_type: 'company',
+      entity_id: CO,
+      file_name: 'verify-api-should-not-stick.txt',
+      data: 'eA==',
+      classification: 'licence',
+    });
+    if (res.status !== 400) {
+      console.log(`  x a mistyped sensitivity answered ${res.status}, want 400`);
+      failures += 1;
+    } else {
+      console.log('  ok a mistyped sensitivity is refused, not reported as our fault');
+    }
+  }
+
+  const health = await check('GET /backups/health', `/backups/health?company_id=${CO}`, [
+    'recent_failures',
+    'at_risk',
+    // The server's own sentence. Shown as written, because recomposing it from
+    // the parts would produce a second opinion on a question that needs one.
+    'summary',
+  ]);
+  if (health && !String(health.summary ?? '').trim()) {
+    console.log('  x the backup health says nothing about where it stands');
+    failures += 1;
+  } else if (health) {
+    console.log(`  ok it says where it stands: "${health.summary}"`);
+  }
+
+  const backups = await check('GET /backups', `/backups?company_id=${CO}`, null);
+  if (backups?.data?.[0]) {
+    expectFields('  backup', backups.data[0], ['id', 'kind', 'status', 'started_at']);
+
+    // A backup that ran is not a backup that restores. A run that finished
+    // without being checked must NOT carry verified_at, or a dashboard reads
+    // an unproven file as protection.
+    const finished = backups.data.filter((b) => b.finished_at);
+    const proven = finished.filter((b) => b.verified_at && !b.verify_error);
+    const unproven = finished.filter((b) => !b.verified_at);
+    if (finished.length > 0 && proven.length === finished.length && backups.data.length > 1) {
+      console.log(
+        '  -  every backup is verified, so the unverified state was not exercised',
+      );
+    }
+    // And a failed verification must not stamp verified_at, which the router
+    // comment says outright.
+    const contradictory = backups.data.filter((b) => b.verify_error && b.verified_at);
+    if (contradictory.length > 0) {
+      console.log(
+        `  x ${contradictory.length} backups are stamped verified AND carry a verify error`,
+      );
+      failures += 1;
+    } else {
+      console.log(
+        `  ok ${proven.length} of ${finished.length} finished backups are proved ` +
+          `readable, ${unproven.length} never checked`,
+      );
+    }
+  } else {
+    console.log('  -  nothing has been backed up; the backup shape was not exercised');
   }
 }
 

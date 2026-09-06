@@ -1627,6 +1627,129 @@ console.log('\nREADING A PRIVACY REGISTER IS NOT KEEPING ONE');
       : `  -  removed the ${built.length} roles this run built`,
   );
 }
+
+// --- reading the registers is not writing to them ------------------------
+
+console.log('\nREADING THE OVERSIGHT REGISTERS IS NOT WRITING TO THEM');
+{
+  const built = [];
+  async function role(name, permissions) {
+    const made = await owner('POST', q('/roles'), {
+      name: `verify:rbac ${name}`,
+      description: 'Created by verify:rbac and removed at the end of it',
+      permissions,
+    });
+    if (made.status !== 200 && made.status !== 201) {
+      bad(`could not build the ${name} role: ${made.status}`);
+      return null;
+    }
+    const r = made.json?.role;
+    if (r?.id) built.push(r.id);
+    return r ? { id: r.id, name: r.name } : null;
+  }
+
+  const firstSeat = seeded.length;
+  const keeper = await staff(
+    'oversight-reader',
+    await role('oversight reader', ['document.view', 'backup.view']),
+  );
+  // The trail is gated on accounting.view rather than a permission of its own,
+  // so a role holding neither must not reach it.
+  const outsider = await staff('trail-outsider', await role('shop floor two', ['sales.view']));
+
+  if (keeper) {
+    expect(
+      'document.view: GET /documents',
+      (await keeper.call('GET', q('/documents'))).status,
+      200,
+    );
+    expect(
+      'backup.view: GET /backups',
+      (await keeper.call('GET', q('/backups'))).status,
+      200,
+    );
+    expect(
+      'backup.view: GET /backups/health',
+      (await keeper.call('GET', q('/backups/health'))).status,
+      200,
+    );
+
+    // Filing a document is document.manage. Whoever can file one can put a
+    // paper into the record the business will later be judged on.
+    expect(
+      'document.view: POST a document',
+      (await keeper.call('POST', q('/documents'), {
+        entity_type: 'company',
+        entity_id: CO,
+        file_name: 'verify-rbac-should-not-stick.txt',
+        data: 'eA==',
+      })).status,
+      403,
+    );
+    // Taking a backup, and marking one proved readable, are both backup.run.
+    // The second matters more than it looks: whoever can stamp a backup
+    // verified can make an unreadable file read as protection.
+    expect(
+      'backup.view: POST a backup',
+      (await keeper.call('POST', q('/backups'), {})).status,
+      403,
+    );
+    const anyBackup = (await owner('GET', q('/backups'))).json?.data?.[0];
+    if (anyBackup) {
+      expect(
+        'backup.view: POST a verification',
+        (await keeper.call('POST', q(`/backups/${anyBackup.id}/verify`), {})).status,
+        403,
+      );
+    } else {
+      console.log('  -  no backup to verify; that boundary was not exercised');
+    }
+
+    // The trail is not theirs either: they hold no accounting.view.
+    expect(
+      'without accounting.view: GET /audit',
+      (await keeper.call('GET', q('/audit'))).status,
+      403,
+    );
+  }
+
+  if (outsider) {
+    expect(
+      'without document.view: GET /documents',
+      (await outsider.call('GET', q('/documents'))).status,
+      403,
+    );
+    expect(
+      'without backup.view: GET /backups/health',
+      (await outsider.call('GET', q('/backups/health'))).status,
+      403,
+    );
+  }
+
+  const mine = new Set(seeded.slice(firstSeat).filter(Boolean));
+  const staffed = (await owner('GET', q('/people?limit=200'))).json?.data ?? [];
+  for (const person of staffed) {
+    if (!mine.has(person.id)) continue;
+    for (const held of person.roles ?? []) {
+      if (built.includes(held.role_id)) {
+        await owner('DELETE', q(`/people/roles/${held.id}`));
+      }
+    }
+  }
+  for (const id of mine) {
+    await owner('POST', q(`/people/${id}/active`), { active: false });
+  }
+  let left = 0;
+  for (const id of built) {
+    const gone = await owner('DELETE', q(`/roles/${id}`));
+    if (gone.status !== 204 && gone.status !== 200) left += 1;
+  }
+  console.log(
+    left > 0
+      ? `  -  ${left} of ${built.length} roles built by this run could NOT be removed`
+      : `  -  removed the ${built.length} roles this run built`,
+  );
+}
 await retireSeeded();
 
 console.log(

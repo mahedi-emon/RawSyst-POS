@@ -74,6 +74,31 @@ type Listener = (signedIn: boolean) => void;
  * a secret -- proving the request came from a page on this origin is exactly
  * what a cross-site attacker cannot arrange.
  */
+/**
+ * The name the server gave the file.
+ *
+ * Preferred over anything the caller could compose: an export's extension
+ * follows what the server actually produced, and a screen that guessed `.csv`
+ * for a PDF hands somebody a file their computer refuses to open. Falls back
+ * to a plain name rather than an empty one, which some browsers save as
+ * "download" with no extension at all.
+ */
+function filenameFrom(disposition: string | null): string {
+  if (!disposition) return 'download';
+  // RFC 5987 first: it carries the encoded, non-ASCII-safe name, which is the
+  // one an Arabic report title needs.
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // A malformed value is not worth throwing a download away over.
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(disposition);
+  return plain?.[1]?.trim() || 'download';
+}
+
 function readCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
   const prefix = `${name}=`;
@@ -276,6 +301,71 @@ class RawsystClient {
 
   delete<T>(path: string, opts?: RequestOptions): Promise<T> {
     return this.send<T>('DELETE', path, undefined, opts);
+  }
+
+  /**
+   * Fetches a file the API will only hand to an authenticated caller.
+   *
+   * A plain `<a href="/api/v1/...">` cannot do this. The rewrite makes the API
+   * same-origin so the browser sends the refresh cookie, but that cookie only
+   * buys a new access token -- the API reads the bearer header and nothing
+   * else, so the link answers 401 and the person gets a broken download with
+   * no explanation. Every file the product offers has to come through here.
+   *
+   * Returns the bytes and the name the server gave them, so the caller does
+   * not have to guess an extension for a report it did not generate.
+   */
+  async download(
+    path: string,
+    opts: RequestOptions = {},
+  ): Promise<{ blob: Blob; filename: string }> {
+    const headers: Record<string, string> = {};
+    if (this.accessToken) headers['Authorization'] = `Bearer ${this.accessToken}`;
+
+    let res: Response;
+    try {
+      res = await fetch(this.url(path, opts.query), {
+        method: 'GET',
+        headers,
+        credentials: 'same-origin',
+        signal: opts.signal,
+      });
+    } catch (cause) {
+      if (opts.signal?.aborted) throw cause;
+      throw new NetworkError(cause);
+    }
+
+    // The same one silent retry as every other call: an access token lives
+    // fifteen minutes, and expiring while somebody reads a list before
+    // clicking a download is the ordinary case rather than a sign-out.
+    if (res.status === 401 && !opts.noRetry) {
+      const recovered = await this.refresh();
+      if (recovered) return this.download(path, { ...opts, noRetry: true });
+      this.setAccessToken(null);
+    }
+
+    if (!res.ok) {
+      // An error body IS json even when the success body is not, so the
+      // refusal can still be read out rather than shown as a status code.
+      let envelope: ApiErrorBody | undefined;
+      try {
+        envelope = ((await res.json()) as { error?: ApiErrorBody })?.error;
+      } catch {
+        envelope = undefined;
+      }
+      throw new ApiError(
+        res.status,
+        envelope ?? {
+          code: res.status >= 500 ? 'internal' : 'invalid_input',
+          message: 'That file could not be fetched.',
+        },
+      );
+    }
+
+    return {
+      blob: await res.blob(),
+      filename: filenameFrom(res.headers.get('Content-Disposition')),
+    };
   }
 
   /** Signs in. The refresh cookie is set by the server on the way back. */

@@ -148,6 +148,17 @@ var sensitiveEntities = map[string]string{
 	"supplier":         "internal",
 }
 
+// dataClasses is the `data_class` enum, which is about how sensitive the
+// CONTENT is rather than what kind of document it is. A licence and a lease are
+// both "internal"; a passport scan is "sensitive_personal". Retention and the
+// PDPL erasure path read this, which is why it is not a free-text label.
+var dataClasses = map[string]bool{
+	"public":             true,
+	"internal":           true,
+	"personal":           true,
+	"sensitive_personal": true,
+}
+
 func defaultClass(entityType string) string {
 	if c, ok := sensitiveEntities[entityType]; ok {
 		return c
@@ -184,6 +195,17 @@ func (s *Service) Upload(
 	class := strings.TrimSpace(in.Classification)
 	if class == "" {
 		class = defaultClass(in.EntityType)
+	}
+	// `data_class` is a Postgres enum, so an unknown value reaches the insert
+	// and comes back as SQLSTATE 22P02 -- which this service reported as a
+	// 500, telling a caller who mistyped one word that something went wrong on
+	// our side. It is their input, and the refusal should say so and say what
+	// is allowed.
+	if !dataClasses[class] {
+		return Document{}, errs.Newf(errs.CodeInvalidInput,
+			"%q is not a sensitivity class. Use public, internal, personal or "+
+				"sensitive_personal, or leave it empty to let the record it is "+
+				"attached to decide.", class)
 	}
 
 	sum := sha256.Sum256(in.Bytes)
@@ -268,6 +290,18 @@ func (s *Service) entityBelongsHere(
 	ctx context.Context, tx pgx.Tx, companyID uuid.UUID,
 	entityType string, entityID uuid.UUID,
 ) error {
+	// The business's own papers -- the registration, the licences, the
+	// municipality permit -- are the documents a shop is most often asked for
+	// at short notice, and they hang off the company itself. Its id IS the
+	// company id, so there is no other table to look in: the check is that the
+	// caller named this company and not another one.
+	if entityType == "company" {
+		if entityID != companyID {
+			return errs.New(errs.CodeNotFound, "That record was not found.")
+		}
+		return nil
+	}
+
 	table, ok := entityTables[entityType]
 	if !ok {
 		return errs.New(errs.CodeInvalidInput,
@@ -289,8 +323,13 @@ func (s *Service) entityBelongsHere(
 
 // entityTables maps D6's attachment points to where they live.
 //
-// `company` is the exception: its own id is the company id, so it is checked
-// by a different predicate below rather than being bent into the same query.
+// `company` is the exception and is handled above rather than here: its own id
+// is the company id, so there is no second table to join to.
+//
+// Every other value the document_entity_valid CHECK permits must appear in
+// this map. One that does not is accepted by the database and refused by the
+// service, which reads to a caller as "that kind of record cannot hold
+// documents" for a kind the schema says can.
 var entityTables = map[string]string{
 	"purchase_invoice":     "purchase_bill",
 	"purchase_order":       "purchase_order",
@@ -306,6 +345,8 @@ var entityTables = map[string]string{
 	"installment_plan":     "installment_plan",
 	"incident":             "privacy_incident",
 	"data_subject_request": "data_subject_request",
+	// A warranty document belongs to the unit it covers, which is the serial.
+	"warranty": "stock_serial",
 }
 
 // List returns the documents attached to one record.
