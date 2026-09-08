@@ -36,8 +36,11 @@ import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
-import { useCompanyScope } from '@/lib/company/company-context';
+import { useCompany, useCompanyScope } from '@/lib/company/company-context';
+import { formatMoney } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
+
+import { IntercompanyPanel } from './intercompany';
 import { useUrlState } from '@/lib/url-state';
 
 interface Member {
@@ -73,6 +76,9 @@ interface Statement {
 function GroupsScreen() {
   const t = useT();
   const scope = useCompanyScope();
+  // Named apart from the `currency` state below, which is the box on the
+  // new-group form rather than the company's own.
+  const { currency: baseCurrency, market } = useCompany();
   const grants = useGrants();
   const mayManage = grants.can('group.manage');
 
@@ -98,6 +104,14 @@ function GroupsScreen() {
     scope && open ? `/groups/${open.id}/statement` : null,
     scope ?? undefined,
   );
+
+  // Year to date, which is the window somebody reviewing eliminations is
+  // working in. The statement above takes its own default; this is stated
+  // explicitly because the list has to say WHICH entries were left out, and
+  // "the ones in the period the server chose" is not an answer.
+  const today = new Date();
+  const icFrom = `${today.getUTCFullYear()}-01-01`;
+  const icTo = today.toISOString().slice(0, 10);
 
   async function create() {
     if (!scope || !name.trim()) return;
@@ -355,6 +369,23 @@ function GroupsScreen() {
               />
             )}
           </section>
+
+          {scope && open ? (
+            <IntercompanyPanel
+              groupId={open.id}
+              members={open.members ?? []}
+              companyId={scope.company_id}
+              from={icFrom}
+              to={icTo}
+              money={(v) =>
+                formatMoney(v, {
+                  currency: statement.data?.currency ?? baseCurrency,
+                  market,
+                })
+              }
+            />
+          ) : null}
+
         </div>
       ) : null}
     </>

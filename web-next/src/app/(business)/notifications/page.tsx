@@ -31,14 +31,15 @@ import { BellOff } from 'lucide-react';
 import { Suspense, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/field';
+import { Can } from '@/components/auth/guard';
+import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
 import { Tabs } from '@/components/ui/tabs';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
-import { messageFor } from '@/lib/api/errors';
+import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
 import { useCompanyScope } from '@/lib/company/company-context';
 import { useT } from '@/lib/i18n/locale';
@@ -93,6 +94,16 @@ function NotificationsScreen() {
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Sending a notice. The one write on this screen that reaches somebody
+  // else's inbox, which is why it is the one carrying a permission -- and why
+  // it is a deliberate panel rather than a box always sitting open.
+  const [composing, setComposing] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [severity, setSeverity] = useState('info');
+  const [sent, setSent] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
 
   const rows = data?.data ?? [];
   const unread = rows.filter((n) => !n.is_read).length;
@@ -218,6 +229,33 @@ function NotificationsScreen() {
     })),
   ];
 
+  async function announce() {
+    if (!scope) return;
+    setBusy(true);
+    setActionError(null);
+    setFieldErrors(null);
+    setSent(null);
+    try {
+      await api.post(`/notifications/announce?company_id=${scope.company_id}`, {
+        title: subject,
+        body: message,
+        severity,
+      });
+      setComposing(false);
+      setSubject('');
+      setMessage('');
+      setSeverity('info');
+      setSent(t('nx.ntf.announceSent'));
+      // The sender is in this company too, so their own inbox now has it.
+      void refetch();
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (error) return <ErrorState error={error} onRetry={() => void refetch()} />;
 
   return (
@@ -226,11 +264,26 @@ function NotificationsScreen() {
         title={t('nx.ntf.title')}
         description={t('nx.ntf.subtitle')}
         actions={
-          active === 'all' && unread > 0 ? (
-            <Button variant="secondary" busy={busy} onClick={() => void markAll()}>
-              {t('nx.ntf.markAll', { count: String(unread) })}
-            </Button>
-          ) : null
+          <span className="flex flex-wrap items-center gap-2">
+            {active === 'all' && unread > 0 ? (
+              <Button variant="secondary" busy={busy} onClick={() => void markAll()}>
+                {t('nx.ntf.markAll', { count: String(unread) })}
+              </Button>
+            ) : null}
+            {!composing ? (
+              <Can permission="notification.manage">
+                <Button
+                  onClick={() => {
+                    setSent(null);
+                    setActionError(null);
+                    setComposing(true);
+                  }}
+                >
+                  {t('nx.ntf.announce')}
+                </Button>
+              </Can>
+            ) : null}
+          </span>
         }
       />
 
@@ -245,6 +298,64 @@ function NotificationsScreen() {
       />
 
       <FormError message={actionError} className="my-4" />
+
+      {sent ? (
+        <p className="my-4 text-body text-positive-fg">{sent}</p>
+      ) : null}
+
+      {composing ? (
+        <Panel
+          title={t('nx.ntf.announceTitle')}
+          description={t('nx.ntf.announceHint')}
+          className="mb-4"
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              name="title"
+              label={t('nx.ntf.announceSubject')}
+              error={fieldErrors?.title}
+            >
+              <Input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                required
+              />
+            </Field>
+            <Field name="severity" label={t('nx.ntf.announceSeverity')}>
+              <Select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value)}
+              >
+                <option value="info">{t('nx.ntf.sevInfo')}</option>
+                <option value="warning">{t('nx.ntf.sevWarning')}</option>
+                <option value="critical">{t('nx.ntf.sevCritical')}</option>
+              </Select>
+            </Field>
+            <div className="sm:col-span-2">
+              <Field name="body" label={t('nx.ntf.announceBody')}>
+                <Textarea
+                  rows={3}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              disabled={busy || subject.trim() === ''}
+              onClick={() => void announce()}
+            >
+              {t('nx.ntf.announceSend')}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setComposing(false)}>
+              {t('nx.ntf.announceCancel')}
+            </Button>
+          </div>
+        </Panel>
+      ) : null}
 
       {active === 'settings' ? (
         <Panel description={t('nx.ntf.prefsHint')} flush>

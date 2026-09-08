@@ -19,6 +19,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // --- F4, group consolidation ---------------------------------------------
@@ -299,5 +302,144 @@ func TestAnalyticsNeedsTheReportingPermission(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
 		t.Error("a cashier read the analytics dashboard")
+	}
+}
+
+// Marking an entry takes it out of the consolidated statement (F4).
+//
+// F4 says inter-company transactions are "tracked and eliminated in
+// consolidation". Elimination was built and tracking had no way in: `POST
+// /groups/intercompany` was live and uncalled, so nothing was ever marked,
+// nothing was ever eliminated, and a group that invoiced itself reported the
+// internal sale as group revenue — a plausible-looking figure it did not earn.
+//
+// This asserts the property the feature exists for, rather than that the route
+// answers: the count of eliminated entries rises when an entry is marked, and
+// falls again when it is unmarked.
+func TestMarkingAnEntryEliminatesItFromTheGroupStatement(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	groupID := newGroupWithMember(t, h, f)
+
+	// A SECOND company in the same group, because a company cannot trade with
+	// itself: `intercompany_not_self` refuses it, correctly. The whole idea is
+	// a sale from one entity in the group to another.
+	var sister uuid.UUID
+	if err := h.pool.TxAsTenant(t.Context(), f.tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), `
+			INSERT INTO company (tenant_id, legal_name, country, base_currency)
+			VALUES ($1, 'Sister Co', 'sa', 'SAR') RETURNING id`,
+			f.tenantID).Scan(&sister)
+	}); err != nil {
+		t.Fatalf("create the sister company: %v", err)
+	}
+	joined := h.do(t, http.MethodPost,
+		"/api/v1/groups/"+groupID+"/members?company_id="+f.companyID.String(),
+		f.token, map[string]any{
+			"company_id": sister.String(), "ownership_pct": "100",
+		})
+	if joined.StatusCode != http.StatusOK && joined.StatusCode != http.StatusCreated {
+		t.Fatalf("add the sister to the group: %d %s",
+			joined.StatusCode, readBody(t, joined))
+	}
+	joined.Body.Close()
+
+	debit, credit := twoAccounts(t, h, f)
+	posted := postJournal(t, h, f,
+		journalBody(debit, credit, "500.00", "500.00", "A sale to our sister company."))
+	if posted.StatusCode != http.StatusOK && posted.StatusCode != http.StatusCreated {
+		t.Fatalf("post a journal: %d %s", posted.StatusCode, readBody(t, posted))
+	}
+	// The LEDGER entry, not the manual journal's own id. `intercompany_entry`
+	// references the former, and the two are different uuids on the same
+	// response -- which is exactly why the form picks from the register rather
+	// than asking somebody to copy one across.
+	entryID, _ := decodeJSONFrom(t, posted)["journal_entry_id"].(string)
+	if entryID == "" {
+		t.Fatal("the posted journal has no ledger entry id to mark")
+	}
+
+	company := "?company_id=" + f.companyID.String()
+	window := "&from=2026-01-01&to=2026-12-31&statement=profit_and_loss"
+
+	eliminated := func() float64 {
+		resp := h.do(t, http.MethodGet,
+			"/api/v1/groups/"+groupID+"/statement"+company+window, f.token, nil)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("group statement: %d %s", resp.StatusCode, readBody(t, resp))
+		}
+		body := decodeJSON(t, resp)
+		wrapped, _ := body["statement"].(map[string]any)
+		if wrapped == nil {
+			t.Fatalf("the response carries no statement: %v", body)
+		}
+		n, ok := wrapped["eliminated_entries"].(float64)
+		if !ok {
+			t.Fatalf("the statement carries no eliminated_entries: %v", wrapped)
+		}
+		return n
+	}
+
+	before := eliminated()
+
+	mark := h.do(t, http.MethodPost, "/api/v1/groups/intercompany"+company, f.token,
+		map[string]any{
+			"entry_id":        entryID,
+			"counterparty_id": sister.String(),
+			"kind":            "sale",
+			"note":            "Sold to our sister company.",
+		})
+	if mark.StatusCode != http.StatusOK && mark.StatusCode != http.StatusNoContent {
+		t.Fatalf("mark the entry: %d %s", mark.StatusCode, readBody(t, mark))
+	}
+	mark.Body.Close()
+
+	if after := eliminated(); after != before+1 {
+		t.Errorf("eliminated entries went %v -> %v, want one more; a marked "+
+			"entry that is still counted is group revenue the group did not earn",
+			before, after)
+	}
+
+	// It appears in the list of what was left out, which is what makes the
+	// difference explainable to whoever reads the statement.
+	listed := h.do(t, http.MethodGet,
+		"/api/v1/groups/"+groupID+"/intercompany"+company+"&from=2026-01-01&to=2026-12-31",
+		f.token, nil)
+	body := readBody(t, listed)
+	listed.Body.Close()
+	if !containsText(body, entryID) {
+		t.Errorf("the marked entry is not in the intercompany list: %s", body)
+	}
+
+	// Unmarking is the same route, and puts the figure back.
+	unmark := h.do(t, http.MethodPost, "/api/v1/groups/intercompany"+company, f.token,
+		map[string]any{"entry_id": entryID, "unmark": true})
+	if unmark.StatusCode != http.StatusOK && unmark.StatusCode != http.StatusNoContent {
+		t.Fatalf("unmark: %d %s", unmark.StatusCode, readBody(t, unmark))
+	}
+	unmark.Body.Close()
+
+	if after := eliminated(); after != before {
+		t.Errorf("after unmarking, eliminated entries is %v, want %v back", after, before)
+	}
+}
+
+// A cashier cannot decide what leaves the group's figures.
+func TestOnlyAGroupManagerMayMarkAnEntryIntercompany(t *testing.T) {
+	h := newHarness(t)
+	f := h.seedShop(t, "owner")
+	cashier := h.seedUserIn(t, f, "cashier")
+
+	resp := h.do(t, http.MethodPost,
+		"/api/v1/groups/intercompany?company_id="+f.companyID.String(), cashier,
+		map[string]any{
+			"entry_id":        newUUID().String(),
+			"counterparty_id": f.companyID.String(),
+			"kind":            "sale",
+		})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("a cashier marking an entry answered %d, want 403", resp.StatusCode)
 	}
 }

@@ -39,6 +39,8 @@ import { cn } from '@/lib/utils';
 
 import type { CustomerRow } from '../page';
 
+import { SizesPanel } from './sizes';
+
 interface LedgerRow {
   date: string;
   kind: string;
@@ -347,6 +349,16 @@ function CustomerScreen() {
           </div>
         )}
       </Can>
+
+      {/* Sizes before the ledger. Somebody opening a customer with that
+          customer standing in front of them wants the size, not the ageing --
+          B16 calls this the high-value CRM feature and it is the one a shop
+          assistant uses every day. */}
+      {scope ? (
+        <div className="mb-6">
+          <SizesPanel customerId={id} companyId={scope.company_id} />
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-6">
         <Panel

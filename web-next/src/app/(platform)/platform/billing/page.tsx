@@ -150,6 +150,17 @@ function BillingScreen() {
     setActionError(null);
   }, [tenantId]);
 
+  // The real price list, rather than four options typed into this file.
+  //
+  // `GET /plans` answers {tier: [features]} and is the same for every client --
+  // the route says so, "a public one". It had no caller at all, and the tier
+  // dropdown here was four hard-coded strings, so adding or renaming a tier
+  // would leave an operator moving a client onto a tier the product does not
+  // have. It also lets the operator see what a tier INCLUDES before moving
+  // somebody onto it, which is the question they are actually asking.
+  const plans = useApi<{ plans: Record<string, string[]> }>('/plans');
+  const tiers = Object.keys(plans.data?.plans ?? {});
+
   const [tier, setTier] = useState('');
   useEffect(() => {
     if (sub?.tier) setTier(sub.tier);
@@ -359,12 +370,31 @@ function BillingScreen() {
             <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-line pt-4">
               <Field name="tier" label={t('nx.plat.biChangeTier')}>
                 <Select value={tier} onChange={(e) => setTier(e.target.value)}>
-                  <option value="starter">{t('nx.plat.tierStarter')}</option>
-                  <option value="professional">{t('nx.plat.tierProfessional')}</option>
-                  <option value="business">{t('nx.plat.tierBusiness')}</option>
-                  <option value="enterprise">{t('nx.plat.tierEnterprise')}</option>
+                  {/* Falls back to the client's own tier while the list is in
+                      flight, so the control is never empty and never silently
+                      changes what it is showing. */}
+                  {(tiers.length > 0 ? tiers : [sub.tier]).map((name) => (
+                    <option key={name} value={name}>
+                      {t(
+                        `nx.plat.tier${name.charAt(0).toUpperCase()}${name.slice(1)}` as
+                          'nx.plat.tierStarter',
+                      )}
+                    </option>
+                  ))}
                 </Select>
               </Field>
+
+              {/* What the tier being chosen actually grants. An operator moving
+                  a client between tiers is deciding what that client may do,
+                  and the answer was on no screen at all. */}
+              {tier ? (
+                <p className="max-w-prose basis-full pb-1 text-caption text-muted">
+                  <span className="text-fg">{t('nx.plat.biTierIncludes')}: </span>
+                  {(plans.data?.plans?.[tier] ?? []).length > 0
+                    ? (plans.data?.plans?.[tier] ?? []).join(', ')
+                    : t('nx.plat.biTierNothing')}
+                </p>
+              ) : null}
               <Button
                 busy={busy}
                 busyLabel={t('nx.plat.biSaving')}
