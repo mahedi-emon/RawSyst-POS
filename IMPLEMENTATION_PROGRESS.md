@@ -6521,3 +6521,227 @@ branch that has not set its own country.
 
 The last four are the honest remainder of this phase: each is a route with no
 screen, each is small, and none of them blocks a business from trading.
+
+---
+
+# FINAL COMPLETION — 2026-09-09
+
+**Brief:** audit the four remaining screenless routes against the Blueprint,
+build UI only where one is genuinely required, hunt for anything else
+unreachable, keep the EOSB gate honest, harden for 8GB, and leave the stack
+running.
+
+## The four screenless routes
+
+Audited against the Blueprint before anything was written. Three needed a
+screen; one needed to be wired somewhere it already belonged.
+
+| Route | Verdict | Why |
+|---|---|---|
+| **Customer sizes** `GET/PUT/DELETE /customers/{id}/sizes` | **UI built** | Blueprint §442 names it exactly: "store each customer's confirmed sizes ... so staff instantly know their size on the next visit". That is only true if it is on the screen somebody opens when the customer walks in. Three routes live and uncalled since B16 landed; the assistant asked every time |
+| **Inter-company marking** `GET /groups/{id}/intercompany`, `POST /groups/intercompany` | **UI built** | F4 says inter-company trade is "tracked and eliminated in consolidation". Elimination was built — the group P&L excludes any entry in `intercompany_entry` and reports what it removed — and nothing could mark. So nothing was ever eliminated and a group that invoiced itself reported the internal sale as group revenue |
+| **Announcing a notice** `POST /notifications/announce` | **UI built** | `notification.manage` was a grantable permission with nothing to exercise it: an owner could hand somebody the right to announce and there was no way to announce |
+| **Plan catalogue** `GET /plans` | **No new screen, wired instead** | It is the price list, the same for every client — the route says so. H5 asks for tiers and per-tenant flags, not a customer-facing upsell, and `/settings/subscription` already answers "what do I have". Its real consumer was the Platform Owner's tier picker, which was **four strings hard-coded into the page**: adding or renaming a tier would have left an operator moving a client onto a tier the product does not have |
+
+The intercompany form **picks** the entry from the adjustment register rather
+than taking a uuid. `intercompany_entry` references the ledger entry, which is
+`journal_entry_id` — a different uuid from the journal's own `id` on the same
+response. Asking somebody to copy the right one of two between screens is how
+the wrong entry gets eliminated.
+
+## What the reachability audit found after that
+
+A route counts as reached when every literal segment of it appears in the front
+end, whether written after a slash or passed as a bare string. The naive
+version reports every `act('pick')` call as dead and buries the real findings;
+this one went 21 → 10 → 9 candidates, each then checked by hand.
+
+**Three real gaps, all of the same shape — something recorded that never
+arrived:**
+
+* **The shop's logo.** `/settings/business` carried a "print the logo on
+  documents" switch and four routes for the logo itself, and called none of
+  them. A shop could promise its mark on every receipt and had no way to supply
+  one. Built: upload, replace, remove, with the preview re-read from the served
+  file so it cannot show an image the server rejected.
+* **Stock reservations never expired.** `ReservationExpirySweeper` was written
+  and **registered on the worker**, and the scheduler never enqueued it — the
+  exact failure its own comment describes. An abandoned basket held the last
+  unit for ever, through every channel. Enqueued hourly.
+* **Store credit never expired.** `wallet.ExpireCredit` existed and
+  `POST /store-credit/expire` exposed it; no screen, no handler, no schedule. A
+  credit note with a twelve-month expiry stayed spendable in year three and the
+  liability was a figure nobody could retire. Handler written, enqueued daily.
+
+Writing that sweeper found why it could never have run from a job: the
+write-back posted with `PostedBy: &scope.UserID`, and a scheduled job has no
+user, so the zero uuid violated `journal_entry_posted_by_fkey`. The column is
+nullable for exactly this reason; NULL is honest and uuid-zero is a name
+belonging to nobody.
+
+**Six left, each documented rather than built:**
+
+| Route | Why it stays screenless |
+|---|---|
+| `/pos/stationery`, `/pos/sales/{id}/reprint`, `/pos/sales/{id}/signed-document` | The till's own surface. The back office is not the client |
+| `POST /stock/reservations`, `DELETE /stock/reservations/{orderID}` | B13's second sales channel calls these over the API — H6's integration surface. Covered by `TestReservedStockCannotBeSoldTwice` |
+| `POST /backups/{id}/finish` | Called by the backup process when it completes, machine to machine. `verify`, the human act, is on the screen |
+| `POST /payment-gateways/{id}/charge`, `POST /payment-attempts/{id}/refund` | Taking a card payment is a till action. The back office configures the gateway and reads the attempts, which it does |
+
+**Pages nothing links to: 0**, of 137.
+
+## Deployment: three defects, each found by running it
+
+`docker compose up` produced something that looked healthy and could not be
+used.
+
+1. **It could not start at all.** The optional services declared secrets with
+   `${VAR:?message}`, and compose interpolates the whole file **before** it
+   filters by profile — so the command this file's own header advertises failed
+   on three variables belonging to services it was not going to start. Profiles
+   cannot fix that. Redis, nginx, minio and prometheus moved to override files
+   that declare and validate their own secrets; the base file is the four
+   services the product needs.
+2. **The back office could not reach the API.** Every proxied request 500'd
+   against `http://localhost:8080` inside the web container. Next resolves
+   `rewrites()` at **build** time and freezes it into
+   `required-server-files.json`, so the runtime variable compose set was read by
+   nothing. It is a build argument now, defaulting to the compose service
+   rather than to localhost.
+3. **Nobody could sign in.** A fresh deployment migrates cleanly, comes up
+   healthy and has no user: a platform operator is a user with no tenant, and
+   every route that could create one sits behind the guard it would be needed to
+   pass. `devseed` refuses in production and would invent a demo shop anyway. So
+   the product was correct and unusable, and the first actor in its own business
+   model could not get in.
+
+   **`cmd/bootstrap`** creates that operator and nothing else — no tenant, no
+   business data — prints a generated password once, requires it changed at
+   first sign-in, and **refuses if any platform operator already exists**,
+   counted inside the inserting transaction. That refusal is what separates a
+   bootstrap from a back door.
+
+## EOSB — what is implemented and what is not
+
+Everything RawSyst owns is done and was verified this session:
+
+| | |
+|---|---|
+| Both service bands | read from the rule; the band is decided by service at the month charged |
+| Wage basis | read from the rule, closed vocabulary, unknown basis refused **by name** |
+| Accrual | posts, one charge per person per month, append-only |
+| Rule resolution | dated, per-tenant override honoured, cache invalidated on write |
+| Refusal while unverified | `Decimal()` refuses on `__VERIFY__` regardless of strict mode |
+| Recording flow | `/platform/rules`, supersedes rather than overwrites, `__VERIFY__` cannot be written back, an unverified value must carry a note |
+| Audit | `verified_by`/`verified_on` stamped; history preserved by superseding |
+| Point-of-use gate | every use refused while unverified |
+| Production boot gate | a deployment serving that market refuses to start |
+
+**Neither gate was weakened.** What changed is that the screen now says what to
+do: it names each blocking rule, lists which payload fields still hold
+`__VERIFY__`, links the published document, says why RawSyst cannot supply the
+figure, and states what happens once it is recorded. The record button seeds the
+form from the rule being replaced so the operator types the **figure** rather
+than re-entering the key, country, authority and document already on record.
+
+**The only external input in the product** is a person reading the end-of-service
+award in the Saudi Labour Law and putting their name to having read it.
+
+## Resources, measured on the running stack
+
+| Container | Resident | Ceiling |
+|---|---|---|
+| `db` | 18.5 MiB | 384 MiB |
+| `api` | 70.2 MiB | 256 MiB |
+| `web` | 47.6 MiB | 256 MiB |
+| `worker` | 4.2 MiB | 128 MiB |
+| **total** | **~140 MiB** | **1,024 MiB** |
+
+Database connections inside the stack: **8 of 20**.
+
+| Image | Size |
+|---|---|
+| `rawsyst/backend` | **76.2 MB** (`scratch`, four static binaries, non-root) |
+| `rawsyst/web` | **329 MB** (distroless, no shell, non-root) |
+| `postgres:17-alpine` | 424 MB |
+
+The backend grew 62.8 → 76.2 MB when `bootstrap` was added, which is the price
+of a deployment anybody can sign into.
+
+Docker build cache reached **6,641 MB** across the session's image builds and
+was reclaimed by `make maintenance` — **with all four containers left running
+and healthy, and no volume touched.**
+
+Fixing that cleanup found a defect in the tool itself: `docker system df` puts
+the value and its unit in one field (`6.364GB`, with `(13%)` as the second), and
+the parser tested the unit against the percentage. It never matched GB, read
+everything as megabytes, and reported 6.4 GB as 6 MB — then said nothing was
+over threshold, which is the worst failure available to a tool whose job is to
+notice.
+
+## What maintenance now reports and does
+
+`make doctor` · `make resource-check` · `make maintenance` · `make cleanup`
+
+Reports: Go build and module caches, npm cache, Next output, build artefacts,
+logs, Docker reclaimable and this project's image sizes, free disk, **RAM in use
+against total**, **this project's own processes by name with their working
+set**, and **database connections against `max_connections`** — every one a
+server-side process, which is the RAM figure a misconfigured pool moves.
+
+Judges two things and refuses a third: it says to run the heavy suites one at a
+time below a free-memory floor, warns when more than one API process is running
+(the second cannot have bound :8080), and **never kills anything** — an editor's
+language server is also a node process.
+
+Cleans only what is over a configurable threshold. Never a volume, never a
+running container, never the module cache unless asked, and **nothing at all**
+when `RAWSYST_ENV` says production. There is no cleanup at startup: a build
+cache emptied on every run never helps.
+
+## Verification
+
+    clean migration from zero    130 migrations, 183 tables, 175 forced RLS,
+                                 175 policies, 44 rules, 542 CDTFA rates    PASS
+    backend, every package       integration tags, fresh test database      PASS
+    backend, internal/api        335s                                       PASS
+    go vet / vet -tags=integration                                          PASS
+    gofmt -s -l                  clean
+    lint-wording                 1,423 files                                PASS
+    typecheck                    shared and web-next                        PASS
+    web-next tests               491 passed / 30 files                      PASS
+    shared tests                 482 passed / 29 files                      PASS
+    production build             137 routes, 121 static pages               PASS
+    check:contract               493 routes, 110 permissions (103 gated)    PASS
+    verify:api                   ALL SCREEN CONTRACTS VERIFIED, fresh DB    PASS
+    verify:rbac                  EVERY BOUNDARY HELD                        PASS
+    the four routes, driven      sizes recorded/corrected/forgotten/refused
+                                 cross-tenant; notice refused empty then
+                                 delivered; price list four tiers           PASS
+    intercompany, tested         marking eliminates, unmarking restores,
+                                 a cashier is refused                       PASS
+    credit expiry, tested        lapsed retired, in-date left, twice is once,
+                                 no tenant fails permanently                PASS
+    docker images rebuilt        backend 76.2MB, web 329MB                  PASS
+    docker compose up            four containers healthy                    PASS
+    bootstrap                    operator created, second attempt refused   PASS
+    sign-in through :3000        200, proxied to the API container          PASS
+
+Unexercised payload shapes against a fresh database: **6**. Two are refused on
+purpose — a data breach starts a 72-hour regulatory clock and a failed
+background job is an incident an operator must act on — and four need an act
+this fixture cannot honestly perform: a member of the public asking for a
+return, an outbound webhook to a third party, a branch that has not set its own
+country, and a shift outside the register's window.
+
+## Blueprint
+
+    COMPLETE                     74
+    N/A, an engine or optional    3  — C9 posting engine, I3 numbering
+                                      engine, E1.3 offline B2B rules
+    PARTIAL                       0
+    NOT STARTED                   0
+
+B16 (fitting history) and F4 (inter-company) were COMPLETE against their
+backends and are now complete against a user. I1/I2 gained the logo the
+document template already promised.
