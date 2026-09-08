@@ -136,12 +136,20 @@ docker_mb() {
   docker_ok || { echo 0; return; }
   # Reclaimable across images, containers and build cache. Volumes are counted
   # but never acted on.
+  #
+  # The value and its unit are ONE field -- "6.364GB", with "(13%)" as the
+  # second -- so an earlier version tested the unit against the percentage,
+  # never matched GB, and reported six gigabytes of build cache as six
+  # megabytes. It then cheerfully reported nothing was over threshold.
   docker system df --format '{{.Reclaimable}}' 2>/dev/null |
     awk '{
-      v=$1; u=$2;
-      gsub(/[^0-9.]/,"",v);
-      if (u ~ /GB/) v*=1024; else if (u ~ /kB|B$/ && u !~ /MB|GB/) v/=1024;
-      s+=v
+      f = $1
+      v = f; gsub(/[^0-9.]/, "", v)
+      if (f ~ /GB/)      v *= 1024
+      else if (f ~ /kB/) v /= 1024
+      else if (f ~ /MB/) v = v
+      else               v /= (1024 * 1024)   # plain bytes
+      s += v
     } END { printf "%d", s }'
 }
 
