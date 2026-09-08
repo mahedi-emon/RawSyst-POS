@@ -44,8 +44,10 @@ import { EmptyState, ErrorState } from '@/components/ui/states';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
-import { useApiList } from '@/lib/api/hooks';
+import { useApi, useApiList } from '@/lib/api/hooks';
 import { useT } from '@/lib/i18n/locale';
+
+import { GuidedRuleForm, type SourceRule } from './guided';
 import { useUrlState } from '@/lib/url-state';
 
 interface Rule {
@@ -119,6 +121,18 @@ function RulesScreen() {
     form.country ? { country: form.country } : undefined,
   );
   const offered = authorities.data?.data ?? [];
+
+  // Where each unrecorded value comes from, so a blocking rule is closed by
+  // typing labelled figures rather than by composing a JSON payload from the
+  // placeholder keys.
+  const sources = useApi<{ version: string; rules: SourceRule[] }>(
+    '/platform/rules/sources',
+  );
+  const sourceFor = (key: string) =>
+    (sources.data?.rules ?? []).find((r) => r.rule_key === key);
+
+  // Which blocking rule is being recorded through the guided form.
+  const [guiding, setGuiding] = useState<string | null>(null);
 
   const rows = data?.data ?? [];
 
@@ -319,10 +333,48 @@ function RulesScreen() {
                     {t('nx.plat.ruBlockedAfter')}
                   </p>
 
+                  {guiding === r.rule_key && sourceFor(r.rule_key) ? (
+                    <div className="mt-3">
+                      <GuidedRuleForm
+                        source={sourceFor(r.rule_key)!}
+                        blocker={r.release_blocker}
+                        onRecorded={() => {
+                          setGuiding(null);
+                          void refetch();
+                        }}
+                        onCancel={() => setGuiding(null)}
+                        onAdvanced={() => {
+                          setGuiding(null);
+                          setForm({
+                            ...form,
+                            rule_key: r.rule_key,
+                            country: r.country,
+                            source_authority: r.source_authority ?? '',
+                            source_document: r.source_document ?? '',
+                            source_url: r.source_url ?? '',
+                            release_blocker: true,
+                            verified: false,
+                            payload: JSON.stringify(r.payload, null, 2),
+                          });
+                          setOpen(true);
+                        }}
+                      />
+                    </div>
+                  ) : null}
+
                   <div className="mt-1">
                     <Button
                       size="sm"
                       onClick={() => {
+                        // The guided form when the pack describes this rule,
+                        // and the raw payload when it does not -- a rule whose
+                        // shape changed before the pack caught up still has to
+                        // be recordable.
+                        if (sourceFor(r.rule_key)) {
+                          setGuiding(r.rule_key);
+                          setOpen(false);
+                          return;
+                        }
                         // Seeded from the rule being replaced, so the operator
                         // types the FIGURE rather than re-entering the key,
                         // the country, the authority and the document that are

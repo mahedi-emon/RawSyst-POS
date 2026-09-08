@@ -2410,6 +2410,11 @@ func (s *Server) Routes() []Route {
 				"a foreign key, and the screen offered a free text box over it: " +
 				"typing an authority's name rather than its code was refused " +
 				"with \"A referenced record does not exist\""},
+		{http.MethodGet, "/api/v1/platform/rules/sources", AccessSuperAdmin, "",
+			s.handleRuleSources,
+			"where each unrecorded legal value comes from: the document, the " +
+				"articles, and what each field of the payload means. The figures " +
+				"are not here; reading them is a person's act"},
 		{http.MethodPost, "/api/v1/platform/rules", AccessSuperAdmin, "",
 			s.handleRecordRule,
 			"records a legal value against the document it came from; a " +

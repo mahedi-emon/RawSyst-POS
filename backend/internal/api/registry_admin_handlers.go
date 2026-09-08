@@ -46,6 +46,28 @@ type recordRuleRequest struct {
 	Verified bool `json:"verified"`
 }
 
+// handleRuleSources says where each unrecorded legal value comes from.
+//
+// The read half of closing a release blocker. Without it the only way past a
+// `__VERIFY__` was to compose a JSON payload from the placeholder keys alone,
+// having worked out unaided what `resignation_fraction_two_to_five_years`
+// means, in what unit, from which article of which law.
+//
+// Everything here is what the product can legitimately establish: the
+// document, the articles, the field names, their units and what each one is.
+// The FIGURES are not here and deliberately so -- see internal/registry
+// sources.go for why shipping them would be a guess wearing the clothes of a
+// rule.
+func (s *Server) handleRuleSources(w http.ResponseWriter, r *http.Request) {
+	pack, err := registry.Sources()
+	if err != nil {
+		httpx.Error(w, r, errs.Wrap(err, errs.CodeInternal,
+			"The regulatory source pack could not be read."))
+		return
+	}
+	httpx.JSON(w, http.StatusOK, pack)
+}
+
 func (s *Server) handleRecordRule(w http.ResponseWriter, r *http.Request) {
 	var req recordRuleRequest
 	if err := httpx.Decode(r, &req); err != nil {

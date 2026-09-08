@@ -1,0 +1,158 @@
+{
+  "version": "2026-09-09",
+  "note": "Structure and citation only, never figures. See internal/registry/sources.go for why.",
+  "rules": [
+    {
+      "rule_key": "SA.EOSB.ENTITLEMENT",
+      "country": "sa",
+      "title": "End-of-service award",
+      "authority": "mhrsd",
+      "document": "Saudi Labour Law, end-of-service award",
+      "url": "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/b7cfae89-828e-4569-b31a-a9a700f2ec1d/1",
+      "articles": [
+        "84",
+        "85"
+      ],
+      "reading": "Article 84 sets the award itself and the wage it is computed on. Article 85 sets what a worker who resigns receives as a fraction of that award.",
+      "fields": [
+        {
+          "name": "wage_basis",
+          "label": "Which wage the award is computed on",
+          "kind": "choice",
+          "choices": [
+            "basic",
+            "basic_plus_housing",
+            "basic_plus_all_allowances"
+          ],
+          "article": "84",
+          "help": "Article 84 computes the award on the LAST wage. Which components that wage includes decides the amount, and this product understands exactly these three. Choosing one asserts what the law and the contract make the wage."
+        },
+        {
+          "name": "days_per_year_first_five",
+          "label": "Days of wage per year, first five years",
+          "kind": "decimal",
+          "unit": "days",
+          "article": "84",
+          "help": "Expressed as days of wage per completed year of service, on a 30-day month. A half-month is 15."
+        },
+        {
+          "name": "days_per_year_after_five",
+          "label": "Days of wage per year, after five years",
+          "kind": "decimal",
+          "unit": "days",
+          "article": "84",
+          "help": "Same unit. A whole month is 30."
+        },
+        {
+          "name": "resignation_fraction_under_two_years",
+          "label": "Fraction on resignation, under two years",
+          "kind": "decimal",
+          "unit": "fraction",
+          "article": "85",
+          "help": "A fraction of the Article 84 award, between 0 and 1."
+        },
+        {
+          "name": "resignation_fraction_two_to_five_years",
+          "label": "Fraction on resignation, two to five years",
+          "kind": "decimal",
+          "unit": "fraction",
+          "article": "85",
+          "help": "A fraction of the Article 84 award, between 0 and 1."
+        },
+        {
+          "name": "resignation_fraction_five_to_ten_years",
+          "label": "Fraction on resignation, five to ten years",
+          "kind": "decimal",
+          "unit": "fraction",
+          "article": "85",
+          "help": "A fraction of the Article 84 award, between 0 and 1."
+        }
+      ]
+    },
+    {
+      "rule_key": "SA.WPS.SUBMISSION_TIMING",
+      "country": "sa",
+      "title": "Wage protection submission timing",
+      "authority": "mhrsd",
+      "document": "Mudad submission rules",
+      "url": "https://www.mudad.com.sa",
+      "articles": [],
+      "reading": "The published Mudad rules state how far ahead of payday a wage file must be sent, and how long after the period ends wages may be paid. Mudad cross-references GOSI and Qiwa, so a mismatch can freeze portal access rather than merely reject a file.",
+      "fields": [
+        {
+          "name": "lead_time_business_days",
+          "label": "Business days before payday the wage file is due",
+          "kind": "int",
+          "unit": "business days",
+          "article": "",
+          "help": "Counted in business days, not calendar days."
+        },
+        {
+          "name": "payment_window_days",
+          "label": "Days after the pay period ends within which wages must be paid",
+          "kind": "int",
+          "unit": "days",
+          "article": "",
+          "help": "Calendar days from the end of the pay period."
+        }
+      ]
+    },
+    {
+      "rule_key": "SA.PDPL.CROSS_BORDER_TRANSFER",
+      "country": "sa",
+      "title": "Cross-border transfer conditions",
+      "authority": "sdaia",
+      "document": "Regulation on Personal Data Transfer Outside the Kingdom",
+      "url": "https://sdaia.gov.sa/en/SDAIA/about/Pages/PersonalDataProtection.aspx",
+      "articles": [],
+      "reading": "The regulation states the conditions under which personal data may leave the Kingdom. It decides hosting architecture: a second data region cannot be deployed until it is settled.",
+      "fields": [
+        {
+          "name": "conditions",
+          "label": "The conditions under which personal data may leave the Kingdom",
+          "kind": "text",
+          "article": "",
+          "help": "As the regulation states them. This decides where this deployment may host data, so record what the text says rather than what the deployment would prefer."
+        }
+      ]
+    },
+    {
+      "rule_key": "SA.ECOMMERCE.COOLING_OFF_DAYS",
+      "country": "sa",
+      "title": "Distance-selling cooling-off period",
+      "authority": "mci",
+      "document": "E-Commerce Law and Implementing Regulations",
+      "url": "https://mc.gov.sa",
+      "articles": [],
+      "reading": "The regulations set the withdrawal period and name the categories exempt from it. The number of days is already on file; the exemptions are not.",
+      "fields": [
+        {
+          "name": "category_exemptions",
+          "label": "Categories exempt from the return right",
+          "kind": "text",
+          "article": "",
+          "help": "The categories the regulations exempt, as they name them. `days` is already recorded; only this is outstanding."
+        }
+      ]
+    },
+    {
+      "rule_key": "SA.ECOMMERCE.REGISTRATION_CHANNEL",
+      "country": "sa",
+      "title": "Where an online store registers",
+      "authority": "mci",
+      "document": "Ministry of Commerce registration guidance",
+      "url": "https://mc.gov.sa",
+      "articles": [],
+      "reading": "The Ministry names the register an online store must appear in. This has been moving between Maroof and business.sa, which is why it is a recorded value rather than a constant in code.",
+      "fields": [
+        {
+          "name": "channel",
+          "label": "The register an online store must appear in",
+          "kind": "text",
+          "article": "",
+          "help": "The channel currently named by the Ministry, such as Maroof or business.sa."
+        }
+      ]
+    }
+  ]
+}

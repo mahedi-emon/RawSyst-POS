@@ -15,6 +15,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -825,5 +826,115 @@ func TestABusinessOwnerCannotChangeTheirOwnLimits(t *testing.T) {
 	if resp.StatusCode == http.StatusOK {
 		t.Error("a business raised its own limits, which is buying capacity " +
 			"without paying for it")
+	}
+}
+
+// The source pack describes every legal value nobody has recorded yet.
+//
+// The point of the pack is that an operator never has to work out what a
+// payload field means from its name. So the test that matters is not that the
+// route answers: it is that every rule still holding a placeholder HAS an
+// entry, and that the entry describes every field the placeholder does.
+//
+// If a migration adds an unverified rule and nobody adds it here, this fails —
+// which is the only thing standing between a future blocker and an operator
+// staring at a JSON textarea again.
+func TestEveryUnrecordedLegalValueSaysWhereItComesFrom(t *testing.T) {
+	h := newHarness(t)
+	token := platformAdmin(t, h)
+
+	resp := h.do(t, http.MethodGet, "/api/v1/platform/rules/sources", token, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("sources: %d %s", resp.StatusCode, readBody(t, resp))
+	}
+	pack := decodeJSONFrom(t, resp)
+	entries, _ := pack["rules"].([]any)
+	if len(entries) == 0 {
+		t.Fatal("the source pack is empty")
+	}
+
+	described := map[string]map[string]bool{}
+	for _, raw := range entries {
+		e, _ := raw.(map[string]any)
+		key, _ := e["rule_key"].(string)
+
+		// Provenance, or the entry is no better than the placeholder it
+		// replaces: a field list with no document to read it in is a form
+		// nobody can fill in correctly.
+		for _, must := range []string{"document", "url", "authority", "reading"} {
+			if v, _ := e[must].(string); strings.TrimSpace(v) == "" {
+				t.Errorf("%s: the source entry has no %s", key, must)
+			}
+		}
+
+		fields, _ := e["fields"].([]any)
+		if len(fields) == 0 {
+			t.Errorf("%s: the source entry names no fields", key)
+		}
+		described[key] = map[string]bool{}
+		for _, fr := range fields {
+			f, _ := fr.(map[string]any)
+			name, _ := f["name"].(string)
+			described[key][name] = true
+			if label, _ := f["label"].(string); strings.TrimSpace(label) == "" {
+				t.Errorf("%s.%s has no label", key, name)
+			}
+			if help, _ := f["help"].(string); strings.TrimSpace(help) == "" {
+				t.Errorf("%s.%s has no help; the name alone is what this "+
+					"pack exists to stop somebody guessing from", key, name)
+			}
+		}
+	}
+
+	// Now the direction that actually protects an operator: every placeholder
+	// in the database is described, field for field.
+	type unrecorded struct {
+		key     string
+		payload []byte
+	}
+	var open []unrecorded
+	if err := h.pool.TxAsPlatform(t.Context(), func(tx pgx.Tx) error {
+		rows, e := tx.Query(t.Context(), `
+			SELECT rule_key, payload FROM regulatory_rule
+			WHERE payload::text LIKE '%__VERIFY__%'
+			  AND effective_to IS NULL`)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var u unrecorded
+			if e := rows.Scan(&u.key, &u.payload); e != nil {
+				return e
+			}
+			open = append(open, u)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatalf("read the unrecorded rules: %v", err)
+	}
+
+	for _, u := range open {
+		fields, ok := described[u.key]
+		if !ok {
+			t.Errorf("%s still holds __VERIFY__ and the source pack does not "+
+				"say where it comes from; an operator would be back to "+
+				"guessing from the field names", u.key)
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(u.payload, &payload); err != nil {
+			t.Errorf("%s: payload is not an object: %v", u.key, err)
+			continue
+		}
+		for name, v := range payload {
+			if v != "__VERIFY__" {
+				continue
+			}
+			if !fields[name] {
+				t.Errorf("%s.%s is unfilled and the source pack does not "+
+					"describe it", u.key, name)
+			}
+		}
 	}
 }
