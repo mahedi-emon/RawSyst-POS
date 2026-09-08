@@ -135,6 +135,15 @@ function RulesScreen() {
     return byMarket;
   }, [rows]);
 
+  // The blocking rules themselves, not merely how many. A count told an
+  // operator that a market was closed and nothing whatever about how to open
+  // it -- which document to read, which fields are still unfilled, or what
+  // recording the value actually does.
+  const blockers = useMemo(
+    () => rows.filter((r) => r.release_blocker && !r.verified),
+    [rows],
+  );
+
   async function record() {
     setBusy(true);
     setSaveError(null);
@@ -162,6 +171,21 @@ function RulesScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * The fields of a payload still holding the placeholder.
+   *
+   * `__VERIFY__` is what makes an unfilled value refuse loudly at the point of
+   * use, so naming the fields is naming exactly what somebody has to go and
+   * look up. A rule with no payload at all has never been recorded, which is a
+   * different sentence.
+   */
+  function unfilled(payload: unknown): string[] {
+    if (!payload || typeof payload !== 'object') return [];
+    return Object.entries(payload as Record<string, unknown>)
+      .filter(([, v]) => v === '__VERIFY__')
+      .map(([k]) => k);
   }
 
   const columns: Column<Rule>[] = [
@@ -244,6 +268,90 @@ function RulesScreen() {
               </li>
             ))}
           </ul>
+
+          {/* Each one, named, with what it still needs. This is the whole
+              point of the panel: an operator arriving here wants to know what
+              to go and fetch, not that something is missing. */}
+          <div className="mt-5 flex flex-col gap-4 border-t border-line pt-4">
+            {blockers.map((r) => {
+              const missing = unfilled(r.payload);
+              return (
+                <div key={r.id} className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="num font-medium text-fg">{r.rule_key}</span>
+                    <Badge tone="critical">{r.country.toUpperCase()}</Badge>
+                  </div>
+
+                  <p className="text-body text-fg">
+                    <span className="text-muted">{t('nx.plat.ruBlockedWhat')}: </span>
+                    {missing.length > 0
+                      ? t('nx.plat.ruBlockedFields', { fields: missing.join(', ') })
+                      : t('nx.plat.ruBlockedNoFields')}
+                  </p>
+
+                  {r.source_document ? (
+                    <p className="text-caption text-muted">
+                      {t('nx.plat.ruBlockedSource', { document: r.source_document })}
+                      {r.source_url ? (
+                        <>
+                          {' · '}
+                          <a
+                            href={r.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline"
+                          >
+                            {t('nx.plat.ruBlockedOpen')}
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
+
+                  {r.notes ? (
+                    <p className="max-w-prose text-caption text-muted">{r.notes}</p>
+                  ) : null}
+
+                  <p className="max-w-prose text-caption text-muted">
+                    {t('nx.plat.ruBlockedWhy')}
+                  </p>
+                  <p className="max-w-prose text-caption text-muted">
+                    {t('nx.plat.ruBlockedAfter')}
+                  </p>
+
+                  <div className="mt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        // Seeded from the rule being replaced, so the operator
+                        // types the FIGURE rather than re-entering the key,
+                        // the country, the authority and the document that are
+                        // already on record.
+                        setForm({
+                          ...form,
+                          rule_key: r.rule_key,
+                          country: r.country,
+                          source_authority: r.source_authority ?? '',
+                          source_document: r.source_document ?? '',
+                          source_url: r.source_url ?? '',
+                          release_blocker: true,
+                          verified: false,
+                          payload: JSON.stringify(r.payload, null, 2),
+                        });
+                        setOpen(true);
+                      }}
+                    >
+                      {t('nx.plat.ruBlockedRecord')}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="mt-4 max-w-prose border-t border-line pt-3 text-caption text-muted">
+            {t('nx.plat.ruBlockedProduction')}
+          </p>
         </Panel>
       ) : null}
 
