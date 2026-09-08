@@ -183,6 +183,27 @@ func (s *Server) handleSetPlan(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"subscription": out})
 }
 
+// handleTenantFeatures lists one tenant's modules, for the operator who may
+// change them.
+//
+// The read half of H5's commercial flexibility. PUT .../features has existed
+// since the module gate landed and there was no GET, so the platform screen
+// that could grant a module had no way to show which modules a client already
+// had -- and an operator would have been toggling in the dark.
+func (s *Server) handleTenantFeatures(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenantParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.billing.EntitlementsOf(r.Context(), tenantID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := tenantParam(r)
 	if err != nil {

@@ -45,6 +45,8 @@ import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
 import { useT } from '@/lib/i18n/locale';
+
+import { ModulesPanel } from './modules';
 import { useUrlState } from '@/lib/url-state';
 
 interface Tenant {
@@ -440,6 +442,11 @@ function BillingScreen() {
               </Button>
             </div>
           </Panel>
+
+          {/* Modules before invoices: an operator opening a client's billing is
+              usually answering "why can they not use X", and that is this
+              panel rather than the invoice list. */}
+          <ModulesPanel tenantId={tenantId} />
 
           <Panel title={t('nx.plat.biInvoicesTitle')} flush>
             {(data?.invoices ?? []).length === 0 ? (

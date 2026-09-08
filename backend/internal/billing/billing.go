@@ -183,6 +183,39 @@ func (s *Service) Entitlements(
 ) ([]Entitlement, error) {
 	out := []Entitlement{}
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		var e error
+		out, e = readEntitlements(ctx, tx, scope.TenantID)
+		return e
+	})
+	return out, db.Translate(err, "")
+}
+
+// EntitlementsOf is the platform's read of any tenant's modules.
+//
+// The same answer as Entitlements, from the platform plane rather than from
+// inside a tenant. Without it the operator who may GRANT a module -- PUT
+// /platform/tenants/{id}/features has existed since H5 landed -- had no way to
+// see which modules that client already has, so the only screen that could use
+// the write had nothing to draw first.
+func (s *Service) EntitlementsOf(
+	ctx context.Context, tenantID uuid.UUID,
+) ([]Entitlement, error) {
+	out := []Entitlement{}
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		var e error
+		out, e = readEntitlements(ctx, tx, tenantID)
+		return e
+	})
+	return out, db.Translate(err, "")
+}
+
+// readEntitlements is the one query behind both, so the two planes cannot
+// disagree about what a tenant is entitled to.
+func readEntitlements(
+	ctx context.Context, tx pgx.Tx, tenantID uuid.UUID,
+) ([]Entitlement, error) {
+	out := []Entitlement{}
+	{
 		rows, e := tx.Query(ctx, `
 			SELECT pf.feature, pf.included,
 			       tf.enabled, coalesce(tf.reason, ''), tf.expires_on
@@ -193,9 +226,9 @@ func (s *Service) Entitlements(
 			       ON tf.tenant_id = t.id AND tf.feature = pf.feature
 			      AND (tf.expires_on IS NULL OR tf.expires_on >= current_date)
 			WHERE t.id = $1
-			ORDER BY pf.feature`, scope.TenantID)
+			ORDER BY pf.feature`, tenantID)
 		if e != nil {
-			return e
+			return nil, e
 		}
 		defer rows.Close()
 		for rows.Next() {
@@ -204,7 +237,7 @@ func (s *Service) Entitlements(
 			var expires *time.Time
 			if e := rows.Scan(&ent.Feature, &ent.InPlan, &override,
 				&ent.Reason, &expires); e != nil {
-				return e
+				return nil, e
 			}
 			ent.Allowed = ent.InPlan
 			if override != nil {
@@ -219,9 +252,11 @@ func (s *Service) Entitlements(
 			}
 			out = append(out, ent)
 		}
-		return rows.Err()
-	})
-	return out, db.Translate(err, "")
+		if e := rows.Err(); e != nil {
+			return nil, e
+		}
+	}
+	return out, nil
 }
 
 // SetFeature grants or withdraws a module for one tenant.

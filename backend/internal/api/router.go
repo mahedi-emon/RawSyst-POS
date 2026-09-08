@@ -2359,6 +2359,10 @@ func (s *Server) Routes() []Route {
 			s.handleSetTenantLimits,
 			"raises or lowers a tenant's allowances; enforced everywhere and " +
 				"until now writable only at signup"},
+		{http.MethodGet, "/api/v1/platform/tenants/{tenantID}/features", AccessSuperAdmin, "",
+			s.handleTenantFeatures,
+			"which modules a client has, and which of them are exceptions to " +
+				"their plan rather than part of it"},
 		{http.MethodPut, "/api/v1/platform/tenants/{tenantID}/features", AccessSuperAdmin, "",
 			s.handleSetFeature,
 			"H5's commercial flexibility: a module granted to one client " +
