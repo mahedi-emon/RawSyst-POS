@@ -75,6 +75,13 @@ func (s *Scheduler) Run(ctx context.Context) {
 			// And the lot dates. Same tick, same daily dedupe: B4 wants
 			// "Expiring Soon / Expired" told once, not on every pass.
 			s.enqueueBatchExpiry(ctx)
+			// And the two DEADLINES that were being recorded and never
+			// arriving. Both handlers existed -- one of them registered on the
+			// worker -- and neither was ever enqueued, so an abandoned basket
+			// held the last unit for ever and store credit issued with a
+			// twelve-month expiry stayed spendable in year three.
+			s.enqueueReservationExpiry(ctx)
+			s.enqueueCreditExpiry(ctx)
 		}
 	}
 }
@@ -200,6 +207,74 @@ func (s *Scheduler) enqueueLowStock(ctx context.Context) {
 			DedupeKey:   KindLowStockSweep + ":" + id.String() + ":" + day,
 		}); err != nil {
 			s.log.Error("could not enqueue a low-stock sweep",
+				slog.String("tenant", id.String()),
+				slog.String("error", err.Error()))
+		}
+	}
+}
+
+// enqueueReservationExpiry queues one B13 hold-release sweep per tenant.
+//
+// Hourly rather than daily, unlike the two warning sweeps above: a lapsed hold
+// is stock a shop could be selling right now, and telling somebody tomorrow
+// that yesterday's basket has been released is not the same service. The
+// dedupe key carries the hour for exactly that.
+func (s *Scheduler) enqueueReservationExpiry(ctx context.Context) {
+	tenants, err := s.tenants(ctx)
+	if err != nil {
+		s.log.Error("could not list tenants for the reservation-expiry sweep",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	hour := time.Now().UTC().Format("2006-01-02T15")
+	for _, tenantID := range tenants {
+		id := tenantID
+		if err := s.queue.Enqueue(ctx, Spec{
+			TenantID: &id,
+			Kind:     KindReservationExpirySweep,
+			QueueKey: "tenant:" + id.String(),
+			// Above the warning sweeps: this one frees stock to sell rather
+			// than telling somebody about stock they already have.
+			Priority:    70,
+			MaxAttempts: 3,
+			DedupeKey:   KindReservationExpirySweep + ":" + id.String() + ":" + hour,
+		}); err != nil {
+			s.log.Error("could not enqueue a reservation-expiry sweep",
+				slog.String("tenant", id.String()),
+				slog.String("error", err.Error()))
+		}
+	}
+}
+
+// enqueueCreditExpiry queues one B16 store-credit sweep per tenant per day.
+//
+// Daily, not hourly: expiring credit POSTS, releasing the liability to income,
+// and an entry dated by when a sweep happened to run is a worse record than one
+// dated by the day the credit lapsed. Once a day is also all the resolution an
+// expiry date has.
+func (s *Scheduler) enqueueCreditExpiry(ctx context.Context) {
+	tenants, err := s.tenants(ctx)
+	if err != nil {
+		s.log.Error("could not list tenants for the credit-expiry sweep",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	day := time.Now().UTC().Format("2006-01-02")
+	for _, tenantID := range tenants {
+		id := tenantID
+		if err := s.queue.Enqueue(ctx, Spec{
+			TenantID: &id,
+			Kind:     KindCreditExpirySweep,
+			QueueKey: "tenant:" + id.String(),
+			// Below the ledger work and above the warnings: it posts, so it
+			// is not a notice, and it is not urgent to the hour.
+			Priority:    60,
+			MaxAttempts: 3,
+			DedupeKey:   KindCreditExpirySweep + ":" + id.String() + ":" + day,
+		}); err != nil {
+			s.log.Error("could not enqueue a credit-expiry sweep",
 				slog.String("tenant", id.String()),
 				slog.String("error", err.Error()))
 		}

@@ -417,6 +417,19 @@ func (s *Service) ExpireCredit(ctx context.Context, scope Scope) (Expired, error
 			return e
 		}
 
+		// Nobody posted this.
+		//
+		// Expiry is reached from the nightly sweep as well as by hand, and a
+		// job has no user: passing the zero uuid violated
+		// `journal_entry_posted_by_fkey` and the sweep could not post at all.
+		// The column is nullable precisely for this, and NULL is the honest
+		// answer -- recording uuid-zero as the person who did it would be a
+		// name that belongs to nobody.
+		var by *uuid.UUID
+		if scope.UserID != uuid.Nil {
+			by = &scope.UserID
+		}
+
 		total := decimal.Zero
 		for _, d := range owed {
 			writeBackID := uuid.New()
@@ -424,7 +437,7 @@ func (s *Service) ExpireCredit(ctx context.Context, scope Scope) (Expired, error
 				TenantID: scope.TenantID, CompanyID: scope.CompanyID,
 				Date:       time.Now().UTC(),
 				SourceType: "store_credit", SourceID: writeBackID,
-				RuleKey: "storecredit.writeback", PostedBy: &scope.UserID,
+				RuleKey: "storecredit.writeback", PostedBy: by,
 				Memo: "Store credit expired",
 			}, country, accounting.Transaction{
 				Amounts: accounting.Amounts{"amount": d.balance},
@@ -439,7 +452,7 @@ func (s *Service) ExpireCredit(ctx context.Context, scope Scope) (Expired, error
 				VALUES ($1,$2,$3,$4,$5,$6,$7,'expired',$8,$9)`,
 				writeBackID, scope.TenantID, scope.CompanyID, d.customerID,
 				d.cardID, d.balance.Neg(), d.currency, posted.EntryID,
-				scope.UserID); e != nil {
+				by); e != nil {
 				return db.Translate(e, "That credit could not be written back.")
 			}
 

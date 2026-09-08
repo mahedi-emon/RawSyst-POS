@@ -135,6 +135,11 @@ describe('the string catalogue', () => {
       // transliteration would be a worse instruction, not a better one.
       'brand.formatHint',
       'brand.rules',
+      // The same, for the logo control on Business settings: both sentences
+      // name PNG and JPEG because that is what the file chooser will show and
+      // what the server refuses anything else as.
+      'nx.biz.logoHint',
+      'nx.biz.logoNotAnImage',
     ]);
     // Two things are Latin by construction and are not translation failures:
     // interpolation placeholders like `{time}`, which are key names rather than

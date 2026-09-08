@@ -55,6 +55,8 @@ import { useApi, useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { useT, type Key } from '@/lib/i18n/locale';
+
+import { LogoPanel } from './logo';
 import {
   addressLine,
   amendment,
@@ -513,6 +515,11 @@ function BusinessScreen() {
       <h2 className="mt-8 mb-1 text-card-title font-semibold text-fg">
         {t('nx.biz.stationery')}
       </h2>
+      {/* The logo above the templates, because the template below carries a
+          "print the logo" switch and this is where the logo comes from.
+          Ticking that switch with nothing on file promised something the shop
+          had no way to supply. */}
+      {scope ? <LogoPanel companyId={scope.company_id} /> : null}
       <p className="mb-3 max-w-prose text-caption text-muted">
         {t('nx.biz.stationeryHint')}
       </p>

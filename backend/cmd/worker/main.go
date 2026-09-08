@@ -25,6 +25,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -105,6 +106,12 @@ func run() error {
 
 	// D1's scheduled reports. The sweep finds the schedules whose turn it is
 	// and queues the sends; the figures are computed when each is rendered.
+	// The two deadlines that were being recorded and never arriving. The
+	// reservation handler was already registered here and nothing enqueued it;
+	// store credit had no handler at all.
+	worker.Register(jobs.KindCreditExpirySweep,
+		jobs.NewCreditExpirySweeper(pool, wallet.NewService(pool)))
+
 	worker.Register(jobs.KindReportSweep,
 		jobs.NewReportSweeper(pool, reports.NewService(pool)))
 	// Outbound webhooks (H6). Sent from here rather than from the API, because
