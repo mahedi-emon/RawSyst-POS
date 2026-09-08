@@ -42,7 +42,12 @@ import (
 )
 
 func main() {
-	email := flag.String("email", "", "the first platform operator's sign-in email")
+	// The address is configuration rather than a constant, and the flag is
+	// still the last word. A container runs this with no arguments at all --
+	// there is nowhere to type one -- so without an environment variable the
+	// only way to bootstrap a composed stack was to override the entrypoint.
+	email := flag.String("email", os.Getenv("RAWSYST_PLATFORM_EMAIL"),
+		"the first platform operator's sign-in email; defaults to $RAWSYST_PLATFORM_EMAIL")
 	name := flag.String("name", "Platform Operator", "their name, as it appears in the audit log")
 	flag.Parse()
 

@@ -16,8 +16,10 @@
 //   RAWSYST_DEV_PASSWORD
 //   RAWSYST_DEV_TENANT    the business to sign into, when the email opens
 //                         more than one; the run prints the choices otherwise
-//   RAWSYST_OPS_EMAIL     default ops@example.test
-//                         (cmd/devseed -platform-email; a user with no tenant)
+//   RAWSYST_OPS_EMAIL     the platform operator (a user with no tenant).
+//                         Falls back to RAWSYST_PLATFORM_EMAIL, which is what
+//                         cmd/devseed creates the operator from, then to
+//                         ops@example.test
 //
 // Exits non-zero on the first mismatch, so it can gate a branch.
 
@@ -25,7 +27,10 @@ const ORIGIN = process.env.RAWSYST_API_ORIGIN ?? 'http://localhost:8080';
 const API = `${ORIGIN}/api/v1`;
 const EMAIL = process.env.RAWSYST_DEV_EMAIL ?? 'owner@example.test';
 const PASSWORD = process.env.RAWSYST_DEV_PASSWORD ?? 'DevPassw0rd!2026';
-const OPS_EMAIL = process.env.RAWSYST_OPS_EMAIL ?? 'ops@example.test';
+const OPS_EMAIL =
+  process.env.RAWSYST_OPS_EMAIL ??
+  process.env.RAWSYST_PLATFORM_EMAIL ??
+  'ops@example.test';
 const TENANT = process.env.RAWSYST_DEV_TENANT ?? '';
 
 let token = '';

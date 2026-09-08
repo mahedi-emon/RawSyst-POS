@@ -918,6 +918,14 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         permissions: [],
         descriptionKey: 'nx.navd.plat.operations.support',
       },
+      {
+        id: 'operators',
+        labelKey: 'nx.nav.plat.operations.operators',
+        href: '/platform/operators',
+        built: true,
+        permissions: [],
+        descriptionKey: 'nx.navd.plat.operations.operators',
+      },
     ],
   },
   {

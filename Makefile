@@ -55,7 +55,7 @@ fresh-db: ## Rebuild the TEST database from the committed migration chain
 fresh-dev: ## Rebuild and reseed the DEVELOPMENT database
 	@cd backend && RAWSYST_DB_DSN='$(DEV_DSN)' go run -tags=freshcheck ./cmd/freshcheck
 	@cd backend && set -a && . ./.env && set +a && \
-	  go run ./cmd/devseed -password 'DevPassw0rd!2026' -platform-email ops@example.test
+	  go run ./cmd/devseed -password 'DevPassw0rd!2026'
 	@$(MAKE) --no-print-directory dev-regulatory
 
 .PHONY: dev-regulatory

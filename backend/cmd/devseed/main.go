@@ -81,14 +81,33 @@ func main() {
 	// tenant, and every route that could make one sits behind the guard it
 	// would be needed to pass. So the seeder makes it, or nobody in
 	// development ever sees Platform Admin at all.
-	operator := flag.String("platform-email", "",
-		"also create a platform operator with this email (no tenant, super admin)")
+	//
+	// The address is configuration, not a constant: it is a real person's
+	// email on a real machine, and the one that belongs in a repository is
+	// nobody's. `RAWSYST_PLATFORM_EMAIL` in .env decides, the flag overrides
+	// it, and the fallback keeps a fresh clone working with no setup.
+	operator := flag.String("platform-email", envOr("RAWSYST_PLATFORM_EMAIL", defaultOperatorEmail),
+		"the platform operator's email (no tenant, super admin); defaults to $RAWSYST_PLATFORM_EMAIL")
 	flag.Parse()
 
 	if err := run(*email, *name, *password, *operator); err != nil {
 		fmt.Fprintf(os.Stderr, "devseed: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// defaultOperatorEmail is used when nothing configures one.
+//
+// example.test is reserved for testing and cannot receive mail, which is the
+// point: a development operator is signed into, never emailed.
+const defaultOperatorEmail = "ops@example.test"
+
+// envOr reads configuration with a fallback, for a flag default.
+func envOr(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func run(email, name, password, operator string) error {
@@ -270,15 +289,55 @@ func seedOperator(
 		return "", err
 	}
 	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// Who is already here, and how many.
+		//
+		// The upsert this replaces was keyed on the EMAIL, so running the
+		// seeder with a different address left the old operator in place and
+		// added a second one beside it. Two accounts with full platform
+		// authority where one person was intended, and the one nobody uses
+		// still signs in.
+		var existingID uuid.UUID
+		var existingEmail string
+		var count int
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*) FROM app_user WHERE tenant_id IS NULL`).
+			Scan(&count); e != nil {
+			return e
+		}
+		if count > 1 {
+			return fmt.Errorf(
+				"this database has %d platform operators; the seeder will "+
+					"not guess which one is meant to become %s. Use Super "+
+					"Admin > Administrators", count, email)
+		}
+		if count == 1 {
+			if e := tx.QueryRow(ctx,
+				`SELECT id, email FROM app_user WHERE tenant_id IS NULL`).
+				Scan(&existingID, &existingEmail); e != nil {
+				return e
+			}
+			// Moved, not duplicated. Everything this account has ever done in
+			// the audit log points at this row, and the trail should not
+			// acquire a second name for the same person.
+			_, e := tx.Exec(ctx, `
+				UPDATE app_user
+				SET email = $2, password_hash = $3,
+				    must_change_password = false, status = 'active',
+				    updated_at = now()
+				WHERE id = $1`, existingID, email, hash)
+			if e == nil && !strings.EqualFold(existingEmail, email) {
+				fmt.Printf("  Moved the platform operator from %s to %s\n",
+					existingEmail, email)
+			}
+			return e
+		}
+
 		_, e := tx.Exec(ctx, `
 			INSERT INTO app_user
 			  (tenant_id, email, full_name, password_hash,
 			   must_change_password, status)
-			VALUES (NULL, $1, 'Platform Operator', $2, false, 'active')
-			ON CONFLICT (email) WHERE tenant_id IS NULL
-			DO UPDATE SET password_hash = EXCLUDED.password_hash,
-			              must_change_password = false,
-			              status = 'active'`, email, hash)
+			VALUES (NULL, $1, 'Platform Operator', $2, false, 'active')`,
+			email, hash)
 		return e
 	})
 	return password, err

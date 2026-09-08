@@ -142,6 +142,9 @@ services:
       RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-rawsyst-pos}
       RAWSYST_DATA_ENCRYPTION_KEYS: ${RAWSYST_DATA_ENCRYPTION_KEYS:?set RAWSYST_DATA_ENCRYPTION_KEYS in .env}
       RAWSYST_CORS_ORIGINS: ${RAWSYST_CORS_ORIGINS:-}
+      # Who administers this deployment. Read by `/bootstrap`, which creates
+      # the first platform operator and then refuses for ever.
+      RAWSYST_PLATFORM_EMAIL: ${RAWSYST_PLATFORM_EMAIL:-}
       # Empty unless the `scale` profile is up. Empty means an in-memory cache,
       # which is correct for one API process and only for one.
       RAWSYST_REDIS_ADDR: ${RAWSYST_REDIS_ADDR:-}
@@ -164,6 +167,36 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # The first platform operator, and nothing else.
+  #
+  # A deployment migrates cleanly, comes up healthy, and nobody can sign in: a
+  # platform operator is a user with no tenant, and every route that could make
+  # one sits behind the guard it would be needed to pass. This closes that, and
+  # closes it once -- it refuses if any operator already exists, which is what
+  # makes it safe to leave in the file.
+  #
+  # Behind a profile so `up` never runs it. Run it deliberately:
+  #
+  #   RAWSYST_PLATFORM_EMAIL=you@example.com   #     docker compose --profile setup run --rm bootstrap
+  #
+  # It prints a password once and requires it to be changed at first sign-in.
+  bootstrap:
+    profiles: ["setup"]
+    build:
+      context: ./backend
+      args:
+        VERSION: ${VERSION:-dev}
+    image: rawsyst/backend:${VERSION:-dev}
+    restart: "no"
+    entrypoint: ["/bootstrap"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   api:
     logging: *logging

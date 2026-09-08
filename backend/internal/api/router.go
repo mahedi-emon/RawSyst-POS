@@ -2472,6 +2472,26 @@ func (s *Server) Routes() []Route {
 			s.handleCreateTenant, ""},
 		{http.MethodPost, "/api/v1/platform/users/{userID}/reset-password",
 			AccessSuperAdmin, "", s.handleAdminResetPassword, ""},
+
+		{http.MethodGet, "/api/v1/platform/operators", AccessSuperAdmin, "",
+			s.handleListOperators,
+			"the accounts that can see every tenant's billing and change what " +
+				"the product believes the law to be; the list shows which of them " +
+				"have never signed in and which have no second factor"},
+		{http.MethodPost, "/api/v1/platform/operators", AccessSuperAdmin, "",
+			s.handleAddOperator,
+			"bootstrap creates the FIRST operator and then refuses for ever, " +
+				"which left a deployment with exactly one administrator; this is " +
+				"how a colleague is added"},
+		{http.MethodPut, "/api/v1/platform/operators/{userID}/email",
+			AccessSuperAdmin, "", s.handleChangeOperatorEmail,
+			"corrected in place rather than by creating a replacement: a second " +
+				"account with full platform authority is a live credential nobody " +
+				"is watching"},
+		{http.MethodPut, "/api/v1/platform/operators/{userID}/status",
+			AccessSuperAdmin, "", s.handleSetOperatorStatus,
+			"disabling the last active administrator is refused: nothing can " +
+				"create a replacement on a running deployment"},
 	}
 }
 
