@@ -21,12 +21,17 @@
 // that happened later.
 
 import { Wallet } from 'lucide-react';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 
-import { RequirePermission } from '@/components/auth/guard';
+import { Can, RequirePermission } from '@/components/auth/guard';
 import { Figure, PageHeader, Panel, Badge } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
+import { Button } from '@/components/ui/button';
+import { Field, Input, Textarea } from '@/components/ui/field';
+import { FormError } from '@/components/ui/form-error';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
+import { api } from '@/lib/api/client';
+import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney } from '@/lib/format/money';
@@ -57,6 +62,64 @@ function WalletsScreen() {
     scope ? '/gift-cards' : null,
     scope ?? undefined,
   );
+
+  // Finding a card by the number printed on it, which is what a cashier has in
+  // their hand. A GET, because checking a balance changes nothing -- the route
+  // says so in its own description.
+  const [code, setCode] = useState('');
+  const [found, setFound] = useState<GiftCard | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [voiding, setVoiding] = useState<GiftCard | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string> | null>(null);
+
+  async function lookUp() {
+    if (!scope || code.trim() === '') return;
+    setBusy(true);
+    setLookupError(null);
+    setFound(null);
+    try {
+      const card = await api.get<GiftCard>(
+        `/gift-cards/by-code/${encodeURIComponent(code.trim())}?company_id=${scope.company_id}`,
+      );
+      setFound(card);
+    } catch (e) {
+      // A number that matches nothing is the ordinary answer to a mistyped
+      // card, not a fault, so it reads as one sentence rather than an error
+      // panel.
+      setLookupError(
+        e instanceof ApiError && e.status === 404
+          ? t('nx.wal.lookupNone')
+          : messageFor(e, t),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function voidCard() {
+    if (!scope || !voiding) return;
+    setBusy(true);
+    setActionError(null);
+    setFields(null);
+    try {
+      await api.post(
+        `/gift-cards/${voiding.id}/void?company_id=${scope.company_id}`,
+        { reason },
+      );
+      setVoiding(null);
+      setReason('');
+      setFound(null);
+      void cards.refetch();
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) setFields(e.fields);
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const rows = wallets.data?.data ?? [];
   const cardRows = cards.data?.data ?? [];
@@ -143,11 +206,98 @@ function WalletsScreen() {
           <span className="text-muted">—</span>
         ),
     },
+    {
+      key: 'actions',
+      header: '',
+      width: 'w-24',
+      // Only a live card can be voided. Offering it on one already voided
+      // suggests a second void would do something.
+      cell: (c) =>
+        c.status === 'active' ? (
+          <Can permission="wallet.manage">
+            <span className="flex justify-end">
+              <Button size="sm" variant="ghost" onClick={() => setVoiding(c)}>
+                {t('nx.wal.void')}
+              </Button>
+            </span>
+          </Can>
+        ) : null,
+    },
   ];
 
   return (
     <>
       <PageHeader title={t('nx.wal.title')} description={t('nx.wal.subtitle')} />
+
+      <Can permission="wallet.view">
+        <Panel
+          className="mb-5"
+          title={t('nx.wal.lookupTitle')}
+          description={t('nx.wal.lookupHint')}
+        >
+          <div className="flex flex-wrap items-end gap-3">
+            <Field name="code" label={t('nx.wal.lookupCode')}>
+              <Input
+                dir="ltr"
+                className="num w-56"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void lookUp();
+                }}
+              />
+            </Field>
+            <Button disabled={busy || code.trim() === ''} onClick={() => void lookUp()}>
+              {t('nx.wal.lookup')}
+            </Button>
+          </div>
+
+          {lookupError ? (
+            <p className="mt-3 text-body text-muted">{lookupError}</p>
+          ) : null}
+
+          {found ? (
+            <p className="mt-3 text-body text-fg">
+              {t('nx.wal.found', {
+                code: found.code,
+                balance: money(found.balance, found.currency),
+                face: money(found.face_value, found.currency),
+              })}
+            </p>
+          ) : null}
+        </Panel>
+      </Can>
+
+      {voiding ? (
+        <Panel
+          className="mb-5"
+          title={t('nx.wal.voidTitle', { code: voiding.code })}
+        >
+          <p className="mb-4 text-body text-muted">{t('nx.wal.voidBody')}</p>
+          <Field
+            name="reason"
+            label={t('nx.wal.voidReason')}
+            hint={t('nx.wal.voidReasonHint')}
+            error={fields?.reason}
+          >
+            <Textarea
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              required
+            />
+          </Field>
+          {actionError ? <FormError message={actionError} /> : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="destructive" disabled={busy} onClick={() => void voidCard()}>
+              {t('nx.wal.voidConfirm')}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setVoiding(null)}>
+              {t('nx.wal.cancel')}
+            </Button>
+          </div>
+        </Panel>
+      ) : null}
 
       {wallets.error ? (
         <ErrorState error={wallets.error} onRetry={() => void wallets.refetch()} />

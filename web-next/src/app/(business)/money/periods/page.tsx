@@ -38,7 +38,8 @@ import { api } from '@/lib/api/client';
 import { messageFor } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
-import { useCompanyScope } from '@/lib/company/company-context';
+import { useCompany, useCompanyScope } from '@/lib/company/company-context';
+import { formatMoney } from '@/lib/format/money';
 import { useT, type Key } from '@/lib/i18n/locale';
 import {
   allPeriods,
@@ -65,6 +66,7 @@ const STATE_TONE: Record<string, 'positive' | 'neutral' | 'caution'> = {
 function PeriodsScreen() {
   const t = useT();
   const scope = useCompanyScope();
+  const { currency, market } = useCompany();
   const grants = useGrants();
   const mayClose = grants.can('accounting.close_period');
   const mayReopen = grants.can('accounting.reopen_period');
@@ -80,6 +82,16 @@ function PeriodsScreen() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Closing a year is its own confirmation, because it is the one action on
+  // this screen that cannot be undone. `mayClose` is `accounting.close_period`;
+  // the route takes `accounting.reopen_period`, the more restricted of the two,
+  // so the button is offered on the stricter grant rather than on the one that
+  // merely closes a month.
+  const [closingYear, setClosingYear] = useState(false);
+
+  // The year-end figures come back from the server as decimal strings, and the
+  // sentence reporting them is read by somebody who is about to file accounts.
+  const money = (v: string) => formatMoney(v, { currency, market });
 
   const years = data?.years ?? [];
   const periods = allPeriods(years);
@@ -148,6 +160,42 @@ function PeriodsScreen() {
       );
       setReopening(null);
       setReason('');
+      void refetch();
+    } catch (e) {
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeYear() {
+    if (!scope) return;
+    const n = Number(year);
+    if (!Number.isInteger(n)) return;
+    setBusy(true);
+    setActionError(null);
+    setNote(null);
+    try {
+      const out = await api.post<{
+        fiscal_year: number;
+        revenue_closed: string;
+        expenses_closed: string;
+        profit_to_retained_earnings: string;
+        already_closed?: boolean;
+      }>(`/accounting/year-end?company_id=${scope.company_id}`, { fiscal_year: n });
+      // Replaying a close is not an error -- two people can press it on the
+      // same morning -- and the two cases read differently.
+      setNote(
+        out.already_closed
+          ? t('nx.per.yearAlreadyClosed', { year: String(out.fiscal_year) })
+          : t('nx.per.yearClosed', {
+              year: String(out.fiscal_year),
+              revenue: money(out.revenue_closed),
+              expenses: money(out.expenses_closed),
+              profit: money(out.profit_to_retained_earnings),
+            }),
+      );
+      setClosingYear(false);
       void refetch();
     } catch (e) {
       setActionError(messageFor(e, t));
@@ -338,6 +386,42 @@ function PeriodsScreen() {
               </p>
             ) : null}
           </div>
+        </Panel>
+      ) : null}
+
+      {mayReopen ? (
+        <Panel
+          className="mb-5"
+          title={t('nx.per.closeYearTitle')}
+          description={t('nx.per.closeYearHint')}
+        >
+          {closingYear ? (
+            <>
+              <p className="text-body text-fg">
+                {t('nx.per.closeYearWarn', { year })}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() => void closeYear()}
+                >
+                  {t('nx.per.closeYearConfirm', { year })}
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => setClosingYear(false)}
+                >
+                  {t('nx.per.closeYearCancel')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button disabled={busy} onClick={() => setClosingYear(true)}>
+              {t('nx.per.closeYear')}
+            </Button>
+          )}
         </Panel>
       ) : null}
 

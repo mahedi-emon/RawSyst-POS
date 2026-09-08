@@ -124,6 +124,10 @@ function ServiceScreen() {
   const [charged, setCharged] = useState('');
   const [replacement, setReplacement] = useState('');
   const [busy, setBusy] = useState(false);
+  const [partSearch, setPartSearch] = useState('');
+  const [partVariant, setPartVariant] = useState('');
+  const [partLocation, setPartLocation] = useState('');
+  const [partQty, setPartQty] = useState('1');
   const [actionError, setActionError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
 
@@ -139,6 +143,50 @@ function ServiceScreen() {
     setReplacement('');
     setActionError(null);
     setFieldErrors(null);
+  }
+
+  // Fitting a part. The catalogue and the stock locations are only fetched
+  // while a job is open for editing, because most of the time nobody is
+  // fitting anything and two more lists on every visit is two more queries.
+  const catalogue = useApiList<{ variant_id: string; sku: string; name?: string }>(
+    scope && editing ? '/catalog/snapshot' : null,
+    scope ? { ...scope, search: partSearch || undefined, limit: 25 } : undefined,
+  );
+  const locations = useApiList<{ id: string; name: string }>(
+    scope && editing ? '/stock/locations' : null,
+    scope ?? undefined,
+  );
+  const catalogueItems =
+    (catalogue.data as unknown as { items?: { variant_id: string; sku: string; name?: string }[] } | undefined)
+      ?.items ?? catalogue.data?.data ?? [];
+
+  async function fitPart() {
+    if (!scope || !editing || partVariant === '' || partLocation === '') return;
+    setBusy(true);
+    setActionError(null);
+    setFieldErrors(null);
+    try {
+      await api.post(
+        `/service-jobs/${editing.id}/parts?company_id=${scope.company_id}`,
+        { variant_id: partVariant, warehouse_id: partLocation, qty: partQty },
+      );
+      setPartVariant('');
+      setPartQty('1');
+      // The job is re-read rather than patched locally: fitting a part changes
+      // the parts cost, and a screen that added the row itself would show a
+      // total the server does not agree with.
+      // The list is re-read rather than patched locally: fitting a part
+      // changes the parts cost, and a screen that added the row itself would
+      // show a total the server does not agree with. `live` below reads the
+      // fitted parts out of the refreshed list rather than out of the snapshot
+      // this editor was opened with.
+      void refetch();
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function save() {
@@ -164,6 +212,12 @@ function ServiceScreen() {
       setBusy(false);
     }
   }
+
+  // The job as the server last described it, rather than as it was when the
+  // editor opened. Only the parts list is read from here; the form fields are
+  // deliberately the snapshot, so a refresh does not overwrite what somebody
+  // is halfway through typing.
+  const live = editing ? (rows.find((j) => j.id === editing.id) ?? editing) : null;
 
   const columns: Column<ServiceOrder>[] = [
     {
@@ -344,6 +398,88 @@ function ServiceScreen() {
                 onChange={(e) => setWorkDone(e.target.value)}
               />
             </Field>
+          </div>
+
+          {/* What has been fitted, and how to fit another. Read before the
+              save buttons because it is a different act: a part leaves stock
+              the moment it is fitted, and does not wait for Save. */}
+          <div className="mt-6 border-t border-line pt-4">
+            <h3 className="text-label font-medium text-fg">{t('nx.svc.partsTitle')}</h3>
+
+            {live?.parts && live.parts.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-1">
+                {live.parts.map((p) => (
+                  <li key={p.id} className="flex flex-wrap gap-x-3 text-body text-muted">
+                    <span className="num text-fg">{p.sku ?? p.variant_id.slice(0, 8)}</span>
+                    <span className="num">
+                      {t('nx.svc.partQty')}: {p.qty}
+                    </span>
+                    <span className="num">
+                      {formatMoney(p.unit_cost, { currency: live.currency, market })}
+                    </span>
+                    <time dateTime={p.issued_at}>{p.issued_at.slice(0, 10)}</time>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-body text-muted">{t('nx.svc.partsNone')}</p>
+            )}
+
+            <p className="mt-3 text-caption text-muted">{t('nx.svc.fitPartHint')}</p>
+
+            <div className="mt-2 grid gap-3 sm:grid-cols-4">
+              <Field name="part_search" label={t('nx.svc.fitPartSearch')}>
+                <Input
+                  value={partSearch}
+                  onChange={(e) => setPartSearch(e.target.value)}
+                />
+              </Field>
+              <Field name="variant_id" label={t('nx.svc.partSku')}>
+                <Select
+                  value={partVariant}
+                  onChange={(e) => setPartVariant(e.target.value)}
+                >
+                  <option value="">{t('nx.svc.fitPartChoose')}</option>
+                  {catalogueItems.map((i) => (
+                    <option key={i.variant_id} value={i.variant_id}>
+                      {i.sku}
+                      {i.name ? ` — ${i.name}` : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field name="warehouse_id" label={t('nx.svc.partFrom')}>
+                <Select
+                  value={partLocation}
+                  onChange={(e) => setPartLocation(e.target.value)}
+                >
+                  <option value="">{t('nx.svc.fitPartChoose')}</option>
+                  {(locations.data?.data ?? []).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field name="qty" label={t('nx.svc.partQty')}>
+                <Input
+                  dir="ltr"
+                  inputMode="decimal"
+                  className="num"
+                  value={partQty}
+                  onChange={(e) => setPartQty(e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <div className="mt-3">
+              <Button
+                disabled={busy || partVariant === '' || partLocation === ''}
+                onClick={() => void fitPart()}
+              >
+                {t('nx.svc.fitPartConfirm')}
+              </Button>
+            </div>
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
