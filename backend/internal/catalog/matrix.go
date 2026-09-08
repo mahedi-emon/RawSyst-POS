@@ -100,6 +100,20 @@ type MatrixCell struct {
 	// never has — which reads as dead stock only if it has stock, since a
 	// variant that has never sold and holds nothing is simply new.
 	LastSoldAt string `json:"last_sold_at,omitempty"`
+
+	// The other three price tiers, so the product screen can EDIT them.
+	//
+	// `Price` above is retail and was the only one returned, which made the
+	// grid a read-only view of one of four numbers a shop actually sets. A
+	// screen offering to edit a wholesale price it had never been told would
+	// have to send back a blank, and a blank clears it.
+	//
+	// Wholesale and dealer are omitted when unset, and unset is not zero: a
+	// variant with no wholesale price is not sold to the trade at all, whereas
+	// one priced at zero is given away. Floor is never null in the schema.
+	PriceWholesale string `json:"price_wholesale,omitempty"`
+	PriceDealer    string `json:"price_dealer,omitempty"`
+	PriceFloor     string `json:"price_floor"`
 }
 
 // ReadMatrixGrid returns the grid with the stock facts §4 needs.
@@ -120,6 +134,9 @@ func (s *Service) ReadMatrixGrid(
 		// times the line had sold, which is a wrong number that looks plausible.
 		rows, e := tx.Query(ctx, `
 			SELECT v.id, v.sku, v.attributes, v.price_retail, v.is_active,
+			       coalesce(v.price_wholesale::text, ''),
+			       coalesce(v.price_dealer::text, ''),
+			       coalesce(v.price_floor::text, '0'),
 			       coalesce((
 			         SELECT sum(stock_on_hand(v.id, w.id))
 			         FROM warehouse w WHERE w.company_id = v.company_id
@@ -148,6 +165,7 @@ func (s *Service) ReadMatrixGrid(
 			var attrs []byte
 			var price decimal.Decimal
 			if e := rows.Scan(&c.ID, &c.SKU, &attrs, &price, &c.IsActive,
+				&c.PriceWholesale, &c.PriceDealer, &c.PriceFloor,
 				&c.OnHand, &c.ReorderLevel, &c.LastSoldAt); e != nil {
 				return e
 			}

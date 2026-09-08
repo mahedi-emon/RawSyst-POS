@@ -18,21 +18,35 @@
 import { ArrowLeft, Boxes } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useState } from 'react';
 
-import { RequirePermission } from '@/components/auth/guard';
+import { Can, RequirePermission } from '@/components/auth/guard';
+import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/ui/states';
+import { api } from '@/lib/api/client';
+import { messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, formatQuantity } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
 
+import { PricingPanel } from './pricing';
+
 interface Variant {
   id: string;
   sku: string;
   attributes: Record<string, string>;
+  /** Retail. The other three tiers are beside it. */
   price: string;
+  // Absent means "not sold at this tier", which is not the same as zero: a
+  // variant with no wholesale price is not sold to the trade at all, and one
+  // priced at zero is given away.
+  price_wholesale?: string;
+  price_dealer?: string;
+  price_floor: string;
   is_active: boolean;
   on_hand?: string;
   reorder_level?: string;
@@ -63,6 +77,32 @@ function ProductScreen() {
   );
 
   const variants = data?.data ?? [];
+
+  // Which variant is being priced, and any refusal from retiring one. Both are
+  // local: this screen is a grid with one editor open at a time, and a second
+  // open editor would let somebody save two prices from one reading of the
+  // page.
+  const [pricing, setPricing] = useState<Variant | null>(null);
+  const [retiring, setRetiring] = useState<Variant | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function retire() {
+    if (!scope || !retiring) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.delete(
+        `/catalog/variants/${retiring.id}?company_id=${scope.company_id}`,
+      );
+      setRetiring(null);
+      void refetch();
+    } catch (e) {
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const describe = (v: Variant) => {
     const detail = Object.values(v.attributes ?? {}).filter(Boolean).join(' · ');
@@ -95,6 +135,32 @@ function ProductScreen() {
       cell: (v) => formatMoney(v.price, { currency, market, bare: true }),
     },
     {
+      key: 'wholesale',
+      header: t('nx.prod.colWholesale'),
+      numeric: true,
+      secondary: true,
+      width: 'w-28',
+      // An em dash would read as "zero"; the trade price being absent is a
+      // decision, so it says so.
+      cell: (v) =>
+        v.price_wholesale ? (
+          formatMoney(v.price_wholesale, { currency, market, bare: true })
+        ) : (
+          <span className="text-subtle">{t('nx.prod.notSoldToTrade')}</span>
+        ),
+    },
+    {
+      key: 'dealer',
+      header: t('nx.prod.colDealer'),
+      numeric: true,
+      secondary: true,
+      width: 'w-28',
+      cell: (v) =>
+        v.price_dealer
+          ? formatMoney(v.price_dealer, { currency, market, bare: true })
+          : '—',
+    },
+    {
       key: 'on_hand',
       header: t('nx.prod.colOnHand'),
       numeric: true,
@@ -120,6 +186,30 @@ function ProductScreen() {
       width: 'w-28',
       cell: (v) =>
         v.reorder_level ? formatQuantity(v.reorder_level, market) : '—',
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: 'w-40',
+      cell: (v) => (
+        <span className="flex justify-end gap-1">
+          <Can permission="catalog.edit">
+            <Button size="sm" variant="ghost" onClick={() => setPricing(v)}>
+              {t('nx.prod.editPrices')}
+            </Button>
+          </Can>
+          {/* Retiring is `catalog.delete` rather than `catalog.edit`: taking a
+              line out of the catalogue is not the same decision as changing
+              its price, and the server gates them apart. */}
+          {v.is_active && (
+            <Can permission="catalog.delete">
+              <Button size="sm" variant="ghost" onClick={() => setRetiring(v)}>
+                {t('nx.prod.retire')}
+              </Button>
+            </Can>
+          )}
+        </span>
+      ),
     },
     {
       key: 'last_sold',
@@ -153,6 +243,44 @@ function ProductScreen() {
 
       {error && <ErrorState error={error} onRetry={() => void refetch()} />}
 
+      {pricing && scope && (
+        <PricingPanel
+          variant={pricing}
+          companyId={scope.company_id}
+          onSaved={() => {
+            setPricing(null);
+            void refetch();
+          }}
+          onCancel={() => setPricing(null)}
+        />
+      )}
+
+      {retiring && (
+        <Panel
+          title={t('nx.prod.retireTitle', { sku: retiring.sku })}
+          className="mb-4"
+        >
+          <p className="text-body text-muted">{t('nx.prod.retireBody')}</p>
+          {actionError && <FormError message={actionError} />}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="destructive"
+              onClick={() => void retire()}
+              disabled={busy}
+            >
+              {t('nx.prod.retireConfirm')}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setRetiring(null)}
+              disabled={busy}
+            >
+              {t('nx.prod.cancel')}
+            </Button>
+          </div>
+        </Panel>
+      )}
+
       <Panel
         flush
         footer={
@@ -163,7 +291,7 @@ function ProductScreen() {
             : undefined
         }
       >
-        {isLoading && <TableSkeleton columns={6} rows={4} />}
+        {isLoading && <TableSkeleton columns={8} rows={4} />}
 
         {!isLoading && !error && variants.length === 0 && (
           <div className="p-4">

@@ -15,9 +15,10 @@
 // differently rather than sharing an "attention" colour.
 
 import { Layers } from 'lucide-react';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 
-import { RequirePermission } from '@/components/auth/guard';
+import { Can, RequirePermission } from '@/components/auth/guard';
+import { Button } from '@/components/ui/button';
 import { Badge, PageHeader } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
@@ -26,6 +27,8 @@ import { useCompanyScope } from '@/lib/company/company-context';
 import { formatQuantity } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
 import { expiryState, type Batch } from '@/lib/stock/expiry';
+
+import { RecallPanel } from './recall';
 
 function BatchesScreen() {
   const t = useT();
@@ -37,6 +40,10 @@ function BatchesScreen() {
   );
 
   const rows = data?.data ?? [];
+
+  // One recall open at a time. Two would be two lists of people to telephone
+  // on one screen, and the wrong one would get called.
+  const [recalling, setRecalling] = useState<Batch | null>(null);
 
   const columns: Column<Batch>[] = [
     {
@@ -102,6 +109,32 @@ function BatchesScreen() {
       width: 'w-28',
       cell: (b) => <span className="num font-medium">{formatQuantity(b.qty_remaining)}</span>,
     },
+    {
+      key: 'actions',
+      header: '',
+      width: 'w-28',
+      cell: (b) =>
+        b.recalled_at ? (
+          // Already withdrawn. The badge rather than the button, because a
+          // second recall changes nothing and offering it suggests it might.
+          <span className="flex justify-end">
+            <Badge tone="critical">{t('nx.bat.recalled')}</Badge>
+          </span>
+        ) : (
+          <Can permission="inventory.recall_batch">
+            <span className="flex justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setRecalling(b)}
+                disabled={!b.id}
+              >
+                {t('nx.bat.recall')}
+              </Button>
+            </span>
+          </Can>
+        ),
+    },
   ];
 
   return (
@@ -109,7 +142,17 @@ function BatchesScreen() {
       <PageHeader title={t('nx.bat.title')} description={t('nx.bat.subtitle')} />
 
       {error ? <ErrorState error={error} onRetry={() => void refetch()} /> : null}
-      {isLoading && rows.length === 0 ? <TableSkeleton columns={5} /> : null}
+
+      {recalling?.id && scope ? (
+        <RecallPanel
+          batchId={recalling.id}
+          batchNo={recalling.batch_no}
+          companyId={scope.company_id}
+          onDone={() => void refetch()}
+          onCancel={() => setRecalling(null)}
+        />
+      ) : null}
+      {isLoading && rows.length === 0 ? <TableSkeleton columns={6} /> : null}
 
       {!isLoading && !error && rows.length === 0 ? (
         <EmptyState

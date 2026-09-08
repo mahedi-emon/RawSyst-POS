@@ -20,11 +20,17 @@
 import { ArrowLeft, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useState } from 'react';
 
-import { RequirePermission } from '@/components/auth/guard';
+import { Can, RequirePermission } from '@/components/auth/guard';
+import { Button } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
+import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/ui/states';
+import { api } from '@/lib/api/client';
+import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, isZero } from '@/lib/format/money';
@@ -79,6 +85,38 @@ function CustomerScreen() {
     scope && id ? `/customers/${id}/open-invoices` : null,
     scope ?? undefined,
   );
+
+  // Declared above the early return below, because a hook cannot be called
+  // conditionally and the error branch returns before the rest of the screen.
+  const [editingLimit, setEditingLimit] = useState(false);
+  const [limit, setLimit] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [limitError, setLimitError] = useState<string | null>(null);
+  const [limitFields, setLimitFields] = useState<Record<string, string> | null>(null);
+
+  async function saveLimit(value: string) {
+    if (!scope || !id) return;
+    setBusy(true);
+    setLimitError(null);
+    setLimitFields(null);
+    try {
+      // An empty string is how the server is told there is no limit, which is
+      // not the same as a limit of zero: no limit means nothing may go on
+      // account at all, and zero would mean the same thing by accident while
+      // reading as a deliberate figure somebody chose.
+      await api.post(
+        `/customers/${id}/credit-limit?company_id=${scope.company_id}`,
+        { credit_limit: value },
+      );
+      setEditingLimit(false);
+      void ledger.refetch();
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) setLimitFields(e.fields);
+      setLimitError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const money = (v: string | null | undefined) =>
     formatMoney(v ?? null, {
@@ -239,6 +277,76 @@ function CustomerScreen() {
           }
         />
       </section>
+
+      {/* Its own permission, and its own panel.
+          `customers.set_credit_limit` is separate from `customers.manage`
+          because raising a limit is how a business loses money slowly -- the
+          backend gives it its own route and its own grant, and a control
+          folded into the general edit form would hand it to everybody who can
+          correct a phone number. */}
+      <Can permission="customers.set_credit_limit">
+        {editingLimit ? (
+          <Panel title={t('nx.cust.limitTitle', { name: customer?.name ?? '' })} className="mb-6">
+            <Field
+              name="credit_limit"
+              label={t('nx.cust.limitField')}
+              hint={t('nx.cust.limitHint')}
+              error={limitFields?.credit_limit}
+            >
+              <Input
+                dir="ltr"
+                inputMode="decimal"
+                className="num"
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+              />
+            </Field>
+
+            {limitError && <FormError message={limitError} />}
+
+            <p className="mt-3 text-caption text-muted">{t('nx.cust.limitWhy')}</p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                onClick={() => void saveLimit(limit)}
+                disabled={busy}
+              >
+                {t('nx.cust.limitSave')}
+              </Button>
+              {customer?.credit_limit ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => void saveLimit('')}
+                  disabled={busy}
+                >
+                  {t('nx.cust.limitClear')}
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                onClick={() => setEditingLimit(false)}
+                disabled={busy}
+              >
+                {t('nx.cust.limitCancel')}
+              </Button>
+            </div>
+          </Panel>
+        ) : (
+          <div className="mb-6">
+            <Button
+              onClick={() => {
+                setLimit(customer?.credit_limit ?? '');
+                setLimitError(null);
+                setLimitFields(null);
+                setEditingLimit(true);
+              }}
+            >
+              {t('nx.cust.setLimit')}
+            </Button>
+          </div>
+        )}
+      </Can>
 
       <div className="flex flex-col gap-6">
         <Panel

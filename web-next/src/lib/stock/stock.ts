@@ -104,6 +104,10 @@ export interface Batch {
   expires_on?: string;
   qty_remaining: string;
   location?: string;
+  /** Set once the lot has been withdrawn from sale. Never cleared: a recall is
+   *  evidence, and a batch that could be un-recalled would lose it. */
+  recalled_at?: string;
+  recall_reason?: string;
 }
 
 /** On hand, held for somebody, and what is genuinely free to sell. */
