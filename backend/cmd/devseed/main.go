@@ -31,7 +31,12 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
@@ -44,6 +49,8 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
@@ -125,6 +132,10 @@ func run(email, name, password, operator string) error {
 
 	if err := seedTrading(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
 		return fmt.Errorf("seed trading: %w", err)
+	}
+
+	if err := seedConfiguration(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed configuration: %w", err)
 	}
 
 	// Overwritten only when asked, and only outside production, which the check
@@ -834,6 +845,241 @@ func seedTrading(
 		}},
 	}); err != nil {
 		return fmt.Errorf("take a part payment: %w", err)
+	}
+
+	return nil
+}
+
+// seedConfiguration writes the settings a shop configures once, and the money
+// records the back office reads.
+//
+// # Why
+//
+// Every list below answered an empty page against a fresh database, so
+// verify:api could describe none of their rows: a promotion, an approval rule,
+// a commission scheme, a nested department, a label layout, an exchange rate,
+// a bank account, a transfer between accounts, an expense, a standing cost, an
+// asset and an investor.
+//
+// These are configuration rather than trade, which is exactly why a demo shop
+// never grows them by accident: nobody sells anything that causes a label
+// layout to exist.
+func seedConfiguration(
+	ctx context.Context, pool *db.Pool, tenantID, ownerID uuid.UUID,
+) error {
+	var companyID, storeID, supplierID, cashAccountID uuid.UUID
+	var currency string
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT id, base_currency FROM company LIMIT 1`).
+			Scan(&companyID, &currency); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM store WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&storeID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM supplier WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&supplierID); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT id FROM money_account
+			WHERE company_id = $1 AND kind = 'cash'
+			ORDER BY created_at LIMIT 1`, companyID).Scan(&cashAccountID)
+	}); err != nil {
+		return err
+	}
+
+	rules := registry.New(pool, false)
+	now := time.Now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	// --- The catalogue's own shape ---------------------------------------
+
+	// A department with a department inside it. A flat list never exercises
+	// the indentation, and the tree is the part of a category that can be
+	// wrong: path and depth are computed on every write.
+	cat := catalog.NewService(pool, rules)
+	parent, err := cat.CreateCategory(ctx, tenantID, companyID, ownerID,
+		catalog.NewCategory{Name: "Beverages", NameAr: "مشروبات"})
+	if err != nil {
+		return fmt.Errorf("create a category: %w", err)
+	}
+	if _, err := cat.CreateCategory(ctx, tenantID, companyID, ownerID,
+		catalog.NewCategory{
+			Name: "Hot drinks", NameAr: "مشروبات ساخنة", ParentID: &parent.ID,
+		}); err != nil {
+		return fmt.Errorf("nest a category: %w", err)
+	}
+
+	// A shelf-edge label, so the studio has a layout to print with.
+	sheetCols, sheetRows := 3, 8
+	if _, err := labels.NewService(pool, rules).SaveTemplate(ctx, labels.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, nil, labels.Template{
+		Name: "Shelf edge, A4", Kind: labels.KindA4Sheet,
+		Width: "63.5", Height: "38.1", Margin: "5", Gap: "2",
+		Columns: &sheetCols, Rows: &sheetRows,
+		Fields: []labels.Field{
+			{Field: "name", Size: 10, Bold: true},
+			{Field: "price", Size: 12, Bold: true},
+			{Field: "barcode", Height: 12},
+		},
+		IsDefault: true,
+	}); err != nil {
+		return fmt.Errorf("save a label layout: %w", err)
+	}
+
+	// A campaign, running now so the till can quote it.
+	ends := now.AddDate(0, 1, 0)
+	if _, err := promotions.NewService(pool).Create(ctx, promotions.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, promotions.NewPromotion{
+		Code: "WELCOME10", Name: "Ten per cent off", NameAr: "خصم عشرة بالمئة",
+		Kind: "percentage", Value: decimal.NewFromInt(10),
+		StartsOn: &monthStart, EndsOn: &ends,
+	}); err != nil {
+		return fmt.Errorf("create a promotion: %w", err)
+	}
+
+	// --- Who signs things off ---------------------------------------------
+
+	flow := workflow.NewService(pool)
+	if _, err := flow.SaveRule(ctx, workflow.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, workflow.Rule{
+		Name:      "Expenses over 5,000 need the owner",
+		Subject:   "expense",
+		Condition: `{"amount_over": "5000"}`,
+		Action:    "require_approval",
+		Steps:     `[{"role": "owner"}]`,
+		IsActive:  true,
+	}); err != nil {
+		return fmt.Errorf("save an approval rule: %w", err)
+	}
+
+	// --- What people are paid on top of wages ------------------------------
+
+	if _, err := people.NewService(pool, rules).SetCommissionRule(ctx,
+		people.Scope{
+			TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+			MaySeePay: true,
+		},
+		"Counter staff, 2% of revenue", "revenue",
+		people.CommissionScope{StoreID: &storeID},
+		decimal.RequireFromString("0.02"), "",
+		monthStart, nil); err != nil {
+		return fmt.Errorf("set a commission scheme: %w", err)
+	}
+
+	// --- Money ------------------------------------------------------------
+
+	// A rate, so a foreign-currency figure has something to be converted at.
+	other := "USD"
+	if currency == "USD" {
+		other = "SAR"
+	}
+	if _, err := fx.New(pool).Record(ctx, fx.Scope{
+		TenantID: tenantID, UserID: ownerID,
+	}, other, currency, decimal.RequireFromString("3.75"), now,
+		"seed", "Indicative rate for development."); err != nil {
+		return fmt.Errorf("record an exchange rate: %w", err)
+	}
+
+	cash := treasury.NewService(pool)
+	trScope := treasury.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+
+	// The bank account money is moved INTO. Provisioning already opens one
+	// beside the cash drawer -- one money_account per chart account, which is
+	// what money_account_ledger_uq holds -- so this finds it rather than
+	// opening a second one against the same ledger account.
+	var bankAccountID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT id FROM money_account
+			WHERE company_id = $1 AND kind = 'bank'
+			ORDER BY created_at LIMIT 1`, companyID).Scan(&bankAccountID)
+	}); err != nil {
+		return fmt.Errorf("find the bank account: %w", err)
+	}
+
+	if _, err := cash.Move(ctx, trScope, treasury.NewTransfer{
+		UUID:          uuid.New(),
+		FromAccountID: cashAccountID,
+		ToAccountID:   bankAccountID,
+		Amount:        decimal.NewFromInt(500),
+		MovedOn:       now,
+		Reference:     "Banking the float.",
+	}); err != nil {
+		return fmt.Errorf("bank the takings: %w", err)
+	}
+
+	// --- What the shop spends ---------------------------------------------
+
+	spend := expenses.NewService(pool, rules)
+	exScope := expenses.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	heads, err := spend.Heads(ctx, exScope, false)
+	if err != nil {
+		return fmt.Errorf("read the expense heads: %w", err)
+	}
+	if len(heads) == 0 {
+		return fmt.Errorf("no expense heads are seeded, so nothing can be spent")
+	}
+	head := heads[0]
+
+	if _, err := spend.Record(ctx, exScope, expenses.NewExpense{
+		UUID: uuid.New(), Date: now, StoreID: &storeID,
+		SupplierID: &supplierID,
+		Reference:  "UTIL-0001", Description: "Electricity for the month.",
+		PaidFrom: "cash",
+		Lines: []expenses.NewLine{{
+			HeadID: head.ID, Description: "Electricity",
+			Net: decimal.NewFromInt(400), TaxTreatment: "standard",
+		}},
+	}); err != nil {
+		return fmt.Errorf("record an expense: %w", err)
+	}
+
+	if _, err := spend.CreateRecurring(ctx, exScope, expenses.NewRecurring{
+		Name: "Shop rent", HeadID: head.ID, StoreID: &storeID,
+		Amount: decimal.NewFromInt(9000), PaidFrom: "bank",
+		Description: "Monthly rent on the shop.",
+		Frequency:   "monthly", Interval: 1,
+		StartsOn: monthStart,
+	}); err != nil {
+		return fmt.Errorf("create a standing cost: %w", err)
+	}
+
+	// --- What the shop owns, and who put money in --------------------------
+
+	fixed := assets.NewService(pool)
+	asScope := assets.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	if _, err := fixed.Add(ctx, asScope, assets.NewAsset{
+		Name: "Chiller cabinet", NameAr: "ثلاجة عرض", Category: "equipment",
+		StoreID: &storeID, SerialNumber: "CHL-2026-001",
+		AcquiredOn: now.AddDate(0, -6, 0),
+		Cost:       decimal.NewFromInt(18000),
+		Residual:   decimal.NewFromInt(1800),
+		LifeMonths: 60,
+	}); err != nil {
+		return fmt.Errorf("register an asset: %w", err)
+	}
+
+	if _, err := fixed.AddInvestor(ctx, asScope, assets.NewInvestor{
+		Name: "Demo Retail Holdings", NameAr: "القابضة", Kind: "owner",
+		Email: "holdings@example.test",
+		Note:  "The founding shareholder.",
+	}); err != nil {
+		return fmt.Errorf("add an investor: %w", err)
 	}
 
 	return nil

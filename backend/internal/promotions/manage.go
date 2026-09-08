@@ -53,12 +53,13 @@ func (s *Service) List(
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT p.id, p.code, p.name, coalesce(p.name_ar, ''), p.kind,
-			       p.value, p.buy_qty, p.get_qty,
+			       coalesce(p.value, 0), coalesce(p.buy_qty, 0),
+			       coalesce(p.get_qty, 0),
 			       p.category_id, p.brand_id, p.variant_id,
 			       coalesce(p.customer_type, ''),
 			       coalesce(to_char(p.starts_on, 'YYYY-MM-DD'), ''),
 			       coalesce(to_char(p.ends_on, 'YYYY-MM-DD'), ''),
-			       p.store_id, p.min_purchase,
+			       p.store_id, coalesce(p.min_purchase, 0),
 			       coalesce(p.coupon_code, ''), p.max_uses, p.max_uses_per_customer,
 			       p.is_active, p.priority, c.base_currency,
 			       coalesce(cat.name, ''), coalesce(b.name, ''), coalesce(pr.name, ''),
@@ -387,11 +388,13 @@ func (s *Service) read(
 	var value, buyQty, getQty, minPurchase decimal.Decimal
 	err := tx.QueryRow(ctx, `
 		SELECT p.id, p.code, p.name, coalesce(p.name_ar, ''), p.kind,
-		       p.value, p.buy_qty, p.get_qty, p.category_id, p.brand_id,
+		       coalesce(p.value, 0), coalesce(p.buy_qty, 0),
+		       coalesce(p.get_qty, 0), p.category_id, p.brand_id,
 		       p.variant_id, coalesce(p.customer_type, ''),
 		       coalesce(to_char(p.starts_on, 'YYYY-MM-DD'), ''),
 		       coalesce(to_char(p.ends_on, 'YYYY-MM-DD'), ''),
-		       p.store_id, p.min_purchase, coalesce(p.coupon_code, ''),
+		       p.store_id, coalesce(p.min_purchase, 0),
+		       coalesce(p.coupon_code, ''),
 		       p.max_uses, p.max_uses_per_customer, p.is_active, p.priority,
 		       c.base_currency
 		FROM promotion p
