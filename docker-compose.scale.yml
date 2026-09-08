@@ -1,0 +1,103 @@
+# More than one API process, and TLS in front of it.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d
+#
+# Redis is what makes a rate limit of ten still be ten behind TWO API replicas,
+# and what makes a revoked permission take effect on both. Nginx terminates TLS
+# and puts the API and the back office on one hostname.
+#
+# An override file rather than a profile: compose interpolates every `${VAR:?}`
+# in a file before it filters by profile, so a required secret on a profiled
+# service broke `docker compose up` for everybody who was not using it.
+#
+# Needs, in .env:
+#   RAWSYST_REDIS_PASSWORD
+
+name: rawsyst
+
+# Every container's log, bounded. The same block as the base file, repeated
+# because a YAML anchor does not cross files.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    logging: *logging
+    image: redis:8-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${RAWSYST_REDIS_PASSWORD:?set RAWSYST_REDIS_PASSWORD in .env}
+      # No persistence. Everything in here can be recomputed from Postgres by
+      # design — see internal/platform/cache — so an AOF would be a backup of
+      # something that is already backed up, and a restore would hand the
+      # product a stale permission set.
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      # A cache with a ceiling and a policy, not a memory leak with a port.
+      # Without these, Redis grows until the kernel kills it, and the thing it
+      # takes down is the machine the database is on.
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$RAWSYST_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      RAWSYST_REDIS_PASSWORD: ${RAWSYST_REDIS_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+    # Not published. Only the API and the worker reach it.
+    expose:
+      - "6379"
+
+  nginx:
+    logging: *logging
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/proxy.conf:/etc/nginx/proxy.conf:ro
+      - ./deploy/nginx/proxy-ws.conf:/etc/nginx/proxy-ws.conf:ro
+      # The certificate, from wherever it is renewed. A self-signed pair is
+      # enough to bring the stack up; a real deployment points this at what its
+      # ACME client writes.
+      - ${TLS_CERT_DIR:-./deploy/nginx/certs}:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+
+  # The API waits for Redis only when Redis is part of the stack.
+  #
+  # This lived in the base file as `depends_on: redis: {required: false}`, which
+  # needs the service to be DEFINED even when it is not started -- so moving
+  # redis out here made the base file reference a service that no longer
+  # existed. The dependency belongs with the service that creates it.
+  api:
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  certbot-webroot:

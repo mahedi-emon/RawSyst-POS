@@ -1,0 +1,48 @@
+# What answers "when did it get slow" a week later.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.watch.yml up -d
+#
+# The API already exposes /metrics behind RAWSYST_METRICS_TOKEN, which the base
+# file requires; this is the store that scrapes it. See the note on override
+# files in docker-compose.scale.yml.
+
+name: rawsyst
+
+# Every container's log, bounded. The same block as the base file, repeated
+# because a YAML anchor does not cross files.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  prometheus:
+    logging: *logging
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Thirty days. Long enough to answer "when did this start" and short
+      # enough that the disk on a shop's server survives it.
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - metrics-data:/prometheus
+    environment:
+      DEPLOYMENT_NAME: ${DEPLOYMENT_NAME:-rawsyst}
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # Not published either. A metrics store is read through a dashboard on a
+    # private network, not from the internet.
+    expose:
+      - "9090"
+
+volumes:
+  metrics-data:

@@ -64,7 +64,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/migrate ./cmd/migrate
+      -o /out/migrate ./cmd/migrate && \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/bootstrap ./cmd/bootstrap
 
 # A non-root user, built here because scratch has no adduser.
 RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
@@ -82,6 +86,12 @@ COPY --from=build /out/group /etc/group
 COPY --from=build /out/api /api
 COPY --from=build /out/worker /worker
 COPY --from=build /out/migrate /migrate
+# The first platform operator, and nothing else. A deployment migrates
+# cleanly, comes up healthy and has nobody who can sign in -- an operator
+# is a user with no tenant, and every route that could create one needs the
+# guard it would be needed to pass. This refuses once one exists, which is
+# what separates a bootstrap from a back door.
+COPY --from=build /out/bootstrap /bootstrap
 
 # Never uid 0. A container that is rooted is a host that is one kernel bug away
 # from being rooted.

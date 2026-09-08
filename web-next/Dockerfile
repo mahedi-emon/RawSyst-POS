@@ -80,6 +80,23 @@ COPY web-next ./web-next
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Where the back office proxies /api/v1 to.
+#
+# This has to be a BUILD argument, and finding that out cost a deployment that
+# came up healthy and could not sign anybody in. Next resolves `rewrites()`
+# when it builds and freezes the result into
+# `.next/required-server-files.json`, so the runtime environment variable the
+# compose file sets was read by nothing: every proxied request went to
+# `http://localhost:8080`, inside the web container, where nothing listens.
+#
+# `http://api:8080` is the compose service, which is right for every deployment
+# that uses this compose file. A deployment that puts the API somewhere else
+# rebuilds with --build-arg. The default is deliberately NOT localhost: an
+# image whose default only works on a developer's machine is an image that
+# fails in the one place it is meant to run.
+ARG RAWSYST_API_ORIGIN=http://api:8080
+ENV RAWSYST_API_ORIGIN=$RAWSYST_API_ORIGIN
+
 # A ceiling on the build, not a target.
 #
 # Next's compiler is happy to grow to whatever the machine has, and on a small
