@@ -6024,3 +6024,271 @@ whatever is decided about the row should not be a change to the guard. Every
 backend test in the repository is blocked by it, including fourteen written this
 pass that were green earlier in the session. What was verified instead was
 driven against the running API, which is recorded per screen above.
+
+---
+
+# AUDIT SESSION — 2026-09-08
+
+**Brief:** do not trust any COMPLETE label; verify the implementation and the
+end-to-end behaviour independently, and finish whatever is not finished.
+
+This section records what was actually checked, what turned out to be wrong,
+and what is deliberately still absent. Nothing below is claimed on the strength
+of a previous session's note.
+
+## The blocker that was not a migration problem
+
+Every backend integration test in the repository had been unrunnable since
+4 September. The migration harness refused with
+
+    migration 0103_tenant_market was modified after it was applied
+    (recorded e4acb998ac28, found 80bb1773bf45)
+
+The previous note treated this as a question about migration `0103`. It was not.
+The cause was that **integration tests were being run against `rawsyst_dev`** —
+a long-lived database that had had migrations applied by hand for months — while
+the repository already carries a disposable one, `rawsyst_test`, and a binary
+whose whole job is to rebuild a database from nothing (`cmd/freshcheck`).
+
+Resolved without touching the guard, without editing `schema_migration`, and
+without editing an applied migration:
+
+    RAWSYST_DB_DSN=...rawsyst_test go run -tags=freshcheck ./cmd/freshcheck
+
+    public schema dropped and recreated; nothing is left
+    all migrations applied in 1.836s
+    migrations recorded: 130 (highest 130)
+    tables: 183, with RLS forced: 175, policies: 175
+    regulatory rules seeded: 44
+    CDTFA rates seeded: 542, active: 542
+    Saudi onboarding blockers outstanding: 0
+    fresh database came up clean
+
+That is simultaneously the fix and §23's clean-migration test. The development
+database was rebuilt the same way and reseeded, so both are now reproducible
+from the committed chain.
+
+The suite went from **entirely blocked** to **entirely green**, and from
+~2,500s to ~300s for `internal/api` — the old figure was mostly the accumulated
+weight of the development database, not the tests.
+
+**Correction to the standing note:** there is no `rawsyst-dev-db` Docker
+container on this machine and Docker is not needed for backend work. Both
+databases are in the native `postgresql-x64-18` service on port 5432, which is
+what `backend/.env` has always said.
+
+## Defects found, and how each was found
+
+Five, and **not one came from reading source**. Four came from driving the
+running API through `verify:api` against a database built from zero, and the
+fifth from making a regulatory rule resolvable so the code behind it ran for the
+first time.
+
+### 1. The end-of-service award read one of its rule's six fields
+
+`SA.EOSB.ENTITLEMENT` carries a wage basis and two service bands. The accrual
+read `days_per_year_first_five` and applied it to every year of everybody's
+service, on a wage hard-coded in Go as basic-plus-housing while the rule had a
+field naming which wage to use.
+
+Saudi labour law awards less for each of the first five years than for each year
+after them, so reading the first band alone **understates the liability, and
+understates it most for the long-serving people whose award is largest**. It
+would have done so silently for years and surfaced on the day somebody with
+fifteen years resigned.
+
+Both bands are read now, and the band a month belongs to is decided by service
+at that month, so crossing five years starts the higher rate from the month it
+is crossed and nothing already posted moves. The wage basis is read from the
+rule against a closed vocabulary (`basic`, `basic_plus_housing`,
+`basic_plus_all_allowances`); a basis this product cannot compute is refused by
+name rather than approximated.
+
+### 2. The end-of-service accrual could never once have succeeded
+
+Making the rule resolvable ran the code behind it for the first time, and it
+failed immediately: it inserted the accrual row, posted the journal entry, then
+`UPDATE`d the row to stamp the entry on it — and `eosb_accrual` carries a
+`reject_always` trigger on UPDATE, because an accrual is history.
+
+Nobody had ever seen it. The entitlement has always been a placeholder, so the
+accrual refused for want of a rule long before reaching that line. The id is
+minted in Go now, the entry posts first, and the row is written once with both.
+
+### 3. Three of the four kinds of promotion answered 500
+
+`promotion.value`, `buy_qty`, `get_qty` and `min_purchase` are all nullable, and
+each kind fills a different subset. Both the campaigns list and the single read
+selected all four raw and scanned them into non-null decimals. So creating the
+most ordinary promotion a shop can run — a percentage off — answered 500, and
+once one existed **the whole campaigns list answered 500 from then on**.
+
+Nothing caught it because every fixture in the repository used `buy_x_get_y`,
+which is the one kind that fills the columns the other three leave empty.
+
+### 4. A wholesale order billed to an account was refused
+
+`orders.Invoice` built the `customer_due` tender itself by adding the line
+amounts up, which is the NET figure; the sale's total is the tax-inclusive one,
+computed inside the sales engine after the tax profile is applied from the
+registry. So an order quoted net of VAT and put on account came back with
+
+    The payments come to 200 against a total of 230, a difference of -30
+
+naming payments the caller never sent, and short by exactly the tax. Wholesale
+is normally quoted net, so this was the ordinary path for the customers B12 is
+about.
+
+`Sale.OnAccount` now says the customer owes the whole thing and the engine
+states the figure, after `Compute` and before the tender check. A caller that
+states its own tenders is untouched.
+
+### 5. The "cover is in force" badge never rendered
+
+`GET /approval-delegations` answers `is_live`; `/settings/approvals` read
+`live`. A manager covering for an away owner looked, on the screen, like a
+manager covering for nobody.
+
+It could not have been noticed before: a shop with one user cannot hold a
+delegation at all, because delegating to yourself changes nothing and the
+service says so. That is why the fixture mattered.
+
+## The verification that was a memory rather than a check
+
+`verify:api` asserts the FIELDS each screen reads, not only the status — but it
+can only do that against a row. Against a database built from zero it reported
+**54 payload shapes as "not exercised"** and moved on. Every one of those
+contracts had only ever been confirmed against a development database somebody
+had typed into months earlier.
+
+`cmd/devseed` now builds a shop that has actually traded. Everything goes
+through the services the API calls, so a seeded record is made the way a real
+one is — hired, numbered, posted, and refused by the same validation.
+
+| | |
+|---|---|
+| Unexercised shapes, before | **54** |
+| Unexercised shapes, after | **5** |
+
+What the seed now writes: two employees (one whose residency permit expires
+inside the window the alert asks about, because an empty alert list describes
+nothing), a worked day each, an undecided leave request, an advance, a prepared
+payroll run; the quotation walked forward one state at a time to delivered,
+invoiced on account and part-paid; an issued purchase order open for receiving
+and a second supplier bill left unpaid; a nested department, a label layout, a
+running campaign, an approval rule, a delegation, a commission scheme, an
+exchange rate, a bank transfer, an expense, a standing cost, an asset and a
+shareholder; a delivery, an instalment plan against a real invoice, two
+serial-numbered units and a repair booked against one; a supplier portal
+contact, a saved report, a filed document, an API key, a callback, a notice, a
+support ticket with a reply, a backup, a consent, a subject access request, a
+processing activity, a legal hold, a card gateway, an import batch and the
+platform's sub-processor register; and a second business in Bangladesh.
+
+Approving the payroll and settling the invoice are deliberately left undone.
+They are decisions a person makes, and a fixture that made them would be
+recording that the owner agreed.
+
+### The demo shop could not sell
+
+Found while closing the last of those: the seeded Saudi shop's counter had an
+EGS unit, but the unit carried no registered name or VAT number and the branch
+had no National Address, so **every sale answered "this shop is not set up for
+e-invoicing yet"**. That is the correct refusal — BR-KSA-09, -37 and -66 require
+all of it on the face of an invoice — and an incomplete fixture. The POS half of
+the product could not be used in development at all.
+
+With that fixed the whole exchange path is checked for the first time: the
+settlement figure, the refusal with no reason, the credit note, and the retry
+replaying the same documents and the same figures.
+
+`verify:api` also had a defect of its own: it reused one variable for two
+questions — whether the till must SAY where it is selling from (only when a
+branch has more than one stock location) and where to ASK about stock — so it
+skipped the exchange in every single-location shop, which is most shops.
+
+### The five that remain, and why
+
+| Shape | Why |
+|---|---|
+| A recorded data breach | Starts a 72-hour regulatory clock. Seeding one would put a fiction into a screen whose whole value is that it is believed. **Refused on purpose.** |
+| A failed background job | An incident an operator is meant to act on. Same reason. **Refused on purpose.** |
+| A customer's return request | Needs a customer portal session, which is an act by a member of the public rather than by the shop. Covered by backend tests. |
+| A delivered webhook | Needs a real outbound HTTP call to a third party. Covered by backend tests. |
+| A branch with no country of its own | A fallback for a branch that has not set one; the seeded branch has. |
+
+## Regulatory state — SA.EOSB.ENTITLEMENT
+
+Unchanged, and correctly so. It is the one release-blocking rule that has never
+been verified against its official source, and **it is not this session's to
+verify**: recording it is an assertion by a person that they read the figure in
+the Labour Law, and `RecordRule` requires the official document to be named.
+Fabricating that would be forging a legal record.
+
+What was owed on the software side, and is now done:
+
+* Both service bands and the wage basis are read from the rule (was: one field).
+* The accrual behind it works at all (was: an impossible UPDATE).
+* The refusal is specific — an unfilled band, an unfilled basis and a basis the
+  product cannot compute each say a different thing, and each names what to do.
+* Recording the verified value is a complete workflow on `/platform/rules`: a
+  correction supersedes rather than overwrites, `__VERIFY__` cannot be written
+  back, an unverified value must carry a note, and the verifier is stamped.
+
+A deployment serving Saudi tenants refuses to START in production while it is
+unverified, and the value refuses at the point of use regardless. Neither was
+weakened.
+
+## What was verified, and how
+
+    clean migration from zero    130 migrations, 183 tables, 175 forced RLS,
+                                 175 policies                          PASS
+    backend, all packages        integration tags, fresh test database PASS
+    backend, internal/api        292s                                  PASS
+    go vet / go vet -tags=integration                                  PASS
+    gofmt -s -l                  clean (two files were not, and are now)
+    lint-wording                 1,413 files                           PASS
+    frontend typecheck           tsc --noEmit                          PASS
+    frontend tests               491 passed / 30 files                 PASS
+    shared tests                 482 passed / 29 files                 PASS
+    frontend build               137 routes, 120 static pages          PASS
+    check:contract               492 routes, 110 permissions (103 gated) PASS
+    verify:api                   ALL SCREEN CONTRACTS VERIFIED, from a
+                                 database built from zero              PASS
+    verify:rbac                  EVERY BOUNDARY HELD                   PASS
+
+`verify:api` and `verify:rbac` were both run against a database rebuilt from
+the committed migration chain and reseeded, not against an accumulated one.
+That is the difference between this run and every previous one.
+
+## One thing in the brief that the product deliberately does not do
+
+The brief says employees must not be able to change their own password "if the
+product rule says credentials are owner-managed". **The Blueprint's rule is the
+opposite**, and the implementation follows it: a temporary password is issued by
+whoever creates the account and **must be changed on first login** (A5, and the
+traceability row for "I create the Owner account with username and password").
+Forbidding self-change would make that mandatory first change impossible.
+
+What is enforced: the current password is re-verified, every session including
+the caller's own is revoked, an owner-initiated reset requires a written reason
+and is permanently audit-logged, and no password is ever readable by anybody.
+
+## Blueprint reconciliation
+
+The 77-feature reconciliation stands as written in the previous section, with
+four rows corrected rather than moved: **B9** (promotions) was COMPLETE with
+three of its four campaign kinds returning 500; **B11/B12** (order to invoice,
+wholesale) was COMPLETE with the on-account path refusing every tax-exclusive
+order; **E6** (Saudi labour and payroll) was COMPLETE with an end-of-service
+accrual that had never run and would have understated the award when it did;
+**F1** (workflow and approval) was COMPLETE with a badge that never rendered.
+
+All four are now what the label said. No row changed status; four rows changed
+from claimed to true.
+
+    COMPLETE                     74
+    N/A, an engine or optional    3  — C9 posting engine, I3 numbering
+                                      engine, E1.3 offline B2B rules
+    PARTIAL                       0
+    NOT STARTED                   0

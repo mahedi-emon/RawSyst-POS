@@ -85,8 +85,8 @@ type Bill struct {
 	// showed them as one would tell a supplier they had been paid for goods
 	// they had taken back.
 	AmountCredited string `json:"amount_credited"`
-	Outstanding string     `json:"outstanding"`
-	Status      string     `json:"status"`
+	Outstanding    string `json:"outstanding"`
+	Status         string `json:"status"`
 
 	// Match is the evidence, kept rather than recomputed. A control that
 	// leaves no record cannot be audited, and recomputing later would give a
