@@ -43,6 +43,7 @@
 #   RAWSYST_DOCKER_MAX_MB      default 4000
 #   RAWSYST_LOGS_MAX_MB        default 200
 #   RAWSYST_DISK_MIN_FREE_GB   default 10
+#   RAWSYST_RAM_MIN_FREE_MB    default 1024 (reported, never acted on)
 
 set -uo pipefail
 
@@ -54,6 +55,9 @@ NEXT_MAX_MB="${RAWSYST_NEXT_MAX_MB:-1500}"
 DOCKER_MAX_MB="${RAWSYST_DOCKER_MAX_MB:-4000}"
 LOGS_MAX_MB="${RAWSYST_LOGS_MAX_MB:-200}"
 DISK_MIN_FREE_GB="${RAWSYST_DISK_MIN_FREE_GB:-10}"
+# Memory is reported and never acted on, so this only decides when the
+# report says to run the heavy suites one at a time.
+RAM_MIN_FREE_MB="${RAWSYST_RAM_MIN_FREE_MB:-1024}"
 
 ACTION="${1:-report}"
 shift || true
@@ -158,6 +162,69 @@ GOMODCACHE_DIR="$(go env GOMODCACHE 2>/dev/null || echo '')"
 NPMCACHE_DIR="${npm_config_cache:-${LOCALAPPDATA:-$HOME}/npm-cache}"
 [ -d "$NPMCACHE_DIR" ] || NPMCACHE_DIR="$HOME/.npm"
 
+
+# --- memory, processes and connections --------------------------------------
+#
+# Disk is what a cache costs; MEMORY is what decides whether a test run
+# finishes. These are reported and never acted on: killing a process because it
+# looks large is how somebody loses an editor session, and the one process this
+# script is entitled to have an opinion about is a duplicate of the project's
+# own dev server.
+
+# ram_line reports total, free and used in whole megabytes.
+ram_line() {
+  if [ "$IS_WINDOWS" -eq 1 ] && command -v powershell >/dev/null 2>&1; then
+    powershell -NoProfile -NonInteractive -Command "
+      \$os = Get-CimInstance Win32_OperatingSystem
+      \$t = [math]::Round(\$os.TotalVisibleMemorySize/1KB,0)
+      \$f = [math]::Round(\$os.FreePhysicalMemory/1KB,0)
+      Write-Output (\"\$t \$f\")" 2>/dev/null | tr -d '\r'
+    return
+  fi
+  if [ -r /proc/meminfo ]; then
+    awk '/MemTotal/ {t=$2} /MemAvailable/ {f=$2} END {printf "%d %d", t/1024, f/1024}' /proc/meminfo
+    return
+  fi
+  echo "0 0"
+}
+
+# rawsyst_processes lists this project's own long-running processes.
+#
+# By NAME, and only the ones this repository starts: an editor's language
+# server is also a node process and is none of this script's business.
+rawsyst_processes() {
+  if [ "$IS_WINDOWS" -eq 1 ] && command -v powershell >/dev/null 2>&1; then
+    powershell -NoProfile -NonInteractive -Command "
+      Get-Process -Name api,worker,migrate,devseed,postgres -ErrorAction SilentlyContinue |
+        ForEach-Object { '{0} {1} {2}' -f \$_.ProcessName, \$_.Id, [math]::Round(\$_.WorkingSet64/1MB,0) }" 2>/dev/null | tr -d '\r'
+    return
+  fi
+  ps -eo comm=,pid=,rss= 2>/dev/null |
+    awk '$1 ~ /^(api|worker|migrate|devseed|postgres)$/ {printf "%s %s %d\n", $1, $2, $3/1024}'
+}
+
+# db_connections asks the database how many backends are open, and its ceiling.
+#
+# A pool is a memory reservation as much as a concurrency limit -- every
+# connection is a server-side process -- so this is the RAM figure that a
+# misconfigured pool moves.
+db_connections() {
+  command -v psql >/dev/null 2>&1 || { echo ""; return; }
+  local dsn="${RAWSYST_DB_DSN:-}"
+  [ -n "$dsn" ] || dsn="$(grep -m1 '^RAWSYST_DB_DSN=' "$REPO/backend/.env" 2>/dev/null | cut -d= -f2-)"
+  [ -n "$dsn" ] || { echo ""; return; }
+  psql "$dsn" -tAc \
+    "SELECT count(*) || '/' || current_setting('max_connections') FROM pg_stat_activity" \
+    2>/dev/null | tr -d '[:space:]'
+}
+
+# docker_images reports what this project's own images weigh.
+docker_images() {
+  docker_ok || return 0
+  docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null |
+    grep -E '^(rawsyst/|postgres:)' || true
+}
+
 measure() {
   GOCACHE_MB="$(dir_mb "$GOCACHE_DIR")"
   GOMOD_MB="$(dir_mb "$GOMODCACHE_DIR")"
@@ -187,6 +254,64 @@ report() {
   echo
   printf "  %-26s %8s GB   %s\n" "Free on this volume" "$FREE_GB" \
     "$( [ "$FREE_GB" -lt "$DISK_MIN_FREE_GB" ] && echo "LOW (min ${DISK_MIN_FREE_GB})" || echo "ok (min ${DISK_MIN_FREE_GB})" )"
+  echo
+
+  # --- memory and processes, which no amount of cache cleaning changes ------
+
+  local total free used
+  read -r total free <<<"$(ram_line)"
+  total="${total:-0}"; free="${free:-0}"
+  used=$(( total - free ))
+  echo "Memory:"
+  if [ "$total" -gt 0 ]; then
+    printf "  %-26s %8s MB   of %s MB (%s MB free)\n" \
+      "In use" "$used" "$total" "$free"
+    if [ "$free" -lt "$RAM_MIN_FREE_MB" ]; then
+      printf "  %-26s %8s     %s\n" "" "" \
+        "LOW (min ${RAM_MIN_FREE_MB} MB) — run the heavy suites one at a time"
+    fi
+  else
+    printf "  %-26s %8s     %s\n" "In use" "?" "not readable on this platform"
+  fi
+
+  local procs count
+  procs="$(rawsyst_processes)"
+  count="$(printf '%s' "$procs" | grep -c . || true)"
+  echo
+  echo "This project's processes: ${count:-0}"
+  if [ -n "$procs" ]; then
+    printf '%s\n' "$procs" | while read -r name pid mb; do
+      [ -n "$name" ] || continue
+      printf "  %-14s pid %-8s %6s MB\n" "$name" "$pid" "$mb"
+    done
+    # The one duplicate this script is entitled to name. Two API processes on
+    # one machine means the second could not bind and the first is serving
+    # something a developer may not have meant to leave running.
+    local apis
+    apis="$(printf '%s\n' "$procs" | awk '$1 == "api"' | grep -c . || true)"
+    if [ "${apis:-0}" -gt 1 ]; then
+      echo "  WARNING: ${apis} API processes are running. Only one can hold :8080."
+    fi
+  fi
+
+  local conns
+  conns="$(db_connections)"
+  if [ -n "$conns" ]; then
+    echo
+    printf "  %-26s %8s     %s\n" "Database connections" "$conns" \
+      "every one is a server-side process"
+  fi
+
+  local images
+  images="$(docker_images)"
+  if [ -n "$images" ]; then
+    echo
+    echo "Images:"
+    printf '%s\n' "$images" | while read -r name size; do
+      [ -n "$name" ] || continue
+      printf "  %-40s %s\n" "$name" "$size"
+    done
+  fi
   echo
 }
 
