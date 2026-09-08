@@ -56,6 +56,11 @@ fresh-dev: ## Rebuild and reseed the DEVELOPMENT database
 	@cd backend && RAWSYST_DB_DSN='$(DEV_DSN)' go run -tags=freshcheck ./cmd/freshcheck
 	@cd backend && set -a && . ./.env && set +a && \
 	  go run ./cmd/devseed -password 'DevPassw0rd!2026' -platform-email ops@example.test
+	@$(MAKE) --no-print-directory dev-regulatory
+
+.PHONY: dev-regulatory
+dev-regulatory: ## Stage development figures for the legal values that block calculations
+	@cd backend && set -a && . ./.env && set +a && go run ./cmd/devregulatory
 
 .PHONY: test-backend
 test-backend: ## The Go suite against the test database, in two stages
