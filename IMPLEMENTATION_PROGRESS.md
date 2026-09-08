@@ -6292,3 +6292,232 @@ from claimed to true.
                                       engine, E1.3 offline B2B rules
     PARTIAL                       0
     NOT STARTED                   0
+
+---
+
+# PRODUCTION HARDENING — 2026-09-08 (second session of the day)
+
+**Brief:** finish anything still missing, make the product run well on 8GB of
+RAM and 40GB of disk, and build a maintenance strategy rather than clearing a
+cache once.
+
+Everything below was measured on the machine, not estimated.
+
+## The deployment shipped the wrong application
+
+`docker-compose.yml` built `web/Dockerfile`. `web/` is the first front end: two
+routes, a sign-in shell and a portal stub. The product is `web-next` — 137
+routes, every screen the Blueprint asks for — and it had **no Dockerfile at
+all**.
+
+So `docker compose up` deployed a two-page application, and looked exactly like
+a working deployment: both directories build, and a build that succeeds looks
+like a build that is right. The old Dockerfile now says NOT WHAT DEPLOYS at the
+top, because the way this goes unnoticed is that nothing is obviously wrong.
+
+Building the real one found the next thing. npm selects Tailwind v4's native
+Rust binary by platform and architecture and **not** by C library
+(npm/cli#4828), so `npm ci` inside alpine installs `oxide-linux-x64-gnu` and
+the build dies looking for the musl one. Verified by listing
+`node_modules/@tailwindcss` in the alpine deps stage rather than inferred.
+
+| | |
+|---|---|
+| Back office on `node:22-slim` | 451 MB |
+| Back office on distroless | **328 MB** |
+| Application inside it | 93 MB |
+| Backend (`scratch`, three binaries) | **62.7 MB** |
+
+The runtime is `gcr.io/distroless/nodejs22-debian12`: a Node runtime and
+nothing else — no shell, no package manager, running as `nonroot`. The same
+reasoning that puts the Go image on `scratch`.
+
+Driven rather than assumed: the container serves `/login`, the manifest and the
+icons, reports **healthy**, and idles at **45.6 MiB** of its 384 MB ceiling.
+
+`web-next` also had no icons and no manifest while the front end it replaced had
+both, so the product a customer runs showed a default globe in the browser tab
+and could not be installed at all. Carried over.
+
+## Eight capabilities the server had and nothing could reach
+
+Found by taking every route in the contract and asking which the front end
+never names. The first pass over-reported — a screen builds `/orders/${id}/
+${verb}`, so a literal search misses it — and each candidate was then checked
+by hand. What survived:
+
+| Capability | Route | Why it mattered |
+|---|---|---|
+| **Set a price** | `PUT /catalog/variants/{id}/prices` | A retail product where nobody can change a price is not a retail product. All four tiers, and the route's own comment says the point of it was that "a shop could not price its trade customers through the product screens" |
+| **Retire a variant** | `DELETE /catalog/variants/{id}` | `catalog.delete`, not `catalog.edit`: taking a line out of the catalogue is not repricing it |
+| **Set a credit limit** | `POST /customers/{id}/credit-limit` | The till refuses a sale that would breach a limit — so the product enforced a number nobody could set |
+| **Recall a batch** | `POST /stock/batches/{id}/recall` | A shop told its supplier had a contamination problem had no way to act on it. The route answers who bought from the lot, with telephone numbers |
+| **Close a year** | `POST /accounting/year-end` | C10 could close twelve months and never the year they belong to |
+| **Find a gift card** | `GET /gift-cards/by-code/{code}` | The number is printed on the card in the cashier's hand |
+| **Void a gift card** | `POST /gift-cards/{id}/void` | Lost, stolen or issued by mistake, the balance stayed spendable |
+| **Fit a part to a repair** | `POST /service-jobs/{id}/parts` | B15's whole point about what warranty work really costs. The screen declared a `ServicePart` type and rendered none |
+| **A client's modules** | `PUT /platform/tenants/{id}/features` | H5's commercial flexibility, live and uncalled — and with no GET beside it, so the operator who may grant a module could not see which modules that client had. The read was added for this |
+
+Three backend changes were needed to support them: the variant grid returned
+only the retail price (a form offering to edit a wholesale price it had never
+been told would send back a blank, and a blank clears it); `EntitlementsOf` is
+the platform's read of any tenant, sharing one query with the tenant-scoped
+version so the two planes cannot disagree; and `GET /platform/tenants/{id}/
+features` did not exist.
+
+## Two defects that only driving could find
+
+Both screens compile and typecheck. Both were wrong.
+
+**Closing a year that does not exist answered 500.** `max(ends_on)` over no
+rows is NULL and the scan took it into a `time.Time`, so the request died three
+lines above the refusal already written to say "there is no accounting year N
+to close". An owner who mistyped a year was told the server had broken. Now
+404, with the year named, and a test holds it.
+
+**A repair's parts list would never have populated.** `GET /service-jobs`
+answers up to 500 rows and does not carry parts — correctly. `GET
+/service-jobs/{id}` is the route that returns them, and the editor reads that
+instead.
+
+The 204 from the prices route turned out to be the product behaving and the
+driver being wrong: the API client already returns `undefined` on 204.
+
+## What a working copy costs, and what now watches it
+
+The Go build cache reached **6,693 MB** through ordinary work. Nothing was
+wrong — that is what a build cache does. What was missing was anything that
+ever looked.
+
+`scripts/maintenance.sh` reports, checks against configurable thresholds, and
+cleans only what is over one. `make doctor`, `make resource-check`, `make
+maintenance`, `make cleanup`.
+
+It touches disposable things only: never a volume, never a running container,
+never the module cache unless asked, and **nothing at all when `RAWSYST_ENV`
+says production**. There is deliberately no cleanup at application startup — a
+build cache emptied on every run is a build cache that never helps.
+
+`du -sm` over that cache **did not finish in ten minutes** on Windows: 24,000
+small files through Git Bash's POSIX emulation. The same walk through .NET's
+directory enumerator takes **4.7 seconds**. Measured both ways on the same
+directory; sizing goes through PowerShell there.
+
+| | Before | After |
+|---|---|---|
+| Go build cache | 6,693 MB | 0, then 303 MB after one build |
+| Stale `web/.next` (a directory nothing deploys) | 645 MB | removed |
+| Unused `postgres:16` image | 642 MB | removed |
+| npm cache | 710 MB | 710 MB (under threshold) |
+| Docker reclaimable | 642 MB | 0 |
+
+A cold `go build ./...` after the clean took **1m13s**, which is the price of
+the reclaim and the reason it is threshold-driven rather than routine.
+
+## Memory, measured
+
+| | |
+|---|---|
+| API serving, resident | **211 MB** |
+| PostgreSQL, 13 backends | **175 MB** total |
+| Back office container, idle | **45.6 MiB** |
+| Free RAM with the editor, the agent and the API all up | ~1.0 GB |
+
+Two real ceilings were missing rather than merely generous:
+
+* **Container logs were unbounded.** The json-file driver has no limit, so a
+  service logging a line per request fills a small server's disk and takes the
+  database with it — and that arrives as "no space left on device" from
+  Postgres, pointing at the wrong thing. Ten megabytes, three files, every
+  service.
+* **Postgres had no `max_connections`,** which means 100. Each is a process,
+  `work_mem` is charged per SORT, and 100 × 8MB is a theoretical 800MB of sort
+  memory in a container limited to 1GB. The API asks for at most 20. Fifty.
+
+`docker-compose.small.yml` is the 8GB profile: half the ceilings, Postgres told
+to match (64MB buffers, `work_mem` 4MB, 20 connections), `GOMEMLIMIT` so the
+collector works harder rather than the container being killed, and a Node heap
+sized from the 45.6 MiB that was measured. About 1.1GB in total against the base
+file's 2.2GB.
+
+It changes **no durability setting**. No `fsync=off`, no
+`synchronous_commit=off`: a development database that corrupts on a power cut
+teaches a developer that RawSyst corrupts on a power cut.
+
+## Audited and found already sound
+
+Reported because "we looked" is the useful outcome, not only "we changed":
+
+* **Unbounded queries.** 131 `LIMIT` clauses. Every list over a table that
+  grows without bound — audit log, notifications, stock movements, journals —
+  is bounded. The queries without one are over sets that are small by nature: a
+  journal's own lines, a chart of accounts, a company's investors.
+* **The worker.** Single job at a time by construction, with a reaper, a
+  pruner, retry limits, exponential backoff, dead-lettering and a ten-second
+  grace period on shutdown. Nothing to bound that was not already bounded.
+* **Logging.** Info in production and Debug only in development, with a
+  `ReplaceAttr` that redacts `password`, `secret`, `token`, `authorization`,
+  `jwt`, `refresh_token`, `private_key`, `csid` and `api_key` even if one
+  reaches the logger by mistake. No secret is logged anywhere.
+* **Graceful shutdown.** `signal.NotifyContext` and a bounded
+  `httpSrv.Shutdown` in the API; the worker finishes its claimed job.
+* **The Go image.** 62.7 MB is three static binaries (44 MB), zone data
+  (1.55 MB) and CA certificates (197 KB) on `scratch`. Nothing to trim without
+  splitting it into three images, which its own comment argues against.
+
+## A note the next session will need
+
+**The `rawsyst-design-system` skill describes `web/`, not `web-next`.** It says
+"plain CSS custom properties and class primitives — no Tailwind, no CSS-in-JS,
+no component library. Do not add one." That is true of the front end that no
+longer ships. `web-next` is Tailwind v4 with its own `components/ui`
+primitives, `class-variance-authority` and `tailwind-merge`. Following the
+skill while working on the product would produce classes that render bare.
+
+## Verification, all of it
+
+    clean migration from zero    130 migrations, 183 tables, 175 forced RLS,
+                                 175 policies, 44 rules, 542 CDTFA rates   PASS
+    backend, every package       integration tags, fresh test database     PASS
+    backend, internal/api        373s                                      PASS
+    go vet / vet -tags=integration                                         PASS
+    gofmt -s -l                  clean
+    lint-wording                 1,418 files                               PASS
+    typecheck                    tsc --noEmit                              PASS
+    web-next tests               491 passed / 30 files                     PASS
+    shared tests                 482 passed / 29 files                     PASS
+    production build             137 routes, 121 static pages              PASS
+    check:contract               493 routes, 110 permissions (103 gated)   PASS
+    verify:api                   ALL SCREEN CONTRACTS VERIFIED, from a
+                                 database built from zero                  PASS
+    verify:rbac                  EVERY BOUNDARY HELD                       PASS
+    the eight new workflows      driven against a running server           PASS
+    back-office image            builds, serves, healthy, non-root         PASS
+
+`verify:api` also gained a real check: it sent a delivery with no lot number,
+which passed only because no seeded variant was batch-tracked. One is now, and
+the check was correctly refused. `tracks_batches` is on the PO line so a
+receiving screen knows before it submits; the checker reads it, and the tracked
+half of receiving is exercised for the first time.
+
+Unexercised payload shapes against a fresh database: **5**, from 54 at the start
+of the day. Two are refused on purpose (a data breach starts a 72-hour
+regulatory clock; a failed background job is an incident an operator must act
+on), and three need an act this fixture cannot honestly perform — a member of
+the public asking for a return, an outbound webhook to a third party, and a
+branch that has not set its own country.
+
+## Still backend-only, and why each is left
+
+| Route | Why |
+|---|---|
+| `POST /store-credit/expire` | A sweep, not a screen. It belongs to the scheduler beside the other expiry jobs |
+| `POST /backups/{id}/finish` | Called by the backup process when it completes, machine to machine. `verify` — the human act — is on the screen |
+| `POST /payment-gateways/{id}/charge`, `POST /payment-attempts/{id}/refund` | Taking a card payment is a till action, and the till is the Tauri surface. The back office configures the gateway and reads the attempts, which it does |
+| `GET/PUT/DELETE /customers/{id}/sizes` | A clothing shop's record of a customer's sizes. Real, small, and genuinely unbuilt |
+| `GET /groups/{id}/intercompany`, `POST /groups/intercompany` | F4's intercompany annotation. The group screen covers membership and the consolidated statement; marking an entry as intercompany is not there |
+| `POST /notifications/announce` | An owner broadcasting a notice. The centre reads and marks read; it does not send |
+| `GET /plans` | The plan catalogue. `/settings/subscription` shows the client's own plan and its entitlements, which is the question a business asks |
+
+The last four are the honest remainder of this phase: each is a route with no
+screen, each is small, and none of them blocks a business from trading.
