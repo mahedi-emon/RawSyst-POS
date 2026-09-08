@@ -1,3 +1,14 @@
+# NOT WHAT DEPLOYS. See web-next/Dockerfile.
+#
+# `web/` is the first front end: two routes, a sign-in shell and a portal stub.
+# The product is `web-next` — 137 routes, every screen the Blueprint asks for —
+# and `docker-compose.yml` now builds that.
+#
+# This file is kept because the directory is kept, and it is marked because
+# both directories build: a `docker compose` pointed here succeeds, ships a
+# two-page application, and looks exactly like a working deployment. It did,
+# for some time.
+
 # The back office.
 #
 # # Why `output: 'standalone'` matters here

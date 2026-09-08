@@ -46,8 +46,23 @@
 
 name: rawsyst
 
+# Every container's log, bounded.
+#
+# The default json-file driver has NO limit, so a service that logs a line per
+# request fills the disk of a shop's server and takes the database down with
+# it -- the failure arrives as "no space left on device" from Postgres, which
+# points at the wrong thing entirely. Three files of 10MB is 30MB per service
+# and about a day of ordinary traffic, which is what an operator actually reads
+# back. Anything longer belongs in a log shipper, not on the box.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
+    logging: *logging
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -86,6 +101,14 @@ services:
       # cashier notices. 500ms is well above anything on the checkout path.
       - -c
       - log_min_duration_statement=500
+      # A ceiling on connections, because each one is a process with its own
+      # memory and `work_mem` is charged PER SORT, not per server. The default
+      # of 100 against work_mem=8MB is a theoretical 800MB of sort memory on a
+      # container limited to 1GB -- and the API asks for at most 20, the worker
+      # for a handful. 50 leaves room for a migration, a psql session and a
+      # backup running at once, and nothing else has any business connecting.
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-50}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -147,6 +170,7 @@ services:
         condition: service_healthy
 
   api:
+    logging: *logging
     build:
       context: ./backend
       args:
@@ -188,6 +212,7 @@ services:
       - "${API_PORT:-8080}:8080"
 
   worker:
+    logging: *logging
     build:
       context: ./backend
       args:
@@ -209,15 +234,28 @@ services:
           # a worker that can starve the API.
           memory: 256M
 
+  # The back office.
+  #
+  # `web-next`, not `web`. This built `web/Dockerfile` until 2026-09-08, which
+  # is a two-page shell left over from the first front end -- so a deployment
+  # shipped a sign-in and a portal stub while the 137-route product sat in the
+  # repository unbuilt. Both directories compile, and a build that succeeds
+  # looks like a build that is right, which is why it went unnoticed.
   web:
+    logging: *logging
     build:
       context: .
-      dockerfile: web/Dockerfile
+      dockerfile: web-next/Dockerfile
     image: rawsyst/web:${VERSION:-dev}
     restart: unless-stopped
     environment:
       NODE_ENV: production
       TZ: ${TZ:-Asia/Riyadh}
+      # The back office proxies /api/v1/* to the API rather than calling it
+      # cross-origin, so the session cookie and its CSRF partner are same-site.
+      # Inside compose the API is `api`, not localhost -- without this the
+      # proxy resolves to the web container itself and every request 502s.
+      RAWSYST_API_ORIGIN: ${RAWSYST_API_ORIGIN:-http://api:8080}
     depends_on:
       api:
         condition: service_healthy
@@ -231,6 +269,7 @@ services:
   # --- optional: the `scale` profile ---------------------------------------
 
   redis:
+    logging: *logging
     profiles: ["scale"]
     image: redis:8-alpine
     restart: unless-stopped
@@ -269,6 +308,7 @@ services:
       - "6379"
 
   nginx:
+    logging: *logging
     profiles: ["scale"]
     image: nginx:1.29-alpine
     restart: unless-stopped
@@ -297,6 +337,7 @@ services:
   # --- optional: the `files` profile ----------------------------------------
 
   minio:
+    logging: *logging
     profiles: ["files"]
     image: minio/minio:latest
     restart: unless-stopped
@@ -328,6 +369,7 @@ services:
   # --- optional: the `watch` profile ----------------------------------------
 
   prometheus:
+    logging: *logging
     profiles: ["watch"]
     image: prom/prometheus:latest
     restart: unless-stopped

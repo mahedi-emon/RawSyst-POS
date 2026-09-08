@@ -1,0 +1,103 @@
+# The 8GB profile.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.small.yml up -d
+#   make up-small
+#
+# # What this is for
+#
+# The base file is tuned for a small VPS that does nothing else: 1GB for the
+# database, 512M for the API, 384M for the back office, 256M for the worker —
+# about 2.2GB, which is comfortable on a 4GB box with nothing on it.
+#
+# A DEVELOPER'S machine is not that. It is 8GB with an editor, a browser, a
+# language server and the tests all wanting memory at the same time, and the
+# first thing the kernel kills when that runs out is whichever process happens
+# to be growing — usually a test run, which then looks like a flaky test rather
+# than like a machine that ran out of memory. That has already happened once on
+# this repository.
+#
+# So this halves the ceilings and tells Postgres to match. Total: about 1.1GB.
+#
+# # What it deliberately does NOT change
+#
+# Nothing about correctness. No fsync=off, no synchronous_commit=off, no
+# full_page_writes=off — every one of those trades a crash-consistent database
+# for a faster one, and a development database that corrupts on a power cut
+# teaches a developer that RawSyst corrupts on a power cut. The settings below
+# are all about how much memory is reserved, not about what survives.
+
+services:
+  db:
+    command:
+      - postgres
+      # A quarter of the base file's buffers. Postgres will use the operating
+      # system's page cache for the rest, which on a development machine is
+      # shared with everything else and is the right place for it to be.
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=192MB
+      # Per SORT, not per connection and not per server. Four megabytes is
+      # enough for the queries this product actually runs; a report that spills
+      # to disk on a development machine is not a problem worth 8MB × every
+      # concurrent sort.
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - wal_level=replica
+      # A smaller WAL ceiling means more frequent checkpoints, which is slower
+      # under sustained write load and irrelevant under a developer's.
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - log_min_duration_statement=500
+      # The API asks for at most 8 here (below), the worker for 4. Twenty
+      # leaves room for a migration and a psql session at the same time.
+      - -c
+      - max_connections=20
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  api:
+    environment:
+      # A pool is a memory reservation as much as a concurrency limit: every
+      # connection is a server-side process. Eight is more than a development
+      # machine ever has in flight at once, and the pool grows to it only under
+      # load rather than holding it open.
+      RAWSYST_DB_MAX_CONNS: ${RAWSYST_DB_MAX_CONNS:-8}
+      RAWSYST_DB_MIN_CONNS: ${RAWSYST_DB_MIN_CONNS:-1}
+      # Go returns freed memory to the operating system lazily by default,
+      # which is right on a dedicated box and wrong on a shared one. A soft
+      # limit makes the collector work harder as it approaches the ceiling
+      # instead of letting the container hit its hard limit and be killed.
+      GOMEMLIMIT: ${GOMEMLIMIT:-224MiB}
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  worker:
+    environment:
+      RAWSYST_DB_MAX_CONNS: ${RAWSYST_WORKER_DB_MAX_CONNS:-4}
+      RAWSYST_DB_MIN_CONNS: 1
+      GOMEMLIMIT: ${WORKER_GOMEMLIMIT:-96MiB}
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  web:
+    environment:
+      # Measured: the standalone server idles at about 46MB serving the real
+      # back office. 192MB of heap is headroom, not a target.
+      NODE_OPTIONS: --max-old-space-size=192
+    deploy:
+      resources:
+        limits:
+          memory: 256M
