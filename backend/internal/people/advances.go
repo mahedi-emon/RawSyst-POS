@@ -228,14 +228,15 @@ func (s *Service) AccrueEOSB(
 			return e
 		}
 
-		days, err := s.eosbDaysPerYear(ctx, tx, scope.TenantID, country, period)
+		ent, err := s.eosbEntitlement(ctx, tx, scope.TenantID, country, period)
 		if err != nil {
 			return err
 		}
 
 		rows, e := tx.Query(ctx, `
 			SELECT e.id, e.joined_on,
-			       e.basic_salary + e.housing_allowance
+			       e.basic_salary, e.housing_allowance,
+			       e.transport_allowance, e.other_allowance
 			FROM employee e
 			WHERE e.company_id = $1 AND e.status <> 'left'
 			  AND e.joined_on < $2
@@ -255,10 +256,18 @@ func (s *Service) AccrueEOSB(
 		var staff []person
 		for rows.Next() {
 			var p person
-			if e := rows.Scan(&p.id, &p.joined, &p.wage); e != nil {
+			var basic, housing, transport, other decimal.Decimal
+			if e := rows.Scan(&p.id, &p.joined,
+				&basic, &housing, &transport, &other); e != nil {
 				rows.Close()
 				return e
 			}
+			w, e := ent.wage(basic, housing, transport, other)
+			if e != nil {
+				rows.Close()
+				return e
+			}
+			p.wage = w
 			staff = append(staff, p)
 		}
 		rows.Close()
@@ -272,24 +281,34 @@ func (s *Service) AccrueEOSB(
 				continue
 			}
 			// One month's share of a year's entitlement, on the wage the
-			// person is earning now.
+			// person is earning now, at the band this month falls in.
+			//
+			// The award is not one rate: Saudi labour law entitles less for
+			// each of the first five years than for each year after them, and
+			// charging the first-five rate for ever understates the liability
+			// of exactly the long-serving people it is largest for. Which band
+			// a month belongs to is decided by service AT THAT MONTH, so a
+			// person crossing five years starts accruing at the higher rate
+			// from the month they cross and no month already posted changes.
 			perDay := p.wage.Div(decimal.NewFromInt(30))
-			amount := perDay.Mul(days).
+			amount := perDay.Mul(ent.daysFor(months)).
 				Div(decimal.NewFromInt(12)).Round(2)
 			if !amount.IsPositive() {
 				continue
 			}
 
-			var accrualID uuid.UUID
-			if e := tx.QueryRow(ctx, `
-				INSERT INTO eosb_accrual
-				  (tenant_id, company_id, employee_id, period, amount,
-				   wage_basis, months_of_service)
-				VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-				scope.TenantID, scope.CompanyID, p.id, period, amount,
-				p.wage, months).Scan(&accrualID); e != nil {
-				return e
-			}
+			// The id is minted here rather than by the database, because the
+			// posting has to name the accrual it belongs to and the accrual
+			// has to name the entry that recorded it — and only one of those
+			// can be filled in afterwards.
+			//
+			// `eosb_accrual` is append-only: a `reject_always` trigger refuses
+			// every UPDATE, so writing the row first and stamping the journal
+			// entry onto it afterwards was a write that could never succeed.
+			// It never had. The entitlement has always been a placeholder, so
+			// the accrual refused for want of a rule long before it reached
+			// this line, and the accrual has therefore never once run.
+			accrualID := uuid.New()
 
 			entry, e := accounting.PostByRule(ctx, tx, accounting.Entry{
 				TenantID: scope.TenantID, CompanyID: scope.CompanyID,
@@ -308,9 +327,13 @@ func (s *Service) AccrueEOSB(
 				return e
 			}
 
-			if _, e := tx.Exec(ctx,
-				`UPDATE eosb_accrual SET journal_entry_id = $2 WHERE id = $1`,
-				accrualID, entry.EntryID); e != nil {
+			if _, e := tx.Exec(ctx, `
+				INSERT INTO eosb_accrual
+				  (id, tenant_id, company_id, employee_id, period, amount,
+				   wage_basis, months_of_service, journal_entry_id)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+				accrualID, scope.TenantID, scope.CompanyID, p.id, period,
+				amount, p.wage, months, entry.EntryID); e != nil {
 				return e
 			}
 			charged++
@@ -320,7 +343,80 @@ func (s *Service) AccrueEOSB(
 	return charged, db.Translate(err, "")
 }
 
-// eosbDaysPerYear resolves the statutory entitlement.
+// eosbEntitlement is the statutory award, as the registry states it.
+//
+// # Why the whole rule rather than one field
+//
+// `SA.EOSB.ENTITLEMENT` carries a wage basis and two service bands, and this
+// used to read one of them — `days_per_year_first_five` — and apply it to
+// every year of every person's service. That is not the entitlement. Saudi
+// labour law awards less for each of the first five years than for each year
+// after them, so reading the first band alone UNDERSTATES what the business
+// owes, and understates it most for the long-serving people whose award is
+// largest. It would have done so silently, and the error only becomes visible
+// on the day somebody with fifteen years leaves.
+//
+// The wage basis is read for the same reason. The award computed on basic pay
+// and the award computed on basic plus housing are materially different
+// answers for the same person, and which one is correct is a legal question
+// the registry answers rather than a line of Go. It used to be hard-coded as
+// basic plus housing, which was a guess wearing the clothes of a rule.
+type eosbEntitlement struct {
+	// Basis names the pay the award is computed on. The vocabulary is closed:
+	// a value this software does not understand is refused rather than
+	// approximated, because approximating it is how a wrong number reaches a
+	// final settlement looking authoritative.
+	Basis string `json:"wage_basis"`
+
+	FirstFive decimal.Decimal `json:"-"`
+	AfterFive decimal.Decimal `json:"-"`
+}
+
+// The wage bases this software knows how to compute.
+//
+// Named as constants rather than written inline so the refusal below can list
+// them, and so adding one is a deliberate edit in one place.
+const (
+	eosbBasisBasic         = "basic"
+	eosbBasisBasicHousing  = "basic_plus_housing"
+	eosbBasisAllAllowances = "basic_plus_all_allowances"
+)
+
+// daysFor is the entitlement for a year served at this much service.
+//
+// Sixty completed months is the boundary: a person who has served exactly five
+// years is into their sixth, and the month being charged belongs to the higher
+// band. Below it, the first-five rate.
+func (e eosbEntitlement) daysFor(months decimal.Decimal) decimal.Decimal {
+	if months.LessThan(decimal.NewFromInt(60)) {
+		return e.FirstFive
+	}
+	return e.AfterFive
+}
+
+// wage is the pay the award is computed on, for one person.
+func (e eosbEntitlement) wage(
+	basic, housing, transport, other decimal.Decimal,
+) (decimal.Decimal, error) {
+	switch e.Basis {
+	case eosbBasisBasic:
+		return basic, nil
+	case eosbBasisBasicHousing:
+		return basic.Add(housing), nil
+	case eosbBasisAllAllowances:
+		return basic.Add(housing).Add(transport).Add(other), nil
+	default:
+		return decimal.Zero, errs.Newf(errs.CodeUnverifiedRule,
+			"The end-of-service rule states its wage basis as %q, and this "+
+				"product does not know how to compute that. It understands "+
+				"%q, %q and %q. Correct the wage basis in Super Admin > "+
+				"Regulatory Registry.",
+			e.Basis, eosbBasisBasic, eosbBasisBasicHousing,
+			eosbBasisAllAllowances)
+	}
+}
+
+// eosbEntitlement resolves the statutory entitlement.
 //
 // E6 puts end-of-service under Saudi labour law, and E8 requires every legal
 // parameter to be versioned data with an effective date rather than a number in
@@ -328,12 +424,14 @@ func (s *Service) AccrueEOSB(
 // verified entitlement, this starts working with no code change — and until
 // then it refuses rather than guessing, because an accrual at the wrong rate
 // understates a liability for years before anybody notices.
-func (s *Service) eosbDaysPerYear(
+func (s *Service) eosbEntitlement(
 	ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, country string,
 	period time.Time,
-) (decimal.Decimal, error) {
+) (eosbEntitlement, error) {
+	var out eosbEntitlement
+
 	if s.rules == nil {
-		return decimal.Zero, errs.New(errs.CodeInternal,
+		return out, errs.New(errs.CodeInternal,
 			"The payroll service was built without the regulatory rule registry.")
 	}
 
@@ -343,20 +441,53 @@ func (s *Service) eosbDaysPerYear(
 	// terms. Declining to compute one is the honest answer, and applying Saudi
 	// service bands to a foreign contract would be inventing a rule.
 	if !market.EndOfServiceApplies(country) {
-		return decimal.Zero, errs.Newf(errs.CodeUnverifiedRule,
+		return out, errs.Newf(errs.CodeUnverifiedRule,
 			"This product has no end-of-service entitlement rule for %s, so "+
 				"the benefit cannot be accrued here. The Saudi rule does not "+
 				"apply outside the Kingdom.",
 			strings.ToUpper(strings.TrimSpace(country)))
 	}
 
-	return s.rules.Decimal(ctx, registry.Query{
+	q := registry.Query{
 		Key:      "SA.EOSB.ENTITLEMENT",
 		Country:  country,
 		AsOf:     period,
 		TenantID: tenantID,
 		Tx:       tx,
-	}, "days_per_year_first_five")
+	}
+
+	// Both bands, each through Decimal, so an unfilled one refuses by the same
+	// placeholder check as the first rather than parsing as zero. A zero band
+	// would accrue nothing for the people it applies to and report success.
+	first, err := s.rules.Decimal(ctx, q, "days_per_year_first_five")
+	if err != nil {
+		return eosbEntitlement{}, err
+	}
+	after, err := s.rules.Decimal(ctx, q, "days_per_year_after_five")
+	if err != nil {
+		return eosbEntitlement{}, err
+	}
+	if err := s.rules.Into(ctx, q, &out); err != nil {
+		return eosbEntitlement{}, err
+	}
+	if out.Basis == registry.Placeholder {
+		return eosbEntitlement{}, errs.New(errs.CodeUnverifiedRule,
+			"The end-of-service rule does not yet say which wage the award is "+
+				"computed on. Record it in Super Admin > Regulatory Registry "+
+				"before accruing the benefit.")
+	}
+	out.FirstFive, out.AfterFive = first, after
+
+	// Checked here rather than at the first payslip: a basis this software
+	// cannot compute is a property of the RULE, and finding that out per
+	// employee would report it as an employee's problem.
+	if _, err := out.wage(
+		decimal.Zero, decimal.Zero, decimal.Zero, decimal.Zero,
+	); err != nil {
+		return eosbEntitlement{}, err
+	}
+
+	return out, nil
 }
 
 // EOSBPositions is what the business owes everybody today.

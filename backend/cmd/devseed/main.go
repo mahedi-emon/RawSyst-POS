@@ -574,5 +574,42 @@ func seedDocuments(
 		return fmt.Errorf("demo supplier bill: %w", err)
 	}
 
+	// A purchase order, issued and therefore open for receiving.
+	//
+	// The last list `verify:api` could not describe against a fresh database.
+	// `GET /purchasing/orders` answered an empty page, so the seven fields the
+	// buying list reads off an order went unchecked, and so did the receiving
+	// screen behind it -- both only ever passed because the development
+	// database had accumulated orders by hand.
+	//
+	// Issued rather than left a draft, because a draft is open for editing and
+	// not for receiving: `status=issued` and `status=receiving` are the two
+	// queries the receiving screen makes, and a draft answers neither. The
+	// quantity is deliberately larger than the bill above so the order stays
+	// partially outstanding instead of closing itself the moment it is made.
+	po, err := buying.CreateOrder(ctx, purchasing.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, purchasing.NewOrder{
+		SupplierID:  supplierID,
+		WarehouseID: warehouseID,
+		Notes:       "Demo purchase order, open for receiving.",
+		Lines: []purchasing.OrderLine{{
+			VariantID:    variantID,
+			Description:  "Restock",
+			Qty:          decimal.NewFromInt(25),
+			UnitCost:     decimal.NewFromInt(60),
+			TaxTreatment: "standard",
+			TaxRate:      decimal.RequireFromString("0.15"),
+		}},
+	})
+	if err != nil {
+		return fmt.Errorf("demo purchase order: %w", err)
+	}
+	if _, err := buying.IssueOrder(ctx, purchasing.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, po.ID); err != nil {
+		return fmt.Errorf("issue demo purchase order: %w", err)
+	}
+
 	return nil
 }
