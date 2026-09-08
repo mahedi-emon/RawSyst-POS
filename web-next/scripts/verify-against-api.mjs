@@ -1632,7 +1632,26 @@ console.log('\nBUYING');
           uuid: docUUID,
           po_id: openOrder.id,
           delivery_note_ref: 'verify:api',
-          lines: [{ po_line_id: line.id, qty_received: '1', qty_rejected: '0' }],
+          // A lot when the line needs one. `tracks_batches` is on the PO
+          // line for exactly this reason -- so a receiving screen knows
+          // before it submits, rather than finding out from the refusal --
+          // and a checker that ignored it would only ever exercise the
+          // untracked half of receiving.
+          lines: [
+            {
+              po_line_id: line.id,
+              qty_received: '1',
+              qty_rejected: '0',
+              ...(line.tracks_batches
+                ? {
+                    batch_no: `VERIFY-${Date.now()}`,
+                    expires_on: new Date(Date.now() + 90 * 86400000)
+                      .toISOString()
+                      .slice(0, 10),
+                  }
+                : {}),
+            },
+          ],
         };
 
         const first = await post(`/purchasing/receipts?company_id=${CO}`, body);
