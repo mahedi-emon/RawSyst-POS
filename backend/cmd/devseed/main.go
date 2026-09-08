@@ -40,6 +40,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
@@ -63,6 +64,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
@@ -161,6 +163,10 @@ func run(email, name, password, operator string) error {
 
 	if err := seedSecondPerson(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
 		return fmt.Errorf("seed a second person: %w", err)
+	}
+
+	if err := seedLotsAndCards(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed lots and cards: %w", err)
 	}
 
 	// Overwritten only when asked, and only outside production, which the check
@@ -1699,6 +1705,100 @@ func seedSecondPerson(
 	}, ownerID, created.Person.ID, now, now.AddDate(0, 0, 14),
 		"Owner away; the store manager decides in their place."); err != nil {
 		return fmt.Errorf("delegate approvals: %w", err)
+	}
+
+	return nil
+}
+
+// seedLotsAndCards receives the purchase order against a tracked lot, and puts
+// a gift card behind the counter.
+//
+// # Why a batch has to be received rather than inserted
+//
+// A stock_batch is written by inventory.Receive and by nothing else, because a
+// lot is a fact about a delivery: it has a quantity that came in, movements
+// that took from it, and a cost layer. A row inserted beside all that would be
+// a lot the FEFO allocator could pick and the ledger had never paid for.
+//
+// So this marks one variant as lot-tracked -- which is what a shop selling
+// anything with a date on it does -- and receives the seeded order against a
+// supplier's lot number and an expiry. That gives the batches screen a row,
+// the expiry alert something to be about, and the recall something to recall.
+func seedLotsAndCards(
+	ctx context.Context, pool *db.Pool, tenantID, ownerID uuid.UUID,
+) error {
+	var companyID, poID, poLineID, variantID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM company LIMIT 1`).Scan(&companyID); e != nil {
+			return e
+		}
+		// The order seeded above, and its single line.
+		if e := tx.QueryRow(ctx, `
+			SELECT o.id, l.id, l.variant_id
+			FROM purchase_order o
+			JOIN po_line l ON l.po_id = o.id
+			WHERE o.company_id = $1 AND o.status = 'issued'
+			ORDER BY o.created_at
+			LIMIT 1`, companyID).Scan(&poID, &poLineID, &variantID); e != nil {
+			return e
+		}
+		// Lot-tracked from here on. Set before receiving, because
+		// inventory.Receive requires a lot for a tracked variant and refuses
+		// one for anything else -- the flag decides which call is valid.
+		if _, e := tx.Exec(ctx,
+			`UPDATE variant SET tracks_batches = true WHERE id = $1`,
+			variantID); e != nil {
+			return e
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	made := now.AddDate(0, -2, 0)
+	// Inside the window the expiry alert asks about, so the shelf-life warning
+	// has something to warn about. A lot expiring in a year would leave that
+	// screen describing nothing.
+	expires := now.AddDate(0, 0, 45)
+
+	buying := purchasing.NewService(pool).WithRules(registry.New(pool, false))
+	if _, err := buying.ReceiveGoods(ctx, purchasing.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, purchasing.Delivery{
+		UUID:            uuid.New(),
+		POID:            poID,
+		DeliveryNoteRef: "DN-2026-0001",
+		Notes:           "Seeded delivery, received against a supplier lot.",
+		Lines: []purchasing.ReceivedLine{{
+			POLineID:    poLineID,
+			QtyReceived: decimal.NewFromInt(10),
+			Batch: &inventory.BatchInput{
+				BatchNo:        "LOT-2026-0001",
+				ManufacturedOn: &made,
+				ExpiresOn:      &expires,
+			},
+		}},
+	}); err != nil {
+		return fmt.Errorf("receive against a lot: %w", err)
+	}
+
+	// A gift card, sold rather than given away: a card handed over for nothing
+	// is a cost the shop bears, and seeding that would put a complaint into
+	// the fixture.
+	if _, err := wallet.NewService(pool).Issue(ctx, wallet.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, wallet.NewCard{
+		Code:      "GIFT-2026-0001",
+		FaceValue: decimal.NewFromInt(200),
+		Note:      "Seeded so a cashier can look one up by its number.",
+		Proceeds: []wallet.Payment{{
+			Role:   "cash",
+			Amount: decimal.NewFromInt(200),
+		}},
+	}); err != nil {
+		return fmt.Errorf("issue a gift card: %w", err)
 	}
 
 	return nil

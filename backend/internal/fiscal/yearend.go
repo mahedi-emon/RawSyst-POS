@@ -89,7 +89,12 @@ func (s *Service) CloseYear(
 		// --- the three refusals ------------------------------------------
 
 		var total, closed, locked int
-		var lastDay time.Time
+		// Nullable, and it has to be. `max()` over no rows is NULL, and a year
+		// nobody has opened has no rows -- so asking to close one answered 500
+		// on the scan, three lines above the refusal written to say exactly
+		// that. Somebody typing a year they had not opened yet was told the
+		// server had broken.
+		var lastDay *time.Time
 		if e := tx.QueryRow(ctx, `
 			SELECT count(*),
 			       count(*) FILTER (WHERE state <> 'open'),
@@ -101,7 +106,7 @@ func (s *Service) CloseYear(
 			return e
 		}
 
-		if total == 0 {
+		if total == 0 || lastDay == nil {
 			return errs.Newf(errs.CodeNotFound,
 				"There is no accounting year %d to close.", year)
 		}
@@ -109,7 +114,7 @@ func (s *Service) CloseYear(
 			// Already done. Reported as what it did rather than as an error:
 			// two people pressing the button on the last day of the year is
 			// the ordinary case, and the second deserves the same answer.
-			read, e := s.readClose(ctx, tx, scope, year, lastDay)
+			read, e := s.readClose(ctx, tx, scope, year, *lastDay)
 			if e != nil {
 				return e
 			}
@@ -248,7 +253,7 @@ func (s *Service) CloseYear(
 
 		result, e := accounting.Post(ctx, tx, accounting.Entry{
 			TenantID: scope.TenantID, CompanyID: scope.CompanyID,
-			Date:       lastDay,
+			Date:       *lastDay,
 			SourceType: "year_end_close",
 			// The year is the identity. Deterministic from the company and the
 			// year so a second attempt finds the first rather than posting a

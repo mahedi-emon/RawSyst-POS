@@ -237,3 +237,31 @@ func (f *calendarFixture) balance(
 	}
 	return d
 }
+
+// A year nobody has opened is refused, not answered with a 500.
+//
+// `max(ends_on)` over no rows is NULL, and the scan took it into a
+// `time.Time`. So asking to close a year that does not exist died three lines
+// above the refusal already written to say exactly that, and an owner who
+// mistyped a year was told the server had broken. Found by driving the route,
+// not by reading it.
+func TestClosingAYearThatWasNeverOpenedIsRefusedRatherThanFailing(t *testing.T) {
+	h := newHarness(t)
+	f := seedCalendar(t, h)
+
+	resp := h.do(t, http.MethodPost, f.path("/api/v1/accounting/year-end"),
+		f.token, map[string]any{"fiscal_year": 1999})
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		t.Fatalf("closing an unopened year answered %d: %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404 — there is no such year to close",
+			resp.StatusCode)
+	}
+	if body := readBody(t, resp); !containsText(body, "1999") {
+		t.Errorf("the refusal does not name the year asked for: %s", body)
+	}
+}

@@ -36,7 +36,7 @@ import { EmptyState, ErrorState } from '@/components/ui/states';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
-import { useApiList } from '@/lib/api/hooks';
+import { useApi, useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney } from '@/lib/format/money';
@@ -145,6 +145,17 @@ function ServiceScreen() {
     setFieldErrors(null);
   }
 
+  // The list does not carry parts, and should not: GET /service-jobs answers
+  // 500 rows and a repair's fitted parts belong to the one being looked at.
+  // GET /service-jobs/{id} is the route that returns them, so the editor reads
+  // that -- which is also why the parts list is correct straight after fitting
+  // one, without the list being refetched.
+  const detail = useApi<ServiceOrder>(
+    scope && editing ? `/service-jobs/${editing.id}` : null,
+    scope ?? undefined,
+  );
+  const live = detail.data ?? editing;
+
   // Fitting a part. The catalogue and the stock locations are only fetched
   // while a job is open for editing, because most of the time nobody is
   // fitting anything and two more lists on every visit is two more queries.
@@ -180,6 +191,9 @@ function ServiceScreen() {
       // show a total the server does not agree with. `live` below reads the
       // fitted parts out of the refreshed list rather than out of the snapshot
       // this editor was opened with.
+      // Both: the detail carries the new part, and the list carries the parts
+      // cost the row shows.
+      void detail.refetch();
       void refetch();
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
@@ -212,12 +226,6 @@ function ServiceScreen() {
       setBusy(false);
     }
   }
-
-  // The job as the server last described it, rather than as it was when the
-  // editor opened. Only the parts list is read from here; the form fields are
-  // deliberately the snapshot, so a refresh does not overwrite what somebody
-  // is halfway through typing.
-  const live = editing ? (rows.find((j) => j.id === editing.id) ?? editing) : null;
 
   const columns: Column<ServiceOrder>[] = [
     {
