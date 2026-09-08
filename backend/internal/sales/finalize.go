@@ -111,6 +111,25 @@ type Sale struct {
 	Lines   []SaleLineRef
 	Tenders []Tender
 
+	// OnAccount says the customer owes the whole sale, and lets the engine
+	// state the amount rather than the caller.
+	//
+	// The caller cannot state it correctly. The total is the TAX-INCLUSIVE
+	// figure this service computes, after the tax profile has been applied
+	// from the registry — and a back-office caller building a `customer_due`
+	// tender by adding its own line amounts up produced the net figure, so an
+	// order priced tax-exclusively was refused with "the payments come to 200
+	// against a total of 230" against payments the caller never sent. The
+	// amount belongs to whoever computed the total.
+	//
+	// Ignored when Tenders is non-empty: a sale settled partly in cash and
+	// partly on account states both, and both are the caller's to decide.
+	OnAccount bool
+
+	// OnAccountRef is what the receivable is labelled with — an order number,
+	// so a customer statement names the document rather than a uuid. Optional.
+	OnAccountRef string
+
 	// CustomerID names who this was sold to. Optional for a cash sale — a shop
 	// does not ask for a name to sell a bottle of water — and REQUIRED the
 	// moment any part of the sale goes on account, because a receivable nobody
@@ -243,6 +262,15 @@ func (s *Service) Finalize(
 	computed, err := Compute(sale.Input)
 	if err != nil {
 		return Finalized{}, err
+	}
+	// The whole sale on account, stated here because here is where the total
+	// is known. See Sale.OnAccount.
+	if sale.OnAccount && len(sale.Tenders) == 0 {
+		sale.Tenders = []Tender{{
+			Method:    "customer_due",
+			Amount:    computed.TotalInclusive,
+			Reference: sale.OnAccountRef,
+		}}
 	}
 	if err := checkTendersCoverTheSale(computed.TotalInclusive, sale.Tenders); err != nil {
 		return Finalized{}, err

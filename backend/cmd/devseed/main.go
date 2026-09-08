@@ -33,13 +33,18 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
 )
 
 func main() {
@@ -112,6 +117,14 @@ func run(email, name, password, operator string) error {
 
 	if err := seedDocuments(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
 		return fmt.Errorf("seed documents: %w", err)
+	}
+
+	if err := seedPeople(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed people: %w", err)
+	}
+
+	if err := seedTrading(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed trading: %w", err)
 	}
 
 	// Overwritten only when asked, and only outside production, which the check
@@ -609,6 +622,218 @@ func seedDocuments(
 		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
 	}, po.ID); err != nil {
 		return fmt.Errorf("issue demo purchase order: %w", err)
+	}
+
+	return nil
+}
+
+// seedPeople gives the shop staff, and the records staff generate.
+//
+// # Why
+//
+// Seven screen contracts went unchecked against a fresh database — the
+// employee row, the expiring-document alert, an attendance day, a leave
+// request, an advance, a payroll run and an end-of-service position — because
+// the demo shop employed nobody. `verify:api` reported each of them as "not
+// exercised" and moved on, so the fields those screens read were only ever
+// confirmed against a development database somebody had typed staff into
+// months earlier. A verification that depends on that is a memory, not a check.
+//
+// Everything here goes through the same services the API calls, so a seeded
+// employee is hired the way a real one is: numbered, posted where posting
+// applies, and refused by the same validation.
+func seedPeople(
+	ctx context.Context, pool *db.Pool, tenantID, ownerID uuid.UUID,
+) error {
+	var companyID, storeID, cashAccountID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM company LIMIT 1`).Scan(&companyID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM store WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&storeID); e != nil {
+			return e
+		}
+		// An advance is money leaving a real account, so it resolves a
+		// money_account rather than a chart account -- the same distinction
+		// that cost a screen an afternoon, recorded here so the seed cannot
+		// quietly reintroduce it.
+		return tx.QueryRow(ctx, `
+			SELECT id FROM money_account
+			WHERE company_id = $1 AND kind = 'cash'
+			ORDER BY created_at LIMIT 1`, companyID).Scan(&cashAccountID)
+	}); err != nil {
+		return err
+	}
+
+	staff := people.NewService(pool, registry.New(pool, false))
+	scope := people.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+		MaySeePay: true,
+	}
+
+	now := time.Now().UTC()
+
+	// Two people, and the second one's residency permit expires inside the
+	// window C5's alert asks about. Without somebody close to expiry the alert
+	// list is empty and its row shape is never described -- and that list is
+	// the one that stops a cashier turning up to work unable to work legally.
+	soon := now.AddDate(0, 0, 21)
+	longAgo := now.AddDate(-6, -2, 0)
+
+	supervisor, err := staff.Hire(ctx, scope, people.NewEmployee{
+		FullName: "Nadia Haddad", NameAr: "نادية حداد",
+		Position: "Store supervisor", Department: "Retail",
+		StoreID:  &storeID,
+		JoinedOn: longAgo,
+		IsSaudi:  true, Nationality: "SA",
+		NationalID: "1098765432", GOSINumber: "1234567890",
+		IBAN:    "SA0380000000608010167519",
+		Basic:   decimal.NewFromInt(7000),
+		Housing: decimal.NewFromInt(1750),
+	})
+	if err != nil {
+		return fmt.Errorf("hire the supervisor: %w", err)
+	}
+
+	cashier, err := staff.Hire(ctx, scope, people.NewEmployee{
+		FullName: "Imran Qureshi", NameAr: "عمران قريشي",
+		Position: "Cashier", Department: "Retail",
+		StoreID:  &storeID,
+		JoinedOn: now.AddDate(-1, -3, 0),
+		IsSaudi:  false, Nationality: "PK",
+		IqamaNo: "2345678901", IDExpiresOn: &soon,
+		GOSINumber: "2234567890",
+		IBAN:       "SA4420000001234567891234",
+		Basic:      decimal.NewFromInt(4000),
+		Housing:    decimal.NewFromInt(1000),
+		Transport:  decimal.NewFromInt(400),
+	})
+	if err != nil {
+		return fmt.Errorf("hire the cashier: %w", err)
+	}
+
+	// A worked day each, so the attendance grid has something in it. Recorded
+	// for yesterday rather than today: a day still in progress is the one case
+	// where an empty grid is correct.
+	yesterday := now.AddDate(0, 0, -1)
+	if _, err := staff.RecordAttendance(ctx, scope, []people.NewAttendance{
+		{
+			EmployeeID: supervisor.ID, OnDate: yesterday, Status: "present",
+			Hours: decimal.NewFromInt(8),
+		},
+		{
+			EmployeeID: cashier.ID, OnDate: yesterday, Status: "present",
+			Hours: decimal.NewFromInt(8), Overtime: decimal.NewFromInt(2),
+			LateMins: 15,
+		},
+	}); err != nil {
+		return fmt.Errorf("record attendance: %w", err)
+	}
+
+	// A leave request, left undecided: the queue a manager opens is the
+	// pending one, and a request already approved would leave it empty.
+	if _, err := staff.RequestLeave(ctx, scope, cashier.ID, "annual", true,
+		now.AddDate(0, 1, 0), now.AddDate(0, 1, 4), decimal.Zero,
+		"Family visit."); err != nil {
+		return fmt.Errorf("request leave: %w", err)
+	}
+
+	if _, err := staff.IssueAdvance(ctx, scope, cashier.ID, cashAccountID,
+		decimal.NewFromInt(1000), 4, "Advance against wages."); err != nil {
+		return fmt.Errorf("issue an advance: %w", err)
+	}
+
+	// Prepared and left unapproved. A run in progress is the state the payroll
+	// screen is for -- approving and paying it are decisions a person makes,
+	// and a seeder that made them would put "the owner approved this" into a
+	// fixture.
+	if _, err := staff.Prepare(ctx, scope, now,
+		"Seeded run, prepared and awaiting approval."); err != nil {
+		return fmt.Errorf("prepare payroll: %w", err)
+	}
+
+	return nil
+}
+
+// seedTrading takes the demo shop's quotation all the way to money.
+//
+// # Why
+//
+// A shop that has quoted and never sold has an empty ledger, an empty ageing,
+// no sale on the dashboard and no receipt to collect an instalment against.
+// Six screen contracts went unchecked against a fresh database for want of one
+// completed sale, and `verify:api` said so on each of them.
+//
+// The order is walked forward one state at a time rather than written as
+// `completed`, because the ladder is the product: confirming reserves stock,
+// delivering releases the hold, and invoicing is what completes it. A fixture
+// that set the end state would describe an order the rest of the system does
+// not believe in.
+//
+// It is invoiced ON ACCOUNT — no tenders — so the customer owes it. That is
+// what puts a row in the ageing, the ledger and the open-invoice list, and it
+// is the shape a wholesale shop's books are actually in.
+func seedTrading(
+	ctx context.Context, pool *db.Pool, tenantID, ownerID uuid.UUID,
+) error {
+	var companyID, orderID, customerID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM company LIMIT 1`).Scan(&companyID); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT id, customer_id FROM sales_order
+			WHERE company_id = $1 AND state = 'quotation'
+			ORDER BY created_at LIMIT 1`, companyID).Scan(&orderID, &customerID)
+	}); err != nil {
+		return err
+	}
+
+	rules := registry.New(pool, false)
+	salesSvc := sales.NewService(zatca.NewChain(pool, zatca.StandardHasher{})).
+		WithPool(pool).WithRegistry(rules).
+		WithPromotions(promotions.NewService(pool))
+	order := orders.NewService(pool).WithSales(salesSvc)
+	scope := orders.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+
+	// quotation -> confirmed -> processing -> packed -> delivered.
+	for range 4 {
+		if _, err := order.Advance(ctx, scope, orderID); err != nil {
+			return fmt.Errorf("advance the demo order: %w", err)
+		}
+	}
+
+	invoiced, err := order.Invoice(ctx, scope, orderID, orders.InvoiceRequest{
+		UUID: uuid.New(),
+	})
+	if err != nil {
+		return fmt.Errorf("invoice the demo order: %w", err)
+	}
+
+	// Part-paid, deliberately. A fully settled invoice leaves nothing in the
+	// ageing and nothing for a collection screen to be about, and a receipt
+	// with money still on it is what the instalment picker offers.
+	money := receivables.NewService(pool)
+	if _, err := money.TakePayment(ctx, receivables.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, receivables.NewReceipt{
+		UUID:       uuid.New(),
+		CustomerID: customerID,
+		Method:     "cash",
+		Reference:  "Demo part payment.",
+		ReceivedOn: time.Now().UTC(),
+		Allocations: []receivables.Allocation{{
+			InvoiceID: invoiced.InvoiceID,
+			Amount:    decimal.NewFromInt(50),
+		}},
+	}); err != nil {
+		return fmt.Errorf("take a part payment: %w", err)
 	}
 
 	return nil

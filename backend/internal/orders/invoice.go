@@ -136,6 +136,7 @@ func (s *Service) Invoice(
 		}
 
 		tenders := in.Tenders
+		onAccount := false
 		if len(tenders) == 0 {
 			if customerID == nil {
 				return errs.Newf(errs.CodeInvalidInput,
@@ -144,14 +145,16 @@ func (s *Service) Invoice(
 			}
 			// On account: the receivable is the tender, and the customer
 			// ledger is where it is collected from.
-			total := decimal.Zero
-			for _, l := range lines {
-				total = total.Add(l.Qty.Mul(l.UnitPrice).Sub(l.LineDiscount))
-			}
-			tenders = []sales.Tender{{
-				Method: "customer_due", Amount: total,
-				Reference: number,
-			}}
+			//
+			// The AMOUNT is not stated here, and used to be: this added the
+			// line amounts up and called that the tender, which is the NET
+			// figure. The sale's total is the tax-inclusive one, computed
+			// after the tax profile is applied from the registry, so an order
+			// whose prices exclude tax was refused with "the payments come to
+			// 200 against a total of 230" — naming payments nobody had sent
+			// and a shortfall exactly the size of the VAT. Every wholesale
+			// order quoted net of tax and billed to an account hit it.
+			onAccount = true
 		}
 
 		// An order need not name a shop: `sales_order.store_id` is nullable and
@@ -176,13 +179,15 @@ func (s *Service) Invoice(
 
 		user := scope.UserID
 		sale := sales.Sale{
-			InvoiceUUID: in.UUID,
-			DocType:     docType,
-			IssuedAt:    time.Now().UTC(),
-			CustomerID:  customerID,
-			CashierID:   &user,
-			Lines:       refs,
-			Tenders:     tenders,
+			InvoiceUUID:  in.UUID,
+			DocType:      docType,
+			IssuedAt:     time.Now().UTC(),
+			CustomerID:   customerID,
+			CashierID:    &user,
+			Lines:        refs,
+			Tenders:      tenders,
+			OnAccount:    onAccount,
+			OnAccountRef: number,
 			Input: sales.SaleInput{
 				Lines:            lines,
 				PricesIncludeTax: in.PricesIncludeTax,
