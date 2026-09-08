@@ -2158,6 +2158,13 @@ console.log('\nSHIFT (at a counter, which is the only way these routes answer)')
           (l) => l.is_active && l.store === counter.store,
         );
         const sellFrom = here.length > 1 ? here[0].id : null;
+        // Where to ASK about stock, which is a different question from
+        // whether the till has to SAY where it is selling from. A shop
+        // with one location need not name it, and this used to reuse
+        // sellFrom for both -- so in every single-location shop the
+        // replacement search below was skipped and the exchange went
+        // unexercised, which is most shops.
+        const stockAt = here.length ? here[0].id : null;
         if (here.length > 1) {
           const nowhere = await post(
             `/pos/sales?company_id=${CO}`,
@@ -2201,11 +2208,11 @@ console.log('\nSHIFT (at a counter, which is the only way these routes answer)')
         // offline copy, and what is on the shelf is a different question asked
         // of a different route.
         let replacement = null;
-        if (sellFrom) {
+        if (stockAt) {
           for (const candidate of sellable.slice(1)) {
             const stock = await call(
               `/stock/availability?company_id=${CO}` +
-                `&variant_id=${candidate.id}&warehouse_id=${sellFrom}`,
+                `&variant_id=${candidate.id}&warehouse_id=${stockAt}`,
             );
             if (Number(stock.json?.available_to_sell ?? 0) >= 1) {
               replacement = candidate;
@@ -5032,7 +5039,7 @@ if (cover?.data?.length) {
     'to_user_id',
     'starts_on',
     'ends_on',
-    'live',
+    'is_live',
   ]);
 } else {
   console.log('  -  nobody is covering for anybody; the row shape was not exercised');

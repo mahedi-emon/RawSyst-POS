@@ -167,6 +167,11 @@ export interface Cover {
   ends_on: string;
   note?: string;
   /** True while it is in force today. The server computes it, so the screen
-   *  and the engine cannot disagree about whether cover is live. */
-  live: boolean;
+   *  and the engine cannot disagree about whether cover is live.
+   *
+   *  Named `is_live` because that is what the server sends. It was read here
+   *  as `live` and was therefore always undefined, so the badge saying cover
+   *  is ON never once rendered -- and nothing noticed, because a development
+   *  database with one user cannot hold a delegation at all. */
+  is_live: boolean;
 }

@@ -27,7 +27,7 @@
 // There is no route to end one, and the list is already limited to what is
 // still relevant: the query keeps anything ending within the last thirty days.
 // So the table shows what is live, what is coming, and what has just finished,
-// and `live` is computed by the server rather than by comparing dates here —
+// and `is_live` is computed by the server rather than by comparing dates here —
 // the screen and the engine cannot then disagree about whether cover is on.
 
 import { UserRoundCheck } from 'lucide-react';
@@ -73,7 +73,7 @@ export function CoverTab() {
       cell: (c) => (
         <span className="flex items-center gap-2">
           {c.from === '' ? t('nx.aprc.someoneRemoved') : c.from}
-          {c.live ? <Badge tone="positive">{t('nx.aprc.live')}</Badge> : null}
+          {c.is_live ? <Badge tone="positive">{t('nx.aprc.live')}</Badge> : null}
         </span>
       ),
     },

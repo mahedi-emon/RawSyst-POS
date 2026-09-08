@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,23 +32,35 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/docs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/payments"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/privacy"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
@@ -138,6 +151,18 @@ func run(email, name, password, operator string) error {
 		return fmt.Errorf("seed configuration: %w", err)
 	}
 
+	if err := seedOperations(ctx, pool, cfg, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed operations: %w", err)
+	}
+
+	if err := seedTheRest(ctx, pool, cfg, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed the rest: %w", err)
+	}
+
+	if err := seedSecondPerson(ctx, pool, out.TenantID, out.OwnerUserID); err != nil {
+		return fmt.Errorf("seed a second person: %w", err)
+	}
+
 	// Overwritten only when asked, and only outside production, which the check
 	// above has already established.
 	if password != "" {
@@ -156,10 +181,51 @@ func run(email, name, password, operator string) error {
 		out.TemporaryPassword = password
 	}
 
+	// A second business, in a second market.
+	//
+	// Two reasons, and neither is decoration. The platform's tenant list pages,
+	// and a deployment holding one tenant can never exercise that -- so the
+	// paging contract went unchecked. And every market assumption in the
+	// product is invisible while only one market exists: a Bangladeshi business
+	// trades in BDT, has no EGS unit at its counter and none of the Saudi
+	// obligations, and a development machine that has never seen one cannot
+	// show that any of that works.
+	//
+	// It is left bare -- a tenant and an owner, nothing else. It exists to be a
+	// second row and a second market, not a second demo shop.
+	second, err := prov.CreateTenant(ctx, provisioning.NewTenant{
+		Name:       "Dhaka Convenience",
+		DataRegion: cfg.DataRegion,
+		PlanTier:   "starter",
+		Market:     "bd",
+		OwnerEmail: "owner.bd@example.test",
+		OwnerName:  "Demo Owner, Bangladesh",
+	})
+	if err != nil {
+		return fmt.Errorf("create the second tenant: %w", err)
+	}
+	if password != "" {
+		hash, hErr := identity.HashPassword(password)
+		if hErr != nil {
+			return hErr
+		}
+		if uErr := pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+			_, e := tx.Exec(ctx, `
+				UPDATE app_user SET password_hash = $2, must_change_password = false
+				WHERE id = $1`, second.OwnerUserID, hash)
+			return e
+		}); uErr != nil {
+			return uErr
+		}
+	}
+
 	fmt.Printf("\n  Seeded %q\n\n", name)
 	fmt.Printf("    email     %s\n", out.OwnerEmail)
 	fmt.Printf("    password  %s\n", out.TemporaryPassword)
 	fmt.Printf("    tenant    %s\n\n", out.TenantID)
+
+	fmt.Printf("  Also seeded %q in bd, owner %s\n\n",
+		"Dhaka Convenience", second.OwnerEmail)
 
 	if operator != "" {
 		pw, oErr := seedOperator(ctx, pool, operator, password)
@@ -264,8 +330,13 @@ func seedShop(
 
 		var storeID uuid.UUID
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO store (tenant_id, company_id, code, name)
-			VALUES ($1, $2, 'MAIN', 'Main Branch') RETURNING id`,
+			INSERT INTO store
+			  (tenant_id, company_id, code, name,
+			   street, building_number, additional_number,
+			   district, city, postal_code, country_code)
+			VALUES ($1, $2, 'MAIN', 'Main Branch',
+			        'King Fahd Road', '1234', '5678',
+			        'Al Olaya', 'Riyadh', '12211', 'SA') RETURNING id`,
 			tenantID, companyID).Scan(&storeID); err != nil {
 			return err
 		}
@@ -283,13 +354,21 @@ func seedShop(
 		// be exercised outside the test suite.
 		//
 		// The EGS unit owns the ZATCA counter and hash chain, which E1.3 puts on
+		// The unit carries the registered name and VAT number, and the branch
+		// carries a National Address, because BR-KSA-09, -37 and -66 require
+		// all of it on the face of an invoice. Without them the till answered
+		// "this shop is not set up for e-invoicing yet" on every sale, so the
+		// seeded Saudi shop could not ring anything up at all -- which is the
+		// correct refusal and an incomplete fixture.
 		// the device itself — so a device without one could not take a sale at
 		// all, and the two are seeded together.
 		var egsUnitID uuid.UUID
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO egs_unit
-			  (tenant_id, company_id, store_id, label, architecture)
-			VALUES ($1, $2, $3, 'till-1', 'smart_pos') RETURNING id`,
+			  (tenant_id, company_id, store_id, label, architecture,
+			   csr_organization_name, csr_organization_identifier)
+			VALUES ($1, $2, $3, 'till-1', 'smart_pos',
+			        'Demo Retail Co', '311111111111113') RETURNING id`,
 			tenantID, companyID, storeID).Scan(&egsUnitID); err != nil {
 			return err
 		}
@@ -319,8 +398,10 @@ func seedShop(
 		var counterEGS uuid.UUID
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO egs_unit
-			  (tenant_id, company_id, store_id, label, architecture)
-			VALUES ($1, $2, $3, 'till-2', 'smart_pos') RETURNING id`,
+			  (tenant_id, company_id, store_id, label, architecture,
+			   csr_organization_name, csr_organization_identifier)
+			VALUES ($1, $2, $3, 'till-2', 'smart_pos',
+			        'Demo Retail Co', '311111111111113') RETURNING id`,
 			tenantID, companyID, storeID).Scan(&counterEGS); err != nil {
 			return err
 		}
@@ -495,6 +576,7 @@ func seedDocuments(
 	ctx context.Context, pool *db.Pool, tenantID, ownerID uuid.UUID,
 ) error {
 	var companyID, warehouseID, storeID, variantID, customerID, supplierID uuid.UUID
+	var allVariants []uuid.UUID
 	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
 		if e := tx.QueryRow(ctx,
 			`SELECT id FROM company LIMIT 1`).Scan(&companyID); e != nil {
@@ -515,6 +597,24 @@ func seedDocuments(
 			companyID).Scan(&variantID); e != nil {
 			return e
 		}
+		rows, e := tx.Query(ctx,
+			`SELECT id FROM variant WHERE company_id = $1 ORDER BY sku`,
+			companyID)
+		if e != nil {
+			return e
+		}
+		for rows.Next() {
+			var v uuid.UUID
+			if e := rows.Scan(&v); e != nil {
+				rows.Close()
+				return e
+			}
+			allVariants = append(allVariants, v)
+		}
+		rows.Close()
+		if e := rows.Err(); e != nil {
+			return e
+		}
 		if e := tx.QueryRow(ctx,
 			`SELECT id FROM customer WHERE company_id = $1 LIMIT 1`,
 			companyID).Scan(&customerID); e != nil {
@@ -531,6 +631,20 @@ func seedDocuments(
 	//
 	// A shop with no stock cannot sell, so this is not only there to give the
 	// list a row -- it is what makes the seeded till able to ring anything up.
+	// EVERY sellable line, not just the first.
+	//
+	// A shop holding one stocked product can only ever swap a thing for
+	// itself, so the exchange at the counter had no replacement to offer
+	// and its whole path went unexercised. Which variant a checker picks
+	// as the replacement is not something a seed should have to predict,
+	// so all of them are on the shelf.
+	openingLines := make([]stockops.NewAdjustmentLine, 0, len(allVariants))
+	for _, v := range allVariants {
+		openingLines = append(openingLines, stockops.NewAdjustmentLine{
+			VariantID: v, Delta: decimal.NewFromInt(20),
+		})
+	}
+
 	stock := stockops.NewService(pool)
 	if _, err := stock.RecordAdjustment(ctx, stockops.Scope{
 		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
@@ -540,9 +654,7 @@ func seedDocuments(
 		Kind:        stockops.KindAdjustment,
 		Reason:      "found",
 		Note:        "Opening stock for the demo shop, counted onto the shelf.",
-		Lines: []stockops.NewAdjustmentLine{
-			{VariantID: variantID, Delta: decimal.NewFromInt(20)},
-		},
+		Lines:       openingLines,
 	}); err != nil {
 		return fmt.Errorf("opening stock: %w", err)
 	}
@@ -1080,6 +1192,513 @@ func seedConfiguration(
 		Note:  "The founding shareholder.",
 	}); err != nil {
 		return fmt.Errorf("add an investor: %w", err)
+	}
+
+	return nil
+}
+
+// seedOperations writes what a shop accumulates by running, rather than by
+// being set up.
+//
+// # Why
+//
+// The same reason as seedConfiguration: each of these lists answered an empty
+// page against a fresh database, so verify:api could not describe a single row
+// of a delivery, an instalment plan, a repair job, a serial number, a saved
+// report, a filed document, an API key, a callback, a notice, a support
+// ticket, a consent, a subject request, a backup or a second supplier bill.
+//
+// The one thing deliberately NOT seeded here is a data breach. The incident
+// register starts a seventy-two hour regulatory clock, and a fixture that
+// wrote one would put a fictional breach into a screen whose whole purpose is
+// to be believed.
+func seedOperations(
+	ctx context.Context, pool *db.Pool, cfg config.Config,
+	tenantID, ownerID uuid.UUID,
+) error {
+	var companyID, storeID, warehouseID, variantID, customerID uuid.UUID
+	var supplierID, orderID, invoiceID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM company LIMIT 1`).Scan(&companyID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM store WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&storeID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM warehouse WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&warehouseID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM variant WHERE company_id = $1 ORDER BY sku LIMIT 1`,
+			companyID).Scan(&variantID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM customer WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&customerID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM supplier WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&supplierID); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT id, invoice_id FROM sales_order
+			WHERE company_id = $1 AND invoice_id IS NOT NULL
+			ORDER BY created_at LIMIT 1`, companyID).Scan(&orderID, &invoiceID)
+	}); err != nil {
+		return err
+	}
+
+	rules := registry.New(pool, false)
+	now := time.Now().UTC()
+
+	// --- After the sale ----------------------------------------------------
+
+	after := aftersales.NewService(pool)
+	asScope := aftersales.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+
+	if _, err := after.BookDelivery(ctx, asScope, aftersales.NewDelivery{
+		OrderID: orderID,
+		Address: "Flat 4, 12 King Fahd Road, Riyadh",
+		Phone:   "+966500000001",
+		Fee:     decimal.NewFromInt(25),
+		Note:    "Ring the bell twice.",
+	}); err != nil {
+		return fmt.Errorf("book a delivery: %w", err)
+	}
+
+	// An instalment plan against the invoice the customer already owes, so the
+	// plan is about real money rather than a number with nothing behind it.
+	if _, err := after.OpenPlan(ctx, asScope, aftersales.NewPlan{
+		CustomerID:  customerID,
+		InvoiceID:   invoiceID,
+		DownPayment: decimal.NewFromInt(50),
+		MarkupRate:  decimal.RequireFromString("0.05"),
+		Tenure:      6,
+		StartsOn:    now,
+		GraceDays:   5,
+	}); err != nil {
+		return fmt.Errorf("open an instalment plan: %w", err)
+	}
+
+	// A serial-numbered unit on the shelf, and then a repair booked against
+	// it. The warranty check is the reason the two belong together: a job
+	// booked with no serial never exercises it.
+	serials, err := after.ReceiveSerials(ctx, asScope, variantID, warehouseID,
+		nil, &supplierID, []string{"SN-2026-0001", "SN-2026-0002"})
+	if err != nil {
+		return fmt.Errorf("receive serials: %w", err)
+	}
+	serialNo := ""
+	if len(serials) > 0 {
+		serialNo = "SN-2026-0001"
+	}
+
+	promised := now.AddDate(0, 0, 7)
+	if _, err := after.BookIn(ctx, asScope, aftersales.NewServiceOrder{
+		CustomerID: &customerID,
+		StoreID:    &storeID,
+		SerialNo:   serialNo,
+		VariantID:  &variantID,
+		Fault:      "Will not power on.",
+		PromisedOn: &promised,
+	}); err != nil {
+		return fmt.Errorf("book a repair in: %w", err)
+	}
+
+	// --- What the shop still owes its supplier -----------------------------
+
+	// A second bill, left unpaid. The first is settled by verify:api itself
+	// when it drives the supplier-payment route, which left the payables
+	// ageing empty and its bucket shape undescribed.
+	buying := purchasing.NewService(pool).WithRules(rules)
+	if _, err := buying.RecordBill(ctx, purchasing.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, purchasing.NewBill{
+		UUID:        uuid.New(),
+		SupplierID:  supplierID,
+		SupplierRef: "INV-2026-0002",
+		BillDate:    now.AddDate(0, 0, -20),
+		Lines: []purchasing.BillLine{{
+			VariantID:    &variantID,
+			Description:  "Second delivery, still outstanding",
+			Qty:          decimal.NewFromInt(5),
+			UnitCost:     decimal.NewFromInt(60),
+			TaxTreatment: "standard",
+			TaxRate:      decimal.RequireFromString("0.15"),
+		}},
+	}); err != nil {
+		return fmt.Errorf("record a second supplier bill: %w", err)
+	}
+
+	// Somebody at the supplier who can sign in and read their own orders.
+	if err := portal.NewService(pool).InviteSupplier(ctx, portal.Scope{
+		TenantID: tenantID, CompanyID: companyID,
+	}, ownerID, supplierID, "Faisal Trading Desk", "supplier@example.test",
+		"DevPassw0rd!2026"); err != nil {
+		return fmt.Errorf("invite a supplier contact: %w", err)
+	}
+
+	// --- What the office keeps ---------------------------------------------
+
+	if _, err := reports.NewService(pool).SaveReport(ctx, reports.Scope{
+		TenantID: tenantID, CompanyID: companyID,
+	}, ownerID, reports.Saved{
+		Name: "Trial balance, this month", Kind: "trial_balance",
+		Period: "this_month",
+	}); err != nil {
+		return fmt.Errorf("save a report: %w", err)
+	}
+
+	if _, err := docs.NewService(pool).Upload(ctx, docs.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, docs.NewDocument{
+		EntityType:     "supplier",
+		EntityID:       supplierID,
+		FileName:       "supply-agreement.txt",
+		Bytes:          []byte("Demo supply agreement, for development only.\n"),
+		Classification: "internal",
+		Note:           "Seeded so the document shelf has something on it.",
+	}); err != nil {
+		return fmt.Errorf("file a document: %w", err)
+	}
+
+	// --- What talks to RawSyst ---------------------------------------------
+
+	// The same keyring cmd/api builds. Without one the webhook signing secret
+	// cannot be stored, and the service refuses rather than writing it in the
+	// clear -- which is correct, and is why a development machine needs a
+	// throwaway key in its own .env before these screens can be reached at all.
+	var cipher *secrets.Cipher
+	if len(cfg.Auth.DataEncryptionKeys) > 0 {
+		c, e := secrets.New(cfg.Auth.DataEncryptionKeys...)
+		if e != nil {
+			return fmt.Errorf("the data encryption keyring is unusable: %w", e)
+		}
+		cipher = c
+	}
+	keys := integration.NewService(pool, cipher)
+	intScope := integration.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	if _, err := keys.SaveEndpoint(ctx, intScope, "Warehouse robot",
+		"https://example.test/rawsyst/hooks",
+		[]string{"sale.completed"}); err != nil {
+		return fmt.Errorf("register a callback: %w", err)
+	}
+
+	// --- What somebody should be told about --------------------------------
+
+	if err := notify.NewService(pool).Announce(ctx, notify.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, notify.Fact{
+		Kind: "system", Severity: "info",
+		Title: "Welcome to RawSyst",
+		Body:  "This business was created by the development seeder.",
+	}); err != nil {
+		return fmt.Errorf("raise a notice: %w", err)
+	}
+
+	support := ops.NewService(pool)
+	opsScope := ops.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	if _, err := support.Raise(ctx, opsScope,
+		"How do I add a second branch?",
+		"We are opening a second shop next month and want it in RawSyst.",
+		"question", "normal"); err != nil {
+		return fmt.Errorf("raise a support ticket: %w", err)
+	}
+
+	if _, err := support.RecordBackup(ctx, opsScope, "manual"); err != nil {
+		return fmt.Errorf("record a backup: %w", err)
+	}
+
+	// --- What the shop is allowed to do with people's data -----------------
+
+	guard := privacy.NewService(pool, rules)
+	pvScope := privacy.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	if _, err := guard.RecordConsent(ctx, pvScope, privacy.NewConsent{
+		SubjectType: "customer", SubjectID: customerID,
+		LawfulBasis: "consent", Purpose: "marketing", Channel: "sms",
+		Proof: "Ticked at the counter on the signature pad.",
+	}); err != nil {
+		return fmt.Errorf("record a consent: %w", err)
+	}
+
+	if _, err := guard.OpenRequest(ctx, pvScope, privacy.NewRequest{
+		Kind: "access", SubjectType: "customer", SubjectID: &customerID,
+		SubjectName:    "Al Noor Trading",
+		SubjectContact: "+966500000002",
+	}); err != nil {
+		return fmt.Errorf("open a subject request: %w", err)
+	}
+
+	return nil
+}
+
+// seedTheRest closes the last of the lists verify:api could not describe.
+//
+// Split from seedOperations only for length. The judgement is the same: a
+// screen contract confirmed against a database somebody typed into months ago
+// is a memory rather than a check, so anything a fixture can honestly create
+// is created here.
+//
+// Two things are still deliberately absent, and both for the same reason. A
+// data breach starts a seventy-two hour regulatory clock, and a failed
+// background job is an incident an operator is meant to act on. Writing either
+// would put a fiction into a screen whose whole value is that it is believed.
+func seedTheRest(
+	ctx context.Context, pool *db.Pool, cfg config.Config,
+	tenantID, ownerID uuid.UUID,
+) error {
+	var companyID, customerID, deviceID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM company LIMIT 1`).Scan(&companyID); e != nil {
+			return e
+		}
+		if e := tx.QueryRow(ctx,
+			`SELECT id FROM customer WHERE company_id = $1 LIMIT 1`,
+			companyID).Scan(&customerID); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT id FROM device
+			WHERE company_id = $1 AND status = 'active'
+			ORDER BY created_at LIMIT 1`, companyID).Scan(&deviceID)
+	}); err != nil {
+		return err
+	}
+
+	rules := registry.New(pool, false)
+	now := time.Now().UTC()
+
+	var cipher *secrets.Cipher
+	if len(cfg.Auth.DataEncryptionKeys) > 0 {
+		c, e := secrets.New(cfg.Auth.DataEncryptionKeys...)
+		if e != nil {
+			return fmt.Errorf("the data encryption keyring is unusable: %w", e)
+		}
+		cipher = c
+	}
+
+	// --- A drawer somebody has counted into ---------------------------------
+
+	// The till cannot sell without one, and the uncounted-drawer case on the
+	// shift screen has nothing to be about until a session is open.
+	if _, err := shift.NewService(pool).Open(ctx, tenantID, deviceID, ownerID,
+		decimal.NewFromInt(200), true); err != nil {
+		return fmt.Errorf("open the till: %w", err)
+	}
+
+	// --- Something that talks to RawSyst ------------------------------------
+
+	keys := integration.NewService(pool, cipher)
+	intScope := integration.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	// The key is granted only what the owner themselves holds, which is what
+	// the route does: a key that could do more than the person who minted it
+	// is a privilege escalation with a name.
+	granted := map[string]bool{"catalog.view": true, "sales.view": true}
+	if _, err := keys.Mint(ctx, intScope, "Stock feed",
+		[]string{"catalog.view", "sales.view"}, granted, nil); err != nil {
+		return fmt.Errorf("mint an api key: %w", err)
+	}
+
+	// --- A card connection --------------------------------------------------
+
+	if _, err := payments.NewService(pool, cipher).SaveGateway(ctx,
+		payments.Scope{
+			TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+		}, payments.NewGateway{
+			Provider: "moyasar", Label: "Card terminal", Mode: "test",
+			Settings: map[string]string{
+				"publishable_key": "pk_test_seeded_for_development",
+			},
+			Secret:   "sk_test_seeded_for_development",
+			Methods:  []string{"mada", "visa"},
+			IsActive: true,
+		}); err != nil {
+		return fmt.Errorf("connect a card gateway: %w", err)
+	}
+
+	// --- A conversation with support ----------------------------------------
+
+	support := ops.NewService(pool)
+	opsScope := ops.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	tickets, err := support.Tickets(ctx, opsScope, true)
+	if err != nil {
+		return fmt.Errorf("read the tickets: %w", err)
+	}
+	if len(tickets) > 0 {
+		if _, err := support.Reply(ctx, opsScope, tickets[0].ID,
+			"Adding a branch is under Settings, Business, Branches."); err != nil {
+			return fmt.Errorf("reply to a ticket: %w", err)
+		}
+	}
+
+	// --- What the shop does with people's data ------------------------------
+
+	guard := privacy.NewService(pool, rules)
+	pvScope := privacy.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}
+	if _, err := guard.SaveActivity(ctx, pvScope, privacy.Activity{
+		Name:              "Loyalty scheme",
+		Purpose:           "Rewarding repeat custom and offering members discounts.",
+		LawfulBasis:       "consent",
+		DataCategories:    "Name, mobile number, purchase history",
+		SubjectCategories: "Customers",
+		RetentionNote:     "Kept while the membership is live, then two years.",
+		SystemName:        "RawSyst",
+	}); err != nil {
+		return fmt.Errorf("record a processing activity: %w", err)
+	}
+
+	if _, err := guard.PlaceHold(ctx, pvScope, privacy.Hold{
+		Name:         "Disputed invoice, INV-0001",
+		Reason:       "The customer has disputed the amount, so nothing about this account may be erased until it is settled.",
+		SubjectType:  "customer",
+		SubjectID:    &customerID,
+		DataCategory: "Invoices and payment records",
+	}); err != nil {
+		return fmt.Errorf("place a legal hold: %w", err)
+	}
+
+	// --- An import somebody ran ---------------------------------------------
+
+	// Uploaded and left unvalidated, which is where a batch sits after a shop
+	// has chosen a file and before anybody has looked at what is in it.
+	csv := "code,name,phone\nCUST-IMP-1,Imported Customer,+966500000003\n"
+	if _, err := portability.NewService(pool).Upload(ctx, portability.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, portability.KindCustomers, "customers.csv", map[string]string{
+		"code": "code", "name": "name", "phone": "phone",
+	}, strings.NewReader(csv)); err != nil {
+		return fmt.Errorf("upload an import: %w", err)
+	}
+
+	// --- The platform's own register ----------------------------------------
+
+	// A sub-processor is a fact about THE PLATFORM rather than about any one
+	// business, which is why this is written once and read by every tenant's
+	// privacy disclosure. Hosting is the honest example: this software runs
+	// somewhere.
+	if _, err := guard.SaveSubprocessor(ctx, privacy.Subprocessor{
+		Name:           "Hosting provider",
+		Purpose:        "Runs the servers and the database this installation is deployed on.",
+		Country:        "SA",
+		DataCategories: "Everything stored in the product",
+		Safeguard:      "Data processing agreement; hosted in the Kingdom.",
+		IsActive:       true,
+	}); err != nil {
+		return fmt.Errorf("register a sub-processor: %w", err)
+	}
+	_ = now
+
+	return nil
+}
+
+// seedSecondPerson gives the shop somebody besides the owner, and somebody for
+// the owner to be covered by.
+//
+// approval_delegation is read by the engine on every decision -- a step naming
+// a person is satisfied by whoever is covering for them -- and a shop with one
+// user cannot have a delegation at all, because delegating to yourself changes
+// nothing and the service says so. So the cover list was necessarily empty
+// against a fresh database and its row shape went undescribed.
+func seedSecondPerson(
+	ctx context.Context, pool *db.Pool, tenantID, ownerID uuid.UUID,
+) error {
+	var companyID uuid.UUID
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT id FROM company LIMIT 1`).Scan(&companyID)
+	}); err != nil {
+		return err
+	}
+
+	staff := identity.NewService(pool, nil)
+
+	// The owner's own permission set, resolved rather than assumed: the
+	// service checks that the role being handed over is a SUBSET of what the
+	// caller holds, and a hard-coded map here would be a second answer to
+	// "what may this person give away".
+	holds := map[string]bool{}
+	if err := pool.TxAsTenant(ctx, tenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT DISTINCT rp.permission
+			FROM user_role_assignment ura
+			JOIN role_permission rp ON rp.role_id = ura.role_id
+			WHERE ura.user_id = $1
+			  AND (ura.valid_from  IS NULL OR ura.valid_from  <= now())
+			  AND (ura.valid_until IS NULL OR ura.valid_until  > now())`,
+			ownerID)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p string
+			if e := rows.Scan(&p); e != nil {
+				return e
+			}
+			holds[p] = true
+		}
+		return rows.Err()
+	}); err != nil {
+		return fmt.Errorf("resolve what the owner holds: %w", err)
+	}
+
+	scope := identity.PeopleScope{
+		TenantID: tenantID, ActorID: ownerID, Holds: holds,
+	}
+
+	roles, err := staff.ListRoles(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("list the roles: %w", err)
+	}
+	var managerRole uuid.UUID
+	for _, r := range roles {
+		if r.Key == "store_manager" {
+			managerRole = r.ID
+			break
+		}
+	}
+	if managerRole == uuid.Nil {
+		return fmt.Errorf("no store_manager role is seeded, so nobody can be hired into one")
+	}
+
+	created, err := staff.CreatePerson(ctx, scope, identity.NewPerson{
+		Email: "manager@example.test", FullName: "Sara Al-Otaibi",
+		RoleID: managerRole, CompanyID: &companyID,
+	})
+	if err != nil {
+		return fmt.Errorf("create a second user: %w", err)
+	}
+
+	// The owner is away for a fortnight and the manager is covering.
+	now := time.Now().UTC()
+	if err := workflow.NewService(pool).Delegate(ctx, workflow.Scope{
+		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
+	}, ownerID, created.Person.ID, now, now.AddDate(0, 0, 14),
+		"Owner away; the store manager decides in their place."); err != nil {
+		return fmt.Errorf("delegate approvals: %w", err)
 	}
 
 	return nil
