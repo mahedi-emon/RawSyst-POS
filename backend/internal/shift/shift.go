@@ -209,10 +209,24 @@ type Past struct {
 // that produced it, and only while it was still standing there.
 //
 // Ordered newest first and bounded, because the question is always about
-// recent shifts. `from` and `to` narrow it; a store narrows it further.
+// recent shifts. `from` and `to` narrow it; a store narrows it further. Both
+// are nil when the caller has not said, which is the ordinary case.
+//
+// # A day is a day in the shop's timezone
+//
+// This used to bound the window with instants computed in UTC, and a shift
+// opened after local midnight but before UTC midnight fell outside its own
+// day: in Riyadh, every session opened between midnight and three in the
+// morning was missing from the supervisor's register. That is precisely the
+// shift this screen exists for -- the one nobody was there to watch.
+//
+// So the bounds are dates, resolved against `company.timezone`. Postgres does
+// the arithmetic because it is the only party that knows both the timezone and
+// the stored instant, and because a date computed in Go is a date computed in
+// the server's timezone, which is not the shop's.
 func (s *Service) Sessions(
 	ctx context.Context, tenantID, companyID uuid.UUID,
-	storeID *uuid.UUID, from, to time.Time, limit int,
+	storeID *uuid.UUID, from, to *time.Time, limit int,
 ) ([]Past, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
@@ -229,13 +243,24 @@ func (s *Service) Sessions(
 			       c.blind_close
 			FROM cash_session c
 			JOIN store s ON s.id = c.store_id
+			JOIN company co ON co.id = c.company_id
 			LEFT JOIN device d ON d.id = c.device_id
 			LEFT JOIN app_user o ON o.id = c.opened_by
 			LEFT JOIN app_user z ON z.id = c.closed_by
 			WHERE c.company_id = $1
 			  AND ($2::uuid IS NULL OR c.store_id = $2)
-			  AND c.opened_at >= $3::date
-			  AND c.opened_at < ($4::date + 1)
+			  -- A fortnight back to the end of today, both in the shop's own
+			  -- timezone. AT TIME ZONE turns a local wall-clock day boundary
+			  -- into the instant it happened at, which is what opened_at
+			  -- holds.
+			  AND c.opened_at >= (
+			        coalesce($3::date,
+			                 (now() AT TIME ZONE co.timezone)::date - 14
+			        )::timestamp AT TIME ZONE co.timezone)
+			  AND c.opened_at < (
+			        (coalesce($4::date,
+			                  (now() AT TIME ZONE co.timezone)::date
+			        ) + 1)::timestamp AT TIME ZONE co.timezone)
 			ORDER BY c.opened_at DESC
 			LIMIT $5`,
 			companyID, storeID, from, to, limit)

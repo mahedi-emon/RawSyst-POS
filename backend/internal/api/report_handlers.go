@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -537,4 +538,23 @@ func firstNonEmpty(vs ...string) string {
 		}
 	}
 	return ""
+}
+
+// optionalReportDate parses a date the caller may not have given.
+//
+// Nil is "they did not say", which is different from a zero date: the default
+// window for a report is resolved where the business's timezone is known, and
+// a caller who omits a bound should not have one invented in UTC on the way
+// through.
+func optionalReportDate(raw, field string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	d, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil, errs.Newf(errs.CodeInvalidInput,
+			"%s must be a date like 2026-08-15.", field)
+	}
+	return &d, nil
 }

@@ -17,7 +17,6 @@ package api
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
@@ -44,20 +43,24 @@ func (s *Server) handleListShifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A fortnight, when nobody says. The question this answers is always about
-	// recent shifts, and an unbounded read of every session a busy shop has
-	// ever run is a page nobody scrolls and a query nobody should pay for.
-	now := time.Now().UTC()
-	from, to := now.AddDate(0, 0, -14), now
-	if from, err = parseReportDate(r.URL.Query().Get("from"), "from", from); err != nil {
+	// A fortnight, when nobody says -- but the default is left to the service,
+	// which resolves it in the SHOP's timezone.
+	//
+	// Computing it here meant computing it in UTC, and a session opened after
+	// local midnight but before UTC midnight then fell outside its own day: in
+	// Riyadh every shift opened between midnight and three was missing from
+	// the register that exists to review it.
+	from, err := optionalReportDate(r.URL.Query().Get("from"), "from")
+	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	if to, err = parseReportDate(r.URL.Query().Get("to"), "to", to); err != nil {
+	to, err := optionalReportDate(r.URL.Query().Get("to"), "to")
+	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	if to.Before(from) {
+	if from != nil && to != nil && to.Before(*from) {
 		httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
 			"The end of the period comes before its start."))
 		return
