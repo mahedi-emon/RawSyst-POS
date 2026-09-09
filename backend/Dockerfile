@@ -1,4 +1,5 @@
-# The API, the worker and the migrator, in one small image.
+# The API, the worker, the migrator, the bootstrap and the regulatory recorder,
+# in one small image.
 #
 # # Why one image and not three
 #
@@ -68,7 +69,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/bootstrap ./cmd/bootstrap
+      -o /out/bootstrap ./cmd/bootstrap && \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/regulatory ./cmd/regulatory
 
 # A non-root user, built here because scratch has no adduser.
 RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
@@ -92,6 +97,11 @@ COPY --from=build /out/migrate /migrate
 # guard it would be needed to pass. This refuses once one exists, which is
 # what separates a bootstrap from a back door.
 COPY --from=build /out/bootstrap /bootstrap
+# Legal values, from a file. The API refuses to start while a release-blocking
+# rule is a placeholder, and the screen that could record one is served by the
+# API -- so a deployment could only get past its own gate through a shell it
+# does not have. This needs the database and nothing else.
+COPY --from=build /out/regulatory /regulatory
 
 # Never uid 0. A container that is rooted is a host that is one kernel bug away
 # from being rooted.

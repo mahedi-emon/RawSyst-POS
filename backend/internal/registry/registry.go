@@ -147,12 +147,30 @@ func New(pool *db.Pool, requireVerified bool) *Service {
 	}
 }
 
+// cacheEntries bounds the cache.
+//
+// Reached by clearing it rather than by evicting one entry: a miss costs one
+// indexed read of a small table, an LRU costs a second data structure and a
+// second lock, and the cache exists to stop a thousand tills asking the same
+// question at once rather than to be the last word on anything.
+const cacheEntries = 4096
+
 func cacheKey(q Query) string {
-	// Month granularity: rules are effective-dated by day, but a change within
-	// a month is rare enough that a per-month key is a safe trade for a much
-	// smaller cache. Invalidate() clears everything on any write.
+	// The exact date, not the month.
+	//
+	// This used to key by month, on the reasoning that a rule changing
+	// mid-month is rare. That was true while every value in the registry was
+	// seeded by a migration or superseded on the first of something. It stopped
+	// being true when a legal value could be recorded from a source file, whose
+	// effective date is the day somebody records it — almost never the first.
+	//
+	// The failure it left is silent and picks its own answer: a placeholder in
+	// force until the 9th and a verified figure from the 9th share one key, so
+	// whichever a process resolves first governs the whole month for that
+	// process. Two API instances could disagree about the same payroll run, and
+	// nothing would report a conflict.
 	return fmt.Sprintf("%s|%s|%s|%s",
-		q.Key, q.Country, q.AsOf.Format("2006-01"), q.TenantID)
+		q.Key, q.Country, q.AsOf.Format("2006-01-02"), q.TenantID)
 }
 
 // Invalidate clears the cache. Called after any registry write.
@@ -235,6 +253,12 @@ func (s *Service) Resolve(ctx context.Context, q Query) (Rule, error) {
 	}
 
 	s.mu.Lock()
+	// A day-keyed cache grows with the dates a process is asked about, and a
+	// long-lived API asked about every sale of every day would grow it without
+	// end. Bounded by starting again, for the reason at cacheEntries.
+	if len(s.cache) >= cacheEntries {
+		s.cache = make(map[string]Rule, 64)
+	}
 	s.cache[ck] = rule
 	s.mu.Unlock()
 

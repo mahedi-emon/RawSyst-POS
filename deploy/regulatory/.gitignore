@@ -1,0 +1,3 @@
+# A filled-in attestation is a named person's statement, not project source.
+*.json
+!.gitkeep

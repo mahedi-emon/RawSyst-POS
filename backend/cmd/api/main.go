@@ -430,13 +430,23 @@ func reportRegistryHealth(
 
 	if len(rep.BlockingRelease) > 0 {
 		if strict {
+			// Named, and told what to do about it.
+			//
+			// The refusal used to point at Super Admin, which is a screen on
+			// the service that is refusing to start. That is a circle, and it
+			// is why recording a legal value became a file: `cmd/regulatory`
+			// needs only the database.
 			return fmt.Errorf(
 				"refusing to start: these legal values have never been verified "+
 					"against their official source: %s. They apply to markets "+
-					"this deployment serves (%s). "+
-					"Verify them in Super Admin > Regulatory Registry first",
+					"this deployment serves (%s). Record them from a regulatory "+
+					"source file — `regulatory -template -country %s` writes "+
+					"one to fill in, `regulatory -apply -file …` records it — "+
+					"or, on a deployment that is already up, in Super Admin > "+
+					"Regulatory Registry",
 				strings.Join(rep.BlockingRelease, ", "),
-				marketList(rep.ServedMarkets))
+				marketList(rep.ServedMarkets),
+				firstServedMarket(rep.ServedMarkets))
 		}
 		log.Warn("unverified release-blocking regulatory rules",
 			slog.String("rules", strings.Join(rep.BlockingRelease, ", ")),
@@ -455,6 +465,15 @@ func marketList(markets []string) string {
 		return "none yet"
 	}
 	return strings.Join(markets, ", ")
+}
+
+// firstServedMarket is the country code to put in the command the refusal
+// suggests, so it can be pasted rather than adapted.
+func firstServedMarket(markets []string) string {
+	if len(markets) == 0 {
+		return "sa"
+	}
+	return markets[0]
 }
 
 // tauriOrigins are the origins the POS presents from inside its own window.

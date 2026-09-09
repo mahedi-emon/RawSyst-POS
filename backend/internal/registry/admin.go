@@ -28,6 +28,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -190,7 +191,7 @@ func (s *Service) RecordRule(
 			verifier = by
 		}
 
-		return tx.QueryRow(ctx, `
+		if e := tx.QueryRow(ctx, `
 			INSERT INTO regulatory_rule
 			  (rule_key, country, payload, effective_from, source_authority,
 			   source_document, source_url, release_blocker, notes,
@@ -202,7 +203,38 @@ func (s *Service) RecordRule(
 			key, in.Country, string(in.Payload), in.From, in.Authority,
 			strings.TrimSpace(in.Document), strings.TrimSpace(in.URL),
 			in.Blocker, strings.TrimSpace(in.Notes), verified, verifier).
-			Scan(&out.ID, &out.From, &out.VerifiedOn)
+			Scan(&out.ID, &out.From, &out.VerifiedOn); e != nil {
+			return e
+		}
+
+		// Who put a legal value into the registry, in the trail.
+		//
+		// `verified_by` on the row records the person who ASSERTED a figure,
+		// and it is NULL for one recorded unverified -- so staging a value
+		// named nobody at all. This is the most consequential act a platform
+		// operator performs: every business in the market computes payroll and
+		// tax from it. The neighbouring rate workflow has audited review,
+		// verification and activation since 0120; the rule itself did not.
+		//
+		// The payload is recorded as text rather than parsed, because this is
+		// evidence of what was written, not a rendering of it.
+		return audit.Write(ctx, tx, audit.Entry{
+			ActorID:    &by,
+			ActorLabel: audit.LabelFor(ctx, tx, by),
+			Action:     "regulatory_rule_recorded",
+			EntityType: "regulatory_rule",
+			EntityID:   &out.ID,
+			After: map[string]any{
+				"rule_key": key, "country": in.Country,
+				"effective_from":  in.From.Format("2006-01-02"),
+				"source_document": strings.TrimSpace(in.Document),
+				"source_url":      strings.TrimSpace(in.URL),
+				"verified":        in.Verified,
+				"release_blocker": in.Blocker,
+				"payload":         string(in.Payload),
+				"notes":           strings.TrimSpace(in.Notes),
+			},
+		})
 	})
 	if err != nil {
 		return RuleRow{}, db.Translate(err, "That rule could not be recorded.")

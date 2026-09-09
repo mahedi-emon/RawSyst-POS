@@ -176,9 +176,10 @@ services:
   # closes it once -- it refuses if any operator already exists, which is what
   # makes it safe to leave in the file.
   #
-  # Behind a profile so `up` never runs it. Run it deliberately:
+  # Behind a profile so `up` never runs it. Run it deliberately, with
+  # RAWSYST_PLATFORM_EMAIL set in .env:
   #
-  #   RAWSYST_PLATFORM_EMAIL=you@example.com   #     docker compose --profile setup run --rm bootstrap
+  #   docker compose --profile setup run --rm bootstrap
   #
   # It prints a password once and requires it to be changed at first sign-in.
   bootstrap:
@@ -192,6 +193,45 @@ services:
     entrypoint: ["/bootstrap"]
     environment:
       <<: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # The legal values, from a file.
+  #
+  # `api` refuses to start while a release-blocking rule is still a placeholder
+  # for a market this deployment serves. The screen that could record one is
+  # served BY the api, and the image has no shell, so until this existed the
+  # only way past that gate was to reach the database from outside the stack.
+  #
+  # With no arguments it reports what is outstanding and exits non-zero if
+  # anything is blocking, which makes it a deployment check:
+  #
+  #   docker compose --profile setup run --rm regulatory
+  #   docker compose --profile setup run --rm regulatory -template -country sa > sources.json
+  #   #  somebody reads the articles that file cites and fills in the figures
+  #   docker compose --profile setup run --rm regulatory -check -file /sources/sources.json
+  #   docker compose --profile setup run --rm regulatory -apply -file /sources/sources.json
+  #
+  # The file is mounted read-only. This never writes to it, and a container
+  # that cannot change the attestation it is applying is one less way for the
+  # record of what was attested to drift from what was recorded.
+  regulatory:
+    profiles: ["setup"]
+    build:
+      context: ./backend
+      args:
+        VERSION: ${VERSION:-dev}
+    image: rawsyst/backend:${VERSION:-dev}
+    restart: "no"
+    entrypoint: ["/regulatory"]
+    environment:
+      <<: *backend-env
+      RAWSYST_REGULATORY_SOURCE: ${RAWSYST_REGULATORY_SOURCE:-}
+    volumes:
+      - ${RAWSYST_REGULATORY_SOURCE_DIR:-./deploy/regulatory}:/sources:ro
     depends_on:
       db:
         condition: service_healthy

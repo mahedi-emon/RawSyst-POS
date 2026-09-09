@@ -62,6 +62,35 @@ fresh-dev: ## Rebuild and reseed the DEVELOPMENT database
 dev-regulatory: ## Stage development figures for the legal values that block calculations
 	@cd backend && set -a && . ./.env && set +a && go run ./cmd/devregulatory
 
+# --- recording the real legal values -----------------------------------------
+#
+# `dev-regulatory` above stages figures that are visibly not the law so a
+# developer can run the calculation. These three are the other thing: the
+# figures somebody read in the official document, carried into any number of
+# deployments from one file.
+
+.PHONY: regulatory
+regulatory: ## What legal values this installation is still waiting for
+	@cd backend && set -a && . ./.env && set +a && go run ./cmd/regulatory
+
+.PHONY: regulatory-template
+regulatory-template: ## Write a source file to fill in (COUNTRY=sa FILE=sources.json)
+	@cd backend && set -a && . ./.env && set +a && \
+	  go run ./cmd/regulatory -template -country '$(or $(COUNTRY),sa)' \
+	  > '$(or $(FILE),../sources.json)'
+	@echo "  Wrote $(or $(FILE),sources.json). Fill in the figures it cites, then:"
+	@echo "      make regulatory-check FILE=$(or $(FILE),sources.json)"
+
+.PHONY: regulatory-check
+regulatory-check: ## Validate a source file and report what it would record
+	@cd backend && set -a && . ./.env && set +a && \
+	  go run ./cmd/regulatory -check -file '$(or $(FILE),../sources.json)'
+
+.PHONY: regulatory-apply
+regulatory-apply: ## Record the figures in a source file
+	@cd backend && set -a && . ./.env && set +a && \
+	  go run ./cmd/regulatory -apply -file '$(or $(FILE),../sources.json)'
+
 .PHONY: test-backend
 test-backend: ## The Go suite against the test database, in two stages
 	@cd backend && RAWSYST_DB_DSN='$(TEST_DSN)' \
