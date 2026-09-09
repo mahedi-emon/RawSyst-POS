@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
@@ -357,6 +358,7 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 
 		return writeAudit(ctx, tx, auditEntry{
 			TenantID: tenantID, ActorID: &userID, Action: "login",
+			ActorLabel: audit.LabelFor(ctx, tx, userID),
 			EntityType: "app_user", EntityID: &userID, IP: c.IP,
 			Device: c.Device,
 		})
@@ -552,6 +554,7 @@ func (s *Service) revokeFamily(
 		}
 		return writeAudit(ctx, tx, auditEntry{
 			TenantID: tenantID, ActorID: &userID,
+			ActorLabel: audit.LabelFor(ctx, tx, userID),
 			Action:     "session_revoked_token_reuse",
 			EntityType: "user_session", EntityID: &sessionID,
 			After: map[string]any{
@@ -752,6 +755,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, current,
 		}
 		return writeAudit(ctx, tx, auditEntry{
 			TenantID: tenantID, ActorID: &userID, Action: "password_changed",
+			ActorLabel: audit.LabelFor(ctx, tx, userID),
 			EntityType: "app_user", EntityID: &userID,
 		})
 	})
@@ -821,6 +825,7 @@ func (s *Service) ResetPasswordAsSuperAdmin(
 		}
 		return writeAudit(ctx, tx, auditEntry{
 			TenantID: tenantID, ActorID: &a.UserID,
+			ActorLabel: audit.LabelFor(ctx, tx, a.UserID),
 			Action:     "password_reset_by_super_admin",
 			EntityType: "app_user", EntityID: &targetUserID,
 			After: map[string]any{"reason": reason, "requires_change": true},
