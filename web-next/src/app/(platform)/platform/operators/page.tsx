@@ -66,6 +66,10 @@ function OperatorsScreen() {
   const [editing, setEditing] = useState<Operator | null>(null);
   const [newEmail, setNewEmail] = useState('');
 
+  /** The operator whose password is being reset, and why. */
+  const [resetting, setResetting] = useState<Operator | null>(null);
+  const [resetReason, setResetReason] = useState('');
+
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
@@ -81,9 +85,11 @@ function OperatorsScreen() {
   function reset() {
     setAdding(false);
     setEditing(null);
+    setResetting(null);
     setEmail('');
     setFullName('');
     setNewEmail('');
+    setResetReason('');
     setFormError(null);
     setFieldErrors(null);
   }
@@ -115,6 +121,37 @@ function OperatorsScreen() {
     setFieldErrors(null);
     try {
       await api.put(`/platform/operators/${editing.id}/email`, { email: newEmail });
+      reset();
+      void refetch();
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
+      setFormError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // A new one-time password for a colleague who has lost theirs.
+  //
+  // `cmd/bootstrap` tells an operator to "reset a password there" and there was
+  // nowhere: `POST /platform/users/{id}/reset-password` had no caller, so the
+  // only recovery for a locked-out administrator was the forgotten-password
+  // email flow, which is no help when the address itself is the problem.
+  //
+  // The reason is required and is not decoration. This hands somebody full
+  // platform authority; the audit entry should say why rather than only that it
+  // happened, and the server refuses an empty one.
+  async function resetPassword() {
+    if (!resetting) return;
+    setBusy(true);
+    setFormError(null);
+    setFieldErrors(null);
+    try {
+      const res = await api.post<{ temporary_password: string }>(
+        `/platform/users/${resetting.id}/reset-password`,
+        { reason: resetReason.trim() },
+      );
+      setIssued({ email: resetting.email, password: res.temporary_password });
       reset();
       void refetch();
     } catch (e) {
@@ -209,6 +246,17 @@ function OperatorsScreen() {
           >
             {t('nx.plat.opChangeEmail')}
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              reset();
+              setResetting(x);
+            }}
+          >
+            {t('nx.plat.opResetPassword')}
+          </Button>
           {x.status === 'active' ? (
             <Button
               size="sm"
@@ -244,7 +292,7 @@ function OperatorsScreen() {
         title={t('nx.plat.opTitle')}
         description={t('nx.plat.opSubtitle')}
         actions={
-          !adding && !editing ? (
+          !adding && !editing && !resetting ? (
             <Button
               onClick={() => {
                 reset();
@@ -351,6 +399,47 @@ function OperatorsScreen() {
             <div className="mt-6 flex flex-wrap gap-2">
               <Button type="submit" busy={busy} busyLabel={t('nx.plat.opSaving')}>
                 {t('nx.plat.opChangeEmailSave')}
+              </Button>
+              <Button type="button" variant="ghost" onClick={reset}>
+                {t('nx.plat.opCancel')}
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      ) : null}
+
+      {resetting ? (
+        <Panel
+          title={t('nx.plat.opResetTitle', { name: resetting.full_name })}
+          description={t('nx.plat.opResetHint')}
+          className="mb-4"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void resetPassword();
+            }}
+          >
+            <FormError message={formError} fields={fieldErrors} className="mb-4" />
+            <Field
+              name="reason"
+              label={t('nx.plat.opResetReason')}
+              hint={t('nx.plat.opResetReasonHint')}
+            >
+              <Input
+                value={resetReason}
+                onChange={(e) => setResetReason(e.target.value)}
+                required
+              />
+            </Field>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                busy={busy}
+                busyLabel={t('nx.plat.opSaving')}
+                disabled={resetReason.trim() === ''}
+              >
+                {t('nx.plat.opResetSave')}
               </Button>
               <Button type="button" variant="ghost" onClick={reset}>
                 {t('nx.plat.opCancel')}

@@ -42,6 +42,8 @@ import { useCompanyScope } from '@/lib/company/company-context';
 import { useT, type Key } from '@/lib/i18n/locale';
 import { signInState, type Person, type RoleOption } from '@/lib/people/roles';
 
+import { PersonPanel } from './person';
+
 const STATE_LABEL: Record<string, Key> = {
   suspended: 'nx.usr.suspended',
   locked: 'nx.usr.locked',
@@ -105,6 +107,9 @@ function UsersScreen() {
   );
 
   const [adding, setAdding] = useState(false);
+  // Which person is open for amendment. One at a time: two open forms is
+  // two drafts of the same record and no way to tell which was saved.
+  const [openID, setOpenID] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -117,6 +122,9 @@ function UsersScreen() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const rows = people.data?.data ?? [];
+  // Looked up in the list rather than held in state, so a refetch after a
+  // role change redraws the panel with the assignments the server now has.
+  const openPerson = rows.find((p) => p.id === openID) ?? null;
   // Only the roles this person can actually hand over. One they cannot is
   // shown on the roles screen with its reason; offering it here would collect
   // a refusal at the moment somebody is being added.
@@ -270,6 +278,16 @@ function UsersScreen() {
             >
               {t('nx.usr.resetPassword')}
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setAdding(false);
+                setOpenID((v) => (v === p.id ? null : p.id));
+              }}
+            >
+              {t('nx.usr.amend')}
+            </Button>
           </span>
         ) : null,
     },
@@ -368,6 +386,18 @@ function UsersScreen() {
             </Button>
           </div>
         </Panel>
+      ) : null}
+
+      {openPerson && scope ? (
+        <PersonPanel
+          person={openPerson}
+          companyId={scope.company_id}
+          assignable={assignable}
+          mayAmend={mayCreate}
+          mayAssign={mayAssign}
+          onChanged={() => void people.refetch()}
+          onClose={() => setOpenID(null)}
+        />
       ) : null}
 
       {people.error ? (

@@ -46,8 +46,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Textarea } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
-import { EmptyState, ErrorState } from '@/components/ui/states';
-import { DataTable, type Column } from '@/components/ui/table';
+import { ErrorState } from '@/components/ui/states';
 import { Tabs, TabPanel } from '@/components/ui/tabs';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
@@ -56,12 +55,11 @@ import { useGrants } from '@/lib/auth/session';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { useT, type Key } from '@/lib/i18n/locale';
 
+import { BranchPanel } from './branches';
 import { LogoPanel } from './logo';
 import {
-  addressLine,
   amendment,
   DOC_TYPES,
-  invoiceBlock,
   isSettled,
   settledReason,
   splitMissing,
@@ -291,74 +289,6 @@ function BusinessScreen() {
     }
   }
 
-  const branchColumns: Column<Branch>[] = [
-    {
-      key: 'name',
-      header: t('nx.biz.colBranch'),
-      primary: true,
-      cell: (b) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="font-medium">{b.name}</span>
-          <span className="num text-caption text-muted">{b.code}</span>
-        </span>
-      ),
-    },
-    {
-      key: 'address',
-      header: t('nx.biz.colAddress'),
-      cell: (b) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="text-muted">{addressLine(b) || '—'}</span>
-          {/* What is PRINTED, which is not always what is stored: the document
-              layer falls back to the company's country when a branch has none
-              of its own. */}
-          {b.effective_country_code ? (
-            <span className="num text-caption text-muted">
-              {b.effective_country_code}
-              {b.country_code ? '' : ` ${t('nx.biz.inherited')}`}
-            </span>
-          ) : null}
-        </span>
-      ),
-    },
-    {
-      key: 'invoicing',
-      header: t('nx.biz.colInvoicing'),
-      width: 'w-56',
-      cell: (b) => {
-        const blocked = invoiceBlock(b);
-        if (blocked.length === 0) {
-          return <Badge tone="positive">{t('nx.biz.canInvoice')}</Badge>;
-        }
-        return (
-          <span className="flex flex-col gap-1">
-            <Badge tone="critical">{t('nx.biz.cannotInvoice')}</Badge>
-            <span className="num text-caption text-critical-fg">
-              {blocked.join(', ')}
-            </span>
-          </span>
-        );
-      },
-    },
-    {
-      key: 'phone',
-      header: t('nx.biz.colPhone'),
-      secondary: true,
-      width: 'w-40',
-      cell: (b) => <span className="num text-muted">{b.phone || '—'}</span>,
-    },
-    {
-      key: 'state',
-      header: t('nx.biz.colState'),
-      width: 'w-32',
-      cell: (b) =>
-        b.is_active ? (
-          <Badge tone="positive">{t('nx.biz.trading')}</Badge>
-        ) : (
-          <Badge>{t('nx.biz.closed')}</Badge>
-        ),
-    },
-  ];
 
   const split = disclosure
     ? splitMissing(disclosure, business?.settled ?? {})
@@ -487,29 +417,14 @@ function BusinessScreen() {
         </Panel>
       ) : null}
 
-      <Panel
-        flush
-        className="mb-5"
-        title={t('nx.biz.branches')}
-        description={t('nx.biz.branchesHint')}
-      >
-        {branchRows.length === 0 ? (
-          <div className="p-4">
-            <EmptyState
-              title={t('nx.biz.noBranchesTitle')}
-              description={t('nx.biz.noBranchesDesc')}
-            />
-          </div>
-        ) : (
-          <DataTable
-            caption={t('nx.biz.branches')}
-            columns={branchColumns}
-            rows={branchRows}
-            rowKey={(b) => b.id}
-            className="rounded-none border-0"
-          />
-        )}
-      </Panel>
+      {scope ? (
+        <BranchPanel
+          companyId={scope.company_id}
+          branches={branchRows}
+          mayEdit={mayEdit}
+          onSaved={() => void record.refetch()}
+        />
+      ) : null}
 
       {/* --- the stationery ------------------------------------------- */}
       <h2 className="mt-8 mb-1 text-card-title font-semibold text-fg">
