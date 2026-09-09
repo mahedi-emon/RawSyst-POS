@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 
 import type { CustomerRow } from '../page';
 
+import { RewardsPanel } from './rewards';
 import { SizesPanel } from './sizes';
 
 interface LedgerRow {
@@ -358,6 +359,13 @@ function CustomerScreen() {
         <div className="mb-6">
           <SizesPanel customerId={id} companyId={scope.company_id} />
         </div>
+      ) : null}
+
+      {/* Points and store credit. Both are facts about THIS customer, which is
+          why they are here rather than on the two liability registers that
+          answer "what do we owe in total". */}
+      {scope ? (
+        <RewardsPanel customerId={id} companyId={scope.company_id} />
       ) : null}
 
       <div className="flex flex-col gap-6">

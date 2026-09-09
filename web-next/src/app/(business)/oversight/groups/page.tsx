@@ -27,7 +27,7 @@ import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
 import { Button } from '@/components/ui/button';
-import { Field, Input } from '@/components/ui/field';
+import { Checkbox, Field, Input, Select } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
@@ -50,6 +50,13 @@ interface Member {
   /** Decimal on the wire. Never a number here. */
   ownership_pct: string;
   is_parent: boolean;
+}
+
+/** A company this tenant holds, as the member picker names one. */
+interface Company {
+  id: string;
+  legal_name: string;
+  trade_name?: string;
 }
 
 interface Group {
@@ -91,6 +98,16 @@ function GroupsScreen() {
 
   const groups = useApiList<Group>(scope ? '/groups' : null, scope ?? undefined);
 
+  // The companies that could join a group. Read only when somebody may manage
+  // one: a reader has no picker to fill.
+  const companies = useApiList<Company>(mayManage ? '/companies' : null);
+
+  // Adding a member. Held here rather than in a sub-component because the form
+  // is three boxes and the group it belongs to is already open on this screen.
+  const [memberID, setMemberID] = useState('');
+  const [ownership, setOwnership] = useState('');
+  const [isParent, setIsParent] = useState(false);
+
   // The plan refusal, told apart from every other failure. `isPlanLimited`
   // reads the 402 rather than the message, so a reworded refusal still lands
   // in the right state.
@@ -112,6 +129,52 @@ function GroupsScreen() {
   const today = new Date();
   const icFrom = `${today.getUTCFullYear()}-01-01`;
   const icTo = today.toISOString().slice(0, 10);
+
+  // Joining a company to a group, and taking it out again.
+  //
+  // `group.manage` could create a group and nothing else: the two member
+  // routes had no caller, so every group the product could make was empty, the
+  // consolidated statement had nothing to consolidate, and the inter-company
+  // elimination built in F4 had no members whose trade it could eliminate.
+  async function addMember() {
+    if (!scope || !open || !memberID) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/groups/${open.id}/members?company_id=${scope.company_id}`, {
+        company_id: memberID,
+        // Decimal on the wire and a string all the way here. Three
+        // subsidiaries at 33.33 each is where a float starts producing
+        // 99.99000000000001.
+        ownership_pct: ownership.trim(),
+        is_parent: isParent,
+      });
+      setMemberID('');
+      setOwnership('');
+      setIsParent(false);
+      await groups.refetch();
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMember(companyID: string) {
+    if (!scope || !open) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.delete(
+        `/groups/${open.id}/members/${companyID}?company_id=${scope.company_id}`,
+      );
+      await groups.refetch();
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function create() {
     if (!scope || !name.trim()) return;
@@ -313,11 +376,86 @@ function GroupsScreen() {
                     width: 'w-36',
                     cell: (m: Member) => <span className="num">{m.base_currency}</span>,
                   },
+                  ...(mayManage
+                    ? [
+                        {
+                          key: 'actions',
+                          header: t('nx.grp.colActions'),
+                          width: 'w-32',
+                          cell: (m: Member) => (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy}
+                              onClick={() => void removeMember(m.company_id)}
+                            >
+                              {t('nx.grp.removeMember')}
+                            </Button>
+                          ),
+                        } as Column<Member>,
+                      ]
+                    : []),
                 ]}
                 rows={open.members}
                 rowKey={(m) => m.company_id}
               />
             )}
+
+            {mayManage ? (
+              <Panel
+                className="mt-4"
+                title={t('nx.grp.addMemberTitle')}
+                description={t('nx.grp.addMemberDesc')}
+              >
+                <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field name="company_id" label={t('nx.grp.colCompany')} required>
+                    <Select
+                      value={memberID}
+                      onChange={(e) => setMemberID(e.target.value)}
+                    >
+                      <option value="">{t('nx.grp.chooseCompany')}</option>
+                      {(companies.data?.data ?? [])
+                        // Already in this group is not a choice; the server
+                        // refuses it and offering it collects the refusal.
+                        .filter(
+                          (c) => !open.members.some((m) => m.company_id === c.id),
+                        )
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.trade_name || c.legal_name}
+                          </option>
+                        ))}
+                    </Select>
+                  </Field>
+                  <Field
+                    name="ownership_pct"
+                    label={t('nx.grp.colOwnership')}
+                    hint={t('nx.grp.ownershipHint')}
+                  >
+                    <Input
+                      className="num"
+                      inputMode="decimal"
+                      value={ownership}
+                      onChange={(e) => setOwnership(e.target.value)}
+                    />
+                  </Field>
+                  <Checkbox
+                    name="is_parent"
+                    label={t('nx.grp.isParent')}
+                    hint={t('nx.grp.isParentHint')}
+                    checked={isParent}
+                    onChange={(e) => setIsParent(e.target.checked)}
+                  />
+                  <Button
+                    variant="primary"
+                    disabled={busy || !memberID}
+                    onClick={() => void addMember()}
+                  >
+                    {t('nx.grp.addMember')}
+                  </Button>
+                </div>
+              </Panel>
+            ) : null}
           </section>
 
           <section>

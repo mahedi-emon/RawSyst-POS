@@ -29,7 +29,7 @@
 // does here is look one authority up by name or code.
 
 import { Landmark } from 'lucide-react';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 
 import { RequireWorkspace } from '@/components/auth/guard';
 import { ResourceList } from '@/components/data/resource-list';
@@ -39,6 +39,8 @@ import { EmptyState } from '@/components/ui/states';
 import type { Column } from '@/components/ui/table';
 import { useT } from '@/lib/i18n/locale';
 import { useUrlState } from '@/lib/url-state';
+
+import { JurisdictionAdmin } from './admin';
 
 interface Jurisdiction {
   id: string;
@@ -55,6 +57,17 @@ const MARKETS = ['sa', 'bd', 'us'] as const;
 function JurisdictionsScreen() {
   const t = useT();
   const [country, setCountry] = useUrlState('country');
+
+  // The rows the admin panel offers as parents and as rate targets. Held here
+  // rather than fetched twice: `ResourceList` already has them, and a second
+  // read of fifteen hundred Californian entries to fill a dropdown is a second
+  // read of fifteen hundred Californian entries.
+  const [rows, setRows] = useState<Jurisdiction[]>([]);
+
+  // Bumped after a write so the list remounts and re-reads. `ResourceList`
+  // owns its own fetching and exposes no refetch, and a key is the honest way
+  // to say "this is a different list now".
+  const [version, setVersion] = useState(0);
 
   const picker = (
     <Select
@@ -128,7 +141,15 @@ function JurisdictionsScreen() {
           />
         </>
       ) : (
+        <>
+        <JurisdictionAdmin
+          country={country}
+          jurisdictions={rows}
+          onSaved={() => setVersion((v) => v + 1)}
+        />
         <ResourceList<Jurisdiction>
+          key={version}
+          onRows={setRows}
           path="/platform/jurisdictions"
           query={{ country }}
           columns={columns}
@@ -151,6 +172,7 @@ function JurisdictionsScreen() {
             />
           }
         />
+        </>
       )}
     </>
   );
