@@ -26,6 +26,7 @@ package labels
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -338,8 +339,23 @@ type Assignment struct {
 
 // SetBarcode is B3's manual override, for a product that has to carry a code
 // somebody else assigned.
+//
+// # Why the old code is read first
+//
+// Two reasons, and neither is cosmetic. A code already printed on the shelf
+// edge is being replaced, and the audit entry has to say what it was — "the
+// barcode changed" is not something anybody can act on six weeks later when a
+// scanner stops finding a garment. And a value identical to the one already
+// stored is not a change: writing it would put a row in the trail saying
+// somebody altered a barcode when nobody did.
+//
+// # The duplicate is the database's answer, not this function's
+//
+// `variant_barcode_uq` is what makes a barcode unique, and a check-then-write
+// here would be a second answer with a race between the two. The unique
+// violation is translated into the sentence a person can act on.
 func (s *Service) SetBarcode(
-	ctx context.Context, scope Scope, variantID uuid.UUID, barcode string,
+	ctx context.Context, scope Scope, variantID uuid.UUID, barcode, reason string,
 ) error {
 	barcode = strings.TrimSpace(barcode)
 	if barcode == "" {
@@ -347,19 +363,50 @@ func (s *Service) SetBarcode(
 	}
 	return db.Translate(s.pool.TxAsTenant(ctx, scope.TenantID,
 		func(tx pgx.Tx) error {
-			tag, e := tx.Exec(ctx, `
-				UPDATE variant SET barcode = $3
-				WHERE id = $1 AND company_id = $2`,
-				variantID, scope.CompanyID, barcode)
-			if e != nil {
-				return db.Translate(e,
-					"Another product already carries that barcode.")
-			}
-			if tag.RowsAffected() == 0 {
+			var sku, before string
+			e := tx.QueryRow(ctx, `
+				SELECT sku, coalesce(barcode, '')
+				FROM variant
+				WHERE id = $1 AND company_id = $2
+				FOR UPDATE`, variantID, scope.CompanyID).Scan(&sku, &before)
+			if errors.Is(e, pgx.ErrNoRows) {
 				return errs.New(errs.CodeNotFound,
 					"That product is not on this company's books.")
 			}
-			return nil
+			if e != nil {
+				return e
+			}
+			if before == barcode {
+				// Nothing changed, so nothing is recorded. Idempotent for a
+				// retried request, and it keeps the trail free of rows that
+				// say an override happened when none did.
+				return nil
+			}
+
+			if _, e := tx.Exec(ctx, `
+				UPDATE variant SET barcode = $3
+				WHERE id = $1 AND company_id = $2`,
+				variantID, scope.CompanyID, barcode); e != nil {
+				return db.Translate(e,
+					"Another product already carries that barcode.")
+			}
+
+			// Audited, which the bulk generator beside it has been since 0095
+			// and this was not. Overriding one code by hand is the more
+			// consequential of the two: it is what somebody does to make a
+			// single garment scan as a supplier's own code, and it is the one
+			// that is done quietly.
+			return audit.Write(ctx, tx, audit.Entry{
+				TenantID: &scope.TenantID, ActorID: &scope.UserID,
+				ActorLabel: audit.LabelFor(ctx, tx, scope.UserID),
+				Action:     "barcode_overridden",
+				EntityType: "variant", EntityID: &variantID,
+				Before: map[string]any{"sku": sku, "barcode": before},
+				After: map[string]any{
+					"barcode": barcode,
+					"reason":  strings.TrimSpace(reason),
+				},
+			})
 		}), "")
 }
 

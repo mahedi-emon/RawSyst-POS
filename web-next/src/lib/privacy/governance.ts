@@ -330,3 +330,89 @@ export function uncovered(
 export function holdStands(hold: Hold): boolean {
   return !hold.released_at;
 }
+
+// ---------------------------------------------------------------------------
+// The destruction log
+// ---------------------------------------------------------------------------
+
+/**
+ * One entry in the permanent record of what has been deleted, and when.
+ *
+ * `GET /privacy/destructions` is read-only, and that is the whole design. No
+ * route creates one of these: a destruction record is written by the retention
+ * worker as it disposes of data whose policy has run out, and by an erasure a
+ * data-subject request produced. Nothing in the product can fabricate one, and
+ * a screen offering to would be manufacturing evidence.
+ *
+ * So the screen is a register somebody READS, which is what PDPL asks for: the
+ * proof that the retention policy above it was actually applied.
+ */
+export interface Destruction {
+  id: string;
+  /** What kind of data went — the same vocabulary the retention policies use. */
+  data_category: string;
+  /** The table it lived in, when the log records one. */
+  entity_type?: string;
+  /** `deleted` or `anonymised`. The two are not the same thing. */
+  action: string;
+  /** How many rows. */
+  row_count: number;
+  /** The policy or the request that required it. */
+  reason: string;
+  executed_at: string;
+  /** Who or what ran it. Empty for the worker, which is nobody. */
+  executed_by?: string;
+}
+
+/**
+ * Whether the data is gone or merely unattributable.
+ *
+ * `deleted` removes the row. `anonymised` keeps it and strips the personal
+ * content, which is what happens to an audit entry: the evidence that a change
+ * occurred outlives the personal data inside it. A register that showed both as
+ * "destroyed" would tell a regulator something untrue in one of the two cases.
+ */
+export function destructionIsErasure(d: Destruction): boolean {
+  return d.action === 'deleted';
+}
+
+/**
+ * Whether a person or a scheduled job did it.
+ *
+ * The retention worker names nobody, and that is correct rather than missing:
+ * disposal on a schedule is the policy running, not somebody deciding. An
+ * entry that DOES name somebody is the one worth reading twice, because it is a
+ * person who erased something by hand.
+ */
+export function destroyedByHand(d: Destruction): boolean {
+  return (d.executed_by ?? '').trim() !== '';
+}
+
+/** Rows for one category, newest first, as the route already returns them. */
+export function destructionsFor(
+  rows: readonly Destruction[],
+  category: string,
+): Destruction[] {
+  return rows.filter((d) => d.data_category === category);
+}
+
+/**
+ * Categories the retention policy covers that nothing has ever disposed of.
+ *
+ * The counterpart of `uncovered`: that finds data collected with no policy,
+ * this finds a policy that has never been applied. Both are the same class of
+ * failure — a rule that exists on paper and does nothing — and a retention
+ * schedule nobody can show a disposal against is the one a regulator asks about.
+ *
+ * A policy written this month has legitimately disposed of nothing yet, so this
+ * is reported as something to look at rather than as a fault.
+ */
+export function neverApplied(
+  policies: readonly Retention[],
+  destructions: readonly Destruction[],
+): string[] {
+  const seen = new Set(destructions.map((d) => d.data_category));
+  return policies
+    .filter((p) => !seen.has(p.data_category))
+    .map((p) => p.data_category);
+}

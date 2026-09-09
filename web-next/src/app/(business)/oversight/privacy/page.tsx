@@ -45,6 +45,9 @@ import { useT, type Key } from '@/lib/i18n/locale';
 import {
   activityGaps,
   blockedBy,
+  destroyedByHand,
+  destructionIsErasure,
+  neverApplied,
   consentStands,
   dueOn,
   holdStands,
@@ -55,6 +58,7 @@ import {
   type Activity,
   type Clock,
   type Consent,
+  type Destruction,
   type Hold,
   type Incident,
   type Request,
@@ -68,6 +72,10 @@ const REGISTERS = [
   'consents',
   'register',
   'retention',
+  // The proof that the retention policies above it were actually applied. A
+  // schedule nobody can show a disposal against is the one a regulator asks
+  // about, so the two sit next to each other.
+  'destructions',
   'disclosure',
 ] as const;
 type RegisterTab = (typeof REGISTERS)[number];
@@ -78,6 +86,7 @@ const TAB_LABEL: Record<RegisterTab, Key> = {
   consents: 'nx.pri.tabConsents',
   register: 'nx.pri.tabRegister',
   retention: 'nx.pri.tabRetention',
+  destructions: 'nx.pri.tabDestructions',
   disclosure: 'nx.pri.tabDisclosure',
 };
 
@@ -123,6 +132,14 @@ function PrivacyScreen() {
   const activities = useApiList<Activity>(scope ? '/privacy/activities' : null, scope ?? undefined);
   const retentions = useApiList<Retention>(scope ? '/privacy/retention' : null, scope ?? undefined);
   const holds = useApiList<Hold>(scope ? '/privacy/holds' : null, scope ?? undefined);
+  // Read-only, and deliberately: no route creates one of these. A destruction
+  // record is written by the retention worker as it disposes of data whose
+  // policy has run out, and by an erasure a data-subject request produced.
+  // A screen offering to add one would be manufacturing evidence.
+  const destructions = useApiList<Destruction>(
+    scope ? '/privacy/destructions' : null,
+    scope ?? undefined,
+  );
 
   const requestRows = requests.data?.data ?? [];
   const incidentRows = incidents.data?.data ?? [];
@@ -242,6 +259,11 @@ function PrivacyScreen() {
           <RegisterPanel
             query={activities}
             retentions={retentions.data?.data ?? []}
+            mayManage={mayManage}
+            busy={busy}
+            onRemove={(id) =>
+              act(() => api.delete(`/privacy/activities/${id}${q}`), activities)
+            }
           />
         ) : null}
 
@@ -254,6 +276,13 @@ function PrivacyScreen() {
             onRelease={(id) =>
               act(() => api.post(`/privacy/holds/${id}/release${q}`, {}), holds)
             }
+          />
+        ) : null}
+
+        {tab === 'destructions' ? (
+          <DestructionPanel
+            query={destructions}
+            policies={retentions.data?.data ?? []}
           />
         ) : null}
 
@@ -785,13 +814,26 @@ function ConsentsPanel({
 function RegisterPanel({
   query,
   retentions,
+  mayManage,
+  busy,
+  onRemove,
 }: {
   query: ListQuery<Activity>;
   retentions: Retention[];
+  mayManage: boolean;
+  busy: boolean;
+  onRemove: (id: string) => void;
 }) {
   const t = useT();
   const rows = query.data?.data ?? [];
   const orphaned = uncovered(rows, retentions);
+
+  // Asked twice, because removing an activity removes the record that this
+  // business ever processed that data - which is the register PDPL asks for,
+  // not a list of preferences. The confirmation names the activity, because a
+  // dialog that says "are you sure" and nothing else is one people click
+  // through.
+  const [removing, setRemoving] = useState<Activity | null>(null);
 
   const columns: Column<Activity>[] = [
     {
@@ -854,6 +896,20 @@ function RegisterPanel({
         );
       },
     },
+    ...(mayManage
+      ? [
+          {
+            key: 'act',
+            header: t('nx.pri.colAct'),
+            width: 'w-32',
+            cell: (a: Activity) => (
+              <Button size="sm" variant="ghost" onClick={() => setRemoving(a)}>
+                {t('nx.pri.removeActivity')}
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -875,6 +931,33 @@ function RegisterPanel({
         </Panel>
       ) : null}
 
+      {removing ? (
+        <Panel
+          className="mb-5"
+          title={t('nx.pri.removeActivityTitle', { name: removing.name })}
+          description={t('nx.pri.removeActivityHint')}
+        >
+          <p className="max-w-prose text-body text-caution-fg">
+            {t('nx.pri.removeActivityWarning')}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Button
+              variant="destructive"
+              busy={busy}
+              onClick={() => {
+                onRemove(removing.id);
+                setRemoving(null);
+              }}
+            >
+              {t('nx.pri.confirmRemoveActivity')}
+            </Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>
+              {t('nx.pri.cancel')}
+            </Button>
+          </div>
+        </Panel>
+      ) : null}
+
       <Loading
         query={query}
         columns={5}
@@ -891,6 +974,150 @@ function RegisterPanel({
           columns={columns}
           rows={rows}
           rowKey={(a) => a.id}
+          isSelected={(a) => a.id === removing?.id}
+        />
+      </Loading>
+    </>
+  );
+}
+
+/**
+ * The permanent record of what has been disposed of, and when.
+ *
+ * # Nothing on this screen can destroy anything
+ *
+ * There is no route that creates one of these entries. They are written by the
+ * retention worker as it disposes of data whose policy has run out, and by an
+ * erasure that a data-subject request produced. So this is a register somebody
+ * READS - the proof that the retention schedule beside it was actually applied
+ * - and opening it executes nothing.
+ *
+ * # Deleted and anonymised are not the same word
+ *
+ * `deleted` removes the row. `anonymised` keeps it and strips the personal
+ * content, which is what happens to an audit entry: the evidence that a change
+ * occurred outlives the personal data inside it. A register showing both as
+ * "destroyed" would tell a regulator something untrue in one of the two cases.
+ *
+ * # A policy with no disposal against it is worth reading
+ *
+ * A retention rule that exists on paper and has never disposed of anything is
+ * the same class of failure as data collected with no rule at all. It is
+ * reported rather than flagged as a fault, because a policy written this month
+ * has legitimately disposed of nothing yet.
+ */
+function DestructionPanel({
+  query,
+  policies,
+}: {
+  query: ListQuery<Destruction>;
+  policies: Retention[];
+}) {
+  const t = useT();
+  const rows = query.data?.data ?? [];
+  const idle = neverApplied(policies, rows);
+
+  const columns: Column<Destruction>[] = [
+    {
+      key: 'when',
+      header: t('nx.pri.colWhen'),
+      primary: true,
+      width: 'w-44',
+      cell: (d) => (
+        <time dateTime={d.executed_at} className="num">
+          {d.executed_at.slice(0, 16).replace('T', ' ')}
+        </time>
+      ),
+    },
+    {
+      key: 'category',
+      header: t('nx.pri.colCategory'),
+      cell: (d) => (
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">{d.data_category}</span>
+          {d.entity_type ? (
+            <span className="num text-caption text-muted">{d.entity_type}</span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: t('nx.pri.colWhatHappened'),
+      width: 'w-40',
+      cell: (d) =>
+        destructionIsErasure(d) ? (
+          <Badge tone="critical">{t('nx.pri.wasDeleted')}</Badge>
+        ) : (
+          <Badge tone="caution">{t('nx.pri.wasAnonymised')}</Badge>
+        ),
+    },
+    {
+      key: 'rows',
+      header: t('nx.pri.colRows'),
+      numeric: true,
+      width: 'w-28',
+      cell: (d) => <span className="num">{d.row_count}</span>,
+    },
+    {
+      key: 'reason',
+      header: t('nx.pri.colWhy'),
+      secondary: true,
+      cell: (d) => <span className="text-muted">{d.reason}</span>,
+    },
+    {
+      key: 'by',
+      header: t('nx.pri.colBy'),
+      width: 'w-44',
+      // The worker names nobody, which is correct rather than missing. An
+      // entry that DOES name somebody is a person who erased something by
+      // hand, and that is the row an investigation reads first.
+      cell: (d) =>
+        destroyedByHand(d) ? (
+          <span>{d.executed_by}</span>
+        ) : (
+          <span className="text-muted">{t('nx.pri.byTheSchedule')}</span>
+        ),
+    },
+  ];
+
+  return (
+    <>
+      <p className="mb-4 max-w-prose text-body text-muted">
+        {t('nx.pri.destructionsIntro')}
+      </p>
+
+      {idle.length > 0 ? (
+        <Panel className="mb-5" title={t('nx.pri.neverAppliedTitle')}>
+          <p className="max-w-prose text-body text-muted">
+            {t('nx.pri.neverAppliedDesc')}
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-1.5">
+            {idle.map((c) => (
+              <li key={c}>
+                <Badge tone="caution">{c}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
+
+      <Loading
+        query={query}
+        columns={6}
+        empty={
+          <EmptyState
+            icon={ShieldCheck}
+            title={t('nx.pri.noDestructionsTitle')}
+            description={t('nx.pri.noDestructionsDesc')}
+          />
+        }
+      >
+        <DataTable
+          caption={t('nx.pri.tabDestructions')}
+          columns={columns}
+          rows={rows}
+          rowKey={(d) => d.id}
         />
       </Loading>
     </>

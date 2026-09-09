@@ -111,7 +111,20 @@ function WalletsScreen() {
       );
       setVoiding(null);
       setReason('');
-      setFound(null);
+      // Re-read the ONE card rather than the whole list. `GET
+      // /gift-cards/{id}` is what that route is for, and a screen showing a
+      // card somebody has just voided as still live is the worst possible
+      // moment to be a request behind.
+      try {
+        const after = await api.get<GiftCard>(
+          `/gift-cards/${voiding.id}?company_id=${scope.company_id}`,
+        );
+        setFound(after);
+      } catch {
+        // The void succeeded. A failed re-read is not worth reporting as a
+        // failure of the act; the list refresh below corrects the screen.
+        setFound(null);
+      }
       void cards.refetch();
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFields(e.fields);

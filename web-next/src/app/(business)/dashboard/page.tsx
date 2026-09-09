@@ -32,6 +32,11 @@ import { Badge, Figure, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { useApi } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
+import {
+  ComplianceBehind,
+  ExpensesBehind,
+  StockBehind,
+} from './drilldown';
 import { useT } from '@/lib/i18n/locale';
 import { formatMoneyParts, formatQuantity, isNegative } from '@/lib/format/money';
 import { cn } from '@/lib/utils';
@@ -327,6 +332,31 @@ export default function DashboardPage() {
               </dl>
             </Panel>
           </div>
+
+          {/* What is behind the figures above. Three routes that answered the
+              postings, the stuck invoices and the lines running low, and that
+              nothing could reach: the dashboard printed a total and the reader
+              had nowhere to click. */}
+          {scope ? (
+            <div>
+              <ExpensesBehind
+                companyId={scope.company_id}
+                day={data.date}
+                currency={currency}
+                market={market}
+              />
+              <StockBehind
+                companyId={scope.company_id}
+                currency={currency}
+                market={market}
+              />
+              <ComplianceBehind
+                companyId={scope.company_id}
+                currency={currency}
+                market={market}
+              />
+            </div>
+          ) : null}
 
           {/* The server says which capabilities it cannot report on yet.
               Saying so is better than a tile of zeros, which reads as a

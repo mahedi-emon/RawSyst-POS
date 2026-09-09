@@ -29,6 +29,7 @@ import { MonitorSmartphone } from 'lucide-react';
 import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
+import { TerminalSettingsPanel } from './settings';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
@@ -144,6 +145,10 @@ function DevicesScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Which counter is open for configuration. One at a time: two open
+  // editors would let somebody save two sets of settings from one reading
+  // of the page, and the route only sends what changed.
+  const [configuring, setConfiguring] = useState<Terminal | null>(null);
 
   const rows = terminals.data?.data ?? [];
   const signingRequired = needsSigningUnit(market);
@@ -316,6 +321,15 @@ function DevicesScreen() {
               </Button>
             ) : null}
             {state !== 'revoked' ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfiguring(d)}
+              >
+                {t('nx.dev.configure')}
+              </Button>
+            ) : null}
+            {state !== 'revoked' ? (
               // A different act from suspending, and named differently: this
               // ends the credential and the machine must enrol again.
               <Button
@@ -444,6 +458,19 @@ function DevicesScreen() {
       {terminals.error ? (
         <ErrorState error={terminals.error} onRetry={() => void terminals.refetch()} />
       ) : null}
+      {/* One counter's own configuration: which warehouse it sells out of,
+          which printer it prints on, whether it may take a sale with no
+          customer named. Both routes were live and reachable from nothing. */}
+      {configuring && scope ? (
+        <TerminalSettingsPanel
+          companyId={scope.company_id}
+          deviceId={configuring.id}
+          label={configuring.terminal_label}
+          mayManage={mayManage}
+          onClose={() => setConfiguring(null)}
+        />
+      ) : null}
+
       {terminals.isLoading && !terminals.data ? <TableSkeleton columns={5} /> : null}
 
       {!terminals.isLoading && !terminals.error && rows.length === 0 ? (

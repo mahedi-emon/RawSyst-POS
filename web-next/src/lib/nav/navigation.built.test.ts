@@ -192,6 +192,11 @@ describe('the sidebar offers only what exists', () => {
       // preparing a month lands
       '/people/roles/new', // an action on /people/roles, and where Copy lands
       '/people/roles/[roleID]', // a row on /people/roles
+      // One partner's capital account, opened from a row on the register.
+      // C3.2 asks for a statement an INVESTOR can be given access to and read
+      // for themselves, so it has a URL somebody can be sent rather than being
+      // a panel behind a list of everybody else's holdings.
+      '/money/investors/[investorID]',
     ]);
 
     const orphans = [...ROUTES].filter(

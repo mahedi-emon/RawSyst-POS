@@ -95,6 +95,8 @@ function CustomerScreen() {
   const [limit, setLimit] = useState('');
   const [busy, setBusy] = useState(false);
   const [limitError, setLimitError] = useState<string | null>(null);
+  const [retiring, setRetiring] = useState(false);
+  const [activeError, setActiveError] = useState<string | null>(null);
   const [limitFields, setLimitFields] = useState<Record<string, string> | null>(null);
 
   async function saveLimit(value: string) {
@@ -116,6 +118,33 @@ function CustomerScreen() {
     } catch (e) {
       if (e instanceof ApiError && e.fields) setLimitFields(e.fields);
       setLimitError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Retiring a customer, and bringing one back.
+   *
+   * Never a delete: their name is on the invoices they were sold, and the route
+   * says so — "hides a customer from the pickers; never a delete, and refused
+   * while they owe money". The refusal is worth reading rather than
+   * pre-empting, because it names the balance: "an inactive customer disappears
+   * from the lists you search, and a debt nobody can see is a debt nobody
+   * collects."
+   */
+  async function setActive(active: boolean) {
+    if (!scope || !id) return;
+    setBusy(true);
+    setActiveError(null);
+    try {
+      await api.post(`/customers/${id}/active?company_id=${scope.company_id}`, {
+        active,
+      });
+      setRetiring(false);
+      void ledger.refetch();
+    } catch (e) {
+      setActiveError(messageFor(e, t));
     } finally {
       setBusy(false);
     }
@@ -346,6 +375,52 @@ function CustomerScreen() {
               }}
             >
               {t('nx.cust.setLimit')}
+            </Button>
+          </div>
+        )}
+      </Can>
+
+      {/* Retiring a customer, and bringing one back. Never a delete: their
+          name is on the invoices they were sold, and the route refuses it
+          outright while they still owe money. */}
+      <Can permission="customers.manage">
+        {retiring ? (
+          <Panel
+            className="mb-6"
+            title={
+              customer?.is_active
+                ? t('nx.cust.retireTitle', { name: customer?.name ?? '' })
+                : t('nx.cust.restoreTitle', { name: customer?.name ?? '' })
+            }
+          >
+            <p className="max-w-prose text-body text-muted">
+              {customer?.is_active ? t('nx.cust.retireBody') : t('nx.cust.restoreBody')}
+            </p>
+            {activeError ? <FormError message={activeError} className="mt-3" /> : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant={customer?.is_active ? 'destructive' : 'primary'}
+                busy={busy}
+                onClick={() => void setActive(!customer?.is_active)}
+              >
+                {customer?.is_active
+                  ? t('nx.cust.confirmRetire')
+                  : t('nx.cust.confirmRestore')}
+              </Button>
+              <Button variant="ghost" onClick={() => setRetiring(false)}>
+                {t('nx.cust.limitCancel')}
+              </Button>
+            </div>
+          </Panel>
+        ) : (
+          <div className="mb-6">
+            <Button
+              onClick={() => {
+                setActiveError(null);
+                setRetiring(true);
+              }}
+            >
+              {customer?.is_active ? t('nx.cust.retire') : t('nx.cust.restore')}
             </Button>
           </div>
         )}

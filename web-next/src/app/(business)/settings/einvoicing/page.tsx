@@ -85,13 +85,30 @@ function UnitPanel({
   unit,
   environment,
   mayOnboard,
+  mayManage,
+  onAmended,
 }: {
   unit: EGSUnit;
   environment: ZatcaEnvironment;
   mayOnboard: boolean;
+  mayManage: boolean;
+  onAmended: () => void;
 }) {
   const t = useT();
   const scope = useCompanyScope();
+
+  // Correcting the unit itself. `PUT /einvoicing/units/{id}` was live and
+  // reachable from nothing, so a unit registered with a typo in its serial
+  // number or filed against the wrong branch could never be put right - and
+  // the nine CSR fields are what ZATCA signs a certificate against, so a wrong
+  // one is a unit that cannot be onboarded at all.
+  //
+  // The architecture is deliberately absent: the route fixes it at creation,
+  // and offering a control the service refuses would teach the rule by
+  // failure.
+  const [amending, setAmending] = useState(false);
+  const [label, setLabel] = useState(unit.label);
+  const [csrDraft, setCsrDraft] = useState<Record<string, string>>({});
 
   const status = useApi<OnboardingStatus>(
     scope ? `/einvoicing/units/${unit.id}/onboarding` : null,
@@ -126,6 +143,37 @@ function UnitPanel({
     }
   }
 
+  async function amend() {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await api.put(`/einvoicing/units/${unit.id}?company_id=${scope.company_id}`, {
+        label: label.trim(),
+        // Only the fields that were touched; the rest keep what the unit
+        // already carries.
+        csr: { ...unit.csr, ...csrDraft },
+      });
+      // Read the one unit back rather than trusting the request. The nine CSR
+      // fields are what ZATCA signs a certificate against, so a correction
+      // that did not land is a unit that cannot be onboarded — and the screen
+      // would show the typed value either way.
+      const after = await api.get<EGSUnit>(
+        `/einvoicing/units/${unit.id}?company_id=${scope.company_id}`,
+      );
+      setNote(
+        t('nx.einv.unitAmendedAs', { name: after.label || label.trim() }),
+      );
+      setAmending(false);
+      onAmended();
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const state = status.data;
 
   return (
@@ -133,11 +181,26 @@ function UnitPanel({
       title={unit.label}
       description={unit.store}
       actions={
-        state?.connected ? (
-          <Badge tone="positive">{t('nx.einv.connected')}</Badge>
-        ) : (
-          <Badge tone="caution">{t('nx.einv.notConnected')}</Badge>
-        )
+        <span className="flex items-center gap-2">
+          {state?.connected ? (
+            <Badge tone="positive">{t('nx.einv.connected')}</Badge>
+          ) : (
+            <Badge tone="caution">{t('nx.einv.notConnected')}</Badge>
+          )}
+          {mayManage ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setLabel(unit.label);
+                setCsrDraft({});
+                setAmending((v) => !v);
+              }}
+            >
+              {t('nx.einv.correct')}
+            </Button>
+          ) : null}
+        </span>
       }
     >
       <div className="mb-4 flex flex-wrap gap-2">
@@ -166,16 +229,54 @@ function UnitPanel({
         </p>
       ) : null}
 
-      <dl className="mb-4 grid gap-3 sm:grid-cols-3">
-        {CSR_FIELDS.map((field) => (
-          <div key={field}>
-            <dt className="text-label text-muted">{t(CSR_LABEL[field] as Key)}</dt>
-            <dd className="num mt-0.5 text-body break-words">
-              {unit.csr[field] || '—'}
-            </dd>
+      {amending && mayManage ? (
+        <div className="mb-4 rounded-sm border border-line p-4">
+          <p className="mb-3 max-w-prose text-caption text-muted">
+            {t('nx.einv.correctHint')}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field name="label" label={t('nx.einv.unitLabel')} required>
+              <Input value={label} onChange={(e) => setLabel(e.target.value)} />
+            </Field>
+            {CSR_FIELDS.map((field) => (
+              <Field key={field} name={field} label={t(CSR_LABEL[field] as Key)}>
+                <Input
+                  dir="ltr"
+                  className="num"
+                  value={csrDraft[field] ?? unit.csr[field] ?? ''}
+                  onChange={(e) =>
+                    setCsrDraft((was) => ({ ...was, [field]: e.target.value }))
+                  }
+                />
+              </Field>
+            ))}
           </div>
-        ))}
-      </dl>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              busy={busy}
+              disabled={label.trim() === ''}
+              onClick={() => void amend()}
+            >
+              {t('nx.einv.saveUnit')}
+            </Button>
+            <Button variant="ghost" onClick={() => setAmending(false)}>
+              {t('nx.einv.cancel')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <dl className="mb-4 grid gap-3 sm:grid-cols-3">
+          {CSR_FIELDS.map((field) => (
+            <div key={field}>
+              <dt className="text-label text-muted">{t(CSR_LABEL[field] as Key)}</dt>
+              <dd className="num mt-0.5 text-body break-words">
+                {unit.csr[field] || '—'}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <dl className="mb-4 grid gap-3 sm:grid-cols-2">
         <div>
@@ -266,6 +367,10 @@ function EInvoicingScreen() {
   const scope = useCompanyScope();
   const grants = useGrants();
   const mayOnboard = grants.can('einvoicing.onboard');
+  // Correcting a unit is `einvoicing.manage`; onboarding it with ZATCA is
+  // `einvoicing.onboard`. Two permissions, read separately, because they are
+  // two jobs: one is filing, the other is talking to the authority.
+  const mayManage = grants.can('einvoicing.manage');
 
   const [rawEnv, setEnv] = useUrlState('environment', 'production');
   const environment: ZatcaEnvironment = (ZATCA_ENVIRONMENTS as readonly string[]).includes(
@@ -337,6 +442,8 @@ function EInvoicingScreen() {
       <div className="flex flex-col gap-5">
         {rows.map((unit) => (
           <UnitPanel
+            mayManage={mayManage}
+            onAmended={() => void units.refetch()}
             key={unit.id}
             unit={unit}
             environment={environment}

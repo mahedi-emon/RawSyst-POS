@@ -135,6 +135,11 @@ func (s *Server) handleGenerateBarcodes(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleSetVariantBarcode(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Barcode string `json:"barcode"`
+		// Why the generated code is being replaced. Not stored on the variant
+		// — a product row is a description of a garment, not a change log —
+		// but carried into the audit entry, which is where somebody asks six
+		// weeks later why a hang tag stopped scanning.
+		Reason string `json:"reason"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
@@ -151,7 +156,7 @@ func (s *Server) handleSetVariantBarcode(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := s.labels.SetBarcode(r.Context(), scope, variantID,
-		req.Barcode); err != nil {
+		req.Barcode, req.Reason); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}

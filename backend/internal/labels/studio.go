@@ -5,6 +5,8 @@ package labels
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -72,6 +75,14 @@ func (s *Service) SaveTemplate(
 		// between two contradictory layouts. The database refuses it too.
 		in.Columns, in.Rows = nil, nil
 	}
+	if err := checkFields(in.Fields); err != nil {
+		return Template{}, err
+	}
+	if len(in.Fields) == 0 {
+		return Template{}, errs.Validation(
+			"A label with nothing on it is a blank sticker.").
+			WithField("fields", "Choose at least one thing to print.")
+	}
 
 	fields, err := json.Marshal(in.Fields)
 	if err != nil {
@@ -110,10 +121,11 @@ func (s *Service) SaveTemplate(
 				return errs.New(errs.CodeNotFound, "That label was not found.")
 			}
 			saved = *id
-			return nil
+			return auditTemplate(ctx, tx, scope, "label_template_changed", saved,
+				nil, describeTemplate(in, string(fields)))
 		}
 
-		return db.Translate(tx.QueryRow(ctx, `
+		if e := db.Translate(tx.QueryRow(ctx, `
 			INSERT INTO label_template
 			  (tenant_id, company_id, name, kind, width_mm, height_mm, columns,
 			   rows, margin_mm, gap_mm, fields, is_default, created_by)
@@ -122,12 +134,35 @@ func (s *Service) SaveTemplate(
 			scope.TenantID, scope.CompanyID, in.Name, in.Kind, width, height,
 			in.Columns, in.Rows, margin, gap, string(fields), in.IsDefault,
 			scope.UserID).Scan(&saved),
-			"A label with that name already exists.")
+			"A label with that name already exists."); e != nil {
+			return e
+		}
+		return auditTemplate(ctx, tx, scope, "label_template_created", saved,
+			nil, describeTemplate(in, string(fields)))
 	})
 	if err != nil {
 		return Template{}, db.Translate(err, "")
 	}
 	return s.Template(ctx, scope, saved)
+}
+
+// auditTemplate records a change to a layout.
+//
+// The tag carries the shop's price, and changing what is on it changes every
+// ticket printed from then on. The bulk barcode generator beside it has been
+// audited since 0095 and this was not, so a template whose price line had been
+// taken off named nobody.
+func auditTemplate(
+	ctx context.Context, tx pgx.Tx, scope Scope, action string,
+	id uuid.UUID, before, after map[string]any,
+) error {
+	return audit.Write(ctx, tx, audit.Entry{
+		TenantID: &scope.TenantID, ActorID: &scope.UserID,
+		ActorLabel: audit.LabelFor(ctx, tx, scope.UserID),
+		Action:     action,
+		EntityType: "label_template", EntityID: &id,
+		Before: before, After: after,
+	})
 }
 
 // Template reads one.
@@ -154,17 +189,47 @@ func (s *Service) DeleteTemplate(
 ) error {
 	return db.Translate(s.pool.TxAsTenant(ctx, scope.TenantID,
 		func(tx pgx.Tx) error {
-			tag, e := tx.Exec(ctx, `
-				DELETE FROM label_template WHERE id = $1 AND company_id = $2`,
-				id, scope.CompanyID)
+			// Read before removing, so the trail says WHICH layout went. A row
+			// naming a uuid that no longer resolves tells an investigation
+			// nothing at all.
+			var name, kind string
+			var wasDefault bool
+			e := tx.QueryRow(ctx, `
+				SELECT name, kind, is_default FROM label_template
+				WHERE id = $1 AND company_id = $2`, id, scope.CompanyID).
+				Scan(&name, &kind, &wasDefault)
+			if errors.Is(e, pgx.ErrNoRows) {
+				return errs.New(errs.CodeNotFound, "That label was not found.")
+			}
 			if e != nil {
 				return e
 			}
-			if tag.RowsAffected() == 0 {
-				return errs.New(errs.CodeNotFound, "That label was not found.")
+
+			if _, e := tx.Exec(ctx, `
+				DELETE FROM label_template WHERE id = $1 AND company_id = $2`,
+				id, scope.CompanyID); e != nil {
+				return db.Translate(e,
+					"That label cannot be removed while something still uses it.")
 			}
-			return nil
+			return auditTemplate(ctx, tx, scope, "label_template_removed", id,
+				map[string]any{
+					"name": name, "kind": kind, "was_default": wasDefault,
+				}, nil)
 		}), "")
+}
+
+// describeTemplate is what an audit entry records about a layout.
+//
+// The field list is written out rather than counted: "6 fields" says nothing,
+// and the change worth catching is a price line quietly taken off a shelf
+// ticket.
+func describeTemplate(in Template, fields string) map[string]any {
+	return map[string]any{
+		"name": in.Name, "kind": in.Kind,
+		"width_mm": in.Width, "height_mm": in.Height,
+		"is_default": in.IsDefault,
+		"fields":     fields,
+	}
 }
 
 // Sheet is what one print run needs: the layout, and a label per item.
@@ -416,6 +481,52 @@ func describe(attributes map[string]string) string {
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+// PrintableFields are the things a label can carry, and the ONLY ones.
+//
+// Not a suggestion list: this is exactly the set the studio's renderer has a
+// case for and the print run has data for. A template naming anything else
+// produces a label with a silently missing line — the layout is right, the
+// price is absent, and nobody discovers it until nine hundred tags are on a
+// rail.
+//
+// So an unknown field is refused here rather than dropped, and the message
+// names what there is. Adding a seventh means adding it to `Label`, to the
+// print run's query, and to the renderer; a screen cannot introduce one by
+// sending a word.
+var PrintableFields = []string{
+	"logo",          // the shop's mark
+	"name",          // the product, as the catalogue holds it
+	"name_ar",       // and its Arabic name, printed right to left
+	"attributes",    // colour, size — the variant's own axes
+	"price",         // VAT-inclusive, which is what a shelf ticket means
+	"barcode",       // the bars, plus the human-readable string beneath
+	"customer_name", // a loyalty card, which carries a person rather than a garment
+}
+
+func printable(field string) bool {
+	for _, f := range PrintableFields {
+		if f == field {
+			return true
+		}
+	}
+	return false
+}
+
+// checkFields refuses a field the printer cannot fill.
+func checkFields(fields []Field) error {
+	for i, f := range fields {
+		name := strings.TrimSpace(f.Field)
+		if printable(name) {
+			continue
+		}
+		return errs.Validation("That label asks for something it cannot print.").
+			WithField("fields",
+				fmt.Sprintf("Line %d says %q. A label can carry: %s.",
+					i+1, f.Field, strings.Join(PrintableFields, ", ")))
+	}
+	return nil
 }
 
 func knownKind(kind string) bool {

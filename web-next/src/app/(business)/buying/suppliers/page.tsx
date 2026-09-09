@@ -40,6 +40,8 @@ import { formatMoney, isZero } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
 import { useUrlFlag, useUrlState } from '@/lib/url-state';
 
+import { SupplierQuoteHistory } from './quotes';
+
 interface Supplier {
   id: string;
   code: string;
@@ -245,6 +247,19 @@ function SuppliersScreen() {
           />
         ) : null}
       </div>
+
+      {/* What this supplier has quoted before, won or lost, so the next
+          negotiation starts from a fact rather than from what anybody
+          remembers. The route existed and nothing reached it. */}
+      {open && companyId ? (
+        <SupplierQuoteHistory
+          companyId={companyId}
+          supplierId={open.id}
+          supplierName={open.legal_name}
+          currency={currency}
+          market={market}
+        />
+      ) : null}
     </>
   );
 }

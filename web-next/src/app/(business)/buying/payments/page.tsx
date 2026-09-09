@@ -2,11 +2,13 @@
 
 // Paying a supplier.
 //
-// # There is no list of payments, and the screen is shaped by that
+// # Two halves: making a payment, and taking one back
 //
-// `POST /purchasing/payments` and `POST .../reverse` are the only two routes.
-// Nothing lists what has been paid, so this is not a ledger of payments — it is
-// the act of making one, and it starts where the money is owed.
+// The screen starts where the money is owed, because that is where a person
+// starts. Under it is the ledger of what has been paid — `GET
+// /purchasing/payments`, which did not exist until this pass and whose absence
+// is why `POST .../reverse` was reachable from no screen at all: a reversal
+// names a payment id, and nothing in the product could tell you one.
 //
 // # The allocation is explicit, and that is the point
 //
@@ -33,6 +35,7 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
+import { PaymentLedger } from './ledger';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
@@ -41,6 +44,7 @@ import { EmptyState, Skeleton } from '@/components/ui/states';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
+import { useGrants } from '@/lib/auth/session';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, isZero } from '@/lib/format/money';
 import { useT, type Key } from '@/lib/i18n/locale';
@@ -91,6 +95,10 @@ function PaymentsScreen() {
   const t = useT();
   const scope = useCompanyScope();
   const { currency, market } = useCompany();
+  // The reversal route asks for the same permission this screen is gated on,
+  // read explicitly rather than assumed from the guard: the two are allowed to
+  // diverge, and a control offered on an assumption is a control that 403s.
+  const mayReverse = useGrants().can('purchasing.pay_supplier');
 
   const suppliers = useApiList<Supplier>(
     scope ? '/purchasing/suppliers' : null,
@@ -113,6 +121,9 @@ function PaymentsScreen() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [paid, setPaid] = useState<Payment | null>(null);
   const [docUUID, setDocUUID] = useState(() => crypto.randomUUID());
+  // Bumped when a payment is made, so the ledger under the form catches up
+  // without the whole screen re-fetching every list it holds.
+  const [ledgerSignal, setLedgerSignal] = useState(0);
 
   const supplier = (suppliers.data?.data ?? []).find((s) => s.id === supplierId);
 
@@ -172,6 +183,8 @@ function PaymentsScreen() {
         },
       );
       setPaid(out);
+      // The ledger below the form has a new row in it.
+      setLedgerSignal((n) => n + 1);
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
       setError(messageFor(e, t));
@@ -402,6 +415,17 @@ function PaymentsScreen() {
             </Panel>
           </div>
         </div>
+      ) : null}
+
+      {/* What has already been paid, and the control that takes one back. */}
+      {scope ? (
+        <PaymentLedger
+          companyId={scope.company_id}
+          currency={currency}
+          market={market}
+          mayReverse={mayReverse}
+          refreshSignal={ledgerSignal}
+        />
       ) : null}
     </>
   );

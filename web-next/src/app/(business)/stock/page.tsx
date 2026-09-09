@@ -20,7 +20,7 @@
 
 import { Boxes, PackageSearch } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
 import { ResourceList } from '@/components/data/resource-list';
@@ -34,6 +34,8 @@ import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatQuantity, isZero } from '@/lib/format/money';
 import { useT } from '@/lib/i18n/locale';
 import { useUrlFlag, useUrlState } from '@/lib/url-state';
+
+import { AvailabilityPanel } from './available';
 
 interface StockLine {
   variant_id: string;
@@ -81,6 +83,10 @@ function StockScreen() {
     scope ?? undefined,
     { staleTime: 10 * 60 * 1000 },
   );
+
+  // Which line is being asked about, and which product it is. A reservation
+  // is held in a PLACE, so this is only offered while a location is chosen.
+  const [asking, setAsking] = useState<StockLine | null>(null);
 
   const columns: Column<StockLine>[] = [
     {
@@ -143,6 +149,20 @@ function StockScreen() {
         description={t('nx.stock.subtitle')}
       />
 
+      {/* On hand, reserved, and free to sell. The on-hand column alone
+          over-promises: stock held against an order somebody has placed is
+          not stock a second channel may sell. */}
+      {asking && scope && locationId ? (
+        <AvailabilityPanel
+          companyId={scope.company_id}
+          variantId={asking.variant_id}
+          warehouseId={locationId}
+          label={asking.product}
+          market={market}
+          onClose={() => setAsking(null)}
+        />
+      ) : null}
+
       <ResourceList<StockLine>
         path={scope ? '/stock/on-hand' : null}
         // This endpoint searches on `q`, not `search`.
@@ -156,6 +176,10 @@ function StockScreen() {
         // A variant can sit in more than one location, so the variant id alone
         // is not unique down the list.
         rowKey={(l) => `${l.variant_id}-${l.location}`}
+        // Opening a line asks what is actually free to sell in the location
+        // above. Without a location chosen there is no place to ask about,
+        // and the row does nothing rather than guessing one.
+        onOpenRow={locationId ? (l) => setAsking(l) : undefined}
         caption={t('nx.stock.caption')}
         searchPlaceholder={t('nx.stock.searchPlaceholder')}
         searchLabel={t('nx.stock.searchLabel')}

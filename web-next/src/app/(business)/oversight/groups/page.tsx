@@ -102,6 +102,15 @@ function GroupsScreen() {
   // one: a reader has no picker to fill.
   const companies = useApiList<Company>(mayManage ? '/companies' : null);
 
+  // Renaming a group, and taking one away. `PUT` and `DELETE /groups/{id}`
+  // were both live and reachable from nothing: a group could be created and
+  // never corrected, so a typo in the name of the thing the consolidated
+  // statement is headed with was permanent.
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCurrency, setNewCurrency] = useState('');
+  const [removingGroup, setRemovingGroup] = useState(false);
+
   // Adding a member. Held here rather than in a sub-component because the form
   // is three boxes and the group it belongs to is already open on this screen.
   const [memberID, setMemberID] = useState('');
@@ -212,6 +221,46 @@ function GroupsScreen() {
         </Panel>
       </>
     );
+  }
+
+  async function rename() {
+    if (!scope || !open) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.put(`/groups/${open.id}?company_id=${scope.company_id}`, {
+        name: newName.trim(),
+        currency: newCurrency.trim().toUpperCase(),
+      });
+      // Read the one group back. The list refresh below corrects the table;
+      // this confirms the name the consolidated statement will now carry.
+      const after = await api.get<{ group: Group }>(
+        `/groups/${open.id}?company_id=${scope.company_id}`,
+      );
+      setRenaming(false);
+      setNewName(after.group?.name ?? newName);
+      void groups.refetch();
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeGroup() {
+    if (!scope || !open) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.delete(`/groups/${open.id}?company_id=${scope.company_id}`);
+      setRemovingGroup(false);
+      setOpenID('');
+      void groups.refetch();
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const columns: Column<Group>[] = [
@@ -330,6 +379,85 @@ function GroupsScreen() {
           rows={rows}
           rowKey={(g) => g.id}
         />
+      ) : null}
+
+      {open && mayManage ? (
+        <Panel
+          className="mt-8"
+          title={t('nx.grp.amendTitle', { group: open.name })}
+          description={t('nx.grp.amendDesc')}
+        >
+          {renaming ? (
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <Field name="new_name" label={t('nx.grp.name')}>
+                  <Input value={newName} onChange={(e) => setNewName(e.target.value)} />
+                </Field>
+                <Field
+                  name="new_currency"
+                  label={t('nx.grp.currency')}
+                  hint={t('nx.grp.currencyHint')}
+                >
+                  <Input
+                    value={newCurrency}
+                    onChange={(e) => setNewCurrency(e.target.value)}
+                    maxLength={3}
+                    className="uppercase"
+                  />
+                </Field>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="primary"
+                  busy={busy}
+                  disabled={newName.trim() === ''}
+                  onClick={() => void rename()}
+                >
+                  {t('nx.grp.saveName')}
+                </Button>
+                <Button variant="ghost" onClick={() => setRenaming(false)}>
+                  {t('nx.grp.cancel')}
+                </Button>
+              </div>
+            </>
+          ) : removingGroup ? (
+            <>
+              <p className="max-w-prose text-body text-caution-fg">
+                {t('nx.grp.removeWarning', { group: open.name })}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="destructive" busy={busy} onClick={() => void removeGroup()}>
+                  {t('nx.grp.confirmRemove')}
+                </Button>
+                <Button variant="ghost" onClick={() => setRemovingGroup(false)}>
+                  {t('nx.grp.cancel')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setNewName(open.name);
+                  setNewCurrency(open.presentation_currency);
+                  setRemovingGroup(false);
+                  setRenaming(true);
+                }}
+              >
+                {t('nx.grp.rename')}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setRenaming(false);
+                  setRemovingGroup(true);
+                }}
+              >
+                {t('nx.grp.remove')}
+              </Button>
+            </div>
+          )}
+        </Panel>
       ) : null}
 
       {open ? (

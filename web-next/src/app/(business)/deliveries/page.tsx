@@ -35,12 +35,15 @@ import { FormError } from '@/components/ui/form-error';
 import { Badge, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
+import { useUrlState } from '@/lib/url-state';
+
+import { ConsignmentPanel } from './consignment';
 import { api } from '@/lib/api/client';
 import { blockedBy, collectsCash, needsDriver, nextStates } from '@/lib/aftersales/delivery';
 import { messageFor } from '@/lib/api/errors';
 import { useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
-import { useCompanyScope } from '@/lib/company/company-context';
+import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { useT } from '@/lib/i18n/locale';
 
 interface Delivery {
@@ -84,6 +87,7 @@ const STATUS_TONE: Record<string, 'neutral' | 'info' | 'caution' | 'positive' | 
 function DeliveriesScreen() {
   const t = useT();
   const scope = useCompanyScope();
+  const { currency, market } = useCompany();
   const grants = useGrants();
   const mayDeliver = grants.can('delivery.deliver');
 
@@ -105,6 +109,9 @@ function DeliveriesScreen() {
   const [collectedCOD, setCollectedCOD] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Which consignment is being read. In the URL, so "where is my order" is a
+  // link somebody can send to the person asking.
+  const [reading, setReading] = useUrlState('delivery');
 
   const rows = data?.data ?? [];
   const open = rows.find((d) => d.id === moving);
@@ -228,7 +235,16 @@ function DeliveriesScreen() {
         nextStates(d.status).length === 0 ? (
           <span className="text-muted">—</span>
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => begin(d)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            // The row opens the consignment, so a control inside it has to
+            // stop the click reaching the row.
+            onClick={(e) => {
+              e.stopPropagation();
+              begin(d);
+            }}
+          >
             {t('nx.del.update')}
           </Button>
         ),
@@ -329,12 +345,26 @@ function DeliveriesScreen() {
         />
       ) : null}
 
+      {/* One consignment and every step it has been through. Four timestamps
+          are four columns nobody has room for; as a sequence they answer
+          "where is my order", which is what this module is for. */}
+      {reading && scope ? (
+        <ConsignmentPanel
+          companyId={scope.company_id}
+          deliveryId={reading}
+          currency={currency}
+          market={market}
+        />
+      ) : null}
+
       {rows.length > 0 ? (
         <DataTable<Delivery>
           rows={rows}
           columns={columns}
           rowKey={(d) => d.id}
           caption={t('nx.del.caption')}
+          isSelected={(d) => d.id === reading}
+          onOpenRow={(d) => setReading(d.id === reading ? '' : d.id)}
         />
       ) : null}
     </>

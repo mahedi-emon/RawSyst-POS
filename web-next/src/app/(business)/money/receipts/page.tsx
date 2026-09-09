@@ -29,6 +29,7 @@ import { HandCoins } from 'lucide-react';
 import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
+import { ReceiptLedger } from './ledger';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
@@ -38,6 +39,7 @@ import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
+import { useGrants } from '@/lib/auth/session';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, isZero } from '@/lib/format/money';
 import { useT, type Key } from '@/lib/i18n/locale';
@@ -111,6 +113,13 @@ function ReceiptsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Receipt | null>(null);
+  // Bumped when money is taken, so the ledger below catches up without every
+  // other list on the screen refetching with it.
+  const [ledgerSignal, setLedgerSignal] = useState(0);
+  // The reversal route asks for the same permission this screen is gated on,
+  // read explicitly rather than assumed: the two are allowed to diverge, and a
+  // control offered on an assumption is a control that 403s.
+  const mayReverse = useGrants().can('sales.receive_payment');
 
   const customers = useApiList<Customer>(
     scope ? '/customers' : null,
@@ -154,6 +163,8 @@ function ReceiptsScreen() {
         },
       );
       setDone(out);
+      // The ledger below the form has a new row in it.
+      setLedgerSignal((n) => n + 1);
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
       setError(messageFor(e, t));
@@ -433,6 +444,17 @@ function ReceiptsScreen() {
           </div>
         </div>
       </div>
+
+      {/* What has already been received, and the control that gives it back. */}
+      {scope ? (
+        <ReceiptLedger
+          companyId={scope.company_id}
+          currency={currency}
+          market={market}
+          mayReverse={mayReverse}
+          refreshSignal={ledgerSignal}
+        />
+      ) : null}
     </>
   );
 }

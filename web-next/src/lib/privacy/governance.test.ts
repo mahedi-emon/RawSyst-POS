@@ -17,6 +17,11 @@ import {
   type Incident,
   type Request,
   type Retention,
+  destructionIsErasure,
+  destroyedByHand,
+  destructionsFor,
+  neverApplied,
+  type Destruction,
 } from './governance';
 
 const request = (over: Partial<Request> = {}): Request => ({
@@ -284,5 +289,60 @@ describe('records that are stamped rather than deleted', () => {
     });
     expect(holdStands(h({}))).toBe(true);
     expect(holdStands(h({ released_at: '2026-09-09T10:00:00Z' }))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The destruction log
+// ---------------------------------------------------------------------------
+
+const destruction = (over: Partial<Destruction> = {}): Destruction => ({
+  id: 'd1',
+  data_category: 'customer_contact',
+  action: 'deleted',
+  row_count: 42,
+  reason: 'Retention policy: 24 months',
+  executed_at: '2026-08-16T02:00:00Z',
+  ...over,
+});
+
+describe('the destruction register', () => {
+  it('keeps erasure and anonymisation apart', () => {
+    // An anonymised audit entry still exists: the evidence that a change
+    // happened outlives the personal data inside it. Calling both "destroyed"
+    // would tell a regulator something untrue in one of the two cases.
+    expect(destructionIsErasure(destruction())).toBe(true);
+    expect(destructionIsErasure(destruction({ action: 'anonymised' }))).toBe(false);
+  });
+
+  it('says when a person did it rather than the schedule', () => {
+    // The worker names nobody, which is correct: disposal on a schedule is the
+    // policy running. An entry that names somebody is a person who erased
+    // something by hand, and that is the row worth reading twice.
+    expect(destroyedByHand(destruction())).toBe(false);
+    expect(destroyedByHand(destruction({ executed_by: '   ' }))).toBe(false);
+    expect(destroyedByHand(destruction({ executed_by: 'Mahedi Hasan' }))).toBe(true);
+  });
+
+  it('finds a retention policy nothing has ever applied', () => {
+    const policies: Retention[] = [
+      {
+        id: 'r1',
+        data_category: 'customer_contact',
+        retain_months: 24,
+        action: 'delete',
+        is_active: true,
+      },
+      { id: 'r2', data_category: 'cctv', retain_months: 3, action: 'delete', is_active: true },
+    ];
+    // A rule that exists on paper and does nothing is the same class of
+    // failure as data collected with no rule at all.
+    expect(neverApplied(policies, [destruction()])).toEqual(['cctv']);
+    expect(neverApplied(policies, [])).toEqual(['customer_contact', 'cctv']);
+  });
+
+  it('narrows the log to one category', () => {
+    const rows = [destruction(), destruction({ id: 'd2', data_category: 'cctv' })];
+    expect(destructionsFor(rows, 'cctv').map((d) => d.id)).toEqual(['d2']);
   });
 });

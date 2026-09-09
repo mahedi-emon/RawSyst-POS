@@ -85,6 +85,9 @@ function DocumentsScreen() {
   const [typed, setTyped] = useState(search);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Which filed document is being taken off the record. Asked twice, because
+  // the file goes with the row.
+  const [removing, setRemoving] = useState<Document | null>(null);
   const [filing, setFiling] = useState(false);
   const [entityType, setEntityType] = useState('company');
   // Empty by default, and that is the useful default: the server picks a
@@ -122,6 +125,30 @@ function DocumentsScreen() {
       setExpiresOn('');
       setFiling(false);
       await documents.refetch();
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Taking a filed document off the record.
+   *
+   * `DELETE /documents/{id}` was live and reachable from nothing: a shop could
+   * file a supplier contract and never remove one filed by mistake, or one
+   * whose retention period has run out. Asked twice because the file goes with
+   * the row, and the checksum beside it is the only proof the copy was ever
+   * what it said it was.
+   */
+  async function remove(doc: Document) {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.delete(`/documents/${doc.id}?company_id=${scope.company_id}`);
+      setRemoving(null);
+      void documents.refetch();
     } catch (e) {
       setError(messageFor(e, t));
     } finally {
@@ -194,11 +221,18 @@ function DocumentsScreen() {
     {
       key: 'get',
       header: t('nx.doc.colAction'),
-      width: 'w-28',
+      width: mayManage ? 'w-48' : 'w-28',
       cell: (d) => (
-        <Button variant="ghost" onClick={() => void download(d)}>
-          {t('nx.doc.open')}
-        </Button>
+        <span className="flex gap-1">
+          <Button variant="ghost" onClick={() => void download(d)}>
+            {t('nx.doc.open')}
+          </Button>
+          {mayManage ? (
+            <Button variant="ghost" onClick={() => setRemoving(d)}>
+              {t('nx.doc.remove')}
+            </Button>
+          ) : null}
+        </span>
       ),
     },
   ];
@@ -218,6 +252,23 @@ function DocumentsScreen() {
       />
 
       <FormError message={error} className="mb-4" />
+
+      {removing ? (
+        <Panel
+          className="mb-6"
+          title={t('nx.doc.removeTitle', { name: removing.file_name })}
+          description={t('nx.doc.removeHint')}
+        >
+          <div className="flex flex-wrap gap-3">
+            <Button variant="destructive" busy={busy} onClick={() => void remove(removing)}>
+              {t('nx.doc.confirmRemove')}
+            </Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>
+              {t('nx.doc.cancel')}
+            </Button>
+          </div>
+        </Panel>
+      ) : null}
 
       {soon.length > 0 ? (
         <Panel className="mb-6" title={t('nx.doc.renewTitle')}>

@@ -73,6 +73,30 @@ function RFQScreen({ rfqID }: { rfqID: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [orderId, setOrderId] = useState<string | null>(null);
+  // Calling the request off. Held apart from the award reason: they are two
+  // decisions and sharing one box would carry the wrong sentence into
+  // whichever act happened second.
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+
+  async function callOff() {
+    if (!scope || cancelReason.trim() === '') return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.post(
+        `/purchasing/rfqs/${rfqID}/cancel?company_id=${scope.company_id}`,
+        { reason: cancelReason.trim() },
+      );
+      setCancelling(false);
+      setCancelReason('');
+      await refetch();
+    } catch (e) {
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function award(quoteId: string) {
     if (!scope || reason.trim() === '') return;
@@ -295,6 +319,54 @@ function RFQScreen({ rfqID }: { rfqID: string }) {
         <div className="mt-6">
           <RecordReply rfqID={rfqID} onSaved={() => void refetch()} />
         </div>
+      ) : null}
+
+      {/* Calling a request off. `POST /purchasing/rfqs/{id}/cancel` was live
+          and reachable from nothing, so a request sent to four suppliers by
+          mistake stayed open for ever and every one of them kept quoting
+          against it. The reason is required by the route, not by this form. */}
+      {canAward(rfq.status) && grants.can('purchasing.manage_rfq') ? (
+        <Panel
+          className="mt-6"
+          title={t('nx.rfq.callOffTitle')}
+          description={t('nx.rfq.callOffHint')}
+        >
+          {cancelling ? (
+            <>
+              <div className="max-w-prose">
+                <Field
+                  name="reason"
+                  label={t('nx.rfq.callOffReason')}
+                  hint={t('nx.rfq.callOffReasonHint')}
+                  required
+                >
+                  <Textarea
+                    rows={2}
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="destructive"
+                  busy={busy}
+                  disabled={cancelReason.trim() === ''}
+                  onClick={() => void callOff()}
+                >
+                  {t('nx.rfq.confirmCallOff')}
+                </Button>
+                <Button variant="ghost" onClick={() => setCancelling(false)}>
+                  {t('nx.po.sendCancel')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button variant="ghost" onClick={() => setCancelling(true)}>
+              {t('nx.rfq.callOff')}
+            </Button>
+          )}
+        </Panel>
       ) : null}
     </>
   );

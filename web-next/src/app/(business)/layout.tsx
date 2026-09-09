@@ -13,6 +13,8 @@ import { RequireWorkspace } from '@/components/auth/guard';
 import { AppShell } from '@/components/shell/app-shell';
 import { CompanySwitch } from '@/components/shell/company-switch';
 import { GlobalSearch } from '@/components/shell/global-search';
+import { NotificationBell } from '@/components/shell/notification-bell';
+import { SetupNotice } from '@/components/shell/setup-notice';
 import { usePlanFeatures } from '@/lib/api/hooks';
 import { useSession } from '@/lib/auth/session';
 import { CompanyProvider, useCompany } from '@/lib/company/company-context';
@@ -43,7 +45,13 @@ function BusinessShell({ children }: { children: ReactNode }) {
           <CompanySwitch />
         </>
       }
+      headerAlerts={<NotificationBell />}
     >
+      {/* One line while first-time setup is unfinished, and nothing at
+          all once it is. A tenant is provisioned with an Owner and no
+          company, and until the company exists most of this product has
+          nothing to show and no way to say why. */}
+      <SetupNotice />
       {children}
     </AppShell>
   );

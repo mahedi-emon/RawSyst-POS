@@ -10,6 +10,11 @@ import {
   tenderedTotal,
   totalsFor,
   type CartLine,
+  offersWorthTaking,
+  offerTotal,
+  quoteBasket,
+  withOffers,
+  type PricedLine,
 } from './cart';
 
 const line = (over: Partial<CartLine> = {}): CartLine => ({
@@ -177,5 +182,91 @@ describe('a line always carries the tax treatment the server demands', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]?.qty).toBe('2');
     expect(lines[0]?.taxTreatment).toBe('zero_rated');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Asking the server what the campaigns would give
+// ---------------------------------------------------------------------------
+
+describe('offers the server would give this cart', () => {
+  const lines: CartLine[] = [
+    {
+      variantId: 'v1',
+      sku: 'SHIRT-BLK-M',
+      description: 'Shirt',
+      qty: '2',
+      unitPrice: '100.00',
+      lineDiscount: '0',
+      taxTreatment: 'standard',
+    },
+    {
+      variantId: 'v2',
+      sku: 'ABAYA-BLK-L',
+      description: 'Abaya',
+      qty: '1',
+      unitPrice: '300.00',
+      lineDiscount: '0',
+      taxTreatment: 'standard',
+    },
+  ];
+
+  it('sends the price on the line, not the catalogue price', () => {
+    // A cashier may have overridden it, and a campaign has to be measured
+    // against what is actually being charged.
+    const basket = quoteBasket(lines, { storeId: 's1' }) as {
+      lines: { variant_id: string; unit_price: string }[];
+    };
+    expect(basket.lines).toEqual([
+      { variant_id: 'v1', qty: '2', unit_price: '100.00' },
+      { variant_id: 'v2', qty: '1', unit_price: '300.00' },
+    ]);
+  });
+
+  it('ignores the lines no campaign touched', () => {
+    // Telling a cashier that eleven of thirteen lines are unchanged is telling
+    // them nothing, with a customer waiting.
+    const quoted: PricedLine[] = [
+      { variant_id: 'v1', promotion_id: 'p1', promotion: 'Winter', discount: '20.00', line_total: '180.00' },
+      { variant_id: 'v2', discount: '0', line_total: '300.00' },
+    ];
+    expect(offersWorthTaking(lines, quoted).map((o) => o.variant_id)).toEqual(['v1']);
+  });
+
+  it('ignores a campaign already on the line', () => {
+    // Re-applying the same one would take the discount twice.
+    const already = [{ ...lines[0]!, promotionId: 'p1', lineDiscount: '20.00' }, lines[1]!];
+    const quoted: PricedLine[] = [
+      { variant_id: 'v1', promotion_id: 'p1', discount: '20.00', line_total: '180.00' },
+    ];
+    expect(offersWorthTaking(already, quoted)).toEqual([]);
+  });
+
+  it('ignores a promotion that came to nothing', () => {
+    const quoted: PricedLine[] = [
+      { variant_id: 'v1', promotion_id: 'p1', discount: '0.00', line_total: '200.00' },
+    ];
+    expect(offersWorthTaking(lines, quoted)).toEqual([]);
+  });
+
+  it('adds the offers up for the sentence above the button', () => {
+    const offers: PricedLine[] = [
+      { variant_id: 'v1', promotion_id: 'p1', discount: '20.00', line_total: '180.00' },
+      { variant_id: 'v2', promotion_id: 'p2', discount: '15.50', line_total: '284.50' },
+    ];
+    expect(offerTotal(offers)).toBe('35.50');
+  });
+
+  it('writes the discount and the campaign onto the line together', () => {
+    // The sale records the redemption from the id, so a discount without one
+    // would take money off a campaign nobody can show was applied.
+    const offers: PricedLine[] = [
+      { variant_id: 'v1', promotion_id: 'p1', discount: '20.00', line_total: '180.00' },
+    ];
+    const after = withOffers(lines, offers);
+    expect(after[0]?.lineDiscount).toBe('20.00');
+    expect(after[0]?.promotionId).toBe('p1');
+    // And leaves the untouched line exactly as it was.
+    expect(after[1]).toEqual(lines[1]);
   });
 });

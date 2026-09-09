@@ -70,7 +70,12 @@ import {
   removeLine,
   setQty,
   tenderedTotal,
+  offersWorthTaking,
+  offerTotal,
+  quoteBasket,
   totalsFor,
+  withOffers,
+  type PricedLine,
   type CartLine,
 } from '@/lib/pos/cart';
 import { useSellFrom } from '@/components/pos/location-picker';
@@ -171,6 +176,47 @@ export function Till() {
       });
     return () => controller.abort();
   }, [company]);
+
+  // What the shop's live campaigns would give this cart.
+  //
+  // Asked for, not applied automatically. `POST /promotions/quote` is the
+  // reading verb — "a till prices a cart many times while it is built, so this
+  // is the reading verb; nothing is redeemed until the sale is finalised" —
+  // and a price that changed on its own between the scan and the total is the
+  // one thing a cashier cannot explain to the person in front of them. So the
+  // till asks when somebody presses, shows what the campaigns come to, and
+  // applies it only if they say so.
+  const [offers, setOffers] = useState<PricedLine[]>([]);
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [offerError, setOfferError] = useState<string | null>(null);
+
+  async function checkOffers() {
+    if (lines.length === 0) return;
+    setChecking(true);
+    setOfferError(null);
+    try {
+      const out = await api.post<{ data: PricedLine[] }>(
+        '/promotions/quote',
+        quoteBasket(lines, {
+          customerId: customer?.id,
+          customerType: customer?.customer_type,
+        }),
+      );
+      setOffers(offersWorthTaking(lines, out.data ?? []));
+      setChecked(true);
+    } catch (e) {
+      setOfferError(messageFor(e, t));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  function takeOffers() {
+    setLines((current) => withOffers(current, offers));
+    setOffers([]);
+    setChecked(false);
+  }
 
   const totals = useMemo(
     () => totalsFor(lines, invoiceDiscount),
@@ -612,6 +658,54 @@ export function Till() {
                 }
               />
             </dl>
+
+            {/* What the shop's campaigns would give, asked for rather than
+                applied on its own: a price that moved between the scan and
+                the total is the one thing a cashier cannot explain. */}
+            {lines.length > 0 && (
+              <div className="mt-3 border-t border-line pt-3">
+                {offerError ? (
+                  <p className="mb-2 text-caption text-critical-fg" role="alert">
+                    {offerError}
+                  </p>
+                ) : null}
+                {offers.length > 0 ? (
+                  <>
+                    <p className="text-body text-positive-fg">
+                      {t('nx.pos.offersFound', {
+                        n: String(offers.length),
+                        amount: money(offerTotal(offers)),
+                      })}
+                    </p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="mt-2 w-full"
+                      onClick={takeOffers}
+                    >
+                      {t('nx.pos.takeOffers')}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {checked ? (
+                      <p className="mb-2 text-caption text-muted">
+                        {t('nx.pos.noOffers')}
+                      </p>
+                    ) : null}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      busy={checking}
+                      onClick={() => void checkOffers()}
+                    >
+                      {t('nx.pos.checkOffers')}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* The figure the customer is about to be told. Largest thing on
                 the screen, and the only place the currency is spelled out.

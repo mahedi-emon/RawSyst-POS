@@ -717,6 +717,74 @@ func (s *Server) handlePaySupplier(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, status, out)
 }
 
+// handleListSupplierPayments answers what has been paid.
+//
+// The counterpart of the POST that has been here since payables landed. Its
+// absence is why the reversal route was unreachable from any screen: a
+// reversal names a payment id, and nothing in the product could tell you one.
+// `?reversible=true` is the filter the reversal screen wants — a payment that
+// is itself a reversal, or one already reversed, would be refused, and
+// offering it in a picker teaches the user that the picker lies.
+//
+// Reading is `purchasing.view`, not `purchasing.pay_supplier`: looking at what
+// the business has paid is a lookup an auditor and a buyer both do, and
+// requiring the authority to MOVE money in order to LOOK at a payment would
+// leave the payables ledger unreadable by everybody who reconciles it.
+func (s *Server) handleListSupplierPayments(w http.ResponseWriter, r *http.Request) {
+	scope, err := purchaseScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	q := r.URL.Query()
+	f := purchasing.PaymentFilter{
+		Method:         strings.TrimSpace(q.Get("method")),
+		ReversibleOnly: q.Get("reversible") == "true",
+	}
+
+	if raw := q.Get("supplier_id"); raw != "" {
+		id, e := parseUUID(raw, "supplier_id")
+		if e != nil {
+			httpx.Error(w, r, e)
+			return
+		}
+		f.SupplierID = &id
+	}
+	for _, d := range []struct {
+		key  string
+		into **time.Time
+	}{{"from", &f.From}, {"to", &f.To}} {
+		raw := q.Get(d.key)
+		if raw == "" {
+			continue
+		}
+		when, e := time.Parse("2006-01-02", raw)
+		if e != nil {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"Dates look like 2026-08-16."))
+			return
+		}
+		*d.into = &when
+	}
+	if raw := q.Get("limit"); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n <= 0 {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"A limit is a whole number above zero."))
+			return
+		}
+		f.Limit = n
+	}
+
+	out, err := s.purchasing.ListPayments(r.Context(), scope, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 func (s *Server) handleSupplierAgeing(w http.ResponseWriter, r *http.Request) {
 	scope, err := purchaseScope(r)
 	if err != nil {
@@ -940,7 +1008,8 @@ func (s *Server) handleReverseSupplierPayment(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var req struct {
-		UUID string `json:"uuid"`
+		UUID   string `json:"uuid"`
+		Reason string `json:"reason"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
@@ -958,7 +1027,9 @@ func (s *Server) handleReverseSupplierPayment(w http.ResponseWriter, r *http.Req
 	}
 
 	out, err := s.purchasing.ReversePayment(r.Context(), scope,
-		purchasing.ReversePaymentRequest{UUID: docUUID, PaymentID: paymentID})
+		purchasing.ReversePaymentRequest{
+			UUID: docUUID, PaymentID: paymentID, Reason: req.Reason,
+		})
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

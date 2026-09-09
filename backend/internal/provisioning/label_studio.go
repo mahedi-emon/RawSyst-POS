@@ -82,8 +82,12 @@ var defaultLabels = []seedLabel{
 	{
 		name: "Loyalty card", kind: "loyalty_card", width: "85.6",
 		height: "53.98", margin: "4", gap: "0", isDefault: true,
+		// No `tier` line. 0095 seeded one and nothing ever printed it: the
+		// studio's renderer has no case for it, and a label is built from a
+		// variant so there is no tier to print even if it had. Migration 0131
+		// removes it from the cards that already exist.
 		fields: `[{"field":"logo"},{"field":"customer_name","size":11,"bold":true},
-		          {"field":"tier","size":9},{"field":"barcode","height":12}]`,
+		          {"field":"barcode","height":12}]`,
 	},
 }
 

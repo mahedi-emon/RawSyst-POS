@@ -24,20 +24,21 @@
 // for a key the provider stopped using and omits the one it now needs.
 
 import { CreditCard } from 'lucide-react';
+import Link from 'next/link';
 import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
-import { Badge, PageHeader, Panel, type Tone } from '@/components/ui/panel';
+import { Badge, Figure, PageHeader, Panel, type Tone } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
 import { messageFor } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
-import { useCompanyScope } from '@/lib/company/company-context';
+import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { useT, type Key } from '@/lib/i18n/locale';
 import {
   bankable,
@@ -78,6 +79,7 @@ const STEP_LABEL: Record<Step, Key> = {
 function GatewaysScreen() {
   const t = useT();
   const scope = useCompanyScope();
+  const { currency } = useCompany();
   const grants = useGrants();
   const mayManage = grants.can('gateway.manage');
   const maySettle = grants.can('accounting.view');
@@ -411,6 +413,11 @@ function GatewaysScreen() {
           <p className="mb-3 max-w-prose text-caption text-muted">
             {t('nx.gw.bankingDesc')}
           </p>
+          {/* A summary and a way in, not a second copy of the reconciliation.
+              Matching a deposit to the sales it covers happens on its own
+              screen; two screens that both list pending tenders would be two
+              places to do one job, and the one without the form is the one
+              somebody would try to do it on. */}
           {unbanked.length === 0 ? (
             <EmptyState
               icon={CreditCard}
@@ -418,58 +425,21 @@ function GatewaysScreen() {
               description={t('nx.gw.nothingPendingDesc')}
             />
           ) : (
-            <>
-              <DataTable
-                caption={t('nx.gw.bankingTitle')}
-                columns={[
-                  {
-                    key: 'invoice',
-                    header: t('nx.gw.colInvoice'),
-                    primary: true,
-                    cell: (p: PendingTender) => (
-                      <span className="flex flex-col gap-0.5">
-                        <span className="num font-medium">{p.invoice_number}</span>
-                        <span className="text-caption text-muted">
-                          {p.issued_at.slice(0, 10)}
-                        </span>
-                      </span>
-                    ),
-                  },
-                  {
-                    key: 'method',
-                    header: t('nx.gw.colMethod'),
-                    width: 'w-32',
-                    cell: (p: PendingTender) => <span>{p.method}</span>,
-                  },
-                  {
-                    key: 'ref',
-                    header: t('nx.gw.colReference'),
-                    secondary: true,
-                    cell: (p: PendingTender) => (
-                      <span className="num text-muted">{p.reference || '—'}</span>
-                    ),
-                  },
-                  {
-                    key: 'amount',
-                    header: t('nx.gw.colAmount'),
-                    width: 'w-36',
-                    cell: (p: PendingTender) => (
-                      <span className="num">
-                        {p.amount} {p.currency}
-                      </span>
-                    ),
-                  },
-                ]}
-                rows={unbanked}
-                rowKey={(p) => p.tender_id}
-              />
-              <p className="mt-3 text-body">
-                {t('nx.gw.pendingTotal', {
-                  total: totalOf(unbanked),
-                  n: String(unbanked.length),
-                })}
-              </p>
-            </>
+            <Panel>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <Figure
+                  label={t('nx.gw.awaitingDeposit')}
+                  value={totalOf(unbanked)}
+                  currency={currency}
+                  caption={t('nx.gw.awaitingCount', {
+                    n: String(unbanked.length),
+                  })}
+                />
+                <Button asChild variant="primary">
+                  <Link href="/money/settlement">{t('nx.gw.openSettlement')}</Link>
+                </Button>
+              </div>
+            </Panel>
           )}
         </section>
       ) : null}

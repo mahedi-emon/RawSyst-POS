@@ -32,30 +32,25 @@
 // that 403s on its first request. Manage hides the editing controls, not the
 // page.
 
-import { Tags } from 'lucide-react';
 import { Suspense, useEffect, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { FormError } from '@/components/ui/form-error';
-import { Badge, PageHeader, Panel } from '@/components/ui/panel';
-import { EmptyState, ErrorState } from '@/components/ui/states';
-import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
+import { PageHeader, Panel } from '@/components/ui/panel';
+import { ErrorState } from '@/components/ui/states';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
 import { useGrants } from '@/lib/auth/session';
-import { useCompanyScope } from '@/lib/company/company-context';
-import {
-  perSheet,
-  printProblem,
-  SCHEME_PARTS,
-  SYMBOLOGIES,
-  type BarcodeScheme,
-  type LabelTemplate,
-} from '@/lib/devices/hardware';
+import { useCompany, useCompanyScope } from '@/lib/company/company-context';
+import { SCHEME_PARTS, SYMBOLOGIES, type BarcodeScheme } from '@/lib/devices/hardware';
+import type { LabelTemplate } from '@/lib/labels/studio';
 import { useT, type Key } from '@/lib/i18n/locale';
+
+import { PrintRun } from './run';
+import { TemplateEditor } from './templates';
 
 const PART_LABEL: Record<string, Key> = {
   category: 'nx.lbl.pCategory',
@@ -65,15 +60,10 @@ const PART_LABEL: Record<string, Key> = {
   sequence: 'nx.lbl.pSequence',
 };
 
-const PROBLEM: Record<string, Key> = {
-  no_template: 'nx.lbl.needTemplate',
-  nothing_selected: 'nx.lbl.needSelection',
-  no_copies: 'nx.lbl.needCopies',
-};
-
 function LabelsScreen() {
   const t = useT();
   const scope = useCompanyScope();
+  const { currency, market } = useCompany();
   const grants = useGrants();
   const mayManage = grants.can('label.manage');
 
@@ -87,9 +77,6 @@ function LabelsScreen() {
   );
 
   const [draft, setDraft] = useState<BarcodeScheme | null>(null);
-  const [templateID, setTemplateID] = useState('');
-  const [search, setSearch] = useState('');
-  const [copies, setCopies] = useState('1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -100,14 +87,6 @@ function LabelsScreen() {
   }, [scheme.data]);
 
   const rows = templates.data?.data ?? [];
-  const state = printProblem({
-    templateID,
-    variantIDs: [],
-    categoryID: '',
-    brandID: '',
-    search,
-    copies,
-  });
 
   async function saveScheme() {
     if (!scope || !draft) return;
@@ -151,88 +130,6 @@ function LabelsScreen() {
       setBusy(false);
     }
   }
-
-  async function print() {
-    if (!scope || state !== 'none') return;
-    setBusy(true);
-    setError(null);
-    setNote(null);
-    try {
-      const out = await api.post<{ labels?: number; count?: number }>(
-        `/labels/print?company_id=${scope.company_id}`,
-        {
-          template_id: templateID,
-          search: search.trim(),
-          copies: Number(copies),
-        },
-      );
-      setNote(
-        t('nx.lbl.printed', { count: String(out.labels ?? out.count ?? 0) }),
-      );
-    } catch (e) {
-      setError(messageFor(e, t));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const columns: Column<LabelTemplate>[] = [
-    {
-      key: 'name',
-      header: t('nx.lbl.colTemplate'),
-      primary: true,
-      cell: (tpl) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="font-medium">{tpl.name}</span>
-          <span className="text-caption text-muted">
-            {tpl.kind === 'thermal' ? t('nx.lbl.roll') : t('nx.lbl.sheet')}
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: 'size',
-      header: t('nx.lbl.colSize'),
-      width: 'w-36',
-      cell: (tpl) => (
-        <span className="num">
-          {tpl.width_mm} × {tpl.height_mm} mm
-        </span>
-      ),
-    },
-    {
-      key: 'perSheet',
-      header: t('nx.lbl.colPerSheet'),
-      numeric: true,
-      width: 'w-32',
-      cell: (tpl) => {
-        const n = perSheet(tpl);
-        // A roll does not come in sheets.
-        return n === null ? (
-          <span className="text-muted">—</span>
-        ) : (
-          <span className="num">{n}</span>
-        );
-      },
-    },
-    {
-      key: 'fields',
-      header: t('nx.lbl.colFields'),
-      secondary: true,
-      cell: (tpl) => (
-        <span className="num text-caption text-muted">
-          {tpl.fields.map((f) => f.field).join(', ') || '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'default',
-      header: t('nx.lbl.colDefault'),
-      width: 'w-28',
-      cell: (tpl) =>
-        tpl.is_default ? <Badge tone="info">{t('nx.lbl.isDefault')}</Badge> : null,
-    },
-  ];
 
   return (
     <>
@@ -349,75 +246,33 @@ function LabelsScreen() {
         </Panel>
       ) : null}
 
-      <h2 className="mt-8 mb-3 text-card-title font-semibold text-fg">
-        {t('nx.lbl.templatesTitle')}
-      </h2>
-      {templates.isLoading && !templates.data ? <TableSkeleton columns={5} /> : null}
-      {!templates.isLoading && rows.length === 0 ? (
-        <EmptyState
-          icon={Tags}
-          title={t('nx.lbl.noTemplatesTitle')}
-          description={t('nx.lbl.noTemplatesDesc')}
-        />
-      ) : null}
-      {rows.length > 0 ? (
-        <DataTable
-          caption={t('nx.lbl.templatesTitle')}
-          columns={columns}
-          rows={rows}
-          rowKey={(tpl) => tpl.id}
+      {/* The layouts, and the editor that was missing: `POST` had a screen
+          and `PUT` and `DELETE` had none, so a shop that got the height wrong
+          on its roll could add a fourth layout and never correct the three it
+          had. */}
+      {scope ? (
+        <TemplateEditor
+          companyId={scope.company_id}
+          templates={rows}
+          isLoading={templates.isLoading}
+          mayManage={mayManage}
+          onChanged={() => void templates.refetch()}
         />
       ) : null}
 
-      {rows.length > 0 ? (
-        <Panel
-          className="mt-6"
-          title={t('nx.lbl.printTitle')}
-          description={t('nx.lbl.printHint')}
-        >
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
-            <Field name="template_id" label={t('nx.lbl.template')} required>
-              <Select
-                value={templateID}
-                onChange={(e) => setTemplateID(e.target.value)}
-              >
-                <option value="">{t('nx.lbl.chooseTemplate')}</option>
-                {rows.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              name="search"
-              label={t('nx.lbl.which')}
-              hint={t('nx.lbl.whichHint')}
-              required
-            >
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} />
-            </Field>
-            <Field name="copies" label={t('nx.lbl.copies')}>
-              <Input
-                value={copies}
-                onChange={(e) => setCopies(e.target.value)}
-                inputMode="numeric"
-                className="num text-end"
-              />
-            </Field>
-            <Button
-              variant="primary"
-              disabled={busy || state !== 'none'}
-              onClick={() => void print()}
-            >
-              {t('nx.lbl.print')}
-            </Button>
-          </div>
-          {state !== 'none' ? (
-            <p className="mt-3 text-caption text-muted">{t(PROBLEM[state] as Key)}</p>
-          ) : null}
-        </Panel>
+      {/* What a run will actually print, and the manual barcode override,
+          which needs a variant id and the code it currently carries — and this
+          is the only list in the product that has both. */}
+      {scope && rows.length > 0 ? (
+        <PrintRun
+          companyId={scope.company_id}
+          currency={currency}
+          market={market}
+          templates={rows}
+          mayManage={mayManage}
+        />
       ) : null}
+
     </>
   );
 }

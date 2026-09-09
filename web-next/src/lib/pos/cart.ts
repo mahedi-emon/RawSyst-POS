@@ -208,3 +208,89 @@ export function exceedsStock(line: CartLine): boolean {
 export function newSaleId(): string {
   return crypto.randomUUID();
 }
+
+// ---------------------------------------------------------------------------
+// Asking the server what the campaigns would give
+// ---------------------------------------------------------------------------
+
+/** What a promotion did to one line, as `POST /promotions/quote` answers it. */
+export interface PricedLine {
+  variant_id: string;
+  promotion_id?: string;
+  promotion?: string;
+  /** What came off the WHOLE line, not off one unit. */
+  discount: string;
+  line_total: string;
+  /** The promotion was worth more than the floor allowed and was clamped. */
+  floor_applied?: boolean;
+}
+
+/**
+ * The basket the quote route takes, built from what the till already holds.
+ *
+ * `unit_price` is the price on the line rather than the catalogue price,
+ * because a cashier may have overridden it and the campaign has to be measured
+ * against what is actually being charged.
+ */
+export function quoteBasket(
+  lines: readonly CartLine[],
+  extra: { storeId?: string; customerId?: string; customerType?: string; coupon?: string },
+): Record<string, unknown> {
+  return {
+    store_id: extra.storeId ?? '',
+    customer_id: extra.customerId ?? '',
+    customer_type: extra.customerType ?? '',
+    coupon_code: extra.coupon ?? '',
+    lines: lines.map((l) => ({
+      variant_id: l.variantId,
+      qty: l.qty,
+      unit_price: l.unitPrice,
+    })),
+  };
+}
+
+/**
+ * Which lines a quote would actually change.
+ *
+ * A quote answers for every line, including the ones no campaign touched. Only
+ * the ones that gained a discount are worth showing or applying: telling a
+ * cashier that eleven of thirteen lines are unchanged is telling them nothing,
+ * with a customer waiting.
+ */
+export function offersWorthTaking(
+  lines: readonly CartLine[],
+  quoted: readonly PricedLine[],
+): PricedLine[] {
+  return quoted.filter((q) => {
+    if (!q.promotion_id) return false;
+    if (new Decimal(q.discount || '0').lessThanOrEqualTo(0)) return false;
+    // Already on the line: re-applying the same campaign would double it.
+    const line = lines.find((l) => l.variantId === q.variant_id);
+    return !line || line.promotionId !== q.promotion_id;
+  });
+}
+
+/** What the offers come to together, for the sentence above the button. */
+export function offerTotal(offers: readonly PricedLine[], places = 2): string {
+  let sum = new Decimal(0);
+  for (const o of offers) sum = sum.plus(new Decimal(o.discount || '0'));
+  return toMoney(sum, places);
+}
+
+/**
+ * The cart with the offers taken.
+ *
+ * The discount and the campaign id are written onto the line together, because
+ * `POST /pos/sales` records the redemption from the id and would otherwise
+ * take a discount off a campaign nobody can show was applied.
+ */
+export function withOffers(
+  lines: readonly CartLine[],
+  offers: readonly PricedLine[],
+): CartLine[] {
+  return lines.map((line) => {
+    const offer = offers.find((o) => o.variant_id === line.variantId);
+    if (!offer || !offer.promotion_id) return line;
+    return { ...line, lineDiscount: offer.discount, promotionId: offer.promotion_id };
+  });
+}

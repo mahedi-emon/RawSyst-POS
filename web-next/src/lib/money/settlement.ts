@@ -216,3 +216,111 @@ export function totalOf(tenders: readonly PendingTender[]): string {
 export function bankable(tenders: readonly PendingTender[]): PendingTender[] {
   return tenders.filter((t) => !t.already_recorded);
 }
+
+// ---------------------------------------------------------------------------
+// Deposits already matched
+// ---------------------------------------------------------------------------
+
+/** One deposit, as `GET /settlement/batches` answers it. */
+export interface ListedBatch {
+  id: string;
+  reference: string;
+  deposited_on: string;
+  gross_amount: string;
+  fee_amount: string;
+  net_amount: string;
+  currency: string;
+  tender_count: number;
+  /** False for a deposit whose journal entry is missing, which must not read as reconciled. */
+  posted: boolean;
+}
+
+/** One payment inside a deposit, with the share of the fee it carried. */
+export interface SettledTender {
+  tender_id: string;
+  invoice_id: string;
+  invoice_number: string;
+  method: string;
+  amount: string;
+  fee_amount: string;
+}
+
+/** A deposit and the sales it covered, as `GET /settlement/batches/{id}` answers it. */
+export interface Batch extends Omit<ListedBatch, 'tender_count' | 'posted'> {
+  tenders: SettledTender[];
+  already_recorded?: boolean;
+}
+
+/**
+ * What is wrong with the deposit being entered, in the order somebody fixes it.
+ *
+ * Every one of these is a rule the SERVER applies. Saying it here first means
+ * a person learns it before pressing a button, not from a refusal — and the
+ * server stays the authority, so a rule that changes there is a refusal here
+ * rather than a screen quietly accepting something it should not.
+ */
+export type DepositProblem =
+  | 'nothing_selected'
+  | 'no_reference'
+  | 'no_date'
+  | 'no_amount'
+  | 'not_a_number'
+  | 'net_above_gross'
+  | 'net_not_positive'
+  | null;
+
+export interface DepositDraft {
+  reference: string;
+  depositedOn: string;
+  netAmount: string;
+  selected: readonly PendingTender[];
+}
+
+export function depositProblem(draft: DepositDraft): DepositProblem {
+  if (draft.selected.length === 0) return 'nothing_selected';
+  if (draft.reference.trim() === '') return 'no_reference';
+  if (draft.depositedOn.trim() === '') return 'no_date';
+  if (draft.netAmount.trim() === '') return 'no_amount';
+
+  const gross = totalOf(draft.selected);
+  const grossCents = minorUnits(gross);
+  const netCents = minorUnits(draft.netAmount.trim());
+  if (grossCents === null || netCents === null) return 'not_a_number';
+
+  // "A deposit of nothing is not a deposit. Money taken back by the acquirer is
+  // a chargeback, which is recorded on its own."
+  if (netCents <= 0) return 'net_not_positive';
+  // "An acquirer paying more than was taken is a separate event, not a fee."
+  if (netCents > grossCents) return 'net_above_gross';
+  return null;
+}
+
+/**
+ * The fee this deposit implies: what was taken, less what arrived.
+ *
+ * Not derived from a configured rate anywhere in this product. A rate would be
+ * a forecast, and a forecast posted into the ledger disagrees with the bank the
+ * first time the contract or the scheme mix says otherwise. Shown before the
+ * deposit is recorded so somebody can check the figure against the statement
+ * in front of them.
+ */
+export function impliedFee(draft: DepositDraft): string {
+  return netOf(totalOf(draft.selected), draft.netAmount.trim());
+}
+
+/**
+ * The fee as a fraction of the gross, for a sanity read.
+ *
+ * Returns null when there is nothing to divide by, or when either figure is
+ * unreadable. Two per cent is an ordinary card fee and twenty is a typing
+ * error, and the difference is worth seeing before it reaches the ledger.
+ */
+export function feeShare(draft: DepositDraft): number | null {
+  const gross = minorUnits(totalOf(draft.selected));
+  const net = minorUnits(draft.netAmount.trim());
+  if (gross === null || net === null || gross <= 0) return null;
+  return (gross - net) / gross;
+}
+
+/** Above this a fee is worth questioning out loud before it is posted. */
+export const FEE_WORTH_QUESTIONING = 0.1;

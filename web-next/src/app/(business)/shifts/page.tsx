@@ -28,6 +28,7 @@ import { Coins } from 'lucide-react';
 import { Suspense } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
+import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
 import { Badge, Figure, PageHeader, Panel } from '@/components/ui/panel';
 import { EmptyState, ErrorState } from '@/components/ui/states';
@@ -44,6 +45,8 @@ import {
   type Shift,
 } from '@/lib/pos/counter-ops';
 import { useUrlState } from '@/lib/url-state';
+
+import { XReportPanel } from './x-report';
 
 interface Store {
   id: string;
@@ -86,8 +89,13 @@ function ShiftsScreen() {
     scope ? { ...scope, from, to, ...(storeID ? { store_id: storeID } : {}) } : undefined,
   );
 
+  // Which session's X report is open. In the URL, so a supervisor can send a
+  // colleague the reading rather than describing where to click.
+  const [openSession, setOpenSession] = useUrlState('report');
+
   const rows = data?.data ?? [];
   const totals = shiftTotals(rows);
+  const showing = rows.find((s) => s.id === openSession) ?? null;
   const money = (v: string) => formatMoney(v, { currency, market });
 
   const columns: Column<Shift>[] = [
@@ -194,11 +202,39 @@ function ShiftsScreen() {
         );
       },
     },
+    {
+      key: 'report',
+      header: t('nx.sft.colReport'),
+      width: 'w-28',
+      // The reading a manager checks a drawer against. `report.view`, which a
+      // cashier deliberately does not hold: somebody who can see the expected
+      // figure before counting can make the drawer agree with it.
+      cell: (s) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setOpenSession(s.id === openSession ? '' : s.id)}
+        >
+          {t('nx.sft.xOpen')}
+        </Button>
+      ),
+    },
   ];
 
   return (
     <>
       <PageHeader title={t('nx.sft.title')} description={t('nx.sft.subtitle')} />
+
+      {showing && scope ? (
+        <XReportPanel
+          companyId={scope.company_id}
+          sessionId={showing.id}
+          sessionNo={showing.session_no}
+          currency={currency}
+          market={market}
+          onClose={() => setOpenSession('')}
+        />
+      ) : null}
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">

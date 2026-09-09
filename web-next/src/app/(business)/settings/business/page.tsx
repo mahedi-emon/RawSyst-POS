@@ -179,6 +179,9 @@ function BusinessScreen() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<string | null>(null);
+  // Whether the confirmation for putting a document back on the product
+  // default is showing.
+  const [clearing, setClearing] = useState(false);
 
   const business = record.data?.business;
   const branchRows = record.data?.branches ?? [];
@@ -251,6 +254,35 @@ function BusinessScreen() {
       void templates.refetch();
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
+      setError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Puts a document type back on the product default.
+   *
+   * Not the same as saving an empty header: an absent template means "use what
+   * the product prints", and a template of empty strings means "print
+   * nothing". `DELETE /companies/{id}/templates/{docType}` is the only way to
+   * say the first, and it was reachable from no screen.
+   */
+  async function clearTemplate() {
+    if (!scope || !template) return;
+    setBusy(true);
+    setError(null);
+    setSaved(null);
+    try {
+      await api.delete(
+        `/companies/${scope.company_id}/templates/${template.doc_type}` +
+          `?company_id=${scope.company_id}`,
+      );
+      setSaved(t('nx.biz.clearedStationery'));
+      setClearing(false);
+      setDraft(null);
+      void templates.refetch();
+    } catch (e) {
       setError(messageFor(e, t));
     } finally {
       setBusy(false);
@@ -553,7 +585,7 @@ function BusinessScreen() {
               />
             </div>
             {mayEdit ? (
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Button
                   variant="primary"
                   disabled={busy}
@@ -561,6 +593,34 @@ function BusinessScreen() {
                 >
                   {t('nx.biz.saveStationery')}
                 </Button>
+                {/* Removing the wording is not the same as blanking it: a
+                    document with no stationery of its own falls back to the
+                    product default, and a document whose header is an empty
+                    string prints an empty header. `DELETE` was the only route
+                    that could express the first, and nothing called it. */}
+                {template ? (
+                  clearing ? (
+                    <>
+                      <Button
+                        variant="destructive"
+                        busy={busy}
+                        onClick={() => void clearTemplate()}
+                      >
+                        {t('nx.biz.confirmClearStationery')}
+                      </Button>
+                      <Button variant="ghost" onClick={() => setClearing(false)}>
+                        {t('nx.biz.cancel')}
+                      </Button>
+                      <p className="w-full max-w-prose text-caption text-muted">
+                        {t('nx.biz.clearStationeryHint')}
+                      </p>
+                    </>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setClearing(true)}>
+                      {t('nx.biz.clearStationery')}
+                    </Button>
+                  )
+                ) : null}
               </div>
             ) : null}
           </Panel>

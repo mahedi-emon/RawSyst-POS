@@ -387,7 +387,8 @@ func (s *Server) handleReverseCustomerPayment(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var req struct {
-		UUID string `json:"uuid"`
+		UUID   string `json:"uuid"`
+		Reason string `json:"reason"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
@@ -405,7 +406,7 @@ func (s *Server) handleReverseCustomerPayment(w http.ResponseWriter, r *http.Req
 	}
 
 	out, err := s.receivables.ReversePayment(r.Context(), scope, receivables.ReverseReceipt{
-		UUID: docUUID, ReceiptID: receiptID,
+		UUID: docUUID, ReceiptID: receiptID, Reason: req.Reason,
 	})
 	if err != nil {
 		httpx.Error(w, r, err)

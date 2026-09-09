@@ -342,13 +342,102 @@ func (s *Service) Record(
 	return out, err
 }
 
-// Statement is one investor's history. C3.2 asks for it by name, and for it to
-// be readable by that investor and nobody else — which the route enforces.
+// StatementPeriod narrows a statement to the months somebody is asking about.
+//
+// Both ends are optional and both are inclusive, which is what a person means
+// by "January to March". An absent end is not a default of today: an investor
+// asking for everything since the business opened should get everything, and
+// silently capping it at the current date would be right until the day
+// somebody records a movement dated forward.
+type StatementPeriod struct {
+	From *time.Time
+	To   *time.Time
+}
+
+// Statement is one investor's capital account over a period.
+//
+// C3.2 asks for it by name, and for it to be readable by that investor and
+// nobody else — which MayReadStatement enforces.
+//
+// # Why an opening balance is part of it and not left to the reader
+//
+// A statement that starts mid-history and lists only the movements inside the
+// window is a list, not a statement: the closing figure cannot be checked
+// against anything, and the reader has to fetch the whole history to find out
+// what the account stood at on the first of the month. So the opening is
+// computed from every movement BEFORE the window and the closing from opening
+// plus the window — the same arithmetic a paper capital account uses, done
+// once and in one place.
+//
+// Contributions add, withdrawals subtract. Nothing else moves a capital
+// account: `investment_direction_valid` admits exactly those two, and this is
+// the same sum `Investors` reports as `net`.
+type Statement struct {
+	InvestorID uuid.UUID `json:"investor_id"`
+	Investor   string    `json:"investor"`
+	Currency   string    `json:"currency"`
+
+	// From and To echo the window that was applied, empty when unbounded, so
+	// a screen prints the period it actually got rather than the one it asked
+	// for.
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
+
+	// Opening is what the account stood at the moment before `from`. Zero when
+	// the statement is unbounded, because there is nothing before the
+	// beginning.
+	Opening string `json:"opening"`
+	// Contributed and Withdrawn are the totals INSIDE the window.
+	Contributed string `json:"contributed"`
+	Withdrawn   string `json:"withdrawn"`
+	Closing     string `json:"closing"`
+
+	Movements []Movement `json:"movements"`
+}
+
+// Statement reads one.
 func (s *Service) Statement(
-	ctx context.Context, scope Scope, investorID uuid.UUID,
-) ([]Movement, error) {
-	out := []Movement{}
+	ctx context.Context, scope Scope, investorID uuid.UUID, p StatementPeriod,
+) (Statement, error) {
+	out := Statement{InvestorID: investorID, Movements: []Movement{}}
+	if p.From != nil {
+		out.From = p.From.Format("2006-01-02")
+	}
+	if p.To != nil {
+		out.To = p.To.Format("2006-01-02")
+	}
+
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx, `
+			SELECT i.name, c.base_currency
+			FROM investor i
+			JOIN company c ON c.id = i.company_id
+			WHERE i.id = $1 AND i.company_id = $2`,
+			investorID, scope.CompanyID).
+			Scan(&out.Investor, &out.Currency); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return errs.New(errs.CodeNotFound,
+					"That investor is not one this business has on record.")
+			}
+			return e
+		}
+
+		// The opening, from everything before the window. A null `from` means
+		// no window, and `sum` over no rows is null rather than zero — hence
+		// the coalesce, which is the difference between an opening of 0.00 and
+		// a statement that fails to read.
+		var opening decimal.Decimal
+		if e := tx.QueryRow(ctx, `
+			SELECT coalesce(sum(
+			         CASE WHEN direction = 'withdrawal'
+			              THEN -amount ELSE amount END), 0)
+			FROM investment
+			WHERE company_id = $1 AND investor_id = $2
+			  AND $3::date IS NOT NULL AND moved_on < $3`,
+			scope.CompanyID, investorID, p.From).Scan(&opening); e != nil {
+			return e
+		}
+
 		rows, err := tx.Query(ctx, `
 			SELECT m.id, m.direction, m.amount,
 			       to_char(m.moved_on, 'YYYY-MM-DD'),
@@ -358,13 +447,16 @@ func (s *Service) Statement(
 			JOIN company c ON c.id = m.company_id
 			LEFT JOIN money_account a ON a.id = m.money_account_id
 			WHERE m.company_id = $1 AND m.investor_id = $2
+			  AND ($3::date IS NULL OR m.moved_on >= $3)
+			  AND ($4::date IS NULL OR m.moved_on <= $4)
 			ORDER BY m.moved_on DESC, m.created_at DESC`,
-			scope.CompanyID, investorID)
+			scope.CompanyID, investorID, p.From, p.To)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 
+		contributed, withdrawn := decimal.Zero, decimal.Zero
 		for rows.Next() {
 			var m Movement
 			var amount decimal.Decimal
@@ -373,9 +465,22 @@ func (s *Service) Statement(
 				return err
 			}
 			m.Amount = amount.StringFixed(2)
-			out = append(out, m)
+			if m.Direction == "withdrawal" {
+				withdrawn = withdrawn.Add(amount)
+			} else {
+				contributed = contributed.Add(amount)
+			}
+			out.Movements = append(out.Movements, m)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		out.Opening = opening.StringFixed(2)
+		out.Contributed = contributed.StringFixed(2)
+		out.Withdrawn = withdrawn.StringFixed(2)
+		out.Closing = opening.Add(contributed).Sub(withdrawn).StringFixed(2)
+		return nil
 	})
 	return out, err
 }

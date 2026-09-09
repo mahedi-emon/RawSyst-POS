@@ -590,6 +590,20 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         permissions: ['gateway.view'],
         descriptionKey: 'nx.navd.biz.money.gateways',
       },
+      {
+        // C12: matching what the acquirer deposited against what the till
+        // took. `accounting.view` because reconciling a bank statement is an
+        // accounting act rather than looking after a card machine — the
+        // gateway screen beside it is `gateway.view` and they are different
+        // people. Recording a deposit needs `accounting.create`, which the
+        // screen asks for around the form rather than at the door.
+        id: 'settlement',
+        labelKey: 'nx.nav.biz.money.settlement',
+        href: '/money/settlement',
+        built: true,
+        permissions: ['accounting.view'],
+        descriptionKey: 'nx.navd.biz.money.settlement',
+      },
     ],
   },
   {
@@ -693,6 +707,18 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.biz.reports.analytics',
       },
       {
+        // E6's head count and the two document counts beside it. `report.view`
+        // is what the route asks, and it is the right question: this is a
+        // report ABOUT staff rather than the staff register itself, which is
+        // `hr.view` and lives under Staff.
+        id: 'workforce',
+        labelKey: 'nx.nav.biz.reports.workforce',
+        href: '/reports/workforce',
+        built: true,
+        permissions: ['report.view'],
+        descriptionKey: 'nx.navd.biz.reports.workforce',
+      },
+      {
         id: 'saved',
         labelKey: 'nx.nav.biz.reports.saved',
         href: '/reports/saved',
@@ -787,6 +813,21 @@ export const BUSINESS_NAV: readonly NavSection[] = [
     labelKey: 'nx.nav.biz.settings',
     icon: 'Settings',
     items: [
+      {
+        // First, because it is the first thing an owner does and because until
+        // it is finished most of the product has no company to show. Gated on
+        // `identity.view` rather than a permission of its own: A5 says setup
+        // is the Owner's job and the Owner role already holds it, and
+        // inventing an onboarding-only permission would mean every tenant
+        // updating its custom roles before anybody could finish setting up.
+        id: 'setup',
+        labelKey: 'nx.nav.biz.settings.setup',
+        href: '/setup',
+        built: true,
+        permissions: ['identity.view'],
+        alsoNeeds: ['identity.edit'],
+        descriptionKey: 'nx.navd.biz.settings.setup',
+      },
       {
         id: 'business',
         labelKey: 'nx.nav.biz.settings.business',

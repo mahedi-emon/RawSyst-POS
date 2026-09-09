@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -124,6 +125,55 @@ func (s *Server) handleRecordSettlement(w http.ResponseWriter, r *http.Request) 
 		w.Header().Set("Idempotency-Replayed", "true")
 	}
 	httpx.JSON(w, status, out)
+}
+
+// GET /api/v1/settlement/batches — the deposits already matched.
+//
+// The half that was missing. Recording a deposit answered with its id once and
+// nothing could find it again, so the detail route below was reachable only
+// from a response somebody had kept. Reconciling a month means reading back
+// what was already matched.
+func (s *Server) handleListSettlements(w http.ResponseWriter, r *http.Request) {
+	scope, err := settlementScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	q := r.URL.Query()
+	var f settlement.BatchFilter
+	for _, d := range []struct {
+		key  string
+		into **time.Time
+	}{{"from", &f.From}, {"to", &f.To}} {
+		raw := q.Get(d.key)
+		if raw == "" {
+			continue
+		}
+		when, e := time.Parse("2006-01-02", raw)
+		if e != nil {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"Dates look like 2026-08-16."))
+			return
+		}
+		*d.into = &when
+	}
+	if raw := q.Get("limit"); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n <= 0 {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"A limit is a whole number above zero."))
+			return
+		}
+		f.Limit = n
+	}
+
+	out, err := s.settlement.List(r.Context(), scope, f)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 // GET /api/v1/settlement/batches/{batchID} — a deposit and the sales it covered.

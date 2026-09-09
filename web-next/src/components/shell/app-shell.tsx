@@ -44,12 +44,22 @@ export function AppShell({
   contextName,
   /** Workspace-specific header controls -- the company switch, in a business. */
   headerExtra,
+  /**
+   * Shown at every width, unlike `headerExtra`.
+   *
+   * The bell carries a count somebody is meant to notice, and a control that
+   * disappears below `sm` is one a shopkeeper on a phone never sees. It sits
+   * beside the account menu, which is where every product this one competes
+   * with puts it.
+   */
+  headerAlerts,
   children,
 }: {
   sections: ResolvedSection[];
   workspaceName: string;
   contextName?: string;
   headerExtra?: ReactNode;
+  headerAlerts?: ReactNode;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -195,6 +205,7 @@ export function AppShell({
               somebody where they are. It returns at `sm`. */}
           {headerExtra && <div className="hidden sm:flex">{headerExtra}</div>}
 
+          {headerAlerts}
           <UserMenu />
         </header>
 

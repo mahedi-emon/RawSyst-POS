@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   bankable,
+  depositProblem,
+  feeShare,
   health,
+  impliedFee,
+  FEE_WORTH_QUESTIONING,
   missingFields,
   netOf,
   nextStep,
@@ -12,6 +16,7 @@ import {
   totalOf,
   type Gateway,
   type PendingTender,
+  type DepositDraft,
   type Provider,
 } from './settlement';
 
@@ -168,5 +173,87 @@ describe('money that has to add up', () => {
     // already_recorded is omitted rather than false on a fresh tender, so the
     // flag is read truthy-only. Offering a settled one banks it twice.
     expect(bankable([t({}), t({ already_recorded: true })])).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recording a deposit
+// ---------------------------------------------------------------------------
+
+const tender = (amount: string): PendingTender => ({
+  tender_id: `t-${amount}`,
+  invoice_id: 'i1',
+  invoice_number: 'INV-1',
+  issued_at: '2026-08-16T10:00:00Z',
+  method: 'mada',
+  amount,
+  currency: 'SAR',
+});
+
+const draft = (over: Partial<DepositDraft> = {}): DepositDraft => ({
+  reference: 'MADA-20260817-001',
+  depositedOn: '2026-08-17',
+  netAmount: '985.00',
+  selected: [tender('1000.00')],
+  ...over,
+});
+
+describe('what stops a deposit being recorded', () => {
+  it('accepts the blueprint\u2019s own example', () => {
+    // "A customer pays SAR 1,000 by card, but the bank deposits only SAR 985
+    // two days later."
+    expect(depositProblem(draft())).toBeNull();
+  });
+
+  it('names what is missing in the order somebody fixes it', () => {
+    expect(depositProblem(draft({ selected: [] }))).toBe('nothing_selected');
+    expect(depositProblem(draft({ reference: '  ' }))).toBe('no_reference');
+    expect(depositProblem(draft({ depositedOn: '' }))).toBe('no_date');
+    expect(depositProblem(draft({ netAmount: '' }))).toBe('no_amount');
+    expect(depositProblem(draft({ netAmount: 'nine hundred' }))).toBe('not_a_number');
+  });
+
+  it('refuses a deposit larger than the payments it covers', () => {
+    // The server's words: an acquirer paying more than was taken is a separate
+    // event, not a fee. Learning that from a refusal costs a round trip and
+    // reads as the product being broken.
+    expect(depositProblem(draft({ netAmount: '1200.00' }))).toBe('net_above_gross');
+  });
+
+  it('refuses a deposit of nothing, which is a chargeback', () => {
+    expect(depositProblem(draft({ netAmount: '0.00' }))).toBe('net_not_positive');
+    expect(depositProblem(draft({ netAmount: '-5.00' }))).toBe('net_not_positive');
+  });
+
+  it('lets the whole gross be deposited when the acquirer took no fee', () => {
+    expect(depositProblem(draft({ netAmount: '1000.00' }))).toBeNull();
+    expect(impliedFee(draft({ netAmount: '1000.00' }))).toBe('0.00');
+  });
+});
+
+describe('the fee the deposit implies', () => {
+  it('is what was taken less what arrived', () => {
+    expect(impliedFee(draft())).toBe('15.00');
+  });
+
+  it('adds the selection up in minor units rather than through a float', () => {
+    const many = draft({
+      selected: [tender('0.10'), tender('0.20')],
+      netAmount: '0.29',
+    });
+    expect(impliedFee(many)).toBe('0.01');
+  });
+
+  it('reports the share, so twenty per cent is visible before it posts', () => {
+    expect(feeShare(draft())).toBeCloseTo(0.015);
+    expect(feeShare(draft({ netAmount: '800.00' }))).toBeCloseTo(0.2);
+    expect(feeShare(draft({ netAmount: '800.00' }))!).toBeGreaterThan(
+      FEE_WORTH_QUESTIONING,
+    );
+  });
+
+  it('has no share to report when there is nothing to divide by', () => {
+    expect(feeShare(draft({ selected: [] }))).toBeNull();
+    expect(feeShare(draft({ netAmount: 'x' }))).toBeNull();
   });
 });

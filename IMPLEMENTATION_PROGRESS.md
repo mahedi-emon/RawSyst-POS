@@ -6948,10 +6948,11 @@ CDTFA row, and splitting on the comma shifts every column right).
 | `GET /reports/workforce` | The head count and ratio |
 | `GET /notifications/unread` | The bell's own count |
 
-These are **recorded, not resolved**. Each is a screen or a control on an
-existing screen, none is blocked by anything, and none was built in this pass
-because the pass ran out of room before it ran out of findings. They are the next
-task, in that order.
+These were **recorded, not resolved** by that pass. All ten are built and
+verified in the FINAL FRONTEND COMPLETION PASS below, along with twenty-three
+more that a corrected, method-aware audit found. The figure of twenty in the
+table above is itself superseded: it counted a PATH rather than a route, so
+`GET` and `POST` on one path read as a single entry.
 
 ## Verification
 
@@ -7030,3 +7031,233 @@ tree are inside `web-next/.next`, which is Next.js's own generated output.
 `__VERIFY__`: **five rules**, one of them release-blocking
 (`SA.EOSB.ENTITLEMENT`). All five are described by the source pack, so all five
 can be recorded from a file. That is the mechanism, not a gap.
+
+# FINAL FRONTEND COMPLETION PASS — 2026-09-09 (third session of the day)
+
+The ten capabilities the previous pass recorded and did not close are closed.
+So are twenty-three more that a corrected audit found while closing them.
+
+## The ten, each verified end to end
+
+Every one was driven against a running API before being marked complete —
+`scripts/reachability.mjs` proves the route is reached from a screen, the Go
+suite proves the service, and a live drive proves the two meet.
+
+| Capability | Screen | Routes it reaches | Permission |
+|---|---|---|---|
+| **Setup Wizard — COMPLETE** | `/setup`, new | `GET /onboarding`, `PUT /onboarding/steps/{step}`, `POST /onboarding/steps/{step}/complete`, `POST /onboarding/company`, `POST /onboarding/stores` | `identity.view` to read, `identity.edit` to act |
+| **Reverse Supplier Payment — COMPLETE** | `/buying/payments`, second half | `GET /purchasing/payments` (new), `POST /purchasing/payments/{id}/reverse` | `purchasing.view` reads, `purchasing.pay_supplier` acts |
+| **Reverse Customer Receipt — COMPLETE** | `/money/receipts`, second half | `GET /receivables/receipts`, `POST /receivables/receipts/{id}/reverse` | `customers.view` reads, `sales.receive_payment` acts |
+| **Settlement Batches — COMPLETE** | `/money/settlement`, new | `GET /settlement/pending`, `GET /settlement/batches` (new), `POST /settlement/batches`, `GET /settlement/batches/{id}` | `accounting.view` reads, `accounting.create` records |
+| **Investor Statement — COMPLETE** | `/money/investors/[investorID]`, new | `GET /investors/{id}/statement` | `investor.view`; the service confines an investor to their own |
+| **Barcode Override — COMPLETE** | `/products/labels`, print-run panel | `PUT /labels/barcodes/{variantID}` | `label.manage` |
+| **Label Template Editor — COMPLETE** | `/products/labels`, editor panel | `PUT`/`DELETE /labels/templates/{id}` | `label.manage`; `label.print` opens the screen |
+| **Privacy Destruction Record — COMPLETE** | `/oversight/privacy?on=destructions` | `GET /privacy/destructions`, `DELETE /privacy/activities/{id}` | `privacy.view` reads, `privacy.manage` removes |
+| **Workforce Report — COMPLETE** | `/reports/workforce`, new | `GET /reports/workforce` | `report.view` |
+| **Notification Count — COMPLETE** | the bell in the shell, every screen | `GET /notifications/unread` | authenticated; the query names the caller and nobody else |
+
+## Six defects the work found, and what each would have cost
+
+1. **`GET /purchasing/payments` did not exist.** `POST .../reverse` had been
+   live since payables landed, was tested, and was reachable from no screen at
+   all — a reversal names a payment id and nothing in the product could tell
+   you one. The route was not missing UI; it was missing its other half.
+2. **`GET /settlement/batches` did not exist** either. Recording a deposit
+   answered with an id once, in a response, and nothing could ever find it
+   again. A settlement module you can only write to is one nobody finishes a
+   month with.
+3. **A recorded deposit stated no currency.** `readBatch` reads
+   `base_currency` and the create path built its struct by hand without it, so
+   recording a deposit answered `""` and recording the SAME deposit twice
+   answered `SAR`. On the one screen whose whole job is matching a figure to a
+   bank statement.
+4. **Four money-moving acts named nobody.** Reversing a supplier payment,
+   reversing a customer receipt, recording a settlement and overriding a
+   barcode wrote no audit entry. The journal said the ledger moved; nothing
+   said who decided it. All four are audited now, and the two reversals and the
+   override carry a REASON — written into the trail, not onto the document,
+   because a payment is a fact about money and carries no editorial.
+5. **A label promised a line it could not print.** The loyalty card seeded by
+   0095 carries a `tier` field the renderer has no case for and the print run
+   has no data for, so it printed a blank. Migration 0131 removes it, the
+   provisioning seed no longer writes it, and `labels.PrintableFields` now
+   refuses a field the printer cannot fill — the failure it prevents is silent:
+   the layout is right, a line is absent, and nobody finds out until nine
+   hundred tags are on a rail.
+6. **The investor statement was a list, not a statement.** It answered the
+   movements inside a window and no balances, so the closing figure could be
+   checked against nothing. It now carries the opening (everything before the
+   window), the two totals inside it, and the closing — the arithmetic a paper
+   capital account does — and refuses a period that ends before it starts
+   rather than silently widening to all time.
+
+## Twenty-three more gaps, found by measuring properly and fixed
+
+The previous audit counted 20 unreachable routes. A method-aware audit counts
+differently: `GET /settlement/batches` and `POST /settlement/batches` are two
+routes, and a screen that only records a deposit has not reached the one that
+lists them. Measured that way the figure was 52, of which 20 are intentional.
+
+| Fixed | Screen |
+|---|---|
+| `GET`/`PUT /devices/{id}/settings` | `/settings/devices` — a till could be registered and never told which warehouse it sells out of. `settingsChange` in `lib/devices/hardware.ts` had been written, tested and never called |
+| `GET`/`PUT /einvoicing/units/{unitID}` | `/settings/einvoicing` — a signing unit with a typo in its serial number could never be corrected, and those nine fields are what ZATCA signs against |
+| `POST /customers/{id}/active` | `/customers/[customerId]` — retiring a customer, refused by the server while they owe money |
+| `GET`/`PUT`/`DELETE /groups/{groupID}` | `/oversight/groups` — a group could be created and never renamed or removed |
+| `DELETE /documents/{documentID}` | `/oversight/documents` |
+| `DELETE /companies/{id}/templates/{docType}` | `/settings/business` — putting a document back on the product default, which is not the same as saving an empty header |
+| `POST /purchasing/rfqs/{id}/cancel` | `/buying/quotes/[rfqID]` — a request sent to four suppliers by mistake stayed open for ever |
+| `GET /purchasing/suppliers/{id}/quotes` | `/buying/suppliers` — B5.1's archive, so the next negotiation starts from a fact |
+| `POST /pos/sales/{invoiceID}/reprint` | `/sales` — the CONTROL rather than the printing; a second copy of a tax invoice in circulation is what an inspector asks about |
+| `GET /shifts/{sessionID}/x-report` | `/shifts` — the figure a drawer is checked against, `report.view`, which a cashier deliberately does not hold |
+| `GET /dashboard/expenses`, `/dashboard/compliance`, `/dashboard/stock` | `/dashboard` — three drill-throughs behind figures a reader could not open. The compliance one states the P1 gate honestly rather than offering a retry that cannot work |
+| `GET /deliveries/{deliveryID}` | `/deliveries` — every step a consignment has been through, which is the answer to "where is my order" |
+| `GET /gift-cards/{cardID}` | `/customers/wallets` — reading the one card back after voiding it |
+| `GET /stock/availability` | `/stock` — on hand, reserved, and free to sell; the on-hand column alone over-promises |
+| `POST /promotions/quote` | the till — "check for offers", asked for rather than applied on its own, because a price that moved between the scan and the total is the one thing a cashier cannot explain |
+| `POST /platform/tenants/{id}/invoices`, `POST /platform/dunning` | `/platform/billing` — the screen could mark an invoice paid and could not raise one, so every subscription invoice this product ever billed was inserted by hand |
+| `GET /companies/{id}/logo/image` | already reached by an `<img src>`; the AUDIT could not see it, which was the audit's defect rather than the product's |
+
+## The reachability audit is a checked-in script now
+
+`web-next/scripts/reachability.mjs`, run as `npm run check:reach`. It failed
+this measurement twice by hand and the methodology is now source rather than
+memory:
+
+* **`web-next/src` only.** `shared/src/api/*` is the frozen `web/` front end's
+  client layer and the Tauri till's; `web-next` imports from `shared` in
+  exactly three files, all `@rawsyst/shared/i18n/strings`. Counting the three
+  trees together reported 6 unreachable routes where counting the deployed one
+  reports 52.
+* **`contract.generated.ts` excluded**, because it lists every route pattern in
+  the product and scanning it reports everything as reached.
+* **Method-aware.** `GET` and `POST` on one path are two routes.
+* **Three matching buckets**: the path written out, a path with interpolated
+  segments, and a pattern parameter matching either. An exact-string test
+  reports every templated path dead; a segments-appear-anywhere test reports
+  nothing dead.
+* **Comments stripped before the loose pass.** This codebase names routes while
+  explaining itself — `client.ts` mentions `/sync/push` in a comment about
+  idempotency keys — and counting prose as a call reported the offline queue as
+  reachable from the back office.
+* **A one-segment interpolation matches nothing.** `/${kind}` was matching
+  `/healthz`, `/readyz`, `/metrics` and `/live` at once, so four infrastructure
+  probes read as reached from a screen.
+
+Two buckets are reported separately and honestly: 414 routes are reached by a
+call this scanner can attribute a VERB to, and 66 by a path a screen writes
+through a local wrapper (`act('/payroll/${id}/approve')` calls `api.post` two
+lines up, and no regex follows that without a type checker). `--verbose` lists
+the second bucket.
+
+## The twenty intentionally screenless routes
+
+Each carries its reason in `SCREENLESS` in the script, so an exemption cannot
+become a silent one. A stale exemption fails the run too: a route somebody
+later builds a screen for is reported as an exemption nobody needs.
+
+**Infrastructure (4)** — `GET /healthz`, `GET /readyz`, `GET /metrics`,
+`GET /api/v1/meta/version`. Read by an orchestrator, a scraper and a support
+engineer.
+
+**The installed terminal (8)** — `GET /meta/ping`, `GET /catalog/scan`,
+`GET /pos/stock`, `GET /pos/stationery`,
+`PUT /pos/sales/{invoiceID}/signed-document`, `POST /sync/push`,
+`GET /sync/health`, `GET /live`. The Tauri till is a different application: it
+holds a device secret, an offline catalogue and a signing key, and every one of
+these is resolved from the DEVICE rather than from a company a browser names. A
+back-office session has no device secret and would be refused, so a screen for
+one here would be a control that cannot work.
+
+**A machine enrolling itself (2)** — `POST /devices/enrol`,
+`GET /devices/identity`. Before it has a session.
+
+**Jobs and agents (3)** — `POST /store-credit/expire` and `POST /eosb/accrue`
+are enqueued by the worker; a person expiring credit by hand is the bug, and a
+liability discovered at termination is what the monthly accrual exists to
+prevent. `POST /backups/{id}/finish` is the backup agent reporting where it put
+the file and what its checksum is — a person typing a checksum would be
+attesting to something they did not compute.
+
+**The second sales channel (2)** — `POST /stock/reservations` and
+`DELETE /stock/reservations/{orderID}`. B13's channel holds and releases stock
+over the API.
+
+**The counter (1)** — `POST /payment-attempts/{attemptID}/refund`, taken at the
+till with the customer present.
+
+## Verification
+
+    clean migration from zero    131 migrations, 183 tables, 175 forced RLS,
+                                 175 policies, 44 rules, 542 CDTFA rates    PASS
+    backend, every package       integration tags, fresh test database      PASS
+    backend, internal/api        384s                                       PASS
+    go vet / vet -tags=integration                                          PASS
+    gofmt -s -l                  clean
+    lint-wording                 1,482 files                                PASS
+    typecheck                    shared and web-next                        PASS
+    web-next tests               598 passed / 37 files                      PASS
+    shared tests                 482 passed / 29 files                      PASS
+    production build             125 static pages, no warnings              PASS
+    check:contract               500 routes, 110 permissions (103 gated)    PASS
+    check:reach                  500 routes, 414 attributed, 66 via a
+                                 wrapper, 20 intentional, 0 gaps            PASS
+    verify:api                   ALL SCREEN CONTRACTS VERIFIED              PASS
+    verify:rbac                  EVERY BOUNDARY HELD                        PASS
+    the ten, driven live         against a seeded database                  PASS
+
+### What the live drive proved that a test could not
+
+A test builds its own fixtures. This drove the ten screens' own requests against
+the seeded development database:
+
+* a supplier payment reversed, the replay recognised as the same reversal, a
+  second reversal refused, and the picker no longer offering what it cannot undo
+* a customer receipt reversed, and pressing twice reversing once
+* an investor statement opening at nothing, echoing its period, and refusing a
+  backwards one
+* a label created, edited to a 40mm roll, refused a field the printer cannot
+  fill, and removed
+* a barcode overridden, appearing in the next print run, and SCANNING — which
+  is the whole point of a barcode and the one thing a saved code does not prove
+* the destruction log read, and a processing activity added and removed
+* the workforce report, its departments accounting for everybody
+* the bell's count agreeing with the list's
+* and a whole tenant provisioned, taken through all six setup steps, refused a
+  country it was not sold into, refused a branch with no National Address, and
+  finishing with a company, a branch and a stock location — a shop that can
+  record a sale
+
+Settlement's read path and empty state were driven; the record-and-read-back
+path has no card takings in the seeded database and is covered by
+`TestARecordedDepositCanBeFoundAgain`.
+
+### One test was order-dependent and is not any more
+
+`TestVerifiedRulesCarryTheirEvidence` walks every verified regulatory rule and
+demands a citable source document. `internal/registry`'s attestation tests seed
+a fixture rule under country `zz` — ISO 3166's "unknown country" — and
+`regulatory_rule` is append-only by trigger, so the fixture cannot be cleaned up
+and stays in whatever database the suite ran against. The invariant now excludes
+`zz` and only `zz`: demanding a legal citation for a rule whose country is
+"unknown" is demanding evidence for something no authority published. It is
+unchanged for SA, BD and US.
+
+## EOSB — unchanged, and deliberately
+
+Both service bands, the wage basis, the accrual, dated rule resolution, the
+audit entry, point-of-use enforcement and the production gate are all
+implemented. `SA.EOSB.ENTITLEMENT` remains unverified and release-blocking, and
+`make regulatory` still reports five outstanding values with one blocking.
+Nothing in this pass touched it, and nothing hard-codes a guessed figure. The
+remaining input is one person reading Articles 84 and 85 and putting their name
+to what they read, through `make regulatory-template` / `-check` / `-apply`.
+
+## Markers
+
+`TODO`, `FIXME`, `not implemented`, `coming soon`: **none** in `backend`,
+`web-next/src`, `shared/src`, `pos/src` or `scripts`. Every match for
+`placeholder`, `stub`, `mock` and `fake` is prose in a comment explaining why
+something is NOT one — `cache.go`'s "Neither is a stub", `finalize.go`'s "Not
+stubbed", `templates.tsx`'s "A preview, not a mock editor". `__VERIFY__` is the
+regulatory mechanism, described above.

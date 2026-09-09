@@ -25,8 +25,11 @@ import { useState } from 'react';
 import { RequirePermission } from '@/components/auth/guard';
 import { Button } from '@/components/ui/button';
 import { Badge, PageHeader, Panel, type Tone } from '@/components/ui/panel';
+import { FormError } from '@/components/ui/form-error';
 import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/ui/states';
+import { api } from '@/lib/api/client';
+import { messageFor } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/hooks';
 import { useCompany, useCompanyScope } from '@/lib/company/company-context';
 import { formatMoney, isZero } from '@/lib/format/money';
@@ -116,6 +119,34 @@ function SalesScreen() {
     scope ? { ...scope, date, limit: 200 } : undefined,
   );
 
+  const [reprinting, setReprinting] = useState<string | null>(null);
+  const [reprintError, setReprintError] = useState<string | null>(null);
+  const [reprinted, setReprinted] = useState<string | null>(null);
+
+  /**
+   * Printing a fiscal invoice again, and saying so.
+   *
+   * `POST /pos/sales/{id}/reprint` writes an audit entry and nothing else — it
+   * is the CONTROL rather than the printing, and it exists because a second
+   * copy of a tax invoice in circulation is a thing an inspector asks about.
+   * The route was live and reachable from no screen, so a shop reprinting a
+   * receipt for a customer left no record of having done it.
+   */
+  async function reprint(row: SaleRow) {
+    if (!scope) return;
+    setReprinting(row.id);
+    setReprintError(null);
+    setReprinted(null);
+    try {
+      await api.post(`/pos/sales/${row.id}/reprint?company_id=${scope.company_id}`, {});
+      setReprinted(row.human_number || row.id.slice(0, 8));
+    } catch (e) {
+      setReprintError(messageFor(e, t));
+    } finally {
+      setReprinting(null);
+    }
+  }
+
   const money = (v: string | null | undefined) =>
     formatMoney(v ?? null, {
       currency: data?.base_currency ?? currency,
@@ -185,6 +216,21 @@ function SalesScreen() {
       width: 'w-32',
       cell: (r) => <span className="font-medium">{money(r.total_inclusive)}</span>,
     },
+    {
+      key: 'reprint',
+      header: t('nx.sales.colReprint'),
+      width: 'w-28',
+      cell: (r) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          busy={reprinting === r.id}
+          onClick={() => void reprint(r)}
+        >
+          {t('nx.sales.reprint')}
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -228,6 +274,13 @@ function SalesScreen() {
           </div>
         }
       />
+
+      <FormError message={reprintError} className="mb-4" />
+      {reprinted ? (
+        <p className="mb-4 text-body text-positive-fg" role="status">
+          {t('nx.sales.reprintRecorded', { number: reprinted })}
+        </p>
+      ) : null}
 
       {error && <ErrorState error={error} onRetry={() => void refetch()} />}
 

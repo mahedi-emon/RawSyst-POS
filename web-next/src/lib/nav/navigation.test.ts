@@ -322,6 +322,9 @@ const PRIMARY_READ: Record<string, string> = {
   periods: '/api/v1/accounting/periods',
   devices: '/api/v1/devices',
   labels: '/api/v1/labels/scheme',
+  setup: '/api/v1/onboarding',
+  workforce: '/api/v1/reports/workforce',
+  settlement: '/api/v1/settlement/pending',
   serials: '/api/v1/serials',
   // `business` is deliberately absent. Every read that screen makes is
   // AccessAuthenticated -- /companies, /stores and the document templates all

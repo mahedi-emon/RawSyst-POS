@@ -782,6 +782,13 @@ func (s *Server) Routes() []Route {
 		{http.MethodGet, "/api/v1/purchasing/returns/{returnID}", AccessPermission, "purchasing.view",
 			s.handleReadPurchaseReturn, ""},
 
+		{http.MethodGet, "/api/v1/purchasing/payments", AccessPermission, "purchasing.view",
+			s.handleListSupplierPayments,
+			"what has been paid. Reading is purchasing.view, not " +
+				"pay_supplier: an auditor reconciling the payables ledger has " +
+				"no authority to move money and every reason to read it — and " +
+				"without this route the reversal below could name no payment, " +
+				"so it was reachable from no screen at all"},
 		{http.MethodPost, "/api/v1/purchasing/payments", AccessPermission, "purchasing.pay_supplier",
 			s.handlePaySupplier, ""},
 		{http.MethodPost, "/api/v1/purchasing/payments/{paymentID}/reverse", AccessPermission, "purchasing.pay_supplier",
@@ -970,6 +977,11 @@ func (s *Server) Routes() []Route {
 		// bank statement are different jobs done by different people.
 		{http.MethodGet, "/api/v1/settlement/pending", AccessPermission, "accounting.view",
 			s.handlePendingSettlement, ""},
+		{http.MethodGet, "/api/v1/settlement/batches", AccessPermission, "accounting.view",
+			s.handleListSettlements,
+			"the deposits already matched; without it a recorded batch could " +
+				"never be found again and the detail route below was reachable " +
+				"from nothing"},
 		{http.MethodPost, "/api/v1/settlement/batches", AccessPermission, "accounting.create",
 			s.handleRecordSettlement, ""},
 		{http.MethodGet, "/api/v1/settlement/batches/{batchID}", AccessPermission, "accounting.view",

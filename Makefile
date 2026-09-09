@@ -117,6 +117,10 @@ build-web: ## Production build of the back office
 contract: ## The generated API contract still matches the router
 	@cd web-next && node scripts/generate-api-contract.mjs --check
 
+.PHONY: reach
+reach: ## Which backend routes the deployed back office can actually reach
+	@cd web-next && node scripts/reachability.mjs
+
 .PHONY: verify-api
 verify-api: ## Screen contracts, against a running API
 	@cd web-next && node scripts/verify-against-api.mjs
@@ -130,6 +134,7 @@ verify: ## Everything that does not need a running server, in memory order
 	@$(MAKE) typecheck
 	@$(MAKE) test-web
 	@$(MAKE) contract
+	@$(MAKE) reach
 	@$(MAKE) fresh-db
 	@$(MAKE) test-backend
 	@$(MAKE) build-web

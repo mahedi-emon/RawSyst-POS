@@ -3,6 +3,7 @@ package receivables
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -43,6 +45,13 @@ type ReverseReceipt struct {
 	// would otherwise reverse the same receipt twice.
 	UUID      uuid.UUID
 	ReceiptID uuid.UUID
+
+	// Reason is why the money is going back, in the words of whoever decided
+	// it. Not stored on the receipt — the document is a fact about money and
+	// carries no editorial — but written into the audit trail, which is where
+	// somebody asking months later why a customer was receipted and then
+	// un-receipted goes to find out.
+	Reason string
 }
 
 // ReversePayment posts a new receipt that undoes an existing one.
@@ -202,10 +211,34 @@ func (s *Service) ReversePayment(
 			return e
 		}
 
-		_, e = tx.Exec(ctx,
+		if _, e = tx.Exec(ctx,
 			`UPDATE customer_receipt SET journal_entry_id = $2 WHERE id = $1`,
-			receiptID, result.EntryID)
-		return e
+			receiptID, result.EntryID); e != nil {
+			return e
+		}
+
+		// The journal says the ledger was put back; the trail says who decided
+		// to put it back and why. Both are needed, and only the first of them
+		// existed. The same entry is written on the payables side by
+		// purchasing.ReversePayment, so the two halves of the ledger read
+		// alike in the audit screen.
+		return audit.Write(ctx, tx, audit.Entry{
+			TenantID: &scope.TenantID, ActorID: &scope.UserID,
+			ActorLabel: audit.LabelFor(ctx, tx, scope.UserID),
+			Action:     "customer_receipt_reversed",
+			EntityType: "customer_receipt", EntityID: &orig.id,
+			Before: map[string]any{
+				"receipt_number": orig.number,
+				"amount":         orig.amount.StringFixed(2),
+				"currency":       currency,
+				"customer":       customer,
+			},
+			After: map[string]any{
+				"reversal_number": number,
+				"reversal_id":     receiptID.String(),
+				"reason":          strings.TrimSpace(in.Reason),
+			},
+		})
 	})
 	return out, err
 }

@@ -12,7 +12,8 @@
     "gen:contract": "node scripts/generate-api-contract.mjs",
     "check:contract": "node scripts/generate-api-contract.mjs --check",
     "verify:api": "node scripts/verify-against-api.mjs",
-    "verify:rbac": "node scripts/verify-rbac.mjs"
+    "verify:rbac": "node scripts/verify-rbac.mjs",
+    "check:reach": "node scripts/reachability.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",

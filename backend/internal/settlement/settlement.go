@@ -36,6 +36,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -225,9 +226,16 @@ func (s *Service) Record(ctx context.Context, scope Scope, in NewBatch) (Batch, 
 			return nil
 		}
 
-		var country string
-		if e := tx.QueryRow(ctx, `SELECT country FROM company WHERE id = $1`,
-			scope.CompanyID).Scan(&country); e != nil {
+		// The currency comes back with the country because a batch that has
+		// just been recorded is shown to the person who recorded it, and it
+		// was going back with no currency at all: `readBatch` reads one and
+		// this path built the struct by hand without it. A replayed deposit
+		// therefore stated its currency and a new one did not, on a screen
+		// whose whole job is matching a figure to a bank statement.
+		var country, currency string
+		if e := tx.QueryRow(ctx,
+			`SELECT country, base_currency FROM company WHERE id = $1`,
+			scope.CompanyID).Scan(&country, &currency); e != nil {
 			if errors.Is(e, pgx.ErrNoRows) {
 				return errs.New(errs.CodeNotFound, "That company was not found.")
 			}
@@ -323,9 +331,30 @@ func (s *Service) Record(ctx context.Context, scope Scope, in NewBatch) (Batch, 
 			Gross:       gross.StringFixed(moneyScale),
 			Fee:         fee.StringFixed(moneyScale),
 			Net:         in.NetAmount.StringFixed(moneyScale),
+			Currency:    currency,
 			Tenders:     settledFrom(covered),
 		}
-		return nil
+
+		// Audited as well as posted. The fee on a settlement is the one figure
+		// in this module that comes from outside the system — somebody reads
+		// it off a bank statement and types it — so the trail has to say who
+		// typed it. Without this, a deposit that quietly wrote off two hundred
+		// riyals of card takings as "fee" named nobody.
+		return audit.Write(ctx, tx, audit.Entry{
+			TenantID: &scope.TenantID, ActorID: &scope.UserID,
+			ActorLabel: audit.LabelFor(ctx, tx, scope.UserID),
+			Action:     "settlement_batch_recorded",
+			EntityType: "settlement_batch", EntityID: &batchID,
+			After: map[string]any{
+				"reference":    strings.TrimSpace(in.Reference),
+				"deposited_on": in.DepositedOn.Format("2006-01-02"),
+				"gross":        gross.StringFixed(moneyScale),
+				"fee":          fee.StringFixed(moneyScale),
+				"net":          in.NetAmount.StringFixed(moneyScale),
+				"currency":     currency,
+				"tenders":      len(covered),
+			},
+		})
 	})
 	if err != nil {
 		return Batch{}, err
@@ -499,6 +528,91 @@ func allocateFee(
 	}
 
 	return shares
+}
+
+// ListedBatch is one deposit as it appears in a list.
+//
+// Deliberately not `Batch`: that struct carries every tender in the deposit,
+// and a month of settlements would fetch a thousand of them to draw a table of
+// twenty rows. What a list needs is the line on the bank statement, the day,
+// the three figures, and how many sales the deposit covered.
+type ListedBatch struct {
+	ID          uuid.UUID `json:"id"`
+	Reference   string    `json:"reference"`
+	DepositedOn string    `json:"deposited_on"`
+	Gross       string    `json:"gross_amount"`
+	Fee         string    `json:"fee_amount"`
+	Net         string    `json:"net_amount"`
+	Currency    string    `json:"currency"`
+	TenderCount int       `json:"tender_count"`
+	// Posted is false for a deposit whose journal entry is missing, which
+	// should not happen — the entry is written in the same transaction — and
+	// which a screen must not silently present as reconciled if it ever does.
+	Posted bool `json:"posted"`
+}
+
+// BatchFilter narrows the deposit list.
+type BatchFilter struct {
+	From  *time.Time
+	To    *time.Time
+	Limit int
+}
+
+// List answers what has been deposited, newest first.
+//
+// # Why this exists
+//
+// `POST /settlement/batches` and `GET /settlement/batches/{id}` were both live
+// and there was no way to get from one to the other: recording a deposit
+// returned its id once, in a response, and nothing could ever find it again.
+// Reconciling a bank statement means reading back what was already matched, so
+// a settlement module you can only write to is a settlement module nobody
+// finishes a month with.
+func (s *Service) List(
+	ctx context.Context, scope Scope, f BatchFilter,
+) ([]ListedBatch, error) {
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+
+	out := []ListedBatch{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT b.id, b.reference, b.deposited_on::text,
+			       round(b.gross_amount, 2)::text,
+			       round(b.fee_amount, 2)::text,
+			       round(b.net_amount, 2)::text,
+			       c.base_currency,
+			       (SELECT count(*) FROM settlement_batch_tender l
+			         WHERE l.batch_id = b.id),
+			       b.journal_entry_id IS NOT NULL
+			FROM settlement_batch b
+			JOIN company c ON c.id = b.company_id
+			WHERE b.company_id = $1
+			  AND ($2::date IS NULL OR b.deposited_on >= $2)
+			  AND ($3::date IS NULL OR b.deposited_on <= $3)
+			ORDER BY b.deposited_on DESC, b.created_at DESC
+			LIMIT $4`, scope.CompanyID, f.From, f.To, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var b ListedBatch
+			if e := rows.Scan(&b.ID, &b.Reference, &b.DepositedOn, &b.Gross,
+				&b.Fee, &b.Net, &b.Currency, &b.TenderCount, &b.Posted); e != nil {
+				return e
+			}
+			out = append(out, b)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, db.Translate(err, "Those deposits could not be read.")
+	}
+	return out, nil
 }
 
 // Read returns a recorded deposit and the payments it covered.

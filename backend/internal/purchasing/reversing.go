@@ -3,6 +3,7 @@ package purchasing
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
@@ -53,6 +55,14 @@ type ReversePaymentRequest struct {
 	// would otherwise reverse the same payment twice.
 	UUID      uuid.UUID
 	PaymentID uuid.UUID
+
+	// Reason is why the money is being taken back, in the words of whoever
+	// decided it. It is not stored on the payment: the document is a fact
+	// about money and carries no editorial. It goes into the audit trail,
+	// which is the register somebody reads when they ask months later why a
+	// supplier was paid and then unpaid — and the answer "PAY-000117 was
+	// reversed" without a reason is the answer that starts the argument.
+	Reason string
 }
 
 // ReversePayment posts a new payment that undoes an existing one.
@@ -232,10 +242,36 @@ func (s *Service) ReversePayment(
 			return e
 		}
 
-		_, e = tx.Exec(ctx,
+		if _, e = tx.Exec(ctx,
 			`UPDATE supplier_payment SET journal_entry_id = $2 WHERE id = $1`,
-			paymentID, result.EntryID)
-		return e
+			paymentID, result.EntryID); e != nil {
+			return e
+		}
+
+		// Recorded here as well as in the journal, because the two answer
+		// different questions. The journal says the ledger was put back; the
+		// trail says WHO decided to put it back and why, which is what an
+		// investigation reads first. The neighbouring acts on this ledger —
+		// approving a blocked bill, overriding a match — have been audited
+		// since B5.2, and taking money back off a supplier is not a smaller
+		// act than either.
+		return audit.Write(ctx, tx, audit.Entry{
+			TenantID: &scope.TenantID, ActorID: &scope.UserID,
+			ActorLabel: audit.LabelFor(ctx, tx, scope.UserID),
+			Action:     "supplier_payment_reversed",
+			EntityType: "supplier_payment", EntityID: &orig.id,
+			Before: map[string]any{
+				"payment_number": orig.number,
+				"amount":         orig.amount.StringFixed(2),
+				"currency":       currency,
+				"supplier":       supplier,
+			},
+			After: map[string]any{
+				"reversal_number": number,
+				"reversal_id":     paymentID.String(),
+				"reason":          strings.TrimSpace(in.Reason),
+			},
+		})
 	})
 	return out, err
 }
@@ -314,4 +350,129 @@ func loadOriginalPayment(
 	}
 
 	return p, nil
+}
+
+// --- Listing what has been paid -------------------------------------------
+
+// PaymentFilter narrows the payment list.
+type PaymentFilter struct {
+	SupplierID *uuid.UUID
+	From       *time.Time
+	To         *time.Time
+	Method     string
+	// ReversibleOnly drops what cannot be undone — a reversal, and a payment
+	// something has already undone. Offering either in a picker teaches the
+	// user that the picker lies, which is the same reason the receipts list
+	// carries `unapplied`.
+	ReversibleOnly bool
+	Limit          int
+}
+
+// ListedPayment is one supplier payment as it appears in a list.
+//
+// Deliberately not `Payment`: that struct carries the full allocation detail,
+// which a list of two hundred would fetch two hundred times. What a person
+// choosing a payment to reverse needs is who was paid, when, how much, against
+// which bills, and whether it can still be undone.
+type ListedPayment struct {
+	ID            uuid.UUID `json:"id"`
+	PaymentNumber string    `json:"payment_number"`
+	SupplierID    uuid.UUID `json:"supplier_id"`
+	Supplier      string    `json:"supplier"`
+	PaidOn        string    `json:"paid_on"`
+	Method        string    `json:"method"`
+	Reference     string    `json:"reference,omitempty"`
+	Amount        string    `json:"amount"`
+	Currency      string    `json:"currency"`
+
+	// Reversal is true when this document exists to undo another payment, and
+	// Reversed when another one has undone THIS one. Both are shown: a
+	// reversed payment is not one anybody may reverse again, and hiding either
+	// would make a figure in the payables ledger unexplainable.
+	Reversal bool `json:"reversal"`
+	Reversed bool `json:"reversed"`
+
+	// Bills names what the payment settled, as short references rather than
+	// ids: a person reading a list of payments recognises the supplier's own
+	// invoice number and nothing else.
+	Bills []string `json:"bills"`
+
+	// Posted is false for a payment that never reached the journal. There is
+	// nothing to reverse in that case and the service says so, so the list
+	// says so first.
+	Posted bool `json:"posted"`
+}
+
+// ListPayments answers what has been paid, newest first.
+//
+// # Why this exists
+//
+// `POST /purchasing/payments/{id}/reverse` has been live since payables landed
+// and nothing could name a payment id: the product could pay a supplier and
+// undo the payment, and offered no way to find the one to undo. The reverse
+// route was reachable only by somebody with a database client. This is its
+// missing half, and the mirror of `receivables.ListReceipts`.
+func (s *Service) ListPayments(
+	ctx context.Context, scope Scope, f PaymentFilter,
+) ([]ListedPayment, error) {
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+
+	out := []ListedPayment{}
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT sp.id, sp.payment_number, sp.supplier_id, s.legal_name,
+			       sp.paid_on::text, sp.method, coalesce(sp.reference,''),
+			       round(sp.amount, 2)::text, sp.currency,
+			       sp.reverses_id IS NOT NULL,
+			       EXISTS (
+			         SELECT 1 FROM supplier_payment r WHERE r.reverses_id = sp.id
+			       ),
+			       sp.journal_entry_id IS NOT NULL,
+			       coalesce((
+			         SELECT array_agg(b.supplier_ref ORDER BY b.supplier_ref)
+			         FROM supplier_payment_allocation a
+			         JOIN purchase_bill b ON b.id = a.bill_id
+			         WHERE a.payment_id = sp.id
+			       ), '{}')
+			FROM supplier_payment sp
+			JOIN supplier s ON s.id = sp.supplier_id
+			WHERE sp.company_id = $1
+			  AND ($2::uuid IS NULL OR sp.supplier_id = $2)
+			  AND ($3::date IS NULL OR sp.paid_on >= $3)
+			  AND ($4::date IS NULL OR sp.paid_on <= $4)
+			  AND ($5 = '' OR sp.method = $5)
+			  AND (NOT $6 OR (
+			        sp.reverses_id IS NULL
+			    AND sp.journal_entry_id IS NOT NULL
+			    AND NOT EXISTS (
+			          SELECT 1 FROM supplier_payment r WHERE r.reverses_id = sp.id
+			        )
+			  ))
+			ORDER BY sp.paid_on DESC, sp.created_at DESC
+			LIMIT $7`,
+			scope.CompanyID, f.SupplierID, f.From, f.To, f.Method,
+			f.ReversibleOnly, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var p ListedPayment
+			if e := rows.Scan(&p.ID, &p.PaymentNumber, &p.SupplierID, &p.Supplier,
+				&p.PaidOn, &p.Method, &p.Reference, &p.Amount, &p.Currency,
+				&p.Reversal, &p.Reversed, &p.Posted, &p.Bills); e != nil {
+				return e
+			}
+			out = append(out, p)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, db.Translate(err, "Those payments could not be read.")
+	}
+	return out, nil
 }

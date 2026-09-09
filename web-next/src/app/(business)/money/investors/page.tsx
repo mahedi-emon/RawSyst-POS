@@ -24,6 +24,7 @@
 // still resolves, so the row stays and says which it is.
 
 import { HandCoins } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
@@ -67,6 +68,7 @@ interface MoneyAccount {
 
 function InvestorsScreen() {
   const t = useT();
+  const router = useRouter();
   const scope = useCompanyScope();
   const { currency, market } = useCompany();
   const grants = useGrants();
@@ -209,7 +211,17 @@ function InvestorsScreen() {
       header: t('nx.inv.recordHeader'),
       width: 'w-32',
       cell: (x) => (
-        <Button size="sm" variant="ghost" onClick={() => setMovement(x)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          // The row opens the statement, so a control inside it has to stop
+          // the click reaching the row. Without this, recording a movement
+          // navigates away from the form it just opened.
+          onClick={(e) => {
+            e.stopPropagation();
+            setMovement(x);
+          }}
+        >
           {t('nx.inv.record')}
         </Button>
       ),
@@ -220,7 +232,10 @@ function InvestorsScreen() {
 
   return (
     <>
-      <PageHeader title={t('nx.inv.title')} description={t('nx.inv.subtitle')} />
+      <PageHeader
+        title={t('nx.inv.title')}
+        description={t('nx.inv.subtitleWithStatement')}
+      />
 
       <FormError message={actionError} fields={fieldErrors} className="mb-4" />
 
@@ -316,6 +331,10 @@ function InvestorsScreen() {
           columns={columns}
           rowKey={(x) => x.id}
           caption={t('nx.inv.caption')}
+          // Opens the capital account. C3.2 asks for a statement by name and
+          // nothing in the product could open one: the register showed a net
+          // figure and the history behind it was reachable from no screen.
+          onOpenRow={(x) => router.push(`/money/investors/${x.id}`)}
         />
       ) : null}
     </>

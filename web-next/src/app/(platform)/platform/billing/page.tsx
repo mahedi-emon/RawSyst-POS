@@ -138,6 +138,15 @@ function BillingScreen() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  // Raising an invoice for the selected client, and the periodic suspension
+  // run. Two different acts on two different scopes, kept apart.
+  const [raising, setRaising] = useState(false);
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [amount, setAmount] = useState('');
+  const [invoiceNote, setInvoiceNote] = useState('');
+  const [dunning, setDunning] = useState(false);
+
   const sub = data?.subscription;
   const limits = sub?.limits;
 
@@ -214,6 +223,67 @@ function BillingScreen() {
       void refetch();
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Billing a client for the software.
+   *
+   * `POST /platform/tenants/{id}/invoices` was live and reachable from
+   * nothing: the screen could mark an invoice paid and could not raise one, so
+   * every subscription invoice this product has ever issued was inserted by
+   * hand. This is the platform's own ledger and it never touches the client's
+   * sales books.
+   */
+  async function raiseInvoice() {
+    if (!tenantId) return;
+    setBusy(true);
+    setActionError(null);
+    setFieldErrors(null);
+    setNote(null);
+    try {
+      const out = await api.post<{ invoice: SubInvoice }>(
+        `/platform/tenants/${tenantId}/invoices`,
+        {
+          period_start: periodStart,
+          period_end: periodEnd,
+          amount: amount.trim(),
+          note: invoiceNote.trim(),
+        },
+      );
+      setNote(t('nx.plat.biRaised', { no: out.invoice.invoice_no }));
+      setAmount('');
+      setInvoiceNote('');
+      setRaising(false);
+      void refetch();
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
+      setActionError(messageFor(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Suspending every client past its grace period.
+   *
+   * Idempotent, so pressing it twice is safe — the route says so. It is the
+   * one control on this screen that acts on clients other than the one
+   * selected, so it says how many it moved rather than reporting success.
+   */
+  async function runDunning() {
+    setBusy(true);
+    setActionError(null);
+    setNote(null);
+    try {
+      const out = await api.post<{ suspended: number }>('/platform/dunning', {});
+      setNote(t('nx.plat.biDunningDone', { n: String(out.suspended) }));
+      setDunning(false);
+      void refetch();
+    } catch (e) {
       setActionError(messageFor(e, t));
     } finally {
       setBusy(false);
@@ -327,6 +397,28 @@ function BillingScreen() {
       />
 
       <Panel className="mb-4">{picker}</Panel>
+
+      {/* Suspending clients past their grace period. Acts on every client
+          rather than the one selected, so it sits outside the picker and says
+          how many it moved. */}
+      <Panel
+        className="mb-4"
+        title={t('nx.plat.biDunningTitle')}
+        description={t('nx.plat.biDunningHint')}
+      >
+        {dunning ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="destructive" busy={busy} onClick={() => void runDunning()}>
+              {t('nx.plat.biRunDunning')}
+            </Button>
+            <Button variant="ghost" onClick={() => setDunning(false)}>
+              {t('nx.plat.biCancel')}
+            </Button>
+          </div>
+        ) : (
+          <Button onClick={() => setDunning(true)}>{t('nx.plat.biDunning')}</Button>
+        )}
+      </Panel>
 
       {tenantId === '' ? (
         <EmptyState
@@ -477,6 +569,81 @@ function BillingScreen() {
               usually answering "why can they not use X", and that is this
               panel rather than the invoice list. */}
           <ModulesPanel tenantId={tenantId} />
+
+          {/* Raising one. The screen could mark an invoice paid and could not
+              issue one, so every subscription invoice this product has ever
+              billed was inserted by hand. */}
+          <Panel
+            title={t('nx.plat.biRaiseTitle')}
+            description={t('nx.plat.biRaiseHint')}
+            actions={
+              raising ? (
+                <Button variant="ghost" onClick={() => setRaising(false)}>
+                  {t('nx.plat.biCancel')}
+                </Button>
+              ) : (
+                <Button onClick={() => setRaising(true)}>{t('nx.plat.biRaise')}</Button>
+              )
+            }
+          >
+            {raising ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field name="period_start" label={t('nx.plat.biPeriodStart')} required>
+                    <Input
+                      type="date"
+                      className="num"
+                      value={periodStart}
+                      onChange={(e) => setPeriodStart(e.target.value)}
+                    />
+                  </Field>
+                  <Field name="period_end" label={t('nx.plat.biPeriodEnd')} required>
+                    <Input
+                      type="date"
+                      className="num"
+                      value={periodEnd}
+                      onChange={(e) => setPeriodEnd(e.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    name="amount"
+                    label={t('nx.plat.biAmount')}
+                    hint={t('nx.plat.biAmountHint')}
+                    required
+                  >
+                    <Input
+                      numeric
+                      inputMode="decimal"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                    />
+                  </Field>
+                  <Field name="note" label={t('nx.plat.biNote')}>
+                    <Input
+                      value={invoiceNote}
+                      onChange={(e) => setInvoiceNote(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    variant="primary"
+                    busy={busy}
+                    disabled={
+                      periodStart === '' || periodEnd === '' || amount.trim() === ''
+                    }
+                    onClick={() => void raiseInvoice()}
+                  >
+                    {t('nx.plat.biRaiseIt')}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="max-w-prose text-body text-muted">
+                {t('nx.plat.biRaiseHint')}
+              </p>
+            )}
+          </Panel>
 
           <Panel title={t('nx.plat.biInvoicesTitle')} flush>
             {(data?.invoices ?? []).length === 0 ? (

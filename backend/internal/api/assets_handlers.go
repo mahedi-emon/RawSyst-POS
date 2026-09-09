@@ -361,11 +361,42 @@ func (s *Server) handleInvestorStatement(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	out, err := s.assets.Statement(r.Context(), scope, investorID)
+	// Both ends optional and both inclusive, which is what "January to March"
+	// means to the person asking. An unparseable date is refused rather than
+	// ignored: a statement silently covering all time because a typo dropped
+	// the filter is the wrong figure presented as the right one.
+	var period assets.StatementPeriod
+	q := r.URL.Query()
+	for _, d := range []struct {
+		key  string
+		into **time.Time
+	}{{"from", &period.From}, {"to", &period.To}} {
+		raw := strings.TrimSpace(q.Get(d.key))
+		if raw == "" {
+			continue
+		}
+		when, e := time.Parse("2006-01-02", raw)
+		if e != nil {
+			httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+				"Dates look like 2026-08-16."))
+			return
+		}
+		*d.into = &when
+	}
+	if period.From != nil && period.To != nil && period.To.Before(*period.From) {
+		httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+			"The period has to end on or after it starts."))
+		return
+	}
+
+	out, err := s.assets.Statement(r.Context(), scope, investorID, period)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
+	// `data` keeps its name, and the statement is now an object rather than a
+	// bare list: the movements are inside it, alongside the opening and
+	// closing balances that make them a statement instead of a list.
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
