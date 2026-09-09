@@ -8,9 +8,9 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 
 | | |
 |---|---|
-| **Last verified** | 2026-09-04 |
+| **Last verified** | 2026-09-09 |
 | **Branch** | `international-markets-and-counters` |
-| **Scale** | 124 migrations · 463 routes · 102 permissions · 1,165 Go test functions |
+| **Scale** | 130 migrations · 498 routes · 110 permissions · 1,180+ Go test functions |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
 
 ---
@@ -6745,3 +6745,288 @@ country, and a shift outside the register's window.
 B16 (fitting history) and F4 (inter-company) were COMPLETE against their
 backends and are now complete against a user. I1/I2 gained the logo the
 document template already promised.
+
+---
+
+# COMPLETION PASS — 2026-09-09 (second session of the day)
+
+**Brief:** audit the whole repository independently, do not trust the previous
+report, remove the software-side EOSB blocker, make the development Platform
+Owner `mahedi.emon62@gmail.com`, fix every unreachable capability, verify, and
+leave the stack running.
+
+## The audit found the previous reachability figure was measured wrongly
+
+The first session of 2026-09-09 reported **six** screenless routes. That number
+came from searching `web-next/src`, `shared/src` and `pos/src` together for each
+route's path.
+
+**`web-next` imports nothing from `shared/src/api`.** It uses `shared` for the
+i18n strings and for nothing else — three files, all `@rawsyst/shared/i18n`.
+`shared/src/api/*` is the *frozen* front end's client layer and the till's. So
+every route that had a client function in `shared/src/api` counted as reached
+while no screen in the deployed back office could call it.
+
+Measured against `web-next/src` alone, of **498** routes:
+
+| | before this pass | after |
+|---|---|---|
+| path written out in a screen | 422 | 434 |
+| reached with the last segment computed (`/orders/${id}/${what}`) | 49 | 44 |
+| **nothing reaches** | **27** | **20** |
+
+The 20 are itemised below, each with a verdict. Seven were closed by building
+the screen; nothing was closed by widening the measurement.
+
+## EOSB — the software-side dependency is gone
+
+### What was investigated
+
+Whether the entitlement figures can be obtained and checked programmatically.
+They cannot, and the reason is a fact about the source rather than about this
+product: Saudi primary legislation is published as prose. The Bureau of Experts
+serves it as HTML only, not in bulk and not as data; the Open Data Platform
+carries labour datasets but not the statute's parameters. A ministry
+knowledge-centre page states the award in English prose, and scraping a summary
+page into `days_per_year_first_five` would present a parsed sentence as a figure
+the product had established.
+
+So the figures stay outside. **What was software's to fix is that they could
+only get in through a browser.**
+
+### What was built
+
+`cmd/regulatory` and `internal/registry/attest.go` — an attested regulatory
+source file.
+
+    regulatory                                  what is still outstanding; exits
+                                                non-zero while one blocks release
+    regulatory -template -country sa > s.json   the file to fill in, generated
+                                                from what THIS installation wants
+    regulatory -check  -file s.json             validates, writes nothing
+    regulatory -apply  -file s.json             records it
+
+One person reads the cited articles once, writes the figures and their name in a
+file, and every environment after that consumes the same file with no human in
+the loop. The template carries the citation, the articles, each field's label,
+unit and meaning, and the date rule — everything software can legitimately
+establish.
+
+**Five refusals keep it from becoming a way to invent law:**
+
+* only rules the embedded source pack describes; an unknown key is refused
+* only fields that currently hold `__VERIFY__`; correcting a recorded figure
+  stays on the screen where a person sees what they are replacing
+* every value checked against what the pack says it is — a choice must be one of
+  the choices, a fraction must lie between 0 and 1 (`33` for a third is refused
+  by name, because the arithmetic would be valid and would pay thirty-three
+  awards)
+* `read_by` must resolve to an active platform operator **on this installation**
+* `__VERIFY__` cannot be written back
+
+Idempotent: the same file applied twice records once. Supersession, the audit
+entry and the cache invalidation are the screen's, because it calls `RecordRule`
+rather than reimplementing it.
+
+**The effective date moves forward and cannot move back.** A rule resolves at
+the date of the document being processed, so a period the product refused to
+compute must go on refusing when a report is re-run. An attestation therefore
+takes effect *after* the placeholder it replaces; the article's own date belongs
+in the citation, and the template says so.
+
+Shipped in the image as `/regulatory` and as a compose `setup` service, because
+the API refuses to start while a blocker is open and the screen that could clear
+it is served by that API. That circle is what the file breaks.
+
+### Two defects found while building it
+
+1. **`RecordRule` wrote no audit entry.** The neighbouring rate workflow has had
+   audited review, verification and activation since 0120. Recording the legal
+   value itself — the most consequential act a platform operator performs, since
+   every business in the market computes from it — was recorded nowhere, and for
+   an *unverified* record `verified_by` is NULL so nobody was named at all.
+2. **The resolver's cache keyed by MONTH.** Sound while every value was seeded by
+   a migration or superseded on the first of something. An attestation's
+   effective date is the day somebody records it, almost never the first — so a
+   placeholder in force until the 9th and a verified figure from the 9th shared
+   one key, and whichever a process resolved first governed the whole month *for
+   that process*. Two API instances could disagree about one payroll run with
+   nothing reporting a conflict. Keyed by the exact date now, bounded at 4,096
+   entries by clearing rather than by adding an LRU and a second lock.
+
+### Status
+
+**Software-complete.** The remaining input is one person reading Articles 84 and
+85 and putting their name to what they read. Both gates are unchanged: every
+point of use refuses while unverified, and a production deployment serving that
+market refuses to start.
+
+## Platform Owner
+
+`mahedi.emon62@gmail.com`, one account, moved rather than duplicated.
+
+* **Development database** — already this address. `cmd/devseed` moves the
+  existing operator rather than adding a second, and reads
+  `RAWSYST_PLATFORM_EMAIL` from `backend/.env`.
+* **Compose deployment** — was `owner@rawsyst.test`. Recovered, then moved
+  through the product's own `PUT /platform/operators/{id}/email`, so the trail
+  carries `platform_operator_email_changed` rather than a hand-written UPDATE.
+  One operator, `must_change_password` true.
+* Credentials live in `.env` files, both gitignored. Nothing is in source.
+
+### `cmd/bootstrap -recover`, and why it is not a back door
+
+A deployment with ONE operator who has lost their password had no way back in.
+`bootstrap` refuses because an operator exists — the refusal that makes it safe
+to ship. The forgotten-password flow needs mail a fresh deployment may not have.
+`POST /platform/users/{id}/reset-password` needs the Super Admin session that has
+been lost. The only remedy was hand-written SQL against production.
+
+`-recover` issues a one-time password for an operator who **already exists**,
+refuses to create one, refuses a business user, revokes every session the account
+holds, and is audited. It adds no authority: whoever can run it already holds the
+database credentials, and anybody holding those can insert an operator by hand.
+Four tests pin exactly those properties.
+
+### Four audit entries named nobody
+
+`actor_label` is denormalised precisely so the trail survives a user row being
+deleted — the audit package's own comment says so, and names the defect it was
+written to stop. All four entries in `internal/identity` were committing it:
+signing in, changing a password, a Super Admin resetting one, and a refresh token
+presented twice. The last two are what an incident review reads first. Fixed,
+with `TestTheTrailNamesWhoActed` and `TestChangingAPasswordNamesTheActor` holding
+it.
+
+## Seven unreachable capabilities, built
+
+| Capability | Routes | Why it mattered |
+|---|---|---|
+| **Open and amend a branch** | `POST`/`PUT /companies/{id}/branches` | The table was read-only. A Saudi branch cannot invoice without its National Address, the till refuses the sale citing BR-KSA-09/37/66, and the screen showing that refusal offered no form to answer it. A shop could be blocked from trading by four empty boxes |
+| **Amend a person; give and take away a role** | `PUT /people/{id}`, `POST /people/{id}/roles`, `DELETE /people/roles/{id}` | `identity.manage_roles` was grantable with nothing to exercise it beyond the create form. Promoting a cashier, moving somebody between branches, taking an approval limit off a leaver: none possible, and the product refuses to delete a person because their name is on the invoices they rang up |
+| **Reset a platform operator's password** | `POST /platform/users/{id}/reset-password` | `cmd/bootstrap` says to do this "in Super Admin" and there was nowhere |
+| **Adjust a customer's points** | `GET`/`POST /loyalty/members/{id}[/adjust]` | `loyalty.manage` had no per-customer workflow. The alternative to it is ringing up a fake sale, which puts revenue and tax on a month that did not earn them |
+| **Give store credit** | `GET /wallets/{id}`, `POST /wallets/{id}/credit` | The same, for `wallet.manage` |
+| **Group members** | `POST /groups/{id}/members`, `DELETE .../{memberID}` | `group.manage` could create a group and nothing else, so every group was empty, the consolidated statement had nothing to consolidate, and F4's inter-company elimination had no members whose trade it could eliminate |
+| **Tax authorities and rates** | `POST /platform/jurisdictions`, `.../{id}/rates`, `.../import` | E8's own note: "the operation could only be performed with a SQL client against production". The only rates the product has are a migration's; no operator could add a county, correct a rate, or bring in next quarter's schedule |
+
+Two defects in that last screen were found by driving it against a live server
+rather than by reading it: it offered a jurisdiction level the CHECK constraint
+forbids (`special`), and it let a non-country level be saved with no parent —
+`tax_jurisdiction_root_is_country` refuses that, and a parentless county is a
+county whose state's share silently never applies. Both are the form's own rule
+now, and `parseSchedule` moved to `src/lib/tax/schedule.ts` with eight tests,
+including a name with a comma in it (`Rancho Santa Fe, unincorporated` is a real
+CDTFA row, and splitting on the comma shifts every column right).
+
+## The twenty that remain, each with a verdict
+
+**Correctly screenless — infrastructure, machine-to-machine, or the till (10):**
+
+| Route | Category |
+|---|---|
+| `/healthz`, `/readyz`, `/metrics`, `/meta/version` | E — infrastructure |
+| `/meta/ping` | B — a terminal asking whether it can sync |
+| `/live` | B — the websocket a screen opens, not a screen |
+| `POST /store-credit/expire` | D — enqueued daily by the worker |
+| `DELETE /stock/reservations/{orderID}` | C — B13's second sales channel, over the API |
+| `POST /payment-attempts/{id}/refund` | B — a till action |
+| `POST /eosb/accrue` | D — a monthly charge, run by the payroll job so the liability is never discovered at termination |
+
+**Genuinely missing, and NOT built in this pass (10):**
+
+| Route | What is missing |
+|---|---|
+| `PUT /onboarding/steps/{step}`, `POST /onboarding/steps/{step}/complete` | A5's setup wizard has no front end in `web-next`. `shared/src/api/onboarding.ts` is the frozen front end's client. A business is usable without it — the platform provisions the tenant and `/settings/business` configures it — but the wizard the backend supports is unreachable |
+| `POST /purchasing/payments/{id}/reverse` | A supplier payment cannot be reversed from a screen |
+| `POST /receivables/receipts/{id}/reverse` | Nor a customer receipt |
+| `POST /settlement/batches`, `GET /settlement/batches/{id}` | Recording a card settlement, and reading one back |
+| `GET /investors/{id}/statement` | One investor's statement; the register shows movements only |
+| `PUT /labels/barcodes/{variantID}` | B3's manual barcode override |
+| `PUT`/`DELETE /labels/templates/{id}` | A label template can be created and listed, not edited or removed |
+| `DELETE /privacy/activities/{id}`, `GET /privacy/destructions` | Removing a processing activity; the destruction record |
+| `GET /reports/workforce` | The head count and ratio |
+| `GET /notifications/unread` | The bell's own count |
+
+These are **recorded, not resolved**. Each is a screen or a control on an
+existing screen, none is blocked by anything, and none was built in this pass
+because the pass ran out of room before it ran out of findings. They are the next
+task, in that order.
+
+## Verification
+
+    clean migration from zero    130 migrations, 183 tables, 175 forced RLS,
+                                 175 policies, 44 rules, 542 CDTFA rates    PASS
+    backend, every package       integration tags, fresh test database      PASS
+    backend, internal/api        330s                                       PASS
+    go vet / vet -tags=integration                                          PASS
+    gofmt -s -l                  clean
+    lint-wording                 1,445 files                                PASS
+    typecheck                    shared and web-next                        PASS
+    web-next tests               499 passed / 31 files                      PASS
+    shared tests                 482 passed / 29 files                      PASS
+    production build             122 static pages, no warnings              PASS
+    check:contract               498 routes, 110 permissions (103 gated)    PASS
+    verify:api                   ALL SCREEN CONTRACTS VERIFIED              PASS
+    verify:rbac                  EVERY BOUNDARY HELD                        PASS
+    regulatory, in the container report, template, and a check that refuses
+                                 an unattested file by name                 PASS
+    bootstrap                    refuses a second operator                  PASS
+    bootstrap -recover           issues, forces a change, ends every
+                                 session, audits; refuses a non-operator
+                                 and refuses a business user                PASS
+    branches, driven             opened, amended, closed                    PASS
+    people, driven               amended, role given, role taken away       PASS
+    rewards, driven              wallet read, credit given, card read,
+                                 points adjusted                            PASS
+    tax admin, driven            authority added under its country, rate
+                                 recorded, schedule imported                PASS
+    docker compose up            four containers healthy                    PASS
+    sign-in through the stack    operator recovered, moved, signed in       PASS
+
+Not exercised: the group-member routes need a plan that sells group
+consolidation and the demo tenant's does not — the screen's own 402 state covers
+that case. The backend suite exercises the routes.
+
+## Resources, measured on the running stack
+
+| Container | Resident | Ceiling |
+|---|---|---|
+| `db` | 17.6 MiB | 384 MiB |
+| `api` | 6.7 MiB | 256 MiB |
+| `web` | 47.1 MiB | 256 MiB |
+| `worker` | 4.6 MiB | 128 MiB |
+| **total** | **~76 MiB** | **1,024 MiB** |
+
+Database connections: **8 of 20**. `shared_buffers` 80 MB, `work_mem` 4 MB,
+`effective_cache_size` 240 MB. Durability untouched: `fsync`,
+`full_page_writes` and `synchronous_commit` all on, data checksums on.
+
+**An operational trap worth knowing.** The database container was running with
+the BASE file's 1 GiB ceiling although `up -d --build` had been given both files;
+the merged config was correct and the running container was not.
+`docker compose … up -d --force-recreate db` applied it. After changing a
+resource limit, force-recreate the service rather than trusting `up`.
+
+| Image | Size |
+|---|---|
+| `rawsyst/backend` | **89.7 MB** (`scratch`, five static binaries, non-root) |
+| `rawsyst/web` | **329 MB** (distroless, no shell, non-root) |
+| `postgres:17-alpine` | 424 MB |
+
+The backend grew 76.2 to 89.7 MB when `regulatory` was added, which is the price
+of a deployment that can record its own legal values without a shell.
+
+Caches: Go build 1,507 MB, Go modules 610 MB, npm 710 MB, Next output 652 MB,
+Docker reclaimable 3,855 MB — every one under its threshold, so `make
+maintenance` cleans nothing. 12 GB free on the volume.
+
+## Markers
+
+`TODO`, `FIXME`, `not implemented`, `coming soon`: **none** in `backend`,
+`web-next/src`, `shared/src`, `pos/src` or `scripts`. The only matches in the
+tree are inside `web-next/.next`, which is Next.js's own generated output.
+
+`__VERIFY__`: **five rules**, one of them release-blocking
+(`SA.EOSB.ENTITLEMENT`). All five are described by the source pack, so all five
+can be recorded from a file. That is the mechanism, not a gap.
