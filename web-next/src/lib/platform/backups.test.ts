@@ -116,8 +116,19 @@ describe('the backup vocabulary', () => {
    * "Not checked yet" and "Proved to restore" cannot be allowed to converge.
    */
   it('keeps "not checked" and "proved to restore" apart in words', () => {
-    const uploaded = en[PHASE_LABEL.uploaded];
-    const verified = en[PHASE_LABEL.verified];
+    // Read through the same guard the screen uses: a phase with no entry is
+    // the failure this file exists to catch, so name it rather than letting
+    // an `undefined` index throw something unreadable.
+    const wording = (phase: string): string => {
+      const key = PHASE_LABEL[phase];
+      expect(key, `no label for phase ${phase}`).toBeDefined();
+      const text = en[key as keyof typeof en];
+      expect(text, `no English for ${String(key)}`).toBeDefined();
+      return text as string;
+    };
+
+    const uploaded = wording('uploaded');
+    const verified = wording('verified');
 
     expect(uploaded).not.toEqual(verified);
     expect(uploaded.toLowerCase()).toContain('not checked');
