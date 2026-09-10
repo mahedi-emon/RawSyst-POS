@@ -46,6 +46,20 @@ logs/
 dist/
 build/
 
+# ...except the Go package called `build`, which is source and not an artifact.
+#
+# `build/` above matches a directory of that name at ANY depth, so it swallowed
+# `backend/internal/build/` — the one variable every command reads to say which
+# build it came from. The package compiled here and did not exist in the
+# repository, so CI failed at `go vet` in one second with "no required module
+# provides package .../internal/build" while everything passed locally. A
+# .gitignore rule that hides source is invisible exactly to the person who
+# wrote the source.
+#
+# The directory is re-included rather than the file: git does not descend into
+# an excluded directory, so un-ignoring a file inside one does nothing.
+!backend/internal/build/
+
 # Local tool config (personal, not shared)
 .claude/settings.local.json
 .serena/project.local.yml
