@@ -133,7 +133,7 @@ services:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/migrate"]
+    entrypoint: ["/rawsyst", "migrate"]
     environment: &backend-env
       RAWSYST_ENV: ${RAWSYST_ENV:-production}
       RAWSYST_DATA_REGION: ${RAWSYST_DATA_REGION:-sa}
@@ -190,7 +190,7 @@ services:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/bootstrap"]
+    entrypoint: ["/rawsyst", "bootstrap"]
     environment:
       <<: *backend-env
     depends_on:
@@ -226,7 +226,7 @@ services:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/regulatory"]
+    entrypoint: ["/rawsyst", "regulatory"]
     environment:
       <<: *backend-env
       RAWSYST_REGULATORY_SOURCE: ${RAWSYST_REGULATORY_SOURCE:-}
@@ -255,7 +255,7 @@ services:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/ingest"]
+    entrypoint: ["/rawsyst", "ingest"]
     environment:
       <<: *backend-env
     volumes:
@@ -274,7 +274,7 @@ services:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
     restart: unless-stopped
-    entrypoint: ["/api"]
+    entrypoint: ["/rawsyst", "api"]
     environment:
       <<: *backend-env
       RAWSYST_HTTP_ADDR: ":8080"
@@ -290,7 +290,7 @@ services:
       # itself. `/readyz` and not `/healthz`: the first says the database
       # answers, the second only says the process is alive — and a process that
       # is alive with no database is exactly what must not receive traffic.
-      test: ["CMD", "/api", "-healthcheck"]
+      test: ["CMD", "/rawsyst", "api", "-healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -310,7 +310,7 @@ services:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
     restart: unless-stopped
-    entrypoint: ["/worker"]
+    entrypoint: ["/rawsyst", "worker"]
     environment: *backend-env
     depends_on:
       db:

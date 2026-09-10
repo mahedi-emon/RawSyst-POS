@@ -94,17 +94,24 @@ func TestEveryJobKindIsRegisteredByTheWorker(t *testing.T) {
 		t.Fatal("no job kinds found; this guard is not looking where it thinks")
 	}
 
-	main, err := os.ReadFile(filepath.Join("..", "..", "cmd", "worker", "main.go"))
+	// `internal/cmd/worker`, not `cmd/worker`. The six shipped commands were
+	// moved into importable packages so the image could carry one binary
+	// instead of six; `cmd/worker/main.go` is now a four-line wrapper and this
+	// guard, reading it, found every kind unregistered. Which is the guard
+	// working: a file move that quietly stops a check from checking is exactly
+	// what it exists to catch.
+	worker, err := os.ReadFile(
+		filepath.Join("..", "cmd", "worker", "worker.go"))
 	if err != nil {
 		t.Fatalf("read the worker: %v", err)
 	}
 
 	for name, kind := range kinds {
-		if !strings.Contains(string(main), "jobs."+name) {
+		if !strings.Contains(string(worker), "jobs."+name) {
 			t.Errorf("jobs.%s (%q) is defined and the worker never registers it.\n"+
 				"Nothing will ever run it, and every test of its handler passes "+
 				"because they call the handler directly. Register it in "+
-				"cmd/worker, or delete the kind.", name, kind)
+				"internal/cmd/worker, or delete the kind.", name, kind)
 		}
 	}
 }

@@ -25,6 +25,22 @@ const nextConfig = {
   // Deploys as a container beside the Go API rather than to a serverless host.
   output: 'standalone',
 
+  // Nothing in this product uses `next/image`.
+  //
+  // The back office renders icons as inline SVG and the one uploaded asset —
+  // a business's logo — is served by an authenticated API route, which is not
+  // something the optimizer can fetch. So the image optimizer is dead weight,
+  // and it is not cheap dead weight: it pulls `sharp` into the standalone
+  // trace, and `sharp` ships a native binary per platform and libc plus a
+  // WebAssembly fallback. Measured in the runtime image: 30MB of the 93MB
+  // application layer, for a feature nothing calls.
+  //
+  // Saying so here removes it from the trace rather than deleting it
+  // afterwards, so the build and the image agree about what is in the product.
+  // The day somebody adds an <Image>, this line is what they will have to
+  // change, and the comment above it says what it costs.
+  images: { unoptimized: true },
+
   // Next writes AGENTS.md and CLAUDE.md into the project on first run. Refused:
   // files that instruct a coding agent are not build output, and a CLAUDE.md in
   // particular is read as instructions by any agent working in this repository

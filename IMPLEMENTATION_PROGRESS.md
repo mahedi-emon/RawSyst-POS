@@ -14,6 +14,7 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 | **Software development** | **COMPLETE.** No feature is unbuilt, disabled, unreachable, ungated or waiting for a developer. Zero `TODO`, `FIXME`, `not implemented` or `coming soon` in `backend`, `web-next/src`, `shared/src`, `pos/src` or `scripts`. Zero reachability gaps. |
 | **Regulatory data** | **Ingested and active.** `SA.EOSB.ENTITLEMENT` holds the figures Articles 84 and 85 state, read out of the Ministry of Human Resources and Social Development's own publication of the Labour Law, retrieved and hashed by the product, with the sentence behind every value on record. Nothing is awaiting a figure. |
 | **External dependency** | The Fatoora one-time password. ZATCA issues a compliance certificate only against a password the taxpayer reads from their own portal. The whole workflow around it is built. |
+| **Deployment** | Sized for the production server it goes on: 2 vCPU, 3.7 GiB, 48 GB, Ubuntu 24.04. `docker-compose.server.yml` plus `deploy/server/`. Images 296 MB for both services, down from 438 MB. |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
 
 **Two categories, deliberately kept apart.** Software completeness and
@@ -8222,3 +8223,194 @@ figures Articles 84 and 85 state, read out of the Ministry's own publication,
 with the document, its checksum and the sentence behind every value on record.
 Nothing is awaiting a figure. There is no external data source outstanding for
 end of service.
+
+---
+
+# THE MACHINE IT ACTUALLY RUNS ON (2026-09-10, fourth pass)
+
+The production server is two virtual cores, 3.7 GiB of memory and 48 GB of
+disk, with no swap and no Docker on it yet. Everything in this repository was
+sized for "a small server" in the abstract or for an 8 GB developer's laptop.
+This pass sizes it for that machine, and makes the images small enough that
+putting it there is a short download rather than a long one.
+
+## The images
+
+| | before | after | |
+|---|---|---|---|
+| `rawsyst/backend` | 107 MB | **32.9 MB** | −69% |
+| `rawsyst/web` | 331 MB | **263 MB** | −21% |
+| both together | 438 MB | **296 MB** | −32% |
+
+`postgres:17-alpine` is 424 MB and stays. A slimmer base exists; changing the
+Postgres image changes its ICU and locale build, and a collation change under
+an existing database is a data-integrity problem that is not worth 150 MB.
+
+### Six binaries were one binary all along
+
+The backend image carried the API, the worker, the migrator, the bootstrap, the
+regulatory recorder and the source ingester as six separate executables — 22,
+12, 11, 10, 10 and 11 MB. They share a module, a config loader, a database
+layer and a registry, so the image paid for that six times.
+
+Compiled together they are **21.5 MB**: one binary about the size of the
+largest, because the linker keeps one copy of what they have in common.
+
+The six now live in `internal/cmd/<name>` with a `Main()` each, `cmd/rawsyst`
+dispatches on the first argument, and `cmd/<name>/main.go` is a four-line
+wrapper so that `go run ./cmd/api` still works — which is what the Makefile,
+the tests and every runbook here say to type. Compose entrypoints became
+`["/rawsyst", "api"]` and so on.
+
+Two things this broke, both caught by things that exist to catch them:
+
+- A guard in `internal/jobs` reads the worker's source to check every job kind
+  is registered. It was reading `cmd/worker/main.go`, which is now a wrapper,
+  so it reported every kind unregistered. Repointed. A file move that quietly
+  stops a check from checking is exactly what that guard is for.
+- The mechanical rename of the `version` identifier reached three places it
+  should not have: `SELECT max(version) FROM schema_migration` became
+  `max(build.Version)`, and two error messages with it. The API refused to
+  start with `missing FROM-clause entry for table "build"`, which is how it was
+  found — by running the stack rather than by reading the diff.
+
+### An image optimizer with no images
+
+Nothing in this product uses `next/image`. The back office draws its icons as
+inline SVG and its one uploaded asset, a business's logo, is served by an
+authenticated API route the optimizer could not fetch if it were asked to.
+
+Next traced `sharp` into the standalone output anyway, because the code path
+exists in the server bundle whether or not a route reaches it — and `sharp`
+brings a libvips build per platform **and** per C library, plus a WebAssembly
+fallback. 44.3 MB of a 92.7 MB application layer, for a feature with no caller.
+
+`images: { unoptimized: true }` in the config, a `rm -rf` of `@img` and `sharp`
+in the Dockerfile, and `image-optimizer.test.ts` holding the two together: turn
+the optimizer back on and the test fails and says what else has to change,
+rather than the deployment failing on its first optimized image with a
+module-not-found for a package somebody deleted eighteen months earlier.
+
+Application layer: 92.7 MB → **45.5 MB**.
+
+## The profile
+
+`docker-compose.server.yml`, and the memory budget is in the file:
+
+| | ceiling | measured at rest |
+|---|---|---|
+| database | 768M | 31 MB |
+| API | 384M | 7 MB |
+| back office | 320M | 44 MB |
+| worker | 192M | 3 MB |
+| **total** | **1.63 GiB** | **86 MB** |
+
+3.7 GiB less about 0.5 for the operating system leaves roughly 1.6 GiB over the
+ceilings, and that is not spare — it is the page cache, which is where a
+database this size keeps its working set. Hence `effective_cache_size=1GB`,
+which tells the planner to expect it. Giving that memory to `shared_buffers`
+instead would cache the same pages twice.
+
+Two cores is the constraint the old profiles could not express:
+
+- `max_parallel_workers_per_gather=1`. The default of 2 lets one report take
+  both cores, and the other thing wanting a core is the checkout.
+- A CPU ceiling per service, so no container can hold both cores while the
+  API's health check times out and it is restarted for a fault it does not
+  have. The ceilings sum to more than two deliberately: they limit any one
+  service rather than partitioning the machine, so at three in the morning the
+  worker can use what the till is not.
+- The worker is capped hardest, at half a core. Its work is a sweep; the till
+  is not.
+
+Verified on the running stack rather than assumed:
+
+    shared_buffers                  24576   (192 MB)
+    effective_cache_size           131072   (1 GB)
+    work_mem                         4096   (4 MB)
+    maintenance_work_mem            98304   (96 MB)
+    max_connections                    24
+    max_parallel_workers_per_gather     1
+    fsync, synchronous_commit, full_page_writes, data_checksums    all on
+
+That last line is the point of the profile as much as the first five. A machine
+this small is exactly where somebody is tempted to trade durability for speed,
+and exactly the one with no replica to recover from. Nothing here does.
+
+## The server, and what this repository can honestly say about it
+
+`deploy/server/preflight.sh` reads the machine and reports: cores, memory,
+headroom over the container ceilings, swap and swappiness, disk and `/var` and
+inodes, journal size, Docker and its storage driver and log defaults, the
+firewall, every listening port against the three that belong on a public
+interface, `PermitRootLogin` and `PasswordAuthentication`, failed units, pending
+updates and security updates, and whether a reboot is owed.
+
+It installs nothing, changes nothing and never will. Where something needs
+deciding it prints the command and a person runs it. A script that fixes a
+server it has not been allowed to look at first is how a working box becomes a
+broken one.
+
+`deploy/server/rawsyst-check.sh` is the same idea afterwards, against
+thresholds chosen for this machine: memory, swap use, disk, inodes, load per
+core, every container's health and memory, Docker's reclaimable space, log size,
+database connections as a percentage of `max_connections`, and database size.
+`--strict` exits non-zero so a systemd timer fails visibly instead of writing to
+a log nobody opens.
+
+`deploy/server/RUNBOOK.md` is the deployment, in order, for that machine: the
+updates and the reboot first, then a 2 GiB swapfile at `vm.swappiness=10`,
+a capped journal, ufw with three ports, SSH keys before passwords are turned
+off, Docker with `deploy/server/daemon.json`, the compose profile, the first
+operator, the legal values, a reverse proxy with the API and the back office
+bound to loopback, the hourly check as a timer, and a database backup that
+leaves the machine and gets restored.
+
+Three things it deliberately does not do, each with the reason in the file: no
+monitoring stack, because Prometheus and Grafana together are larger than
+everything RawSyst runs; no automatic cleanup, because `docker system prune` is
+one flag away from the volume the database lives in; and no tuning that trades
+durability.
+
+**I have not touched that server.** Everything above is configuration and
+scripts in this repository, verified on this machine against the same images
+and the same compose files. The runbook is a sequence for somebody with the
+credentials to run it.
+
+## A fetch that survives a hostile network
+
+Retrieving the Labour Law failed twice in a row mid-pass: the connection was
+reset after the TLS handshake, over IPv6, from a host whose IPv4 path to the
+same address worked. Government file servers and the networks in front of them
+do this.
+
+`fetchDocument` now makes a second attempt pinned to IPv4, and stops there. Not
+a retry loop: an importer that keeps trying is one that gets a deployment
+blocked at a ministry's edge. Anything the server actually answered — a 404, a
+redirect loop, a body over the ceiling — is not asked twice. When both fail the
+refusal says so and points at the upload, which is not a consolation prize: the
+bytes are hashed, read, validated and applied by the same code either way.
+
+Confirmed by the failure itself. The retry recovered a fetch that had failed
+twice, on the same network, minutes apart.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| Fresh migration from zero | 134 migrations, 184 tables |
+| Backend, every package but `internal/api` | pass |
+| Backend, `internal/api` | pass, 344s |
+| `go vet`, and again with `-tags integration` | clean |
+| `gofmt` | clean |
+| `lint-wording` | passed, 1,509 files |
+| Frontend tests | 600 passing, 38 files |
+| Typecheck | clean |
+| Production build | clean |
+| Contract | up to date, 509 routes |
+| `verify:api` | ALL SCREEN CONTRACTS VERIFIED |
+| `verify:rbac` | EVERY BOUNDARY HELD |
+| Reachability | 0 genuine gaps |
+| Server profile, live | four containers healthy, settings confirmed in `pg_settings` |
+| Regulatory ingest | retrieved, read, applied, `awaiting_data=0` |
+| Shell scripts | `bash -n` clean; `daemon.json` parses |

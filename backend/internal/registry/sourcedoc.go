@@ -210,10 +210,50 @@ func sameAuthority(target, published string) error {
 }
 
 // fetchDocument performs the bounded retrieval.
+//
+// # Two attempts, and the second one is IPv4
+//
+// Not a retry loop. Government file servers and the content delivery networks
+// in front of them reset connections, and this one was observed doing it
+// reproducibly over IPv6 from a host whose IPv4 path to the same address
+// worked. A single retry pinned to IPv4 covers both the transient reset and the
+// broken-IPv6-path case, and two attempts is where it stops: a regulatory
+// importer that keeps trying is a regulatory importer that gets a deployment
+// blocked at a ministry's edge.
+//
+// When both fail the refusal says so and points at the upload, which is not a
+// consolation prize — the bytes are hashed, read, validated and applied by
+// exactly the same code either way.
 func fetchDocument(ctx context.Context, target string) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
+	content, mediaType, err := fetchOnce(ctx, target, "tcp")
+	if err == nil {
+		return content, mediaType, nil
+	}
+	// The first attempt failed at the transport. Anything the server actually
+	// answered — a 404, a redirect loop, a body over the ceiling — is already
+	// an `*errs.Error` and is not worth asking twice.
+	if errs.As(err) != nil {
+		return nil, "", err
+	}
+	content, mediaType, retryErr := fetchOnce(ctx, target, "tcp4")
+	if retryErr == nil {
+		return content, mediaType, nil
+	}
+	return nil, "", errs.Wrap(retryErr, errs.CodeInvalidInput, fmt.Sprintf(
+		"That document could not be retrieved from %s, over IPv6 or IPv4. "+
+			"The site may be unreachable from this deployment, or may refuse "+
+			"automated requests. Upload the document instead — everything "+
+			"after retrieval is the same.", target))
+}
+
+// fetchOnce is one attempt, on one address family.
+func fetchOnce(
+	ctx context.Context, target, network string,
+) ([]byte, string, error) {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	client := &http.Client{
 		// A fresh client per retrieval, with no keep-alive pool. This runs a
 		// handful of times a year; holding idle connections to a ministry for
@@ -221,7 +261,9 @@ func fetchDocument(ctx context.Context, target string) ([]byte, string, error) {
 		Transport: &http.Transport{
 			DisableKeepAlives:   true,
 			TLSHandshakeTimeout: 10 * time.Second,
-			DialContext:         (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+			DialContext: func(c context.Context, _, addr string) (net.Conn, error) {
+				return dialer.DialContext(c, network, addr)
+			},
 		},
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if len(via) >= fetchRedirects {
@@ -245,13 +287,12 @@ func fetchDocument(ctx context.Context, target string) ([]byte, string, error) {
 	req.Header.Set("User-Agent", "RawSyst-Regulatory/1.0 (+regulatory source retrieval)")
 	req.Header.Set("Accept", "application/pdf,text/html,text/plain;q=0.9,*/*;q=0.5")
 
+	// Returned bare, not wrapped. `fetchDocument` decides whether a transport
+	// failure is worth a second attempt, and it tells them apart by whether
+	// the error is one of ours.
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", errs.Wrap(err, errs.CodeInvalidInput, fmt.Sprintf(
-			"That document could not be retrieved from %s. The site may be "+
-				"unreachable from this deployment, or may refuse automated "+
-				"requests. Upload the document instead — everything after "+
-				"retrieval is the same.", target))
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 

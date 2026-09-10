@@ -1,0 +1,220 @@
+# The 2 vCPU / 3.7 GiB profile.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+#
+# # What this is for
+#
+# One specific shape of machine, and it is the shape a small shop's server
+# actually is: two virtual cores, under four gigabytes, one SSD, nothing else
+# running on it. The base file is tuned for "a small server"; this says which
+# small server, and the difference that makes is mostly in two places the base
+# file could not know about — the core count, and whether there is any swap.
+#
+# # The memory budget, written down
+#
+# 3.7 GiB total, of which the operating system takes about 0.5 GiB at idle.
+# The ceilings below add up to 1.63 GiB:
+#
+#     database   768M     API        384M
+#     back office 320M    worker     192M
+#
+# That leaves roughly 1.6 GiB, and it is NOT spare. It is the page cache, which
+# is where a database this size actually keeps its working set — hence
+# `effective_cache_size=1GB` below, which tells the planner to expect it.
+# Handing that memory to `shared_buffers` instead would cache the same pages
+# twice and leave less room for everything else.
+#
+# The ceilings are ceilings, not reservations. Measured at rest the four
+# containers come to about 110 MB together; the headroom is for a payroll run
+# and a report happening while somebody is at the till.
+#
+# # The core budget
+#
+# Two cores is the constraint the base file does not express. Three settings
+# follow from it:
+#
+#   * `max_parallel_workers_per_gather=1`. The default of 2 lets one report
+#     take both cores, and on this machine the other thing wanting a core is
+#     the checkout.
+#   * CPU ceilings per service, so no single container can hold both cores
+#     while the API's health check times out and the container is restarted
+#     for a fault it does not have.
+#   * The worker is capped hardest. Its work is a background sweep; the till
+#     is not.
+#
+# The ceilings deliberately sum to more than two. They are limits on any one
+# service, not a partition of the machine: at three in the morning the worker
+# should be able to use what the till is not.
+#
+# # What this does NOT do
+#
+# It does not weaken durability. `fsync`, `synchronous_commit`,
+# `full_page_writes` and the data checksums the base file turns on at initdb
+# are all untouched. Every setting here is about how much memory is reserved
+# and how many cores one query may take — not about what survives a power cut.
+# A machine this size is exactly the one where somebody is tempted to trade
+# that away, and exactly the one with no replica to recover from.
+#
+# It also does not configure swap, because swap is the host's, not the
+# container's. `deploy/server/preflight.sh` checks for it and the runbook says
+# what to do; on a box with no swap the kernel's only answer to a memory spike
+# is to kill something.
+
+x-server-logging: &server-logging
+  driver: json-file
+  options:
+    # Tighter than the base file's 10m x 3. Four containers x 15 MB is 60 MB of
+    # logs at worst, on a 48 GB disk that also holds the database — and the
+    # journal is not where an incident gets investigated from anyway.
+    max-size: "5m"
+    max-file: "3"
+
+services:
+  db:
+    logging: *server-logging
+    # Postgres puts parallel query and some sorts in shared memory, and the
+    # Docker default of 64 MB is where that runs out. Small, and cheap.
+    shm_size: 128mb
+    command:
+      - postgres
+
+      # Buffers, and why they are not larger.
+      #
+      # 192 MB is about a twentieth of the machine. The usual advice is a
+      # quarter of RAM, which here would be 950 MB — and would have to come out
+      # of the page cache, where the same pages are already being kept for free
+      # and shared with everything else on the box. On a small machine the
+      # operating system is the better cache; `shared_buffers` is for the hot
+      # pages Postgres wants to keep regardless.
+      - -c
+      - shared_buffers=192MB
+      # Not an allocation: a hint to the planner about how much of this table
+      # it can expect to find in memory between the two caches. Setting it low
+      # makes the planner avoid index scans it should choose.
+      - -c
+      - effective_cache_size=1GB
+
+      # Per SORT, not per connection: a query with three sorts can take three
+      # of these. 4 MB x 24 connections x a few sorts is the number that has to
+      # fit under the container's ceiling alongside the buffers.
+      - -c
+      - work_mem=4MB
+      # VACUUM, CREATE INDEX and ALTER TABLE. Charged once per maintenance
+      # worker rather than per connection, so it can be larger than work_mem
+      # without the same multiplication.
+      - -c
+      - maintenance_work_mem=96MB
+
+      # An SSD, and one that can have several reads in flight.
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+
+      # Two cores. The defaults assume more, and a single report taking both of
+      # them is a till waiting.
+      - -c
+      - max_worker_processes=4
+      - -c
+      - max_parallel_workers=2
+      - -c
+      - max_parallel_workers_per_gather=1
+      - -c
+      - max_parallel_maintenance_workers=1
+
+      # Write-ahead log. Kept for point-in-time recovery, as the base file
+      # explains; 512 MB is a compromise between checkpoint frequency and the
+      # disk this sits on.
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_size=512MB
+      - -c
+      - min_wal_size=128MB
+      # Spread the checkpoint write over most of the interval instead of
+      # letting it arrive as a spike. On two cores a checkpoint storm is felt
+      # at the counter.
+      - -c
+      - checkpoint_completion_target=0.9
+
+      # A second, not half of one. The base file logs anything over 500 ms,
+      # which is right on a machine somebody is watching; here it would fill a
+      # small disk with lines nobody reads.
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - log_checkpoints=on
+
+      # The API asks for at most 10, the worker for 4, the migrator for 2.
+      # Twenty-four leaves room for a psql session and a backup at the same
+      # time, and nothing else has any business connecting.
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-24}
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.5"
+
+  migrate:
+    logging: *server-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "1.0"
+
+  api:
+    logging: *server-logging
+    environment:
+      # A pool is a memory reservation as much as a concurrency limit: every
+      # connection is a server-side process with its own `work_mem`. Ten is
+      # more than two cores can serve at once, and the pool only grows to it
+      # under load.
+      RAWSYST_DB_MAX_CONNS: ${RAWSYST_DB_MAX_CONNS:-10}
+      RAWSYST_DB_MIN_CONNS: ${RAWSYST_DB_MIN_CONNS:-2}
+      # Go frees memory back to the operating system lazily, which is right on
+      # a dedicated box with slack and wrong on one with none. A soft limit
+      # makes the collector work harder as it approaches the ceiling, instead
+      # of the container reaching its hard limit and being killed — the same
+      # spike, with a restart on the end of it.
+      #
+      # Set below the container limit on purpose. The gap is for the Go runtime
+      # itself, which GOMEMLIMIT does not account for.
+      GOMEMLIMIT: ${GOMEMLIMIT:-320MiB}
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "1.5"
+
+  worker:
+    logging: *server-logging
+    environment:
+      RAWSYST_DB_MAX_CONNS: ${RAWSYST_WORKER_DB_MAX_CONNS:-4}
+      RAWSYST_DB_MIN_CONNS: 1
+      GOMEMLIMIT: ${WORKER_GOMEMLIMIT:-144MiB}
+      # One core at most, and the runtime told so rather than left to read the
+      # host's core count and start two of everything.
+      GOMAXPROCS: "1"
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+          cpus: "0.5"
+
+  web:
+    logging: *server-logging
+    environment:
+      # Measured: the standalone server idles at about 46 MB serving the real
+      # back office. 256 MB of heap is headroom, not a target — and it is a
+      # ceiling the runtime respects, which is the point of setting it at all.
+      NODE_OPTIONS: --max-old-space-size=256
+      # A prerendered app served by a thin proxy. It does not need two cores
+      # and taking them would be at the API's expense.
+      UV_THREADPOOL_SIZE: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+          cpus: "1.0"

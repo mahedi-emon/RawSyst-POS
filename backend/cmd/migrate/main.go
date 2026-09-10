@@ -1,52 +1,11 @@
-// Command migrate applies pending database migrations and exits.
+// migrate, as its own command.
 //
-// It is a separate binary from the API so a deployment can run migrations as
-// a discrete, observable step rather than as a side effect of a server start.
-// That matters when several API replicas boot at once: exactly one migration
-// run, ordered before the new code goes live.
+// The body lives in `internal/cmd/migrate` so it can be compiled into the single
+// `rawsyst` binary the container image ships as well as into this one. Keeping
+// this wrapper means `go run ./cmd/migrate` still works, which is what the
+// Makefile, the tests and every runbook in this repository say to type.
 package main
 
-import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+import "github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/migrate"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
-)
-
-// version is set at build time via -ldflags.
-var version = "dev"
-
-func main() {
-	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "migrate: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	log := logging.New(string(cfg.Env), "rawsyst-migrate", version)
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	pool, err := db.Open(ctx, cfg.DB)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	return pool.Migrate(ctx, log)
-}
+func main() { migrate.Main() }

@@ -6,7 +6,7 @@
 // neither is protected by anything the API enforces. What protects them is in
 // this file: `create` refuses once an operator exists, and `-recover` refuses
 // to create one at all.
-package main
+package bootstrap
 
 import (
 	"context"

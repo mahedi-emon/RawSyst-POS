@@ -109,6 +109,23 @@ ENV NODE_OPTIONS=--max-old-space-size=1536
 WORKDIR /repo/web-next
 RUN npm run build
 
+# The image optimizer's dependencies, which nothing in this product calls.
+#
+# `next.config.mjs` sets `images: { unoptimized: true }`, and the reason is
+# there: the back office renders icons as inline SVG and its one uploaded asset
+# is served by an authenticated API route, which the optimizer cannot fetch.
+# Next traces `sharp` into the standalone output anyway, because the code path
+# exists in the server bundle whether or not a route reaches it — and `sharp`
+# brings a libvips build per platform AND per C library, plus a WebAssembly
+# fallback. Measured in the image: 44.3MB of a 92.7MB application layer.
+#
+# Two of those could go on any deployment: `linuxmusl` cannot load on a
+# glibc runtime and `wasm32` is the fallback for when no native binary does.
+# The rest goes because the feature is off, and `image-optimizer.test.ts`
+# fails the build if anybody turns it back on without revisiting this.
+RUN rm -rf .next/standalone/node_modules/@img \
+           .next/standalone/node_modules/sharp
+
 # --- run --------------------------------------------------------------------
 
 # Distroless: a Node runtime, and nothing else. No shell, no package manager,

@@ -1,6 +1,5 @@
 # The API, the worker, the migrator, the bootstrap, the regulatory recorder
-# and the source ingester,
-# in one small image.
+# and the source ingester, as one binary in one small image.
 #
 # # Why one image and not three
 #
@@ -52,33 +51,17 @@ COPY . .
 #
 # -s -w drop the symbol table and DWARF. Roughly 25% off, and a panic still
 # produces a usable stack — Go's traceback does not read either.
+#
+# One `go build`, not six. The six commands are one binary now (see
+# cmd/rawsyst), and the linker keeps one copy of everything they share.
+ARG MODULE=github.com/mahedi-emon/rawsyst-pos/backend
 ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/api ./cmd/api && \
-    CGO_ENABLED=0 GOOS=linux go build \
-      -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/worker ./cmd/worker && \
-    CGO_ENABLED=0 GOOS=linux go build \
-      -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/migrate ./cmd/migrate && \
-    CGO_ENABLED=0 GOOS=linux go build \
-      -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/bootstrap ./cmd/bootstrap && \
-    CGO_ENABLED=0 GOOS=linux go build \
-      -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/regulatory ./cmd/regulatory && \
-    CGO_ENABLED=0 GOOS=linux go build \
-      -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/ingest ./cmd/ingest
+      -ldflags="-s -w -X ${MODULE}/internal/build.Version=${VERSION}" \
+      -o /out/rawsyst ./cmd/rawsyst
 
 # A non-root user, built here because scratch has no adduser.
 RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
@@ -93,26 +76,15 @@ COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=build /out/passwd /etc/passwd
 COPY --from=build /out/group /etc/group
 
-COPY --from=build /out/api /api
-COPY --from=build /out/worker /worker
-COPY --from=build /out/migrate /migrate
-# The first platform operator, and nothing else. A deployment migrates
-# cleanly, comes up healthy and has nobody who can sign in -- an operator
-# is a user with no tenant, and every route that could create one needs the
-# guard it would be needed to pass. This refuses once one exists, which is
-# what separates a bootstrap from a back door.
-COPY --from=build /out/bootstrap /bootstrap
-# Legal values, from a file. The API refuses to start while a release-blocking
-# rule is a placeholder, and the screen that could record one is served by the
-# API -- so a deployment could only get past its own gate through a shell it
-# does not have. This needs the database and nothing else.
-COPY --from=build /out/regulatory /regulatory
-# The other way a legal value arrives: retrieve the document the authority
-# publishes it in, read it, and record what it says. Needs the database and
-# an outbound HTTPS route to that authority and nothing else, which is why
-# the TLS roots above are copied into a scratch image that otherwise holds
-# no files at all.
-COPY --from=build /out/ingest /ingest
+# One binary, six commands: `rawsyst api`, `rawsyst worker`, `rawsyst migrate`,
+# `rawsyst bootstrap`, `rawsyst regulatory`, `rawsyst ingest`.
+#
+# It was six binaries, and they shared a module, a config loader, a database
+# layer and a registry — so the image carried six copies of nearly the same
+# thing: 22 + 12 + 11 + 10 + 10 + 11 MB against 21.5 MB for all of them
+# together. `cmd/rawsyst` says what each command is and why they still exist
+# separately under `cmd/`.
+COPY --from=build /out/rawsyst /rawsyst
 
 # Never uid 0. A container that is rooted is a host that is one kernel bug away
 # from being rooted.
@@ -124,4 +96,4 @@ EXPOSE 8080
 # No shell, so this is the exec form and there is no other option — which is the
 # right form anyway: it makes the binary PID 1 and lets SIGTERM reach it, so the
 # graceful shutdown in cmd/api actually runs.
-ENTRYPOINT ["/api"]
+ENTRYPOINT ["/rawsyst", "api"]
