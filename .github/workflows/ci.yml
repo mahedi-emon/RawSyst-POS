@@ -128,19 +128,44 @@ jobs:
         run: npm ci
 
       # Types first. A type error makes the test failures that follow it
-      # unreadable, and all three packages are checked because `shared` is
-      # consumed by both of the others and a break there surfaces in them.
+      # unreadable, and every package is checked because `shared` is consumed by
+      # all of the others and a break there surfaces in them.
+      #
+      # `web-next` is the product. It was missing from this list for as long as
+      # it has existed, so CI could be green while the back office — 137 routes
+      # and every screen the Blueprint asks for — did not compile. `web` is the
+      # frozen two-page shell it replaced and is still checked, because frozen
+      # is not deleted.
       - name: Typecheck
         run: |
           npm run typecheck --workspace shared
           npm run typecheck --workspace pos
           npm run typecheck --workspace web
+          npm run typecheck --workspace web-next
 
       - name: Shared tests
         run: npm test --workspace shared
 
       - name: POS tests
         run: npm test --workspace pos
+
+      - name: Back office tests
+        run: npm test --workspace web-next
+
+      # The contract is GENERATED from the Go router, the entitlement table and
+      # the seeded permission catalogue. Checking it here is what stops the
+      # front end and the API drifting apart between the commit that adds a
+      # route and the one that calls it: `--check` regenerates and fails if the
+      # committed file differs.
+      - name: API contract is current
+        run: npm run check:contract --workspace web-next
+
+      # Every route the Go table declares is called by a screen, reached
+      # through a helper, or exempted with a reason. A capability that exists
+      # and cannot be reached is a promise the product does not keep, and it is
+      # invisible to every other check here.
+      - name: Route reachability
+        run: npm run check:reach --workspace web-next
 
       # The builds are part of the gate, not a formality: `vite build` and
       # `next build` both do work that neither the typechecker nor the tests do
@@ -149,8 +174,14 @@ jobs:
       - name: POS build
         run: npm run build --workspace pos
 
-      - name: Back office build
+      - name: Frozen shell build
         run: npm run build --workspace web
+
+      # `next build` does work neither the typechecker nor the tests do: route
+      # collection, server-component checks, and the standalone trace the
+      # container image is assembled from. It can fail on green tests.
+      - name: Back office build
+        run: npm run build --workspace web-next
 
       # The gate that decides whether an installer may be cut. Run here in its
       # reporting form so the state is visible on every commit: today it says

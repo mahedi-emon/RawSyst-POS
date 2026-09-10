@@ -45,6 +45,10 @@ const SAME_IN_BOTH = new Set<string>([
   // A symbology's name is the same string in both, which the
   // still-in-English check cannot tell from a key nobody translated.
   'lbl.sym.datamatrix',
+  // A hash algorithm's name. "SHA-256" is written that way in Arabic and in
+  // Bangla; it labels the checksum of a retrieved regulatory document, and a
+  // transliteration would be a worse label rather than a translated one.
+  'nx.plat.rsHash',
   // The product's own name, standing alone as the author of a support reply.
   // PROPER_NOUNS already strips it out of a sentence; a key whose WHOLE value
   // is the brand is left identical in English and Bangla, which is the other

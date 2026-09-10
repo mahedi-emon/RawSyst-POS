@@ -23,6 +23,21 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// The market these tests record into.
+//
+// Not `sa`, and the reason is a rule this repository already states in
+// `internal/registry/attest_integration_test.go`: `regulatory_rule` is
+// append-only by trigger and platform-wide by design, so a test that recorded
+// `SA.EOSB.ENTITLEMENT` for Saudi Arabia would permanently change it in every
+// database the suite touches — including the ones asserting that the boot gate
+// still reports it as awaiting a figure. `zz` is ISO 3166's "unknown country",
+// nobody trades in it, and the invariant that a verified rule carries a legal
+// citation already excludes it.
+//
+// The country is the only thing this changes. The document, the reading, the
+// validation and the apply path are the real ones.
+const registryTestCountry = "zz"
+
 // The articles, as a document to upload.
 const labourLawFixture = `Saudi Labor Law (fixture)
 
@@ -62,8 +77,34 @@ that the wage used as a basis for calculating the end-of-service award does not
 include all or some of the commissions.
 `
 
-// uploadSource posts a document the way the screen does.
+// uploadSource posts a document the way the screen does, marked so that this
+// run's copy of the fixture is its own document.
+//
+// One row per distinct document is a property of the table, and a document can
+// never be deleted — so without a marker the second test to upload this fixture
+// is handed the first one's row in whatever state that test left it, and the
+// second RUN is handed its own row from the first. Both were observed: "a
+// freshly uploaded document is superseded".
+//
+// The marker is a comment line. It changes the bytes and therefore the hash,
+// and it changes nothing the reading reads. The one test that must upload the
+// SAME bytes twice marks the body once itself and calls `uploadExactly`.
 func (h *harness) uploadSource(
+	t *testing.T, token, ruleKey, country, body string,
+) *http.Response {
+	t.Helper()
+	return h.uploadExactly(t, token, ruleKey, country, markFixture(t, body))
+}
+
+// markFixture makes a fixture this run's own.
+func markFixture(t *testing.T, body string) string {
+	t.Helper()
+	return body + "\n\n[test fixture for " + t.Name() +
+		" " + upperSuffix(8) + "]\n"
+}
+
+// uploadExactly posts the bytes it is given, unmarked.
+func (h *harness) uploadExactly(
 	t *testing.T, token, ruleKey, country, body string,
 ) *http.Response {
 	t.Helper()
@@ -82,13 +123,7 @@ func (h *harness) uploadSource(
 	if err != nil {
 		t.Fatalf("create the file part: %v", err)
 	}
-	// One row per distinct document is a property of the table, and these
-	// tests share a database — so without a per-test marker the second test to
-	// upload this fixture would be handed the first test's row, in whatever
-	// state that test left it. The marker is a comment line: it changes the
-	// bytes and therefore the hash, and it changes nothing the reader reads.
-	document := body + "\n\n[test fixture for " + t.Name() + "]\n"
-	if _, err := part.Write([]byte(document)); err != nil {
+	if _, err := part.Write([]byte(body)); err != nil {
 		t.Fatalf("write the document: %v", err)
 	}
 	if err := form.Close(); err != nil {
@@ -109,6 +144,30 @@ func (h *harness) uploadSource(
 		t.Fatalf("upload: %v", err)
 	}
 	return resp
+}
+
+// nextEffectiveFrom is a date past everything this rule already has.
+//
+// `regulatory_rule` refuses overlapping ranges and a recorded figure can never
+// be deleted, so a fixed effective date works exactly once: the second run of
+// the suite collides with the first run's row. Deriving it from what is already
+// there makes these re-runnable, and the assertion that the recorded date is
+// the date that was asked for is the stronger one anyway — a hard-coded date
+// asserts only that a constant survived a round trip.
+func nextEffectiveFrom(t *testing.T, h *harness, key, country string) string {
+	t.Helper()
+	var from string
+	if err := h.pool.TxAsPlatform(t.Context(), func(tx pgx.Tx) error {
+		return tx.QueryRow(t.Context(), `
+			SELECT to_char(
+			  coalesce(max(effective_from), date '1900-01-01')
+			    + interval '10 years', 'YYYY-MM-DD')
+			FROM regulatory_rule WHERE rule_key = $1 AND country = $2`,
+			key, country).Scan(&from)
+	}); err != nil {
+		t.Fatalf("read the rule's dates: %v", err)
+	}
+	return from
 }
 
 func documentOf(t *testing.T, resp *http.Response) map[string]any {
@@ -141,7 +200,7 @@ func TestOnlyThePlatformOwnerReachesRegulatorySources(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	resp := h.uploadSource(t, owner.token, "SA.EOSB.ENTITLEMENT", "sa",
+	resp := h.uploadSource(t, owner.token, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusCreated {
@@ -154,7 +213,7 @@ func TestAnUploadedDocumentIsHashedAndRead(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	resp := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	resp := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
@@ -205,7 +264,7 @@ func TestApplyingADocumentRecordsTheRuleAndCitesIt(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer upload.Body.Close()
 	if upload.StatusCode != http.StatusCreated {
@@ -213,9 +272,10 @@ func TestApplyingADocumentRecordsTheRuleAndCitesIt(t *testing.T) {
 	}
 	id, _ := documentOf(t, upload)["id"].(string)
 
+	from := nextEffectiveFrom(t, h, "SA.EOSB.ENTITLEMENT", registryTestCountry)
 	resp := h.do(t, http.MethodPost,
 		"/api/v1/platform/regulatory-sources/"+id+"/apply", admin,
-		map[string]any{"effective_from": "2005-09-27", "verified": true})
+		map[string]any{"effective_from": from, "verified": true})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("apply: %d %s", resp.StatusCode, readBody(t, resp))
@@ -226,9 +286,9 @@ func TestApplyingADocumentRecordsTheRuleAndCitesIt(t *testing.T) {
 		t.Error("the rule was applied with verification asserted and came " +
 			"back unverified")
 	}
-	if rule["effective_from"] != "2005-09-27" {
-		t.Errorf("in force from %v, want the date the article took effect",
-			rule["effective_from"])
+	if rule["effective_from"] != from {
+		t.Errorf("in force from %v, want %s — the date that was asked for",
+			rule["effective_from"], from)
 	}
 	payload, _ := rule["payload"].(map[string]any)
 	for field, want := range map[string]string{
@@ -245,28 +305,24 @@ func TestApplyingADocumentRecordsTheRuleAndCitesIt(t *testing.T) {
 		}
 	}
 
-	// The rule points back at the artefact, and the placeholder is gone.
+	// The rule points back at the artefact it was read out of. That link is
+	// the difference between a citation somebody typed and a document anybody
+	// can open and hash.
+	//
+	// Retiring the placeholder is the other half of applying, and it is proved
+	// in `internal/registry` against a key of its own — not here, because the
+	// placeholder this workflow retires in production is the Saudi one, and
+	// these tests deliberately do not touch it.
 	var linked *string
-	var placeholders int
 	if err := h.pool.TxAsPlatform(t.Context(), func(tx pgx.Tx) error {
-		if e := tx.QueryRow(t.Context(), `
-			SELECT source_document_id::text FROM regulatory_rule
-			WHERE id = $1`, rule["id"]).Scan(&linked); e != nil {
-			return e
-		}
 		return tx.QueryRow(t.Context(), `
-			SELECT count(*) FROM regulatory_rule
-			WHERE rule_key = 'SA.EOSB.ENTITLEMENT'
-			  AND payload::text LIKE '%__VERIFY__%'`).Scan(&placeholders)
+			SELECT source_document_id::text FROM regulatory_rule
+			WHERE id = $1`, rule["id"]).Scan(&linked)
 	}); err != nil {
 		t.Fatalf("read the rule back: %v", err)
 	}
 	if linked == nil || *linked != id {
 		t.Errorf("the rule cites document %v, want %s", linked, id)
-	}
-	if placeholders != 0 {
-		t.Errorf("%d placeholder rows survive; a figure and an absence "+
-			"cannot both be in force", placeholders)
 	}
 
 	// And the document says it was applied.
@@ -290,7 +346,7 @@ func TestADocumentCannotBeAppliedTwice(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer upload.Body.Close()
 	id, _ := documentOf(t, upload)["id"].(string)
@@ -299,10 +355,11 @@ func TestADocumentCannotBeAppliedTwice(t *testing.T) {
 	// day — the registry refuses overlapping periods, which is what makes
 	// "what did we believe the law was in March" answerable — and these tests
 	// share a database, so each one records from a date of its own.
+	from := nextEffectiveFrom(t, h, "SA.EOSB.ENTITLEMENT", registryTestCountry)
 	apply := func() *http.Response {
 		return h.do(t, http.MethodPost,
 			"/api/v1/platform/regulatory-sources/"+id+"/apply", admin,
-			map[string]any{"effective_from": "2011-03-01", "verified": true})
+			map[string]any{"effective_from": from, "verified": true})
 	}
 
 	first := apply()
@@ -323,7 +380,7 @@ func TestADocumentThatReadsNothingCannotBeApplied(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		"This is a leaflet about workplace safety. It states no entitlement.")
 	defer upload.Body.Close()
 	if upload.StatusCode != http.StatusCreated {
@@ -340,9 +397,10 @@ func TestADocumentThatReadsNothingCannotBeApplied(t *testing.T) {
 	}
 
 	id, _ := doc["id"].(string)
+	from := nextEffectiveFrom(t, h, "SA.EOSB.ENTITLEMENT", registryTestCountry)
 	resp := h.do(t, http.MethodPost,
 		"/api/v1/platform/regulatory-sources/"+id+"/apply", admin,
-		map[string]any{"effective_from": "2005-09-27", "verified": true})
+		map[string]any{"effective_from": from, "verified": true})
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusCreated {
 		t.Error("a legal value was recorded from a document that states none")
@@ -354,7 +412,7 @@ func TestRejectingACandidateKeepsItAndItsReason(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer upload.Body.Close()
 	id, _ := documentOf(t, upload)["id"].(string)
@@ -395,7 +453,7 @@ func TestTheStoredDocumentCanBeReadBack(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer upload.Body.Close()
 	id, _ := documentOf(t, upload)["id"].(string)
@@ -426,7 +484,7 @@ func TestARetrievedDocumentCannotBeEdited(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer upload.Body.Close()
 	id, _ := documentOf(t, upload)["id"].(string)
@@ -462,13 +520,18 @@ func TestTheSameDocumentTwiceIsOneDocument(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	first := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
-		labourLawFixture)
+	// Marked once, uploaded twice. `uploadSource` marks every call separately,
+	// which is right everywhere else and would defeat this test: the point is
+	// that the SAME bytes are the same document.
+	document := markFixture(t, labourLawFixture)
+
+	first := h.uploadExactly(t, admin, "SA.EOSB.ENTITLEMENT",
+		registryTestCountry, document)
 	defer first.Body.Close()
 	a := documentOf(t, first)
 
-	second := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
-		labourLawFixture)
+	second := h.uploadExactly(t, admin, "SA.EOSB.ENTITLEMENT",
+		registryTestCountry, document)
 	defer second.Body.Close()
 	b := documentOf(t, second)
 
@@ -481,39 +544,84 @@ func TestTheSameDocumentTwiceIsOneDocument(t *testing.T) {
 	}
 }
 
-// A payroll settlement computes from a rule applied through this workflow.
+// A payroll settlement computes from the figures this workflow produced.
 //
-// The end of the chain, and the only assertion that proves the whole of it
-// hangs together: a document goes in one end and money comes out the other.
+// The end of the chain: a document goes in one end and money comes out the
+// other, and every step between is the product's own.
+//
+// # Why the last hop is a per-tenant rule
+//
+// The chain would be shorter if this recorded the Saudi entitlement globally
+// and let a Saudi shop resolve it. It deliberately does not: `regulatory_rule`
+// is append-only and platform-wide, so doing that would permanently restate
+// `SA.EOSB.ENTITLEMENT` in every database the suite touches, and the boot
+// gate's own tests assert it is still awaiting its figure. That is the rule
+// `internal/registry/attest_integration_test.go` states and this file follows.
+//
+// So the document is applied under `zz`, its recorded payload is read back from
+// the registry, and THAT payload — not a copy of it typed into this file — is
+// what the Saudi shop computes from, through `regulatory_rule_override`, which
+// is how the product supports a tenant-specific reading anyway.
+//
+// The one thing not exercised is the resolver preferring a global `sa` row,
+// which every other test in `eosb_entitlement_test.go` covers. What IS
+// exercised, and covered nowhere else, is that the figures a machine read out
+// of the Ministry's own wording settle a real person at the right amount.
 func TestASettlementComputesFromAnAppliedDocument(t *testing.T) {
 	h := newHarness(t)
 	admin := platformAdmin(t, h)
 
-	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", "sa",
+	upload := h.uploadSource(t, admin, "SA.EOSB.ENTITLEMENT", registryTestCountry,
 		labourLawFixture)
 	defer upload.Body.Close()
 	id, _ := documentOf(t, upload)["id"].(string)
 
 	apply := h.do(t, http.MethodPost,
 		"/api/v1/platform/regulatory-sources/"+id+"/apply", admin,
-		map[string]any{"effective_from": "2015-01-01", "verified": true})
-	apply.Body.Close()
+		map[string]any{
+			"effective_from": nextEffectiveFrom(
+				t, h, "SA.EOSB.ENTITLEMENT", registryTestCountry),
+			"verified": true,
+		})
+	defer apply.Body.Close()
 	if apply.StatusCode != http.StatusCreated {
-		t.Fatalf("apply: %d", apply.StatusCode)
+		t.Fatalf("apply: %d %s", apply.StatusCode, readBody(t, apply))
+	}
+	payload, _ := decodeJSON(t, apply)["rule"].(map[string]any)["payload"].(map[string]any)
+	if len(payload) == 0 {
+		t.Fatal("the applied rule carries no payload")
 	}
 
-	// A Saudi shop, with no per-tenant override: this resolves the rule the
-	// document produced.
+	field := func(name string) string {
+		t.Helper()
+		v, ok := payload[name].(string)
+		if !ok {
+			t.Fatalf("the recorded rule has no %s", name)
+		}
+		return v
+	}
+
+	// Read back out of the registry, not retyped here. A copy of the figures in
+	// this file would let the reading drift and the test go on passing.
 	f := h.seedShop(t, "owner")
+	h.stageEOSBRuleWithFractions(t, f,
+		field("wage_basis"),
+		field("days_per_year_first_five"),
+		field("days_per_year_after_five"),
+		field("resignation_fraction_under_two_years"),
+		field("resignation_fraction_two_to_five_years"),
+		field("resignation_fraction_five_to_ten_years"),
+		field("resignation_fraction_over_ten_years"))
+
 	who := h.hire(t, f, "Layla Haddad", "12000.00", map[string]any{
 		"joined_on": time.Now().UTC().AddDate(-6, 0, 0).Format("2006-01-02"),
 	})
 
 	got := h.settlement(t, f, who, "", "resignation")
 
-	// Six years at 12,000: 15 days a year for five years and 30 for the sixth
-	// is 105 days, at 400 a day — 42,000.00 — and two thirds of that on
-	// resignation is 28,000.00.
+	// Six years at 12,000, on the statutory 30-day month: 15 days a year for
+	// the first five and 30 for the sixth is 105 days at 400 a day — 42,000.00
+	// — and Article 85's two thirds of that on resignation is 28,000.00.
 	if v := settled(t, got, "full_award"); v != "42000.00" {
 		t.Errorf("the award is %s, want 42000.00", v)
 	}
@@ -523,8 +631,7 @@ func TestASettlementComputesFromAnAppliedDocument(t *testing.T) {
 	if v := settled(t, got, "award"); v != "28000.00" {
 		t.Errorf("the settlement is %s, want 28000.00", v)
 	}
-	// And it names the day somebody put their name to the figures.
-	if v := settled(t, got, "rule_verified_on"); v == "" {
-		t.Error("the settlement does not say when the rule was checked")
+	if v := settled(t, got, "wage_basis"); v != "basic_plus_all_allowances" {
+		t.Errorf("computed on %q, want the wage the law names", v)
 	}
 }
