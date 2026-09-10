@@ -43,6 +43,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -126,6 +127,19 @@ func run(args []string) error {
 		Key:         key,
 		TempDir:     os.Getenv("RAWSYST_BACKUP_TEMP_DIR"),
 		Timeout:     duration("RAWSYST_BACKUP_TIMEOUT", 30*time.Minute),
+
+		// Room to stage a dump, checked before one starts. 100 means "as much
+		// free space as the database measures", which is pessimistic on
+		// purpose: a dump is compressed and carries no indexes, so it is
+		// reliably smaller, and the cost of this being too careful is a
+		// message rather than a database that cannot write.
+		MinFreePercent: intEnv("RAWSYST_BACKUP_MIN_FREE_PERCENT", 100),
+
+		// Said on the terminal and in the journal. A check that could not be
+		// performed is worth a line; it is not worth refusing to back up over.
+		Warn: func(msg string) {
+			fmt.Fprintf(os.Stderr, "backup: %s\n", msg)
+		},
 	}
 	ctx := context.Background()
 
@@ -169,6 +183,8 @@ func run(args []string) error {
 		return doRollback(ctx, cfg, *from)
 	case "health":
 		return doHealth(ctx, register, *jsonOut)
+	case "role":
+		return doRole(ctx, cfg, opts, *dryRun, *jsonOut)
 	case "-h", "--help", "help":
 		usage()
 		return nil
@@ -738,6 +754,72 @@ func doHealth(
 	return nil
 }
 
+// doRole creates or repairs the role that takes the backup.
+//
+// Run on every deploy. It is idempotent, it never rotates a password nobody
+// asked it to rotate, and it ends by connecting as the role and running the
+// same precondition check `backup run` runs — so a green result means a backup
+// would succeed, rather than that some SQL did not error.
+func doRole(
+	ctx context.Context, cfg config.Config, opts backup.Options,
+	dryRun, asJSON bool,
+) error {
+	// The DSN the backup will really use, so the check at the end tests the
+	// deployment's own configuration. Empty means this server has not been
+	// told about a backup role yet, and the report says the check was skipped
+	// rather than quietly passing.
+	verify := os.Getenv("RAWSYST_BACKUP_DSN")
+
+	report, err := backup.EnsureRole(ctx, backup.RoleOptions{
+		AdminDSN:  os.Getenv("RAWSYST_BACKUP_ADMIN_DSN"),
+		AppDSN:    cfg.DB.DSN,
+		Role:      env("RAWSYST_BACKUP_ROLE", backup.DefaultBackupRole),
+		Password:  os.Getenv("RAWSYST_BACKUP_ROLE_PASSWORD"),
+		VerifyDSN: verify,
+		DryRun:    dryRun,
+	})
+	if report != nil && asJSON {
+		if perr := print(report); perr != nil {
+			return perr
+		}
+		return err
+	}
+	if report != nil {
+		what := "unchanged"
+		switch {
+		case report.DryRun:
+			what = "would change"
+		case report.Created:
+			what = "created"
+		case report.GrantedBypass || report.PasswordSet:
+			what = "repaired"
+		}
+		fmt.Printf("role %s on %s: %s\n", report.Role, report.Database, what)
+		if report.Owner != "" {
+			fmt.Printf("owner          %s (unchanged, and must stay NOBYPASSRLS)\n",
+				report.Owner)
+		}
+		for _, s := range report.Statements {
+			fmt.Printf("  %s\n", s)
+		}
+		if report.VerifyNote != "" {
+			fmt.Printf("note           %s\n", report.VerifyNote)
+		}
+		switch {
+		case report.DryRun:
+			fmt.Println("nothing was changed")
+		case report.Verified != nil && *report.Verified:
+			fmt.Println("checked        the role can read every table and sequence")
+		case report.Verified != nil:
+			fmt.Println("checked        FAILED, see the error below")
+		default:
+			fmt.Println("checked        skipped: RAWSYST_BACKUP_DSN is not set, " +
+				"so there is nothing to check the role against")
+		}
+	}
+	return err
+}
+
 // resolve turns an empty snapshot argument into the newest completed one.
 func resolve(ctx context.Context, opts backup.Options, id string) (string, error) {
 	if strings.TrimSpace(id) != "" {
@@ -812,6 +894,8 @@ func usage() {
   rollback      put back the database a production restore renamed aside
   agent         do the work the website queued. Runs until stopped
   health        is this installation actually protected
+  role          create or repair the role that takes the backup, and prove it
+                can read. Idempotent; -dry-run says what it would do
 
 Environment:
   RAWSYST_DB_DSN                 the database
@@ -822,7 +906,12 @@ Environment:
   RAWSYST_S3_ACCESS_KEY_ID       and its secret
   RAWSYST_BACKUP_PREFIX          namespace inside the bucket (rawsyst)
   RAWSYST_BACKUP_ADMIN_DSN       a connection for creating the scratch
-                                 database a verification restores into
+                                 database a verification restores into, and
+                                 the one "role" creates the role with
+  RAWSYST_BACKUP_ROLE            the role "role" creates (rawsyst_backup)
+  RAWSYST_BACKUP_ROLE_PASSWORD   its password, used only when creating it or
+                                 when a rotation is deliberately asked for.
+                                 Put the same value in RAWSYST_BACKUP_DSN
   RAWSYST_BACKUP_ENCRYPTION_KEY  base64 of 32 bytes. Optional, and a lost key
                                  is a lost backup
   RAWSYST_ALLOW_PRODUCTION_RESTORE  must be "true" before the agent will
@@ -877,6 +966,23 @@ func duration(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// intEnv is a positive whole number from the environment.
+//
+// A value that does not parse falls back rather than failing the command: this
+// configures how careful a precondition is, and a typo in it must not be the
+// reason a server stops taking backups.
+func intEnv(name string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }
 
 func hostname() string {

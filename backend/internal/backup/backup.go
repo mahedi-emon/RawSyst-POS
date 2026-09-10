@@ -240,6 +240,17 @@ type Options struct {
 	// line ignores it and the agent writes it into the task row, which is what
 	// a screen watching a backup reads.
 	Progress func(stage string)
+
+	// MinFreePercent is how much of the database's on-disk size must be free
+	// where the dump is staged, as a percentage. 100 by default and
+	// deliberately pessimistic; see room.go for why the safe direction to be
+	// wrong in is this one.
+	MinFreePercent int
+
+	// Warn reports something worth saying that is not a reason to stop — a
+	// check that could not be performed, rather than a check that failed.
+	// Optional.
+	Warn func(string)
 }
 
 func (o Options) withDefaults() Options {
@@ -254,6 +265,12 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Progress == nil {
 		o.Progress = func(string) {}
+	}
+	if o.MinFreePercent <= 0 {
+		o.MinFreePercent = 100
+	}
+	if o.Warn == nil {
+		o.Warn = func(string) {}
 	}
 	return o
 }
@@ -376,6 +393,16 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	defer conn.Close(context.WithoutCancel(ctx))
 
 	if err := canReadEverything(ctx, conn); err != nil {
+		return Result{}, err
+	}
+
+	// Room to stage the dump, asked before pg_dump starts. See room.go: on
+	// this server the staging volume and the database's volume are usually the
+	// same one, so a dump that runs out of space takes the database down with
+	// it rather than merely failing.
+	if _, err := checkRoom(
+		ctx, conn, opts.TempDir, opts.MinFreePercent, opts.Warn,
+	); err != nil {
 		return Result{}, err
 	}
 

@@ -149,8 +149,15 @@ services:
       # which is correct for one API process and only for one.
       RAWSYST_REDIS_ADDR: ${RAWSYST_REDIS_ADDR:-}
       RAWSYST_REDIS_PASSWORD: ${RAWSYST_REDIS_PASSWORD:-}
-      # Empty unless the `files` profile is up. Empty means documents and logos
-      # stay in Postgres, which is correct and does not scale.
+      # What actually reads this today is the BACKUP, and nothing else.
+      #
+      # Documents, logos and regulatory source documents are `bytea` columns
+      # and stay in Postgres whatever is set here — the services that store
+      # them write SQL. Setting these does not move a file out of the database,
+      # and `docker-compose.files.yml` starting MinIO does not either. Said
+      # here because the opposite belief leads somewhere bad: an operator who
+      # thinks documents live in the bucket may conclude the database dump is
+      # not the whole of the business data. It is.
       RAWSYST_S3_ENDPOINT: ${RAWSYST_S3_ENDPOINT:-}
       RAWSYST_S3_BUCKET: ${RAWSYST_S3_BUCKET:-}
       RAWSYST_S3_REGION: ${RAWSYST_S3_REGION:-us-east-1}

@@ -142,23 +142,36 @@ function BackupsScreen() {
 
       {error && <FormError message={error} className="mb-4" />}
 
+      {/*
+        Announced, because this is the one thing on the page that changes on
+        its own. A backup takes minutes and moves through named stages; a
+        sighted operator watches the sentence change and a screen reader user,
+        without this, is told nothing at all between pressing the button and
+        the row appearing in the history. `polite` rather than `assertive`:
+        the stages are progress, not an emergency, and they should wait for a
+        gap in what is being read rather than interrupt it.
+
+        The error above announces itself already — `FormError` is `role="alert"`.
+      */}
       {running && (
-        <Panel className="mb-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-label text-muted">
-                {t(`nx.pbk.kind.${running.kind}` as Key)}
-              </p>
-              <p className="mt-0.5 text-lede font-medium text-fg">
-                {t(STAGE_LABEL[running.stage] ?? 'nx.pbk.stage.working')}
-              </p>
+        <div role="status" aria-live="polite">
+          <Panel className="mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-label text-muted">
+                  {t(`nx.pbk.kind.${running.kind}` as Key)}
+                </p>
+                <p className="mt-0.5 text-lede font-medium text-fg">
+                  {t(STAGE_LABEL[running.stage] ?? 'nx.pbk.stage.working')}
+                </p>
+              </div>
+              <Badge tone="info">{t('nx.pbk.running')}</Badge>
             </div>
-            <Badge tone="info">{t('nx.pbk.running')}</Badge>
-          </div>
-          <p className="mt-2 max-w-[68ch] text-caption text-subtle">
-            {t('nx.pbk.noProgressBar')}
-          </p>
-        </Panel>
+            <p className="mt-2 max-w-[68ch] text-caption text-subtle">
+              {t('nx.pbk.noProgressBar')}
+            </p>
+          </Panel>
+        </div>
       )}
 
       <Tabs

@@ -7,8 +7,9 @@ is a `git clone` and a `docker compose build` away.
 So this document is about one file and what it takes to trust it.
 
 Its companions: **[RECOVERY.md](RECOVERY.md)** is what to do when something has
-gone wrong, and **[MIGRATION.md](MIGRATION.md)** is moving to another server
-without losing a day's trading.
+gone wrong, **[MIGRATION.md](MIGRATION.md)** is moving to another server without
+losing a day's trading, and **[SECRETS.md](SECRETS.md)** is everything a dump
+does not contain — which is the other half of being able to rebuild this server.
 
 ---
 
@@ -40,10 +41,27 @@ Nothing short of that is shown in green anywhere in this product.
 
 ## What is in a backup, and what is not
 
-On the profile this server runs, **the database is the whole of the persistent
-business data**. Documents, logos and receipts are stored in Postgres unless
-`docker-compose.files.yml` is layered on, which is correct for a shop and does
-not scale. One dump therefore carries:
+**The database is the whole of the persistent business data**, on every profile,
+and that was checked rather than assumed. Every file this product stores is a
+`bytea` column: `document.bytes` (migration 0096), `company_logo.bytes` (0054)
+and `regulatory_source_document.content` (0133). The services that write them —
+`internal/docs`, `internal/branding` — write SQL and nothing else.
+
+`docker-compose.files.yml` starts a MinIO container and **does not move a single
+document into it**: the API opens the object store, pings it, logs that it
+connected, and then hands it to nothing except the backup. An earlier version of
+this document said documents moved out of Postgres when that overlay was
+layered on. That was never true, and it was a dangerous thing to believe in one
+specific way — an operator who thinks documents live in the bucket may conclude
+that losing the database loses only rows, or that the bucket needs a backup of
+its own.
+
+So the object store on this deployment holds **backups, and nothing else**. When
+files do move out of Postgres, that changes: on that day the bucket stops being
+only somewhere backups are kept and becomes something that needs backing up too,
+and this section is where it has to be written down.
+
+One dump therefore carries:
 
 companies and tenants · users, roles and permissions · branches, stores and
 warehouses · products, variants, categories, brands, units and barcodes ·
@@ -84,11 +102,44 @@ that it dumps every row, and PostgreSQL refuses that to any role which is not a
 superuser and does not have `BYPASSRLS`.
 
 So the application's role **cannot** take a backup, and **must not** be given
-the attribute that would let it. Give the backup its own role:
+the attribute that would let it. Give the backup its own role.
+
+### Do it with the product
+
+```bash
+RAWSYST_BACKUP_ROLE_PASSWORD="$(openssl rand -base64 24)" \
+  $C run --rm backup role
+```
+
+That is the whole step. It is idempotent, so run it on every deploy; it repairs
+an existing role rather than replacing one, and it never rotates a password
+nobody asked it to rotate. `-dry-run` prints the statements and changes nothing.
+
+Three things it will not do, and each is a refusal rather than a warning:
+
+* It refuses to operate on the **application's own role**, whatever it is asked.
+* It refuses to continue if the application's role **already** holds `BYPASSRLS`
+  or `SUPERUSER`, because a server in that state has no tenant isolation and
+  saying so is more urgent than finishing the job. (This is why the compose
+  stack, where `POSTGRES_USER` is the container's superuser, is not a shape to
+  run a real deployment in.)
+* It refuses a role name that is not a plain identifier.
+
+It ends by connecting **as the new role** and running the same check `backup
+run` runs, so a green result means a backup would succeed rather than that some
+SQL did not error. Then put the same password in `RAWSYST_BACKUP_DSN`.
+
+Proved rather than asserted, on a database with 177 force-RLS tables owned by a
+`NOSUPERUSER NOBYPASSRLS` role: `pg_dump` as the application role fails at
+`query would be affected by row-level security policy for table "account"`; the
+same dump as `rawsyst_backup` succeeds.
+
+### Or by hand, if you would rather
 
 ```sql
 -- As a superuser, connected to the RawSyst database.
-CREATE ROLE rawsyst_backup LOGIN PASSWORD '…' BYPASSRLS;
+CREATE ROLE rawsyst_backup LOGIN PASSWORD '…' BYPASSRLS
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 
 GRANT CONNECT ON DATABASE rawsyst TO rawsyst_backup;
 GRANT USAGE  ON SCHEMA public     TO rawsyst_backup;
@@ -328,8 +379,27 @@ in the store for investigation.
 
 ## Encryption
 
-**Off by default.** Turning it on is a promise about key management that only
-the operator can keep.
+**Turn it on for production. It is off by default, and that default is about
+key management rather than about whether encryption is wanted.**
+
+The two sentences are not in tension. A default key would be no key at all, and
+a product that generated one for you would have made a promise on your behalf
+that only you can keep — so the software cannot switch this on, and the
+deployment must. What the software can do is make the decision explicit, refuse
+to guess, and say exactly what turning it on costs. That is this section.
+
+The recommendation is unambiguous for any deployment holding real trading data:
+a dump is every business on the server, in one file, in a bucket, and the people
+who can list that bucket are not always the people who should be able to read a
+shop's books. Set the key **before the first backup** — see *the two decisions*
+in [SECRETS.md](SECRETS.md) for why later is worse than never having started.
+
+If it is going to stay off, that should be a decision with a reason attached,
+and there are only two good ones: a development or staging stack whose data is
+disposable, or an object store the operator controls end to end where the
+key-loss risk is judged worse than the disclosure risk. Both are defensible.
+"We did not get round to it" is not, and this paragraph exists so that nobody
+can tell themselves it was.
 
 ```
 RAWSYST_BACKUP_ENCRYPTION_KEY=$(openssl rand -base64 32)
@@ -373,6 +443,33 @@ usually the right trade. Where it is not, set a key.
 
 A checksum is not encryption. SHA-256 says the bytes came back unchanged; it
 says nothing about who can read them. This product never calls one the other.
+
+---
+
+## What is checked before a dump starts
+
+Three preconditions, all of them cheap, all of them asked while the answer is
+still free. Each one exists because the failure it prevents is expensive and
+arrives at 03:30 when nobody is reading.
+
+**The role can see past row-level security**, and can read every table *and
+every sequence*. A sequence the role cannot read stops `pg_dump` exactly as dead
+as a table it cannot read, with a message about `audit_log_id_seq` that reads as
+a permissions puzzle rather than as a missing grant — which is how it was found.
+
+**There is room to stage the dump.** A dump is written to disk before it is
+uploaded, and on this server that disk is usually the database's disk. A backup
+that runs out of space partway has not merely failed: it has spent the night
+filling the volume Postgres writes its WAL into, and the first symptom is not a
+failed backup but a till that cannot ring up a sale. So the run asks for as much
+free space as the database measures — `RAWSYST_BACKUP_MIN_FREE_PERCENT`, 100 by
+default — and refuses before starting if it is not there. That is deliberately
+pessimistic: a custom-format dump is compressed and carries no indexes, so it is
+reliably much smaller, and the cost of being too careful here is one message
+while the cost of being too optimistic is an outage. A filesystem that will not
+answer is a line in the log, not a refusal.
+
+**There is somewhere off this server to put it.** No object store, no backup.
 
 ---
 
@@ -452,7 +549,9 @@ into a full compromise. Restoring a database from a stolen dump is bad;
 restoring it and being able to sign valid sessions against the running system is
 worse.
 
-So they travel separately, by hand, once:
+**[SECRETS.md](SECRETS.md) is the checklist** — every value, what breaks without
+it, where to keep it, how to rotate it, and the order to bring a new server up
+in. The short version:
 
 1. Keep `.env` in a password manager, or in whatever secret store the
    organisation already has.

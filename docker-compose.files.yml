@@ -1,10 +1,27 @@
-# A million receipt PDFs out of the database backup.
+# An S3-compatible object store on this machine.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.files.yml up -d
 #
-# Without it documents and logos stay in Postgres, which is correct for a shop
-# and does not scale. See the note on override files in
-# docker-compose.scale.yml.
+# WHAT THIS IS FOR TODAY: somewhere for BACKUPS to go on a deployment with no
+# external object store. `backup run` refuses to write to the disk it is
+# protecting, so a single-machine deployment needs one of these or a bucket
+# somewhere else.
+#
+# WHAT IT IS NOT: this does not move documents out of Postgres. An earlier
+# version of this comment said it did. Documents, company logos and regulatory
+# source documents are `bytea` columns — `document.bytes`, `company_logo.bytes`,
+# `regulatory_source_document.content` — and the services that write them write
+# SQL. The API opens the object store, pings it, logs that it connected, and
+# hands it to nothing but the backup.
+#
+# The distinction matters for recovery rather than for tidiness: because every
+# file is in the database, the database dump IS the whole of the business data,
+# and `backup verify` is therefore a complete check. On the day files do move
+# out, this volume stops being only somewhere backups are kept and becomes
+# something that needs backing up itself. deploy/server/BACKUP.md is where that
+# has to be written down when it happens.
+#
+# See the note on override files in docker-compose.scale.yml.
 #
 # Needs, in .env:
 #   RAWSYST_S3_ACCESS_KEY_ID
