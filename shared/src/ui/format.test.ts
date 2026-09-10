@@ -14,7 +14,8 @@ import {
   shortDate,
   tenderName,
 } from './format';
-import { ar, type Key } from '../i18n/strings';
+import { ar } from '../i18n/strings.ar';
+import type { Key } from '../i18n/strings';
 
 /** The Arabic catalogue as a translate function, which is what tenderName
  *  takes. No provider and no React: the point of the parameter is that a

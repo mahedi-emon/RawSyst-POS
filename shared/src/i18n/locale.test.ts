@@ -2,16 +2,13 @@ import { initialLocale } from './locale';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  ar,
-  bn,
-  catalogues,
-  coverageOf,
   directionOf,
   en,
   interpolate,
   plain,
   type Key,
 } from './strings';
+import { ar, bn, catalogues, coverageOf } from './catalogues';
 
 // QA gate M6, from the design system §6 rule 5: "Mixed content is the norm, not
 // the edge case. A product named `قميص رجالي Slim Fit — L` must render

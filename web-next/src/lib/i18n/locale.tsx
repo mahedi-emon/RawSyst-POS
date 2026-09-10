@@ -109,15 +109,28 @@ export function LocaleProvider({
   // The non-English catalogues are loaded on demand. English ships in the main
   // bundle because it is the default and the fallback; pulling all three into
   // every till's first load would be most of a megabyte of text nobody reads.
+  //
+  // Each locale is named as its OWN module, and that is the whole mechanism.
+  // This used to say `import('@rawsyst/shared/i18n/strings')` -- the same
+  // specifier the static import above uses for `en` -- which loads on demand
+  // in the source and not at all in the build: a bundler splits by module, so
+  // naming a module already in the main chunk resolves against that chunk and
+  // splits nothing. The three catalogues shipped together in a 1.77 MB chunk
+  // requested by every route, sign-in included, while this comment claimed
+  // they did not.
   useEffect(() => {
     let cancelled = false;
     if (locale === 'en') {
       setCatalogue(en);
       return;
     }
-    void import('@rawsyst/shared/i18n/strings').then((m) => {
+    const wanted =
+      locale === 'ar'
+        ? import('@rawsyst/shared/i18n/strings.ar').then((m) => m.ar)
+        : import('@rawsyst/shared/i18n/strings.bn').then((m) => m.bn);
+    void wanted.then((table) => {
       if (cancelled) return;
-      setCatalogue(locale === 'ar' ? m.ar : m.bn);
+      setCatalogue(table);
     });
     return () => {
       cancelled = true;

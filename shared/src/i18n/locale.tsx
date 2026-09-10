@@ -26,13 +26,16 @@ import {
 } from 'react';
 
 import {
-  catalogues,
   directionOf,
   en,
   interpolate,
   type Key,
   type Locale,
 } from './strings';
+// All three catalogues, eagerly. Right here and wrong in `web-next`: this
+// provider switches language without a bundler split to help it, and the
+// front end it serves is frozen. `catalogues.ts` says what importing it costs.
+import { catalogues } from './catalogues';
 
 const STORAGE_KEY = 'rawsyst.locale';
 
