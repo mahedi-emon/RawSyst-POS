@@ -10,9 +10,9 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 |---|---|
 | **Last verified** | 2026-09-10 |
 | **Branch** | `international-markets-and-counters` |
-| **Scale** | 132 migrations · 501 routes · 110 permissions · 1,190+ Go test functions |
+| **Scale** | 132 migrations · 502 routes · 110 permissions · 1,200+ Go test functions |
 | **Software development** | **COMPLETE.** No feature is unbuilt, disabled, unreachable, ungated or waiting for a developer. Zero `TODO`, `FIXME`, `not implemented` or `coming soon` in `backend`, `web-next/src`, `shared/src`, `pos/src` or `scripts`. Zero reachability gaps. |
-| **Regulatory data** | **One external source required**, and it is not a software condition. Six figures in `SA.EOSB.ENTITLEMENT` come from Articles 84 and 85 of the Saudi Labour Law, which is published as prose; nobody has read them and put their name to what they say on this installation. Everything that consumes them is built and refuses by name until they are recorded, through a workflow that needs no code change. |
+| **Regulatory data** | **One external source required**, and it is not a software condition. Seven fields of `SA.EOSB.ENTITLEMENT` come from Articles 84 and 85 of the Saudi Labour Law, which is published as prose; nobody has read them and put their name to what they say on this installation. Everything that consumes them is built and refuses by name until they are recorded, through a workflow that needs no code change, no shell and no SQL. |
 | **External dependency** | The Fatoora one-time password. ZATCA issues a compliance certificate only against a password the taxpayer reads from their own portal. The whole workflow around it is built. |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
 
@@ -7715,7 +7715,7 @@ statement or a rebuild.
 
 **Regulatory data: an external source is required.** Articles 84 and 85 of the
 Saudi Labour Law are published as prose. Nobody has read them and put their name
-to what they say on this installation, so the six figures are `__VERIFY__` and
+to what they say on this installation, so all seven fields are `__VERIFY__` and
 every calculation that needs them refuses by name. Recording them is one person,
 one file, three commands — or one form in Super Admin.
 
@@ -7735,6 +7735,188 @@ Every EOSB-related match for `placeholder`, `stub`, `mock`, `fake`, `temporary`,
 serving a client on placeholder EOSB values.
 
 `__VERIFY__` is **five rules**, one of them release-blocking at FEATURE level
-(`SA.EOSB.ENTITLEMENT`, now six unfilled fields rather than five). All five are
+(`SA.EOSB.ENTITLEMENT`, seven unfilled fields). All five are
 described by the source pack, so all five can be recorded from a file with no
 developer involved. That is the mechanism working, not a gap in it.
+
+---
+
+# THE TWO DOORS INTO THE REGISTRY (2026-09-10, second pass)
+
+The previous pass established that end of service is finished software waiting
+on published law, and separated the two categories in this document. This pass
+audited the regulatory architecture around that claim and found three places
+where it was not yet true, and closed them.
+
+None of the three was end-of-service arithmetic. All three were the registry
+workflow the claim rests on — which is the point: "the figure can be recorded
+without a developer" is only true if every route into the registry is as strict
+as the strictest one, and if the person who has to record it can see what is
+outstanding without a shell.
+
+## What was wrong
+
+**1. The screen was the permissive door.** A legal value reaches this product
+two ways. `cmd/regulatory` applies an attestation file, and it has validated
+every figure against the source pack since it was written: field names, units,
+choices, signs, and the rule that a fraction of an award lies between 0 and 1.
+`POST /platform/rules` — the Super Admin screen, and the route a platform
+operator actually uses — refused an empty payload and a payload still holding
+`__VERIFY__`, and wrote anything else.
+
+So the two doors disagreed about what a legal value is. Through the screen,
+`days_per_year_first_five` could be recorded as `"fifteen"`, a resignation
+fraction as `33` where Article 85 says a third, a wage basis this product cannot
+assemble, or a field name the calculation never reads. `eosbEntitlement` catches
+some of it at the point of use and says so in its own comment — *the registry
+screen writes a payload directly, and neither goes through the file's
+validation*. Catching it there is too late: the wrong figure is already on
+record as the law, somebody's name is against it in the audit trail, and what
+surfaces is a payroll run failing rather than a form field saying which box is
+wrong.
+
+**2. What this installation is waiting for was answerable only from a shell.**
+`registry.Outstanding` has produced that report since the attestation workflow
+was written, and its only caller was a binary run on the host with the database
+password. The screen approximated it by scanning payloads it had already fetched
+for the literal `__VERIFY__` — which finds the unfilled fields but cannot say
+whether the source pack describes the rule, and therefore cannot say whether the
+operator gets labelled boxes or a JSON textarea.
+
+**3. The screen still called every unverified blocker a closed market.** 0124
+taught the database the difference between a value that closes a market to new
+business and one that refuses a single capability, and the startup gate has read
+it since. `RuleRow` did not carry the column, `NewRule` could not set it, and the
+screen's heading was *Markets that cannot take a new client*. So the screen
+reported `SA.EOSB.ENTITLEMENT` as a reason Saudi Arabia could not be sold into —
+the exact category error the boot gate was fixed to stop making, still being made
+one layer up, to the one person who could act on it.
+
+## What was done
+
+**`registry.ValidatePayload`** applies the source pack's own rules to a payload,
+and `RecordRule` calls it. The screen now gets the refusals the file gets, and
+`checkValues` attaches the offending field to each one so the guided form points
+at the box rather than at the form. A rule key the pack does not describe is
+still recordable: the pack covers the values somebody has to go and read out of a
+published document, and refusing everything else would close the registry to
+anything the pack has not caught up with.
+
+**`GET /api/v1/platform/rules/outstanding`** (Super Admin) returns what
+`cmd/regulatory` prints: the rule, the market, what it blocks, the fields still
+unfilled, and whether the pack describes it. The screen reads it.
+
+**`blocks` is carried end to end.** It is on the list row, settable when
+recording, refused if it is neither `onboarding` nor `feature`, and defaulted to
+`feature` — the narrower answer, because mistaking a capability blocker for an
+onboarding one shuts a market that could trade. The screen splits the two, badges
+each rule with what it actually stops, and says the right thing about production
+for each: an onboarding blocker refuses a production start, a feature blocker
+does not.
+
+Eleven integration tests, all passing against a database rebuilt from the
+committed chain. Six of them drive `SA.EOSB.ENTITLEMENT` and every one asserts a
+**refusal** — no test records a Saudi labour-law figure, because a test that did
+would be inventing one.
+
+The startup warning and `freshcheck` now name Super Admin before the command
+line, since the screen answers the question they raise.
+
+## What was NOT done, and why
+
+No legal value was invented. `SA.EOSB.ENTITLEMENT` still holds `__VERIFY__` in
+all seven fields and still refuses by name. Nothing about the validation added
+here makes a figure easier to fabricate; it makes a wrong one harder to record.
+
+No safety was removed. The production gate is unchanged, the placeholder refusal
+is unchanged, and the point-of-use checks in `eosbEntitlement` stay where they
+are — they are the second door for a tenant-scoped override, which does not pass
+through `RecordRule` at all.
+
+## Verification
+
+Every check below was run to completion on this pass. Nothing was skipped to
+make a result green.
+
+| Check | Result |
+|---|---|
+| Fresh migration from zero (`freshcheck`) | 132 migrations, 183 tables, 175 RLS-forced, 44 rules seeded |
+| Backend, every package but `internal/api` | pass |
+| Backend, `internal/api` | pass, 318s |
+| `go vet`, and again with `-tags integration` | clean |
+| `gofmt` | clean |
+| `lint-wording` | passed, 1,484 files |
+| Frontend tests | 598 passing, 37 files |
+| Typecheck | clean |
+| Production build | clean |
+| Contract | up to date, 502 routes, 110 permissions |
+| `verify:api` | ALL SCREEN CONTRACTS VERIFIED |
+| `verify:rbac` | EVERY BOUNDARY HELD |
+| Reachability | **0 genuine gaps**, 20 intentionally screenless |
+| Live refusal of a malformed figure | `POST /platform/rules` with a fraction of 33 refused, field-scoped |
+| Live outstanding list | five rules, all `described`, `SA.EOSB.ENTITLEMENT` as `feature` |
+
+## The stack, rebuilt and measured
+
+Images rebuilt from the changed source and the stack recreated with **every**
+`-f` passed, so the database came back on the 8 GB profile rather than the base
+file's ceiling. Verified rather than assumed: `shared_buffers` is 8192 pages and
+`max_connections` is 20, which is the small profile.
+
+| Container | Memory | Limit |
+|---|---|---|
+| `web` | 43.9 MiB | 256 MiB |
+| `api` | 19.0 MiB | 256 MiB |
+| `db` | 29.0 MiB | 384 MiB |
+| `worker` | 3.3 MiB | 128 MiB |
+
+Images: `rawsyst/web:dev` 330 MB, `rawsyst/backend:dev` 89.9 MB,
+`postgres:17-alpine` 424 MB.
+
+Database connections in use: 10 of a ceiling of 20. No durability setting was
+touched.
+
+`scripts/maintenance.sh check` reported one threshold breach — Docker
+reclaimable at 5,155 MB against a 4,000 MB limit — and `clean` took it to 240 MB.
+It cleans only what is over its threshold, so the Go build cache (2,959 MB of
+3,000), the npm cache (710 MB of 1,500), the Next build output (732 MB of 1,500)
+and the 610 MB Go module cache were all left alone. Deleting those on every pass
+buys nothing and costs a full rebuild.
+
+Free disk on the working volume: 12 GB against a 10 GB floor. Duplicate
+processes: none left. The spare API on `:8090`, started to run `verify:api` and
+`verify:rbac` against the seeded development database while the compose stack
+held `:8080`, was stopped when the verification finished.
+
+## The gate, observed doing the right thing in production
+
+The compose API runs with `env=production`, and this is what it logged on this
+rebuild:
+
+    "msg":"regulatory registry","env":"production","served_markets":"sa",
+    "blocking_release":0,"awaiting_data":1,"deferred_blockers":0
+
+    "level":"WARN","msg":"capabilities awaiting a regulatory figure",
+    "rules":"SA.EOSB.ENTITLEMENT"
+
+    "msg":"http server listening","env":"production","addr":":8080"
+
+A production deployment serving Saudi Arabia **started**, with end of service
+unrecorded, and warned by name about the one capability that cannot compute. It
+did not refuse, because nothing about it is broken. That is the distinction this
+work exists to hold, observed rather than argued.
+
+## Where this leaves the two categories
+
+**Software development: COMPLETE.** Every route into the regulatory registry
+validates to the same standard, the report of what is outstanding is in the
+application, and the screen tells the truth about what each unrecorded value
+blocks. Nothing in the end-of-service path — resolution, storage, provenance,
+versioning, effective dating, import, validation, calculation, accrual,
+settlement, audit, cache invalidation, refusal — waits for a developer, a
+migration, a SQL statement or a rebuild.
+
+**Regulatory data: an external source is required.** Articles 84 and 85 of the
+Saudi Labour Law are published as prose. Nobody has read them and put their name
+to what they say on this installation. That is data provenance. It is not a
+software blocker and this document does not call it one.

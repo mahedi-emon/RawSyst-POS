@@ -41,6 +41,12 @@ type recordRuleRequest struct {
 	Blocker   bool            `json:"release_blocker"`
 	Notes     string          `json:"notes"`
 
+	// Blocks is what an unverified blocker stops: `onboarding` closes the
+	// market to new business, `feature` refuses one capability where it is
+	// used. Omitted means `feature`, so a caller that does not know the
+	// distinction cannot accidentally shut a market.
+	Blocks string `json:"blocks"`
+
 	// Verified is the caller putting their name to the figure. Recording
 	// without it stages a value for somebody else to confirm.
 	Verified bool `json:"verified"`
@@ -68,6 +74,34 @@ func (s *Server) handleRuleSources(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, pack)
 }
 
+// handleOutstandingRules lists the legal values still waiting to be read.
+//
+// # Why this is a route and not only a command
+//
+// `registry.Outstanding` has answered this question since the attestation
+// workflow was written, and the only caller was `cmd/regulatory`, a binary run
+// on the host with the database password. So the one report that says what
+// this installation is waiting for was reachable by a developer with a shell
+// and by nobody else — including the platform operator whose job it is to go
+// and read the document.
+//
+// The list screen could only approximate it. It scanned the payloads it had
+// already fetched for the literal `__VERIFY__`, which finds an unfilled rule
+// but cannot say whether the source pack describes it, and therefore cannot
+// say whether the guided form can be opened on it or whether the operator is
+// on their own with a JSON box.
+//
+// Each row names the rule, the market, what it blocks, which fields are still
+// unfilled, and whether the product knows where they come from.
+func (s *Server) handleOutstandingRules(w http.ResponseWriter, r *http.Request) {
+	out, err := s.rules.Outstanding(r.Context(), r.URL.Query().Get("country"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 func (s *Server) handleRecordRule(w http.ResponseWriter, r *http.Request) {
 	var req recordRuleRequest
 	if err := httpx.Decode(r, &req); err != nil {
@@ -91,8 +125,8 @@ func (s *Server) handleRecordRule(w http.ResponseWriter, r *http.Request) {
 	out, err := s.rules.RecordRule(r.Context(), registry.NewRule{
 		Key: req.Key, Country: req.Country, Payload: req.Payload,
 		From: *from, Authority: req.Authority, Document: req.Document,
-		URL: req.URL, Blocker: req.Blocker, Notes: req.Notes,
-		Verified: req.Verified,
+		URL: req.URL, Blocker: req.Blocker, Blocks: req.Blocks,
+		Notes: req.Notes, Verified: req.Verified,
 	}, a.UserID)
 	if err != nil {
 		httpx.Error(w, r, err)

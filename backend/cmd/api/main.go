@@ -464,11 +464,12 @@ func reportRegistryHealth(
 			slog.String("served_markets", marketList(rep.ServedMarkets)),
 			slog.String("note", "the software for each is complete and the "+
 				"figure is not on record. Each capability refuses by name "+
-				"where it is used; nothing else is affected. Record them with "+
-				"`regulatory -template -country "+
+				"where it is used; nothing else is affected. Record them in "+
+				"Super Admin > Regulatory Registry, which lists them with "+
+				"the document to read and the fields still unfilled, or "+
+				"with `regulatory -template -country "+
 				countryOfRules(rep.AwaitingData, rep.ServedMarkets)+"` then "+
-				"`regulatory -apply -file …`, or in Super Admin > Regulatory "+
-				"Registry"))
+				"`regulatory -apply -file …`"))
 	}
 
 	if len(rep.BlockingRelease) > 0 {

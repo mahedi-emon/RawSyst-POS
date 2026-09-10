@@ -62,7 +62,31 @@ interface Rule {
   verified_on?: string;
   verified: boolean;
   release_blocker: boolean;
+
+  // What an unverified blocker actually stops. `onboarding` closes the market
+  // to new business; `feature` refuses one capability where it is used and
+  // leaves everything else trading. The screen treated the two as one and told
+  // an operator that end-of-service bands were closing Saudi Arabia, when what
+  // they stop is a final settlement for somebody who leaves.
+  blocks?: 'onboarding' | 'feature';
+
   notes?: string;
+}
+
+/** A rule whose payload still holds the placeholder, as the server counts them.
+ *
+ *  The screen used to work this out by scanning the payloads it had already
+ *  fetched for the literal `__VERIFY__`. That finds the unfilled fields but
+ *  cannot say whether the source pack describes the rule — which decides
+ *  whether the operator gets the guided form or a JSON box. */
+interface Outstanding {
+  rule_key: string;
+  country: string;
+  release_blocker: boolean;
+  effective_from: string;
+  unfilled_fields: string[];
+  blocks: 'onboarding' | 'feature';
+  described: boolean;
 }
 
 const MARKETS = ['sa', 'bd', 'us'] as const;
@@ -99,6 +123,7 @@ function RulesScreen() {
     source_document: '',
     source_url: '',
     release_blocker: false,
+    blocks: 'feature',
     verified: false,
     notes: '',
   });
@@ -136,20 +161,16 @@ function RulesScreen() {
 
   const rows = data?.data ?? [];
 
-  // Markets whose sale is blocked by a legal value nobody has checked. Computed
-  // over the WHOLE list rather than the filtered view: filtering to Bangladesh
-  // must not make Saudi Arabia's blockers disappear from a warning about which
-  // markets are closed.
-  const blockedMarkets = useMemo(() => {
-    const byMarket = new Map<string, number>();
-    for (const r of rows) {
-      if (!r.release_blocker || r.verified) continue;
-      byMarket.set(r.country, (byMarket.get(r.country) ?? 0) + 1);
-    }
-    return byMarket;
-  }, [rows]);
+  // What this installation is still waiting for, as the server counts it.
+  // Fetched unfiltered, for the same reason the summary below is computed over
+  // the whole list.
+  const outstanding = useApiList<Outstanding>('/platform/rules/outstanding');
+  const outstandingFor = (key: string, market: string) =>
+    (outstanding.data?.data ?? []).find(
+      (o) => o.rule_key === key && o.country === market,
+    );
 
-  // The blocking rules themselves, not merely how many. A count told an
+  // The unchecked blockers themselves, not merely how many. A count told an
   // operator that a market was closed and nothing whatever about how to open
   // it -- which document to read, which fields are still unfilled, or what
   // recording the value actually does.
@@ -157,6 +178,36 @@ function RulesScreen() {
     () => rows.filter((r) => r.release_blocker && !r.verified),
     [rows],
   );
+
+  // Split by what each one actually blocks.
+  //
+  // Merging them was a category error with a visible cost. `SA.EOSB.ENTITLEMENT`
+  // is an end-of-service award: it is computed when somebody LEAVES, and a shop
+  // can be onboarded, trade for a year and never compute one. Counting it among
+  // the reasons Saudi Arabia is closed to new business said a market could not
+  // be sold into over a calculation that market may never perform. 0124 taught
+  // the database the difference and the startup gate reads it; this reads the
+  // same column.
+  const closing = useMemo(
+    () => blockers.filter((r) => (r.blocks ?? 'feature') === 'onboarding'),
+    [blockers],
+  );
+  const awaiting = useMemo(
+    () => blockers.filter((r) => (r.blocks ?? 'feature') !== 'onboarding'),
+    [blockers],
+  );
+
+  // Markets closed to new business by a legal value nobody has checked.
+  // Computed over the WHOLE list rather than the filtered view: filtering to
+  // Bangladesh must not make Saudi Arabia's blockers disappear from a warning
+  // about which markets are closed.
+  const blockedMarkets = useMemo(() => {
+    const byMarket = new Map<string, number>();
+    for (const r of closing) {
+      byMarket.set(r.country, (byMarket.get(r.country) ?? 0) + 1);
+    }
+    return byMarket;
+  }, [closing]);
 
   async function record() {
     setBusy(true);
@@ -179,6 +230,7 @@ function RulesScreen() {
       await api.post('/platform/rules', { ...form, payload });
       setOpen(false);
       void refetch();
+      void outstanding.refetch();
     } catch (e) {
       if (e instanceof ApiError && e.fields) setFieldErrors(e.fields);
       setSaveError(messageFor(e, t));
@@ -248,7 +300,15 @@ function RulesScreen() {
           {/* Only meaningful when it is also unverified: a verified blocker
               blocks nothing. */}
           {x.release_blocker && !x.verified ? (
-            <Badge tone="critical">{t('nx.plat.ruBlocking')}</Badge>
+            <Badge
+              tone={
+                (x.blocks ?? 'feature') === 'onboarding' ? 'critical' : 'caution'
+              }
+            >
+              {(x.blocks ?? 'feature') === 'onboarding'
+                ? t('nx.plat.ruBlocksOnboarding')
+                : t('nx.plat.ruBlocksFeature')}
+            </Badge>
           ) : null}
         </span>
       ),
@@ -269,31 +329,58 @@ function RulesScreen() {
         }
       />
 
-      {blockedMarkets.size > 0 ? (
+      {blockers.length > 0 ? (
         <Panel title={t('nx.plat.ruBlockedTitle')} className="mb-4">
           <p className="text-body text-muted">{t('nx.plat.ruBlockedDesc')}</p>
-          <ul className="mt-3 space-y-1.5">
-            {[...blockedMarkets.entries()].map(([market, count]) => (
-              <li key={market} className="flex items-center gap-2 text-body">
-                <Badge tone="critical">{market.toUpperCase()}</Badge>
-                <span className="text-fg">
-                  {t('nx.plat.ruBlockedCount', { count: String(count) })}
-                </span>
-              </li>
-            ))}
-          </ul>
+
+          {/* Closed markets, and only closed markets.
+              A feature blocker leaves the market open, so listing it here
+              would say a shop cannot be onboarded when it can. */}
+          {blockedMarkets.size > 0 ? (
+            <ul className="mt-3 space-y-1.5">
+              {[...blockedMarkets.entries()].map(([market, count]) => (
+                <li key={market} className="flex items-center gap-2 text-body">
+                  <Badge tone="critical">{market.toUpperCase()}</Badge>
+                  <span className="text-fg">
+                    {t('nx.plat.ruBlockedCount', { count: String(count) })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {awaiting.length > 0 ? (
+            <p className="mt-3 max-w-prose text-body text-muted">
+              {t('nx.plat.ruAwaitingDesc', { count: String(awaiting.length) })}
+            </p>
+          ) : null}
 
           {/* Each one, named, with what it still needs. This is the whole
               point of the panel: an operator arriving here wants to know what
               to go and fetch, not that something is missing. */}
           <div className="mt-5 flex flex-col gap-4 border-t border-line pt-4">
-            {blockers.map((r) => {
-              const missing = unfilled(r.payload);
+            {[...closing, ...awaiting].map((r) => {
+              // The server's answer where there is one. It counts the same
+              // placeholder this screen looks for, and it also knows whether
+              // the source pack describes the rule — which the payload alone
+              // cannot say.
+              const found = outstandingFor(r.rule_key, r.country);
+              const missing = found?.unfilled_fields ?? unfilled(r.payload);
+              const closesMarket = (r.blocks ?? 'feature') === 'onboarding';
               return (
                 <div key={r.id} className="flex flex-col gap-1.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="num font-medium text-fg">{r.rule_key}</span>
-                    <Badge tone="critical">{r.country.toUpperCase()}</Badge>
+                    <Badge tone={closesMarket ? 'critical' : 'caution'}>
+                      {r.country.toUpperCase()}
+                    </Badge>
+                    {/* What this one actually stops, said on the row rather
+                        than inferred from the panel it is in. */}
+                    <Badge tone={closesMarket ? 'critical' : 'caution'}>
+                      {closesMarket
+                        ? t('nx.plat.ruBlocksOnboarding')
+                        : t('nx.plat.ruBlocksFeature')}
+                    </Badge>
                   </div>
 
                   <p className="text-body text-fg">
@@ -330,8 +417,20 @@ function RulesScreen() {
                     {t('nx.plat.ruBlockedWhy')}
                   </p>
                   <p className="max-w-prose text-caption text-muted">
-                    {t('nx.plat.ruBlockedAfter')}
+                    {closesMarket
+                      ? t('nx.plat.ruBlockedAfter')
+                      : t('nx.plat.ruAwaitingAfter')}
                   </p>
+                  <p className="max-w-prose text-caption text-muted">
+                    {closesMarket
+                      ? t('nx.plat.ruBlockedProduction')
+                      : t('nx.plat.ruAwaitingProduction')}
+                  </p>
+                  {found && !found.described ? (
+                    <p className="max-w-prose text-caption text-muted">
+                      {t('nx.plat.ruNotDescribed')}
+                    </p>
+                  ) : null}
 
                   {guiding === r.rule_key && sourceFor(r.rule_key) ? (
                     <div className="mt-3">
@@ -341,6 +440,7 @@ function RulesScreen() {
                         onRecorded={() => {
                           setGuiding(null);
                           void refetch();
+                          void outstanding.refetch();
                         }}
                         onCancel={() => setGuiding(null)}
                         onAdvanced={() => {
@@ -353,6 +453,7 @@ function RulesScreen() {
                             source_document: r.source_document ?? '',
                             source_url: r.source_url ?? '',
                             release_blocker: true,
+                            blocks: r.blocks ?? 'feature',
                             verified: false,
                             payload: JSON.stringify(r.payload, null, 2),
                           });
@@ -387,6 +488,7 @@ function RulesScreen() {
                           source_document: r.source_document ?? '',
                           source_url: r.source_url ?? '',
                           release_blocker: true,
+                          blocks: r.blocks ?? 'feature',
                           verified: false,
                           payload: JSON.stringify(r.payload, null, 2),
                         });
@@ -402,7 +504,7 @@ function RulesScreen() {
           </div>
 
           <p className="mt-4 max-w-prose border-t border-line pt-3 text-caption text-muted">
-            {t('nx.plat.ruBlockedProduction')}
+            {t('nx.plat.ruSoftwareIsBuilt')}
           </p>
         </Panel>
       ) : null}
@@ -533,6 +635,26 @@ function RulesScreen() {
                 label={t('nx.plat.ruBlockerLabel')}
                 hint={t('nx.plat.ruBlockerHint')}
               />
+              {/* What it blocks, asked only when it blocks something.
+                  Defaulted to the narrower of the two: mistaking a capability
+                  for an onboarding blocker closes a market that could trade. */}
+              {form.release_blocker ? (
+                <Field
+                  name="blocks"
+                  label={t('nx.plat.ruBlocksLabel')}
+                  hint={t('nx.plat.ruBlocksHint')}
+                >
+                  <Select
+                    value={form.blocks}
+                    onChange={(e) => setForm({ ...form, blocks: e.target.value })}
+                  >
+                    <option value="feature">{t('nx.plat.ruBlocksFeatureOpt')}</option>
+                    <option value="onboarding">
+                      {t('nx.plat.ruBlocksOnboardingOpt')}
+                    </option>
+                  </Select>
+                </Field>
+              ) : null}
               <Checkbox
                 checked={form.verified}
                 onChange={(e) => setForm({ ...form, verified: e.target.checked })}

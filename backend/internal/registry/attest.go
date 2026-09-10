@@ -222,7 +222,8 @@ func ParseAttestation(raw []byte) (Attestation, error) {
 func checkValues(src SourceRule, values map[string]string) error {
 	if len(values) == 0 {
 		return errs.Newf(errs.CodeInvalidInput,
-			"%s: no figures. It needs %s.", src.RuleKey, fieldList(src))
+			"%s: no figures. It needs %s.", src.RuleKey, fieldList(src)).
+			WithField("payload", fieldList(src))
 	}
 
 	known := make(map[string]SourceField, len(src.Fields))
@@ -233,7 +234,9 @@ func checkValues(src SourceRule, values map[string]string) error {
 		if _, ok := known[name]; !ok {
 			return errs.Newf(errs.CodeInvalidInput,
 				"%s has no field called %q. It takes %s.",
-				src.RuleKey, name, fieldList(src))
+				src.RuleKey, name, fieldList(src)).
+				WithField(name, "Not a field of this rule. It takes "+
+					fieldList(src)+".")
 		}
 	}
 
@@ -244,17 +247,20 @@ func checkValues(src SourceRule, values map[string]string) error {
 				"%s.%s is missing: %s. Every field of a rule is recorded "+
 					"together, because a payload with one figure filled in and "+
 					"the rest still placeholders would refuse exactly as it "+
-					"does now.", src.RuleKey, f.Name, f.Label)
+					"does now.", src.RuleKey, f.Name, f.Label).
+				WithField(f.Name, f.Label+". "+f.Help)
 		}
 		v = strings.TrimSpace(v)
 		if v == "" {
 			return errs.Newf(errs.CodeInvalidInput,
-				"%s.%s is blank: %s", src.RuleKey, f.Name, f.Help)
+				"%s.%s is blank: %s", src.RuleKey, f.Name, f.Help).
+				WithField(f.Name, f.Help)
 		}
 		if strings.Contains(v, Placeholder) {
 			return errs.Newf(errs.CodeInvalidInput,
 				"%s.%s still holds %s. Replace it with the figure from %s.",
-				src.RuleKey, f.Name, Placeholder, src.Document)
+				src.RuleKey, f.Name, Placeholder, src.Document).
+				WithField(f.Name, "Still "+Placeholder+". "+f.Help)
 		}
 
 		switch f.Kind {
@@ -263,35 +269,43 @@ func checkValues(src SourceRule, values map[string]string) error {
 				return errs.Newf(errs.CodeInvalidInput,
 					"%s.%s is %q, and this product understands only: %s. "+
 						"%s", src.RuleKey, f.Name, v,
-					strings.Join(f.Choices, ", "), f.Help)
+					strings.Join(f.Choices, ", "), f.Help).
+					WithField(f.Name, "One of: "+
+						strings.Join(f.Choices, ", ")+". "+f.Help)
 			}
 		case "decimal":
 			d, err := decimal.NewFromString(v)
 			if err != nil {
 				return errs.Newf(errs.CodeInvalidInput,
 					"%s.%s is %q, which is not a number. %s",
-					src.RuleKey, f.Name, v, f.Help)
+					src.RuleKey, f.Name, v, f.Help).
+					WithField(f.Name, "Not a number. "+f.Help)
 			}
 			if d.IsNegative() {
 				return errs.Newf(errs.CodeInvalidInput,
-					"%s.%s is negative. %s", src.RuleKey, f.Name, f.Help)
+					"%s.%s is negative. %s", src.RuleKey, f.Name, f.Help).
+					WithField(f.Name, "Cannot be negative. "+f.Help)
 			}
 			if f.Unit == "fraction" && d.GreaterThan(decimal.NewFromInt(1)) {
 				return errs.Newf(errs.CodeInvalidInput,
 					"%s.%s is %s, and it is a fraction of the award — "+
 						"somewhere between 0 and 1. A third is 0.3333, not 33.",
-					src.RuleKey, f.Name, v)
+					src.RuleKey, f.Name, v).
+					WithField(f.Name, "A fraction between 0 and 1. "+
+						"A third is 0.3333, not 33.")
 			}
 		case "int":
 			n, err := strconv.Atoi(v)
 			if err != nil {
 				return errs.Newf(errs.CodeInvalidInput,
 					"%s.%s is %q, which is not a whole number. %s",
-					src.RuleKey, f.Name, v, f.Help)
+					src.RuleKey, f.Name, v, f.Help).
+					WithField(f.Name, "Not a whole number. "+f.Help)
 			}
 			if n < 0 {
 				return errs.Newf(errs.CodeInvalidInput,
-					"%s.%s is negative. %s", src.RuleKey, f.Name, f.Help)
+					"%s.%s is negative. %s", src.RuleKey, f.Name, f.Help).
+					WithField(f.Name, "Cannot be negative. "+f.Help)
 			}
 		case "text":
 			// Nothing beyond non-empty: the pack uses this kind exactly where
@@ -304,6 +318,76 @@ func checkValues(src SourceRule, values map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// ValidatePayload checks a rule payload against the source pack that describes
+// it, and is the same check the attestation file goes through.
+//
+// # Why the screen needs it too
+//
+// `ApplyAttestation` has validated every figure against the pack since it was
+// written: the field names, the units, the choices, the signs, and the rule
+// that a fraction of an award is between 0 and 1. `RecordRule` — the Super
+// Admin screen and the HTTP route behind it — validated none of it. It refused
+// an empty payload and a payload still containing the placeholder, and wrote
+// anything else.
+//
+// So the two doors into the registry disagreed about what a legal value is.
+// A platform operator recording end-of-service through the screen could write
+// `days_per_year_first_five: "fifteen"`, or a resignation fraction of 33 where
+// the article says a third, or invent a field name the calculation never
+// reads. Nothing refused it at the point of entry. The engine catches some of
+// it later — `eosbEntitlement` refuses a fraction above 1 and a decimal that
+// will not parse — but by then the wrong figure is on record as the law, it is
+// in the audit trail as somebody's assertion, and what surfaces is a payroll
+// run failing rather than a form field saying what is wrong with what was
+// typed.
+//
+// Validating here closes that. The screen gets the same refusals as the file,
+// field by field, so the guided form can point at the box that is wrong.
+//
+// # A key the pack does not describe is not an error
+//
+// The pack describes the rules whose figures somebody has to go and read out
+// of a published document. Plenty of rules are not like that, and refusing a
+// payload merely because it is not in the pack would make the registry
+// closed to anything the pack has not caught up with yet.
+func ValidatePayload(key string, payload []byte) error {
+	src, ok := SourceFor(key)
+	if !ok {
+		return nil
+	}
+	if len(payload) == 0 {
+		return errs.Newf(errs.CodeInvalidInput,
+			"%s: no figures. It needs %s.", src.RuleKey, fieldList(src)).
+			WithField("payload", fieldList(src))
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return errs.Newf(errs.CodeInvalidInput,
+			"%s: the value must be a JSON object of figures. It needs %s.",
+			src.RuleKey, fieldList(src)).
+			WithField("payload", fieldList(src))
+	}
+
+	// Strings throughout, as every payload in this registry is written and as
+	// `AttestedRule.Values` requires. A decimal that goes through a JSON number
+	// is a decimal that can come back different, so a bare number here is
+	// refused by name rather than quietly stringified into the registry.
+	values := make(map[string]string, len(raw))
+	for name, v := range raw {
+		s, isString := v.(string)
+		if !isString {
+			return errs.Newf(errs.CodeInvalidInput,
+				"%s.%s must be quoted. Every figure in this registry is a "+
+					"string, because a decimal that goes through a JSON "+
+					"number can come back different.", src.RuleKey, name).
+				WithField(name, "Quote the figure: \"15\", not 15.")
+		}
+		values[name] = s
+	}
+	return checkValues(src, values)
 }
 
 func fieldList(src SourceRule) string {

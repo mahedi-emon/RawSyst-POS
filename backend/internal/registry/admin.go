@@ -47,7 +47,16 @@ type RuleRow struct {
 	VerifiedOn string    `json:"verified_on,omitempty"`
 	Verified   bool      `json:"verified"`
 	Blocker    bool      `json:"release_blocker"`
-	Notes      string    `json:"notes,omitempty"`
+
+	// Blocks is `onboarding` or `feature`, and it is the difference between
+	// "this market cannot be sold into" and "one capability refuses until the
+	// figure is recorded". 0124 recorded it and the startup gate reads it; the
+	// screen did not, so it called every unverified blocker a closed market
+	// and told an operator that end-of-service bands were stopping a coffee
+	// shop from opening its till.
+	Blocks string `json:"blocks"`
+
+	Notes string `json:"notes,omitempty"`
 }
 
 // Rules lists the registry, newest effective date first.
@@ -64,7 +73,7 @@ func (s *Service) Rules(ctx context.Context, country string) ([]RuleRow, error) 
 			       source_authority::text, source_document,
 			       coalesce(source_url, ''),
 			       coalesce(to_char(verified_on, 'YYYY-MM-DD'), ''),
-			       release_blocker, coalesce(notes, '')
+			       release_blocker, blocks, coalesce(notes, '')
 			FROM regulatory_rule
 			WHERE ($1 = '' OR country = $1)
 			ORDER BY country, rule_key, effective_from DESC`,
@@ -78,7 +87,7 @@ func (s *Service) Rules(ctx context.Context, country string) ([]RuleRow, error) 
 			var payload []byte
 			if e := rows.Scan(&r.ID, &r.Key, &r.Country, &payload, &r.From,
 				&r.To, &r.Authority, &r.Document, &r.URL, &r.VerifiedOn,
-				&r.Blocker, &r.Notes); e != nil {
+				&r.Blocker, &r.Blocks, &r.Notes); e != nil {
 				return e
 			}
 			_ = json.Unmarshal(payload, &r.Payload)
@@ -101,6 +110,14 @@ type NewRule struct {
 	URL       string
 	Blocker   bool
 	Notes     string
+
+	// Blocks says what an unverified blocker stops: `onboarding` closes the
+	// market to new business, `feature` refuses one capability where it is
+	// used and leaves the rest of the product alone. Empty means `feature`,
+	// which is the column's own default and the safer of the two to assume —
+	// mistaking a feature blocker for an onboarding one shuts a market that
+	// could trade.
+	Blocks string
 
 	// Verified says the caller checked this against the official document and
 	// is putting their name to it. False records the figure without asserting
@@ -149,6 +166,31 @@ func (s *Service) RecordRule(
 			"That value still contains __VERIFY__. Replace every placeholder "+
 				"with the figure from the official document before recording it.")
 	}
+	// The same check the attestation file goes through.
+	//
+	// This route wrote whatever it was handed. `ApplyAttestation` has always
+	// refused a figure that is not a number, a fraction of an award greater
+	// than the award, a wage basis this product cannot compute, and a field
+	// name the rule does not have — and the screen, which is the route a
+	// platform operator actually uses, refused none of them. See
+	// `ValidatePayload` for why that mattered and what it now costs to get
+	// wrong: nothing, because the form says which box is wrong.
+	if err := ValidatePayload(key, in.Payload); err != nil {
+		return RuleRow{}, err
+	}
+	blocks := strings.ToLower(strings.TrimSpace(in.Blocks))
+	if blocks == "" {
+		blocks = "feature"
+	}
+	if blocks != "onboarding" && blocks != "feature" {
+		return RuleRow{}, errs.Validation(
+			"Say what this rule blocks while it is unverified.").
+			WithField("blocks",
+				"Either `onboarding`, which closes the market to new "+
+					"business until the figure is recorded, or `feature`, "+
+					"which refuses one capability where it is used and "+
+					"leaves the rest of the product trading.")
+	}
 	if in.From.IsZero() {
 		return RuleRow{}, errs.Validation("Say when this takes effect.").
 			WithField("effective_from",
@@ -195,14 +237,15 @@ func (s *Service) RecordRule(
 			INSERT INTO regulatory_rule
 			  (rule_key, country, payload, effective_from, source_authority,
 			   source_document, source_url, release_blocker, notes,
-			   verified_on, verified_by)
+			   verified_on, verified_by, blocks)
 			VALUES ($1,$2,$3::jsonb,$4,$5,$6,
-			        nullif($7,''),$8,nullif($9,''),$10::date,$11)
+			        nullif($7,''),$8,nullif($9,''),$10::date,$11,$12)
 			RETURNING id, to_char(effective_from, 'YYYY-MM-DD'),
 			          coalesce(to_char(verified_on, 'YYYY-MM-DD'), '')`,
 			key, in.Country, string(in.Payload), in.From, in.Authority,
 			strings.TrimSpace(in.Document), strings.TrimSpace(in.URL),
-			in.Blocker, strings.TrimSpace(in.Notes), verified, verifier).
+			in.Blocker, strings.TrimSpace(in.Notes), verified, verifier,
+			blocks).
 			Scan(&out.ID, &out.From, &out.VerifiedOn); e != nil {
 			return e
 		}
@@ -231,6 +274,7 @@ func (s *Service) RecordRule(
 				"source_url":      strings.TrimSpace(in.URL),
 				"verified":        in.Verified,
 				"release_blocker": in.Blocker,
+				"blocks":          blocks,
 				"payload":         string(in.Payload),
 				"notes":           strings.TrimSpace(in.Notes),
 			},
@@ -246,7 +290,7 @@ func (s *Service) RecordRule(
 
 	out.Key, out.Country = key, in.Country
 	out.Authority, out.Document, out.URL = in.Authority, in.Document, in.URL
-	out.Blocker, out.Notes = in.Blocker, in.Notes
+	out.Blocker, out.Blocks, out.Notes = in.Blocker, blocks, in.Notes
 	out.Verified = out.VerifiedOn != ""
 	_ = json.Unmarshal(in.Payload, &out.Payload)
 	return out, nil

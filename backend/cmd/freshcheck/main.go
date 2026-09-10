@@ -149,7 +149,8 @@ func main() {
 		fmt.Printf("capabilities awaiting a regulatory figure: %d (%s)\n",
 			len(awaiting), strings.Join(awaiting, ", "))
 		fmt.Println("  each is implemented and refuses by name at the point " +
-			"of use; record with `regulatory -template` then `-apply`")
+			"of use; record in Super Admin > Regulatory Registry, or with " +
+			"`regulatory -template` then `-apply`")
 	}
 
 	fmt.Println("\nfresh database came up clean")

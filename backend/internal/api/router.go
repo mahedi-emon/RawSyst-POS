@@ -2430,6 +2430,12 @@ func (s *Server) Routes() []Route {
 			"where each unrecorded legal value comes from: the document, the " +
 				"articles, and what each field of the payload means. The figures " +
 				"are not here; reading them is a person's act"},
+		{http.MethodGet, "/api/v1/platform/rules/outstanding", AccessSuperAdmin,
+			"", s.handleOutstandingRules,
+			"the legal values this installation is still waiting for: which " +
+				"fields are unfilled, what each one blocks while it is, and " +
+				"whether the source pack can guide the person recording it. " +
+				"Answerable only from a shell before this route existed"},
 		{http.MethodPost, "/api/v1/platform/rules", AccessSuperAdmin, "",
 			s.handleRecordRule,
 			"records a legal value against the document it came from; a " +
