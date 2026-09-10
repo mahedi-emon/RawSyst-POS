@@ -218,7 +218,13 @@ function StockScreen() {
             description={t('nx.stock.emptyDesc')}
             action={
               <Button asChild variant="secondary">
-                <a href="/stock/counts">{t('nx.stock.goToCounts')}</a>
+                {/*
+                  A count IS an adjustment, so there is no /stock/counts list
+                  to send anybody to -- that list is /stock/adjustments. This
+                  button offers the action its label names, which is opening a
+                  count, and /stock/counts/new is where that starts.
+                */}
+                <a href="/stock/counts/new">{t('nx.stock.goToCounts')}</a>
               </Button>
             }
           />
