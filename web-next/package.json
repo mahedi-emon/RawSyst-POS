@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "cd ../backend && go run ./cmd/lintwording ..",
     "test": "vitest run",
     "gen:contract": "node scripts/generate-api-contract.mjs",
     "check:contract": "node scripts/generate-api-contract.mjs --check",

@@ -7573,9 +7573,12 @@ no SQL, no rebuild, no developer.
     regulatory report            1 outstanding capability, exit 0           PASS
     settlement, driven live      two people, both reasons, both refusals    PASS
 
-`next lint` is broken and was before this pass: the script is `next lint`, which
-Next removed. `lint-wording` is this repository's prose lint and it runs over the
-whole tree.
+`npm run lint` in `web-next` was a dead script and had been since the Next 16
+upgrade: `next lint` was removed from the framework, so the command always
+failed. There is no ESLint configuration in this repository and never has been
+— strict TypeScript and `cmd/lintwording` are what it lints with — so the script
+was a leftover from `create-next-app` pointing at a tool the project does not
+use. It now runs the wording check, which is the lint that exists.
 
 ## Proved on a production deployment, not only in tests
 
