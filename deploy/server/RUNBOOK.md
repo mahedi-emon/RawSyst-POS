@@ -270,37 +270,53 @@ opens.
 
 ## 8. Backups
 
-The database is the only thing on this machine that cannot be rebuilt from the
-repository. Everything else — images, containers, configuration — is a `git
-clone` and a `docker compose build` away.
+The database is the only thing here that cannot be rebuilt from the repository.
+**`deploy/server/BACKUP.md` is the whole of it** — what is in a snapshot, where
+it goes, how it is proved, what is kept and what happens to secrets. The short
+version:
 
 ```bash
-#!/usr/bin/env bash
-# /opt/rawsyst/backup.sh
-set -euo pipefail
-out="/var/backups/rawsyst"
-mkdir -p "$out"
-stamp=$(date -u +%Y%m%dT%H%M%SZ)
+cd /opt/rawsyst
+C="docker compose -f docker-compose.yml -f docker-compose.server.yml --profile backup"
 
-docker exec "$(docker ps -qf name=db)" \
-  pg_dump -U rawsyst -d rawsyst --format=custom --compress=9 \
-  > "$out/rawsyst-$stamp.dump"
-
-# Keep a fortnight. A backup policy nobody prunes is a disk that fills.
-find "$out" -name 'rawsyst-*.dump' -mtime +14 -delete
+$C run --rm backup run       # take one
+$C run --rm backup verify    # prove it restores, into a temporary database
+$C run --rm backup list
 ```
 
-Two things make this a backup rather than a file:
+It refuses to run without an object store configured, because a backup on the
+same disk as the database is not a backup. Set `RAWSYST_S3_ENDPOINT`,
+`RAWSYST_S3_BUCKET` and the credentials in `.env` before the first run.
 
-1. **It leaves the machine.** A dump on the same disk as the database survives
-   a mistake and not a disk. Copy it off — object storage, another host,
-   anywhere that is not here.
-2. **It is restored.** On a spare database, on a schedule, by somebody who
-   watches it finish. An untested backup is a belief.
+Then the timer, which takes a backup, verifies it and prunes, every night:
 
 ```bash
-pg_restore -U rawsyst -d rawsyst_restore_test --clean --if-exists rawsyst-….dump
+sudo cp deploy/server/rawsyst-backup.service /etc/systemd/system/
+sudo cp deploy/server/rawsyst-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now rawsyst-backup.timer
+systemctl list-timers rawsyst-backup.timer
 ```
+
+Two things worth saying plainly here, because they are the ones people get
+wrong:
+
+**A backup is not working because a file was created.** `verify` downloads the
+snapshot, checks it against its manifest, restores it into a temporary database,
+compares the schema version, the table count and the row counts, and drops the
+temporary database. That is what the timer runs every night, and it is the only
+thing that makes the word "backup" true.
+
+**Do this before the business has any data in it.** A backup system first tested
+on the day it is needed is a backup system nobody has tested.
+
+---
+
+## 9. Moving to another server
+
+`deploy/server/MIGRATION.md`, when the time comes. Read it before you need it:
+the rehearsal it opens with is the difference between a ten-minute cutover and
+an afternoon.
 
 ---
 

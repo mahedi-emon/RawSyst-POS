@@ -76,8 +76,9 @@ COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=build /out/passwd /etc/passwd
 COPY --from=build /out/group /etc/group
 
-# One binary, six commands: `rawsyst api`, `rawsyst worker`, `rawsyst migrate`,
-# `rawsyst bootstrap`, `rawsyst regulatory`, `rawsyst ingest`.
+# One binary, seven commands: `rawsyst api`, `rawsyst worker`, `rawsyst
+# migrate`, `rawsyst bootstrap`, `rawsyst regulatory`, `rawsyst ingest` and
+# `rawsyst backup`.
 #
 # It was six binaries, and they shared a module, a config loader, a database
 # layer and a registry — so the image carried six copies of nearly the same
@@ -97,3 +98,42 @@ EXPOSE 8080
 # right form anyway: it makes the binary PID 1 and lets SIGTERM reach it, so the
 # graceful shutdown in cmd/api actually runs.
 ENTRYPOINT ["/rawsyst", "api"]
+
+# --- backup -----------------------------------------------------------------
+
+# The same binary, on an image that has pg_dump.
+#
+# # Why a second image and not a tool in the first
+#
+# `pg_dump` and `pg_restore` are the right way to back up and restore a
+# PostgreSQL database, and this product is not going to reimplement them. They
+# cannot go in the runtime image above: it is `scratch`, which is the whole
+# reason it is 33MB and has nothing for a command-injection bug to reach.
+#
+# So the backup runs on `postgres:17-alpine` — already pulled on any host that
+# runs this stack, so it costs the 21MB of the binary and nothing else. It is
+# also the version guarantee that actually matters: pg_dump refuses a server
+# newer than itself, and taking the dumper from the same image as the database
+# makes that impossible to get wrong.
+#
+# It is a separate TARGET rather than a separate Dockerfile so the binary is
+# built once and both images take the same bytes.
+FROM postgres:17-alpine AS backup
+
+COPY --from=build /out/rawsyst /rawsyst
+
+# Where a dump is staged, owned by the user that will write it.
+#
+# A named volume mounted here starts as a copy of this directory, ownership
+# included — which is how a container that is not root gets a writable volume
+# without a chown at start-up or a privileged entry point. Created in the image
+# for exactly that reason.
+RUN mkdir -p /staging && chown 70:70 /staging
+
+# `postgres` (uid 70) ships with the image. Not root, and not the application's
+# 10001 either: this container writes a dump to /staging and reads nothing of
+# the application's.
+USER 70:70
+
+ENTRYPOINT ["/rawsyst", "backup"]
+CMD ["run"]

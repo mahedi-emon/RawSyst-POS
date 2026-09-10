@@ -41,6 +41,7 @@ readonly DOCKER_RECLAIM_MAX_MB=2048
 readonly LOG_MAX_MB=256
 readonly SWAP_USED_MAX_PCT=50      # swap in use is fine; swap thrashing is not
 readonly PG_CONN_PCT_MAX=80
+readonly BACKUP_MAX_AGE_HOURS=30      # a daily backup, plus slack for a slow night
 
 over=0
 line()  { printf '  %-34s %s\n' "$1" "$2"; }
@@ -87,12 +88,23 @@ else
   tip "du -xh --max-depth=2 /var 2>/dev/null | sort -h | tail -20"
 fi
 
-inodes=$(df -i --output=ipcent / | tail -1 | tr -dc '0-9')
-if [ "${inodes:-0}" -le "$INODE_PCT_MAX" ]; then
-  line "inodes /" "${inodes}% used"
-else
-  flag "inodes /" "${inodes}% used (max ${INODE_PCT_MAX}%)"
-fi
+# `df -i --output=ipcent` is what this wants and some builds of coreutils
+# refuse the combination — "options -i and --output are mutually exclusive" —
+# which silently produced an empty reading. The plain form and a column is less
+# elegant and works everywhere.
+inodes=$(df -i / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
+case "${inodes:-}" in
+  # Not every filesystem has a fixed inode count. btrfs, ZFS and anything
+  # mounted from a foreign kernel report a dash, and a dash is not a finding.
+  ''|*[!0-9]*) line "inodes /" "not applicable on this filesystem" ;;
+  *)
+    if [ "$inodes" -le "$INODE_PCT_MAX" ]; then
+      line "inodes /" "${inodes}% used"
+    else
+      flag "inodes /" "${inodes}% used (max ${INODE_PCT_MAX}%)"
+      tip "a disk with free bytes and no inodes is a full disk"
+    fi ;;
+esac
 
 # --- load -------------------------------------------------------------------
 
@@ -169,6 +181,45 @@ if have docker && docker info >/dev/null 2>&1; then
       -d "${POSTGRES_DB:-rawsyst}" -tAc \
       "SELECT pg_size_pretty(pg_database_size(current_database()))" 2>/dev/null)
     [ -n "$size" ] && line "database size" "$size"
+
+    # The backup, and specifically the VERIFIED one.
+    #
+    # `status = 'succeeded'` says a file was written. `verified_at` says
+    # somebody restored it and it was the database it claimed to be. Only the
+    # second is protection, and reporting the first would be the comforting
+    # number rather than the true one.
+    read -r age loc < <(docker exec "$db" psql -U "${POSTGRES_USER:-rawsyst}" \
+      -d "${POSTGRES_DB:-rawsyst}" -tAc \
+      "SELECT round(extract(epoch from now() - verified_at) / 3600),
+              coalesce(location, '-')
+         FROM backup_record
+        WHERE tenant_id IS NULL AND verified_at IS NOT NULL
+        ORDER BY verified_at DESC LIMIT 1" 2>/dev/null | tr '|' ' ')
+
+    if [ -z "${age:-}" ]; then
+      flag "verified backup" "none on record"
+      tip "docker compose -f docker-compose.yml -f docker-compose.server.yml --profile backup run --rm backup run"
+      tip "then the same with 'verify'. See deploy/server/BACKUP.md"
+    elif [ "${age%.*}" -le "$BACKUP_MAX_AGE_HOURS" ]; then
+      line "verified backup" "${age%.*}h ago"
+    else
+      flag "verified backup" "${age%.*}h ago (max ${BACKUP_MAX_AGE_HOURS}h)"
+      tip "systemctl status rawsyst-backup.timer"
+      tip "journalctl -u rawsyst-backup.service --since '3 days ago'"
+    fi
+
+    # And whether the last ATTEMPT failed, which is a different question. A
+    # week-old verified backup with three failed runs since is a system that
+    # looks protected and is not.
+    failed=$(docker exec "$db" psql -U "${POSTGRES_USER:-rawsyst}" \
+      -d "${POSTGRES_DB:-rawsyst}" -tAc \
+      "SELECT coalesce(left(error, 90), 'ok') FROM backup_record
+        WHERE tenant_id IS NULL AND status = 'failed'
+          AND started_at > now() - interval '3 days'
+        ORDER BY started_at DESC LIMIT 1" 2>/dev/null)
+    if [ -n "${failed:-}" ] && [ "$failed" != "ok" ]; then
+      flag "last backup failure" "$failed"
+    fi
   fi
 else
   flag "docker" "not answering"

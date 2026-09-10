@@ -42,6 +42,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -156,6 +157,133 @@ func (s *Store) Put(
 	return s.check(resp, "storing")
 }
 
+// PutStream stores an object without holding it in memory.
+//
+// # Why `Put` is not enough
+//
+// `Put` takes a `[]byte`, which is right for the things it was written for: a
+// logo, a scanned identity card, a receipt PDF. It is wrong for a database
+// dump. On the server this product is sized for — 3.7 GiB, of which the
+// containers may have 1.6 — reading a dump into memory to upload it is the
+// difference between a backup and an out-of-memory kill, and it fails at
+// exactly the moment the business has grown enough to need the backup.
+//
+// # Why the caller supplies the checksum
+//
+// SigV4 signs the payload hash, so an S3 request has to know the SHA-256 of the
+// body before it sends it. Reading a stream twice to get it defeats the point.
+// The caller has already computed the hash — a backup writes its dump through a
+// hasher on the way to disk — so it hands the hash in, and the same value is
+// what the manifest records and what a restore checks. One hash, one pass,
+// three uses.
+//
+// `UNSIGNED-PAYLOAD` would avoid the hash entirely and is deliberately not
+// used: the signature would then cover the headers and not the body, and a
+// truncated upload would be accepted as valid.
+func (s *Store) PutStream(
+	ctx context.Context, key, contentType string,
+	body io.Reader, size int64, sha256hex string,
+) error {
+	if s == nil {
+		return notConfigured()
+	}
+	if size < 0 {
+		return errs.New(errs.CodeInvalidInput,
+			"An object's length has to be known before it is signed.")
+	}
+	if sha256hex == "" {
+		return errs.New(errs.CodeInvalidInput,
+			"An object's checksum has to be known before it is signed.")
+	}
+
+	req, err := s.request(ctx, http.MethodPut, key, body)
+	if err != nil {
+		return err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	req.ContentLength = size
+
+	if err := s.sign(req, sha256hex); err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return errs.Wrap(err, errs.CodeUnavailable,
+			"The object store could not be reached.")
+	}
+	defer resp.Body.Close()
+	return s.check(resp, "storing")
+}
+
+// GetStream reads an object back without holding it in memory.
+//
+// The caller closes the body. Deliberately not `Get`, which caps at
+// `maxObjectSize` and returns a slice: a backup being restored is larger than
+// anything that cap was written for, and it is going to a file rather than into
+// a response.
+func (s *Store) GetStream(
+	ctx context.Context, key string,
+) (io.ReadCloser, int64, error) {
+	if s == nil {
+		return nil, 0, notConfigured()
+	}
+	req, err := s.request(ctx, http.MethodGet, key, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.sign(req, emptyHash); err != nil {
+		return nil, 0, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, 0, errs.Wrap(err, errs.CodeUnavailable,
+			"The object store could not be reached.")
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, 0, errs.New(errs.CodeNotFound, "That file was not found.")
+	}
+	if err := s.check(resp, "reading"); err != nil {
+		resp.Body.Close()
+		return nil, 0, err
+	}
+	return resp.Body, resp.ContentLength, nil
+}
+
+// Exists says whether an object is there, and how big it is.
+//
+// A HEAD, so a verification can confirm an upload arrived without pulling it
+// back down. It is the cheapest half of checking a backup and the least
+// convincing: an object of the right size is not an object with the right bytes
+// in it, which is why nothing here treats it as verification on its own.
+func (s *Store) Exists(ctx context.Context, key string) (int64, error) {
+	if s == nil {
+		return 0, notConfigured()
+	}
+	req, err := s.request(ctx, http.MethodHead, key, nil)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.sign(req, emptyHash); err != nil {
+		return 0, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, errs.Wrap(err, errs.CodeUnavailable,
+			"The object store could not be reached.")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return 0, errs.New(errs.CodeNotFound, "That file was not found.")
+	}
+	if err := s.check(resp, "reading"); err != nil {
+		return 0, err
+	}
+	return resp.ContentLength, nil
+}
+
 // Get reads an object back.
 func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 	if s == nil {
@@ -181,6 +309,87 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, err
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, maxObjectSize+1))
+}
+
+// List returns every key under a prefix.
+//
+// # Why it pages
+//
+// S3 answers a listing a thousand keys at a time and says whether there are
+// more. A caller that reads the first page and stops is a caller that sees the
+// first thousand backups and misses the rest — which for retention means
+// deleting from an incomplete picture, and there is no worse place to work from
+// an incomplete picture than a routine that deletes backups.
+//
+// The continuation token is carried through until the store says the listing is
+// complete. Bounded: a listing that never terminates would loop, so a page that
+// returns no keys and claims to be truncated ends it.
+func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
+	if s == nil {
+		return nil, notConfigured()
+	}
+
+	var keys []string
+	token := ""
+	for page := 0; page < 1000; page++ {
+		query := url.Values{}
+		query.Set("list-type", "2")
+		query.Set("prefix", prefix)
+		if token != "" {
+			query.Set("continuation-token", token)
+		}
+
+		// Built directly rather than through `request`, which escapes its
+		// argument as an object name. A listing is a GET against the bucket
+		// itself with a query string, and `sign` canonicalises the query from
+		// `req.URL` — so setting RawQuery here is what gets it into the
+		// signature.
+		target := s.scheme + "://" + s.host_() + s.path("")
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+		if err != nil {
+			return nil, errs.Wrap(err, errs.CodeInternal,
+				"The object store's address could not be built.")
+		}
+		req.URL.RawQuery = query.Encode()
+		if err := s.sign(req, emptyHash); err != nil {
+			return nil, err
+		}
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return nil, errs.Wrap(err, errs.CodeUnavailable,
+				"The object store could not be reached.")
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		resp.Body.Close()
+		if err := s.check(resp, "listing"); err != nil {
+			return nil, err
+		}
+		if readErr != nil {
+			return nil, errs.Wrap(readErr, errs.CodeUnavailable,
+				"The object store's listing could not be read.")
+		}
+
+		var listing struct {
+			Contents []struct {
+				Key string `xml:"Key"`
+			} `xml:"Contents"`
+			IsTruncated           bool   `xml:"IsTruncated"`
+			NextContinuationToken string `xml:"NextContinuationToken"`
+		}
+		if err := xml.Unmarshal(body, &listing); err != nil {
+			return nil, errs.Wrap(err, errs.CodeUnavailable,
+				"The object store's listing could not be understood.")
+		}
+		for _, c := range listing.Contents {
+			keys = append(keys, c.Key)
+		}
+		if !listing.IsTruncated || listing.NextContinuationToken == "" {
+			return keys, nil
+		}
+		token = listing.NextContinuationToken
+	}
+	return nil, errs.New(errs.CodeUnavailable,
+		"The object store's listing did not end after a thousand pages.")
 }
 
 // Delete removes an object.

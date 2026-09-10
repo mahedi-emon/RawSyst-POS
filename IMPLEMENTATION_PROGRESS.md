@@ -14,7 +14,8 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 | **Software development** | **COMPLETE.** No feature is unbuilt, disabled, unreachable, ungated or waiting for a developer. Zero `TODO`, `FIXME`, `not implemented` or `coming soon` in `backend`, `web-next/src`, `shared/src`, `pos/src` or `scripts`. Zero reachability gaps. |
 | **Regulatory data** | **Ingested and active.** `SA.EOSB.ENTITLEMENT` holds the figures Articles 84 and 85 state, read out of the Ministry of Human Resources and Social Development's own publication of the Labour Law, retrieved and hashed by the product, with the sentence behind every value on record. Nothing is awaiting a figure. |
 | **External dependency** | The Fatoora one-time password. ZATCA issues a compliance certificate only against a password the taxpayer reads from their own portal. The whole workflow around it is built. |
-| **Deployment** | Sized for the production server it goes on: 2 vCPU, 3.7 GiB, 48 GB, Ubuntu 24.04. `docker-compose.server.yml` plus `deploy/server/`. Images 296 MB for both services, down from 438 MB. |
+| **Deployment** | Sized for the production server it goes on: 2 vCPU, 3.7 GiB, 48 GB, Ubuntu 24.04. `docker-compose.server.yml` plus `deploy/server/`. Images 296 MB for both services, down from 438 MB. **Not yet deployed — this repository has no access to that machine.** |
+| **Backups** | Off-server, to any S3-compatible store, verified by restoring into a temporary database every night. `deploy/server/BACKUP.md` and `MIGRATION.md`. |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
 
 **Two categories, deliberately kept apart.** Software completeness and
@@ -8414,3 +8415,148 @@ twice, on the same network, minutes apart.
 | Server profile, live | four containers healthy, settings confirmed in `pg_settings` |
 | Regulatory ingest | retrieved, read, applied, `awaiting_data=0` |
 | Shell scripts | `bash -n` clean; `daemon.json` parses |
+
+---
+
+# A BACKUP IS A RESTORE (2026-09-10, fifth pass)
+
+Before RawSyst goes on a server it is going to be moved off again, and the thing
+that has to survive that move is the only thing on the machine that cannot be
+rebuilt from this repository: the database.
+
+## What existed, and what did not
+
+The register did. `backup_record` has been there since 0093 with the right
+distinction already in it — `status` says a run finished, `verified_at` says
+somebody proved it restores, and they are separate columns because they are
+separate claims. There were routes, a service and a screen that leads with "a
+backup that ran is not a backup that restores".
+
+What was missing was anything that filled them in. The routes' own comment said
+so: *this product records backups; it does not take them*. That is a reasonable
+position for a product deployed by somebody with a backup operator. A shop's own
+server does not have one.
+
+## What a snapshot is
+
+```
+rawsyst/20260910T130723Z-1/
+    database.dump      pg_dump custom format, compressed
+    manifest.json      what it is, how big, what it hashes to
+    COMPLETED          written last, and only if everything before it worked
+```
+
+The marker is the point. A dump that uploaded and a manifest that did not is a
+snapshot that would restore into a database with no idea what it is, so a
+restore refuses anything without one. That is what stops "the upload returned
+200" from being mistaken for "there is a backup".
+
+On this profile the database **is** the persistent data — documents and logos
+live in Postgres unless the files override is layered on — so one dump carries
+companies, users, roles, products, inventory, customers, suppliers, orders,
+invoices, accounting, payroll, the regulatory registry with the source documents
+it was read out of, and the audit trail. Nothing reproducible is in it: no
+images, no caches, no `node_modules`.
+
+**No secrets are in it.** Not the database password, not the JWT secret, not the
+storage credentials. A backup is read by whoever can list the bucket, and one
+that carries the credentials to the system it protects turns a leaked object
+into a full compromise. A test fails the build if a manifest field is ever added
+whose name suggests one.
+
+## Off the server, or not at all
+
+`backup run` refuses to start without an object store configured, rather than
+quietly writing to the disk it is protecting. Any S3-compatible store, entirely
+through environment, nothing committed. `https` is required outside development
+and configuration already refused otherwise — which is how the first local test
+run failed, correctly.
+
+`blob.Store` gained `PutStream`, `GetStream`, `Exists` and `List`. `Put` takes a
+`[]byte`, which is right for a logo and wrong for a dump: on 3.7 GiB with 1.6 of
+container ceilings, reading a dump into memory to upload it is the difference
+between a backup and an out-of-memory kill, and it fails exactly when the
+business has grown enough to need one. The dump is staged on disk, hashed on the
+way past, and uploaded from the file with a known length and a known checksum —
+one hash, one pass, three uses, because SigV4 signs the payload hash and the
+manifest and the restore both want the same value.
+
+## Verification, which is the whole point
+
+`verify` is a different command from `run` on purpose, and it does nine things:
+the completion marker exists, the manifest parses and is a version this build
+reads, the object is the length the manifest says, it downloads and hashes to
+what was recorded, **it is restored into a temporary database beside the real
+one**, the schema version matches, the table count matches, the row counts match
+table by table, and the temporary database is dropped — whatever happened.
+
+Production is never touched.
+
+Proved rather than asserted, on the running stack:
+
+| | |
+|---|---|
+| backup | 1.6 MB dump of a 24.7 MB database, schema 134, 184 tables |
+| verify | restored, 184 tables, schema 134, row counts matched, 3s |
+| a byte appended | caught at the size check |
+| **one byte flipped, same length** | **caught at the checksum, and named both hashes** |
+| register | `succeeded`, size, checksum, `verified = t` |
+
+That last row is the one that matters. A corrupted backup that hashes correctly
+would be a backup system that lies, and the tamper test is how you find out
+whether yours does.
+
+## Retention that cannot empty the store
+
+Seven daily, four weekly, three monthly, all configurable — and **always the
+newest completed snapshot, whatever the policy says**. A retention rule that can
+empty the store is a retention rule that will, and the day it does is the day
+somebody needs it.
+
+Two further refusals: if no completed snapshot can be found, nothing is deleted
+at all, because an empty or unreadable listing is a reason to stop rather than
+to start removing backups; and a snapshot whose id this build cannot date is
+kept, because deleting something because it is not understood is how a bug
+becomes data loss. Both have tests.
+
+`make cleanup` and `scripts/maintenance.sh` never touch the object store. A low
+local disk is not a reason to delete a remote backup.
+
+## Where it runs
+
+A `backup` target on `postgres:17-alpine` with the RawSyst binary added: 21 MB
+on top of an image the host already has. `pg_dump` and `pg_restore` are the
+right tools and this product is not going to reimplement them; taking them from
+the same image as the database is what makes the version match impossible to get
+wrong. The API image stays `scratch` at 33 MB.
+
+A systemd timer at 03:30 takes a backup, verifies it, then prunes — in that
+order, and prune only runs if verify passed. `Persistent=true`, so a machine
+that was off backs up when it returns. A failed unit shows in `systemctl
+--failed`, and `rawsyst-check.sh` now reports the age of the last VERIFIED
+backup hourly and flags the last failure reason.
+
+## Documentation
+
+- `deploy/server/BACKUP.md` — what is in a snapshot, where it goes, the
+  commands, verification, the schedule, retention, secrets, restoring, and what
+  this does **not** protect against: no point-in-time recovery (the RPO is 24
+  hours and WAL archiving is the answer, unconfigured because it needs a
+  destination and a cost decision), no client-side encryption, and no substitute
+  for walking a restore once before you need it.
+- `deploy/server/MIGRATION.md` — old server to new, with the rehearsal first:
+  build the new server from a real backup and smoke-test it while the old one is
+  still serving, so the only downtime is the final backup and the switch.
+  Rollback is that the old server is untouched and off, and the window closes on
+  the first write to the new one. Nothing is automated, and the file says why.
+
+## Not done, and I cannot do it
+
+**RawSyst has not been deployed to 40.160.14.32.** I have no access to that
+machine — no credentials, no SSH, no way to run `preflight.sh` on it. Everything
+above is code and configuration in this repository, verified here against a real
+Postgres, a real S3-compatible store and the real images.
+
+What is ready for whoever does have access is the sequence in `RUNBOOK.md`,
+which now begins with the audit and ends with a verified backup **before** the
+application takes its first order.

@@ -1,0 +1,19 @@
+[Unit]
+Description=RawSyst backup, daily
+Documentation=file:/opt/rawsyst/deploy/server/BACKUP.md
+
+[Timer]
+# 03:30, half an hour after the regulatory source re-check and an hour before
+# the books are reconciled, and well outside the working day in either market.
+OnCalendar=*-*-* 03:30:00
+
+# Not on the same second as every other host with the same crontab. It matters
+# when the object store is shared, and it costs nothing.
+RandomizedDelaySec=10min
+
+# A machine that was off at 03:30 backs up when it comes back, rather than
+# skipping a night and nobody noticing until the night it mattered.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

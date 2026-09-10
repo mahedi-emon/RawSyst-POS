@@ -1,0 +1,34 @@
+[Unit]
+# Take a backup, prove it restores, then prune. In that order, every night.
+#
+# The verification is not optional and is not a separate unit: a backup that
+# was taken and never checked is a file, and the whole point of this service is
+# that the daily answer is "it restores" rather than "it uploaded".
+#
+# Prune runs last, and only if verify succeeded — `ExecStartPost` stops at the
+# first failure — so nothing is ever deleted on a night when the new backup
+# could not be proved.
+Description=RawSyst backup, verified
+Documentation=file:/opt/rawsyst/deploy/server/BACKUP.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/rawsyst
+
+# Generous, and bounded. A backup that hangs holds a database connection and
+# tells nobody; forty-five minutes is far past what this database needs and far
+# short of forever.
+TimeoutStartSec=45min
+
+# Two cores, and the till has first claim on them. A nice backup that takes four
+# minutes instead of two is a better trade than a checkout that stutters.
+Nice=10
+IOSchedulingClass=idle
+
+Environment=COMPOSE=-f docker-compose.yml -f docker-compose.server.yml --profile backup
+
+ExecStart=/usr/bin/docker compose $COMPOSE run --rm backup run
+ExecStartPost=/usr/bin/docker compose $COMPOSE run --rm backup verify
+ExecStartPost=/usr/bin/docker compose $COMPOSE run --rm backup prune

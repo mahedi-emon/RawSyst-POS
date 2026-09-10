@@ -266,6 +266,50 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Backups, on a timer rather than as a resident process.
+  #
+  #   docker compose --profile backup run --rm backup run
+  #   docker compose --profile backup run --rm backup verify
+  #   docker compose --profile backup run --rm backup list
+  #   docker compose --profile backup run --rm backup prune
+  #
+  # A daily backup wants to be a timer, not a container that has to be running,
+  # watched and kept in memory in order to work for ninety seconds a day.
+  # `deploy/server/RUNBOOK.md` has the systemd units.
+  #
+  # It needs somewhere OFF this machine to put them: RAWSYST_S3_ENDPOINT and a
+  # bucket. Without one it refuses rather than writing a backup to the disk it
+  # is protecting, which is not a backup.
+  backup:
+    profiles: ["backup"]
+    build:
+      context: ./backend
+      target: backup
+      args:
+        VERSION: ${VERSION:-dev}
+    image: rawsyst/backup:${VERSION:-dev}
+    restart: "no"
+    environment:
+      <<: *backend-env
+      # A connection to a DIFFERENT database on the same server, for the
+      # scratch database a verification restores into. Postgres cannot create a
+      # database from inside the one being created beside.
+      RAWSYST_BACKUP_ADMIN_DSN: ${RAWSYST_BACKUP_ADMIN_DSN:-postgres://${POSTGRES_USER:-rawsyst}:${POSTGRES_PASSWORD}@db:5432/postgres?sslmode=disable}
+      RAWSYST_BACKUP_PREFIX: ${RAWSYST_BACKUP_PREFIX:-rawsyst}
+      RAWSYST_BACKUP_KEEP_DAILY: ${RAWSYST_BACKUP_KEEP_DAILY:-7}
+      RAWSYST_BACKUP_KEEP_WEEKLY: ${RAWSYST_BACKUP_KEEP_WEEKLY:-4}
+      RAWSYST_BACKUP_KEEP_MONTHLY: ${RAWSYST_BACKUP_KEEP_MONTHLY:-3}
+      RAWSYST_BACKUP_TIMEOUT: ${RAWSYST_BACKUP_TIMEOUT:-30m}
+      RAWSYST_BACKUP_TEMP_DIR: /staging
+    volumes:
+      # A dump is staged on disk and streamed out; it is never held in memory.
+      # Its own volume so a large one cannot fill the container's writable
+      # layer, and so the space it needs is visible in `docker system df`.
+      - backup-staging:/staging
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     logging: *logging
     build:
@@ -357,4 +401,5 @@ services:
       - "${WEB_PORT:-3000}:3000"
 
 volumes:
+  backup-staging:
   db-data:

@@ -40,6 +40,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/api"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/backup"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/bootstrap"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/ingest"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/migrate"
@@ -66,6 +67,8 @@ var commands = map[string]struct {
 		"record legal values from an attestation file"},
 	"ingest": {ingest.Main,
 		"retrieve the document a legal value is published in, read it, record it"},
+	"backup": {backup.Main,
+		"take a backup, list them, prove one restores, restore one, prune"},
 }
 
 func main() {
