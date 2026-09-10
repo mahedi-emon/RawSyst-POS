@@ -82,6 +82,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 			// twelve-month expiry stayed spendable in year three.
 			s.enqueueReservationExpiry(ctx)
 			s.enqueueCreditExpiry(ctx)
+			// And the documents the legal values were read out of. Once a
+			// day, one request per applied source, and it applies nothing:
+			// see regulatorysource.go for why an amended statute is the one
+			// place automation should do least.
+			s.enqueueRegulatoryRefresh(ctx)
 		}
 	}
 }

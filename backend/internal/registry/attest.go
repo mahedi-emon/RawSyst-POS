@@ -274,7 +274,17 @@ func checkValues(src SourceRule, values map[string]string) error {
 						strings.Join(f.Choices, ", ")+". "+f.Help)
 			}
 		case "decimal":
-			d, err := decimal.NewFromString(v)
+			// A field measured as a fraction may be written the way the law
+			// writes it. Article 85 says "one third", and 0.3333 is not a
+			// third: on a 30,000 award it pays 9,999.00 and the person owed
+			// 10,000.00 is a riyal short because an exact figure was written
+			// down inexactly. `1/3` is accepted and resolved at a precision
+			// that rounds correctly wherever money is computed from it.
+			parse := decimal.NewFromString
+			if f.Unit == "fraction" {
+				parse = ParseFraction
+			}
+			d, err := parse(v)
 			if err != nil {
 				return errs.Newf(errs.CodeInvalidInput,
 					"%s.%s is %q, which is not a number. %s",

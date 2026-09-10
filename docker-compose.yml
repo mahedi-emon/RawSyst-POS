@@ -238,6 +238,34 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Retrieve the document a legal value is published in, read it, and record
+  # what it says.
+  #
+  #   docker compose --profile setup run --rm ingest \
+  #     -rule SA.EOSB.ENTITLEMENT -from 2005-09-27 -apply -verified you@example
+  #
+  # Needs an outbound HTTPS route to the authority. Without one, pass -file with
+  # the publication mounted under /sources, or use the Super Admin screen; the
+  # three service calls behind all three routes are the same ones.
+  ingest:
+    profiles: ["setup"]
+    build:
+      context: ./backend
+      args:
+        VERSION: ${VERSION:-dev}
+    image: rawsyst/backend:${VERSION:-dev}
+    restart: "no"
+    entrypoint: ["/ingest"]
+    environment:
+      <<: *backend-env
+    volumes:
+      - ${RAWSYST_REGULATORY_SOURCE_DIR:-./deploy/regulatory}:/sources:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   api:
     logging: *logging
     build:

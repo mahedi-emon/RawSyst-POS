@@ -1,4 +1,5 @@
-# The API, the worker, the migrator, the bootstrap and the regulatory recorder,
+# The API, the worker, the migrator, the bootstrap, the regulatory recorder
+# and the source ingester,
 # in one small image.
 #
 # # Why one image and not three
@@ -73,7 +74,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
-      -o /out/regulatory ./cmd/regulatory
+      -o /out/regulatory ./cmd/regulatory && \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/ingest ./cmd/ingest
 
 # A non-root user, built here because scratch has no adduser.
 RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
@@ -102,6 +107,12 @@ COPY --from=build /out/bootstrap /bootstrap
 # API -- so a deployment could only get past its own gate through a shell it
 # does not have. This needs the database and nothing else.
 COPY --from=build /out/regulatory /regulatory
+# The other way a legal value arrives: retrieve the document the authority
+# publishes it in, read it, and record what it says. Needs the database and
+# an outbound HTTPS route to that authority and nothing else, which is why
+# the TLS roots above are copied into a scratch image that otherwise holds
+# no files at all.
+COPY --from=build /out/ingest /ingest
 
 # Never uid 0. A container that is rooted is a host that is one kernel bug away
 # from being rooted.

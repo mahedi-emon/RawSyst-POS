@@ -334,6 +334,57 @@ func (s *Service) Decimal(ctx context.Context, q Query, field string) (decimal.D
 	return d, nil
 }
 
+// Fraction resolves a field that states a share, and returns both the value
+// and the literal the registry holds.
+//
+// # Why this is not Decimal
+//
+// A share of an award is frequently stated exactly and not decimally. Article
+// 85 of the Saudi Labour Law says "one third". Written as 0.3333 it pays
+// 9,999.00 on a 30,000 award and the person owed 10,000.00 is a riyal short —
+// not because anything computed wrongly, but because a figure the law states
+// exactly was written down inexactly, in the registry, on purpose. So `1/3` is
+// what gets recorded, and this is what reads it.
+//
+// The literal is returned alongside because a settlement document says which
+// fraction was applied, and "1/3" is the answer a person can check against the
+// article. "0.3333333333333333333333333333" is the same number and no help.
+//
+// `Decimal` is left alone deliberately. A rate is not a share: nobody writes a
+// VAT rate as 15/100, and widening the one accessor every legal value in this
+// product goes through, to serve four fields, would trade a small convenience
+// for a large surface.
+func (s *Service) Fraction(
+	ctx context.Context, q Query, field string,
+) (decimal.Decimal, string, error) {
+	raw, rule, err := s.decodePayload(ctx, q)
+	if err != nil {
+		return decimal.Zero, "", err
+	}
+	v, ok := raw[field]
+	if !ok {
+		return decimal.Zero, "", errs.Newf(errs.CodeInternal,
+			"Regulatory rule %q has no field %q.", q.Key, field)
+	}
+	str, ok := v.(string)
+	if !ok {
+		return decimal.Zero, "", errs.Newf(errs.CodeInternal,
+			"Regulatory rule %q field %q is not a string.", q.Key, field)
+	}
+	if str == Placeholder {
+		return decimal.Zero, "", errs.Newf(errs.CodeUnverifiedRule,
+			"The legal value %q is still a placeholder and must be verified "+
+				"against %s before it can be used.", q.Key, rule.SourceDoc)
+	}
+	d, err := ParseFraction(str)
+	if err != nil {
+		return decimal.Zero, "", errs.Wrap(err, errs.CodeInternal,
+			fmt.Sprintf("Regulatory rule %q field %q is not a fraction.",
+				q.Key, field))
+	}
+	return d, str, nil
+}
+
 // Int resolves an integer field, such as a deadline in days or hours.
 //
 // Decoding uses json.Number rather than the default any-typed decode, which

@@ -216,6 +216,39 @@ func (s *Service) RecordRule(
 
 	var out RuleRow
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// Retire a placeholder that stands where this figure is going.
+		//
+		// The articles a registry records are usually older than the
+		// placeholder standing in for them. Articles 84 and 85 have been in
+		// force since 2005; the placeholder for them was seeded from 2026. So
+		// recording the real figures from the date the law took effect runs
+		// straight into the placeholder's range, and recording them from the
+		// placeholder's own date collides too, because the supersede below
+		// only closes a row that starts strictly EARLIER. Before 0134 the one
+		// row this workflow exists to correct was the one row it could not.
+		//
+		// Deleting it loses nothing. A `__VERIFY__` row is not a figure this
+		// product believed; it is the record that it had been told nothing,
+		// wearing a date because the table requires one. Every use of it is
+		// refused by name at the point of use, so there is no report it
+		// produced and no period whose answer has to be preserved.
+		//
+		// Only the ones AT OR AFTER the new date, though. A placeholder that
+		// starts earlier is superseded in the ordinary way, and the period
+		// before the figure goes on refusing with "nobody has read this yet"
+		// rather than with "no such rule" — which is the more useful of the
+		// two sentences and is also what was true.
+		if _, e := tx.Exec(ctx, `
+			DELETE FROM regulatory_rule
+			WHERE rule_key = $1 AND country = $2
+			  AND payload::text LIKE '%' || $3 || '%'
+			  AND verified_on IS NULL
+			  AND source_document_id IS NULL
+			  AND effective_from >= $4::date`,
+			key, in.Country, Placeholder, in.From); e != nil {
+			return e
+		}
+
 		// Close off whatever was in force, rather than editing it.
 		if _, e := tx.Exec(ctx, `
 			UPDATE regulatory_rule

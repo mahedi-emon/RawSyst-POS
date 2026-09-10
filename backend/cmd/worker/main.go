@@ -24,6 +24,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
@@ -111,6 +112,17 @@ func run() error {
 	// store credit had no handler at all.
 	worker.Register(jobs.KindCreditExpirySweep,
 		jobs.NewCreditExpirySweeper(pool, wallet.NewService(pool)))
+
+	// The daily re-check of the documents legal values came out of. It records
+	// a candidate when a ministry's publication changes and applies nothing:
+	// a legal value carries the name of whoever put it there.
+	//
+	// Built with verification NOT required, which is the right setting for a
+	// component that never resolves a rule: it retrieves documents and compares
+	// hashes. Passing the production flag would make no difference and would
+	// invite the reader to think this path computes with a legal value.
+	worker.Register(jobs.KindRegulatorySourceRefresh,
+		jobs.NewRegulatorySourceRefresher(registry.New(pool, false), log))
 
 	worker.Register(jobs.KindReportSweep,
 		jobs.NewReportSweeper(pool, reports.NewService(pool)))

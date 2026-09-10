@@ -2441,6 +2441,54 @@ func (s *Server) Routes() []Route {
 			"records a legal value against the document it came from; a " +
 				"correction supersedes by date rather than overwriting, so an " +
 				"old period still resolves to the figure that governed it"},
+		// The document a legal value comes out of.
+		//
+		// `source_document` on a rule is a citation — what somebody typed
+		// about a publication. These hold the publication: the bytes as
+		// retrieved, their SHA-256, the address and the moment, and the
+		// reading taken out of them with the sentence supporting each figure.
+		{http.MethodGet, "/api/v1/platform/regulatory-sources", AccessSuperAdmin,
+			"", s.handleListRegulatorySources,
+			"every document retrieved as evidence for a legal value, with " +
+				"what was read out of it and whether that passes validation"},
+		{http.MethodPost, "/api/v1/platform/regulatory-sources/fetch",
+			AccessSuperAdmin, "", s.handleFetchRegulatorySource,
+			"retrieves the official document from the authority that " +
+				"publishes it, hashes it, and reads the rule's figures out " +
+				"of it. Bounded to that authority's own site: an importer " +
+				"that can be pointed anywhere is request forgery with a " +
+				"ministry's name on it"},
+		{http.MethodPost, "/api/v1/platform/regulatory-sources/upload",
+			AccessSuperAdmin, "", s.handleUploadRegulatorySource,
+			"takes the document from the operator when the authority will " +
+				"not serve it to a machine. Everything after arrival is the " +
+				"same: hash, read, validate, preview, apply"},
+		// `{sourceID}` rather than `{documentID}`, which the tenant document
+		// store already uses. Two different meanings for one placeholder in
+		// one router is a wart on its own, and it also confused the
+		// cross-tenant walk into calling these platform routes with a
+		// business's own scanned document id.
+		{http.MethodGet, "/api/v1/platform/regulatory-sources/{sourceID}",
+			AccessSuperAdmin, "", s.handleGetRegulatorySource,
+			"one document with its provenance and the reading, field by " +
+				"field, each with the article and the sentence behind it"},
+		{http.MethodGet,
+			"/api/v1/platform/regulatory-sources/{sourceID}/content",
+			AccessSuperAdmin, "", s.handleRegulatorySourceContent,
+			"the artefact itself, so somebody can read what was read rather " +
+				"than take this product's word for what it said"},
+		{http.MethodPost,
+			"/api/v1/platform/regulatory-sources/{sourceID}/apply",
+			AccessSuperAdmin, "", s.handleApplyRegulatorySource,
+			"records the legal value the document states, through the same " +
+				"path a hand-typed one goes through: validated, superseding " +
+				"by date, audited, and linked back to the document"},
+		{http.MethodPost,
+			"/api/v1/platform/regulatory-sources/{sourceID}/reject",
+			AccessSuperAdmin, "", s.handleRejectRegulatorySource,
+			"closes off a candidate nobody is going to apply, with the " +
+				"reason. Not a delete: the retrieval happened"},
+
 		{http.MethodGet, "/api/v1/platform/jurisdictions", AccessSuperAdmin, "",
 			s.handleListJurisdictions,
 			"the tax authorities on file for a country"},

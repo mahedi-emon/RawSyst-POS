@@ -1014,6 +1014,14 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         descriptionKey: 'nx.navd.plat.regulatory.rules',
       },
       {
+        id: 'regulatory-sources',
+        labelKey: 'nx.nav.plat.regulatory.sources',
+        href: '/platform/regulatory-sources',
+        built: true,
+        permissions: [],
+        descriptionKey: 'nx.navd.plat.regulatory.sources',
+      },
+      {
         id: 'jurisdictions',
         labelKey: 'nx.nav.plat.regulatory.jurisdictions',
         href: '/platform/jurisdictions',

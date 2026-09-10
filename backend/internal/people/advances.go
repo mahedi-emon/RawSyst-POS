@@ -425,6 +425,15 @@ type eosbEntitlement struct {
 	ResignTwoToFive decimal.Decimal `json:"-"`
 	ResignFiveToTen decimal.Decimal `json:"-"`
 	ResignOverTen   decimal.Decimal `json:"-"`
+
+	// The fractions as the registry holds them, which is as the article states
+	// them. A settlement says which share was applied, and "1/3" is what a
+	// person can check against Article 85; the decimal it resolves to is the
+	// same number and no help in that conversation.
+	ResignUnderTwoText  string `json:"-"`
+	ResignTwoToFiveText string `json:"-"`
+	ResignFiveToTenText string `json:"-"`
+	ResignOverTenText   string `json:"-"`
 }
 
 // The wage bases this software knows how to compute.
@@ -462,13 +471,29 @@ const (
 )
 
 // resignationFraction is Article 85's share of the award, for somebody who
-// RESIGNS at this much service.
+// RESIGNS at this much service. It returns the share and the literal the
+// registry holds it as, so a settlement can quote the article's own words.
 //
-// The boundary convention is the same one `daysFor` uses and it matters at
-// exactly four dates in a career: a person with exactly twenty-four completed
-// months is into their third year, so they take the two-to-five fraction, not
-// the under-two one. Reading it the other way round would move somebody down a
-// band on their anniversary — the day their entitlement rises.
+// # The three boundaries are not the same shape, and the article says so
+//
+// Read the article rather than assuming a convention:
+//
+//	"entitled to one third of the award after service of not less than two
+//	consecutive years and NOT MORE THAN FIVE YEARS, to two thirds if his
+//	service is IN EXCESS OF five consecutive years but less than 10 years,
+//	and to the full award if his service amounts to 10 YEARS OR MORE."
+//
+// So two years is a floor the lower band includes, ten years is a floor the top
+// band includes, and five years belongs to the LOWER band — "not more than
+// five" takes it, and "in excess of five" does not. Two of those three are the
+// same shape and the middle one is its mirror.
+//
+// This read `LessThan(eosbFiveYears)` until the article was ingested and the
+// sentence sat next to the code. That put somebody resigning on their fifth
+// anniversary exactly into the two-thirds band, which is a day early and,
+// on a 20,000 wage and five years' service, 16,666.67 against the 8,333.33
+// the article gives. One day either side of that date was already right; the
+// date itself was not.
 //
 // The band above ten years is a figure like the other three. It arrived late:
 // 0092 recorded three fractions, so service beyond ten years had none to apply
@@ -478,16 +503,16 @@ const (
 // something a line of Go is entitled to decide.
 func (e eosbEntitlement) resignationFraction(
 	months decimal.Decimal,
-) decimal.Decimal {
+) (decimal.Decimal, string) {
 	switch {
 	case months.LessThan(decimal.NewFromInt(eosbTwoYears)):
-		return e.ResignUnderTwo
-	case months.LessThan(decimal.NewFromInt(eosbFiveYears)):
-		return e.ResignTwoToFive
+		return e.ResignUnderTwo, e.ResignUnderTwoText
+	case months.LessThanOrEqual(decimal.NewFromInt(eosbFiveYears)):
+		return e.ResignTwoToFive, e.ResignTwoToFiveText
 	case months.LessThan(decimal.NewFromInt(eosbTenYears)):
-		return e.ResignFiveToTen
+		return e.ResignFiveToTen, e.ResignFiveToTenText
 	default:
-		return e.ResignOverTen
+		return e.ResignOverTen, e.ResignOverTenText
 	}
 }
 
@@ -601,16 +626,40 @@ func (s *Service) eosbEntitlement(
 	}{
 		{"days_per_year_first_five", &out.FirstFive},
 		{"days_per_year_after_five", &out.AfterFive},
-		{"resignation_fraction_under_two_years", &out.ResignUnderTwo},
-		{"resignation_fraction_two_to_five_years", &out.ResignTwoToFive},
-		{"resignation_fraction_five_to_ten_years", &out.ResignFiveToTen},
-		{"resignation_fraction_over_ten_years", &out.ResignOverTen},
 	} {
 		v, err := s.rules.Decimal(ctx, q, f.field)
 		if err != nil {
 			return eosbEntitlement{}, err
 		}
 		*f.into = v
+	}
+
+	// Article 85's shares, read as fractions rather than as decimals.
+	//
+	// The article states a third and two thirds. A registry holding 0.3333 pays
+	// 9,999.00 on a 30,000 award, and the shortfall is not an arithmetic error
+	// — it is the registry having been told something very slightly untrue.
+	// `Fraction` reads `1/3` and resolves it at a precision that rounds
+	// correctly, and hands back the literal so the settlement can quote it.
+	for _, f := range []struct {
+		field string
+		into  *decimal.Decimal
+		text  *string
+	}{
+		{"resignation_fraction_under_two_years",
+			&out.ResignUnderTwo, &out.ResignUnderTwoText},
+		{"resignation_fraction_two_to_five_years",
+			&out.ResignTwoToFive, &out.ResignTwoToFiveText},
+		{"resignation_fraction_five_to_ten_years",
+			&out.ResignFiveToTen, &out.ResignFiveToTenText},
+		{"resignation_fraction_over_ten_years",
+			&out.ResignOverTen, &out.ResignOverTenText},
+	} {
+		v, literal, err := s.rules.Fraction(ctx, q, f.field)
+		if err != nil {
+			return eosbEntitlement{}, err
+		}
+		*f.into, *f.text = v, literal
 	}
 
 	if err := s.rules.Into(ctx, q, &out); err != nil {
@@ -856,9 +905,9 @@ func (s *Service) EOSBSettlement(
 		first, after := bandedMonths(months)
 		full := ent.award(wage, months)
 
-		fraction := decimal.NewFromInt(1)
+		fraction, fractionText := decimal.NewFromInt(1), "1"
 		if reason == EOSBLeavingResignation {
-			fraction = ent.resignationFraction(months)
+			fraction, fractionText = ent.resignationFraction(months)
 		}
 
 		var provision decimal.Decimal
@@ -885,7 +934,7 @@ func (s *Service) EOSBSettlement(
 		out.AfterBandMonths = after.String()
 		out.AfterBandDays = ent.AfterFive.String()
 		out.FullAward = full.StringFixed(2)
-		out.Fraction = fraction.String()
+		out.Fraction = fractionText
 		out.Award = award.StringFixed(2)
 		out.Provision = provision.StringFixed(2)
 		out.Shortfall = award.Sub(provision).StringFixed(2)

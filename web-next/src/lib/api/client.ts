@@ -218,8 +218,13 @@ class RawsystClient {
     body: unknown,
     opts: RequestOptions = {},
   ): Promise<T> {
+    // A FormData body carries its own multipart boundary, which only the
+    // browser can generate. Setting Content-Type here would send a boundary
+    // that does not match the body and the server would parse nothing.
+    const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
+
     const headers: Record<string, string> = {};
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (body !== undefined && !multipart) headers['Content-Type'] = 'application/json';
     if (this.accessToken) headers['Authorization'] = `Bearer ${this.accessToken}`;
     if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
 
@@ -228,7 +233,8 @@ class RawsystClient {
       res = await fetch(this.url(path, opts.query), {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body:
+          body === undefined ? undefined : multipart ? body : JSON.stringify(body),
         credentials: 'same-origin',
         signal: opts.signal,
       });
@@ -289,6 +295,18 @@ class RawsystClient {
 
   post<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
     return this.send<T>('POST', path, body ?? {}, opts);
+  }
+
+  /**
+   * Send a file.
+   *
+   * One route needs this: uploading the published document a legal value is
+   * read out of, for the case where a ministry will not serve it to a machine.
+   * It goes through `send` like everything else, so it gets the same token,
+   * the same silent refresh on 401 and the same error envelope.
+   */
+  upload<T>(path: string, form: FormData, opts?: RequestOptions): Promise<T> {
+    return this.send<T>('POST', path, form, opts);
   }
 
   put<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {

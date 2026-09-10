@@ -10,9 +10,9 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 |---|---|
 | **Last verified** | 2026-09-10 |
 | **Branch** | `international-markets-and-counters` |
-| **Scale** | 132 migrations · 502 routes · 110 permissions · 1,200+ Go test functions |
+| **Scale** | 134 migrations · 509 routes · 110 permissions · 1,230+ Go test functions |
 | **Software development** | **COMPLETE.** No feature is unbuilt, disabled, unreachable, ungated or waiting for a developer. Zero `TODO`, `FIXME`, `not implemented` or `coming soon` in `backend`, `web-next/src`, `shared/src`, `pos/src` or `scripts`. Zero reachability gaps. |
-| **Regulatory data** | **One external source required**, and it is not a software condition. Seven fields of `SA.EOSB.ENTITLEMENT` come from Articles 84 and 85 of the Saudi Labour Law, which is published as prose; nobody has read them and put their name to what they say on this installation. Everything that consumes them is built and refuses by name until they are recorded, through a workflow that needs no code change, no shell and no SQL. |
+| **Regulatory data** | **Ingested and active.** `SA.EOSB.ENTITLEMENT` holds the figures Articles 84 and 85 state, read out of the Ministry of Human Resources and Social Development's own publication of the Labour Law, retrieved and hashed by the product, with the sentence behind every value on record. Nothing is awaiting a figure. |
 | **External dependency** | The Fatoora one-time password. ZATCA issues a compliance certificate only against a password the taxpayer reads from their own portal. The whole workflow around it is built. |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
 
@@ -7920,3 +7920,305 @@ migration, a SQL statement or a rebuild.
 Saudi Labour Law are published as prose. Nobody has read them and put their name
 to what they say on this installation. That is data provenance. It is not a
 software blocker and this document does not call it one.
+
+---
+
+# THE DOCUMENT, RETRIEVED (2026-09-10, third pass)
+
+The previous two passes said the end-of-service software was finished and the
+figures were a data-availability question. The software was finished. The second
+half was wrong, and this pass proves it by fetching the document.
+
+The Ministry of Human Resources and Social Development publishes the Labour Law
+as a PDF on its own site. It is reachable, it is machine-readable, and it states
+Articles 84 and 85 in full. What was missing was not the data. It was a piece of
+software: something that retrieves a publication, keeps it, reads it, and shows
+a person the sentence behind every figure before they put their name to it.
+
+That is what this pass builds, and the outcome is that
+`SA.EOSB.ENTITLEMENT` is recorded, verified and in force — on the development
+database and on the production compose stack, both through the application, with
+no code change, no migration and no SQL.
+
+## The source
+
+| | |
+|---|---|
+| **Authority** | Ministry of Human Resources and Social Development (`mhrsd`) |
+| **Document** | Labor Law, Royal Decree No. M/51 of 27 September 2005 |
+| **Address** | `https://www.hrsd.gov.sa/sites/default/files/2023-02/Labor.pdf` |
+| **SHA-256** | `2d2830afaf63c78cd7b3484d2e82f525d520d44917d29dc2feb5ef642c6a3e2a` |
+| **Size** | 337,855 bytes, `application/pdf` |
+| **Articles** | 84 and 85, with the definitions of Wage, Actual Wage and Month |
+
+The Bureau of Experts at the Council of Ministers publishes the same law at
+`laws.boe.gov.sa` and that address is not reachable from this deployment. The
+source pack now names the Ministry's, which is the authority the pack already
+credited and the one that answers.
+
+## What the reading produced, and what it read it out of
+
+Seven fields, each with the article and the sentence:
+
+| Field | Value | Article |
+|---|---|---|
+| `days_per_year_first_five` | 15 | 84 |
+| `days_per_year_after_five` | 30 | 84 |
+| `wage_basis` | `basic_plus_all_allowances` | 84 |
+| `resignation_fraction_under_two_years` | 0 | 85 |
+| `resignation_fraction_two_to_five_years` | 1/3 | 85 |
+| `resignation_fraction_five_to_ten_years` | 2/3 | 85 |
+| `resignation_fraction_over_ten_years` | 1 | 85 |
+
+Three of those are not printed in the article in the form the registry stores,
+and each says so on the screen rather than appearing as a figure the document
+states:
+
+- **15 and 30 days.** Article 84 says "a half-month wage" and "a one-month
+  wage". The law's own definitions say "Month: 30 days", and the reading quotes
+  that sentence beside the arithmetic.
+- **The wage basis.** Article 84 computes on "the last wage" and does not say
+  what a wage is. The definitions do, in two steps: "Wage: actual wage", and
+  "Actual Wage: The basic wage plus all other due increments". The reading
+  follows that chain and quotes both.
+- **Zero below two years.** Article 85 confers a share only "after service of
+  not less than two consecutive years". Below that it confers none. That is the
+  article's silence at the threshold, labelled as an inference rather than
+  presented as a printed figure.
+
+## Fractions are recorded as the article states them
+
+Article 85 says "one third". Recorded as 0.3333, a third of a 30,000 award pays
+9,999.00 and the person owed 10,000.00 is short a riyal — not because anything
+computed wrongly, but because a figure the law states exactly was written down
+inexactly, in the registry, on purpose. There is no number of threes that is a
+third.
+
+So the registry accepts `1/3`, the validator checks it as a fraction between
+nought and one, a new `Fraction` accessor resolves it at a precision that rounds
+correctly wherever money is computed, and the settlement quotes the literal —
+`1/3` is what a person can check against Article 85, where a twenty-eight-digit
+decimal is the same number and no help at all.
+
+## A correctness fix the ingestion surfaced
+
+`resignationFraction` read the five-year boundary as `LessThan`. With the
+article's sentence sitting next to the code, it is plainly the wrong way round:
+
+> "…one third of the award after service of not less than two consecutive years
+> and **not more than five years**, to two thirds if his service is **in excess
+> of five** consecutive years…"
+
+Two years is a floor the lower band includes and ten years is a floor the top
+band includes, but five years belongs to the LOWER band — "not more than five"
+takes it and "in excess of five" does not. The middle boundary is the mirror of
+the other two, and the code had all three the same shape.
+
+The cost was one day per career. Somebody resigning on their fifth anniversary,
+on 20,000 a month, was settled at 16,666.67 where the article gives 8,333.33.
+The day before and the day after were both already right.
+
+## The workflow, built
+
+    fetch or upload -> decode -> normalise -> read -> validate
+       -> preview -> apply -> audit -> the engine computes with it
+
+**Retrieval** is bounded and it is not free text. The caller does not choose the
+host: the source pack records where each rule is published and a fetch must land
+on that authority's site. Without that, "fetch the official source" is
+server-side request forgery with a ministry's name on it — a Super Admin
+session, or anything reaching one, could point it at cloud metadata, an internal
+admin port or a machine on the same network and have the response stored in the
+database and rendered on a screen. Thirteen cases are tested, including the
+lookalike hosts a substring check would accept.
+
+**Storage** keeps the artefact, not a citation. `regulatory_source_document`
+(0133) holds the bytes, their SHA-256, the address, the moment, who retrieved
+it, and the reading. The row is immutable: the bytes, the hash, the address and
+the retrieval date cannot be edited and the row cannot be deleted, because
+evidence that can be edited is an assertion with extra steps.
+
+**Reading** is deterministic patterns against the article text, never a
+language model, because a regulatory trail has to be reproducible and the reason
+a figure came out has to be inspectable. Every value is quoted or derived from
+something quoted; a pattern that does not match is a refusal naming the field
+and the sentence it looked for, never a zero and never a fallback.
+
+**Applying** goes through `RecordRule`, so a value imported from a document is
+validated, superseded by date, audited and cache-invalidated exactly as a
+hand-typed one is. It is a person's act and stays one: what changed is that they
+are now checking a reading against sentences shown beside it rather than
+transcribing figures out of a PDF into a form.
+
+## Three things that had to be fixed to make the chain hold
+
+**A PDF breaks words in half.** The Ministry's typesetter kerned two letters
+apart and the text layer records the gap as a space: "the ful l award", "due to
+the worker's resignat ion". Six of Article 85's seven figures read correctly
+against patterns written with spaces and the seventh did not. Whitespace
+collapsing cannot fix it — the space is between two letters of one word and
+looks exactly like the space between two words — and guessing would mean
+rewriting a statute before reading it. So a passage is held twice: as a person
+reads it, and with every space removed. Patterns match the spaceless form, and
+every match maps back so the evidence quoted is a sentence.
+
+**A reading is a function of the document AND the build.** The first version of
+the Saudi reader found six fields. Fixing it had to reach the document already
+retrieved, and could not arrive by re-fetching, because the same bytes are the
+same document and the table holds one row per document on purpose. So the
+artefact is the frozen thing and the reading is derived from it on every read.
+Nothing evidential is lost: what was read at the moment of applying is the
+rule's own payload and the audit entry beside it.
+
+**A placeholder is an absence with a date on it.** `SA.EOSB.ENTITLEMENT` was
+seeded from 2026-01-01; Articles 84 and 85 have been in force since 2005. The
+real figures could not be recorded from the date the law took effect, because
+that collides with the placeholder's range, and could not be recorded from the
+placeholder's own date either, because superseding only closes a row that starts
+strictly earlier. The correction workflow could not correct the one row it
+exists for. 0134 permits deleting a rule that still holds `__VERIFY__`, has never
+been verified, and produced nothing — and nothing else, ever. A figure remains
+undeletable. The narrowness is the point: this is not a delete capability, it is
+the recognition that an absence was never a record.
+
+## The screen
+
+**Platform → Regulatory sources.** For each rule the pack describes: the
+document, the articles, the address, and two buttons — *Fetch official source*
+and *Upload official source*. For each retrieved document: the title, the
+authority, the address, the retrieval time and who did it, the media type and
+size, the SHA-256, a button that hands back the artefact itself, the rule in
+force beside it, the status, whether the reading validates, and then the reading
+— field, value, article, and the sentence, shown rather than hidden behind a
+link, because confirming a figure you cannot see the evidence for is an act of
+faith.
+
+Applying asks for the date the article came into force and a tick that says the
+operator read the sentences against the document. Rejecting asks why, and does
+not delete: the retrieval happened.
+
+Upload is not the lesser half. A ministry may block automated requests, publish
+behind a portal, or hand the document out at a counter. The bytes arrive and are
+hashed, read, validated and applied by the same code; the only thing an upload
+cannot do is claim an address it did not come from.
+
+## Re-checking, and what it will not do
+
+`regulatory.source.refresh`, daily at 03:00, one request per applied source with
+the same thirty-second ceiling and the same authority restriction as a fetch.
+Unchanged bytes write nothing. Changed bytes file a CANDIDATE and stop.
+
+It applies nothing — not when the new reading validates, not when it is
+identical to the figure in force. A legal value carries the name of whoever put
+it there and the date they did, and a job can supply neither. An amended statute
+is also the moment a machine reading is least trustworthy, so the case where
+automation would save the most work is the case where it should do the least.
+
+There are two applied sources on a full installation. This is not a crawler and
+the ceiling on its cost is the number of laws this product implements.
+
+## Development and production do not share regulatory data
+
+`cmd/ingest` performs the same three service calls the screen makes, so a
+machine can be brought to a known state without a browser:
+
+    go run ./cmd/ingest -rule SA.EOSB.ENTITLEMENT -from 2005-09-27 \
+      -apply -verified <operator@example>
+
+It refuses to apply without `-apply`, and refuses to mark anything verified
+without an address that resolves to an account on that installation. The binary
+ships in the image and is offered as a compose service, so a production
+deployment activates a rule the same way and inherits nothing from development.
+
+## What was NOT done
+
+No legal value was invented. Every figure recorded was read out of a document
+this product retrieved and hashed, and the sentence behind each one is stored
+beside it. No safety was weakened: the placeholder refusal, the production gate,
+the source-pack validation and the point-of-use checks are all unchanged, and
+the fraction validator got stricter rather than looser.
+
+RawSyst does not claim any legal certification. Recording a figure here is one
+person's assertion that they read a document, which is what the registry has
+always meant by "verified" and still means.
+
+## Cross-check against the Ministry's calculator
+
+The Ministry publishes an End of Service Benefit Calculator. It is a JavaScript
+application on the ministry portal; it exposes no documented API, and this pass
+did not drive it as one — scraping a form and calling the result an
+authoritative comparison would be inventing a corroboration.
+
+What was checked instead is the articles themselves, which is the authoritative
+text the calculator implements. `eosb_official_figures_test.go` works every
+expected amount out from the article in the comment above it, so a reader can
+check the assertion against the law rather than against this product. No
+difference between RawSyst's reading and the published articles was found.
+
+## The calculations, end to end
+
+Twelve integration tests on a 12,000 wage, which gives a daily wage of exactly
+400 on the statutory 30-day month.
+
+| Case | Service | Reason | Award |
+|---|---|---|---|
+| A | 1 year | dismissal | 6,000.00 |
+| B | 5 years | dismissal | 30,000.00 |
+| C | 5 years 6 months | dismissal | 36,000.00 |
+| D | 6 years | dismissal | 42,000.00 |
+| E | 9 years | dismissal | 78,000.00 |
+| F | 10 years | dismissal | 90,000.00 |
+| G | 2 years | resignation | 4,000.00 |
+| H | 5 years exactly | resignation | 10,000.00 |
+| I | 6 years | resignation | 28,000.00 |
+| J | 10 years | resignation | 90,000.00 |
+| K | 2 years 3 months | dismissal | 13,500.00 |
+| L | 18 months | resignation | 0.00 |
+
+Plus: three wage packets on the statutory basis; a third computed exactly on
+wages that do not divide (10,000 → 3,333.33; 8,888 → 2,962.67); the fifth
+anniversary and the days either side of it; and the accrual and the settlement
+agreeing on the same rule. Every amount is decimal throughout — no money in this
+product passes through binary floating point.
+
+And one test drives the whole chain: a document is uploaded, applied, and a
+settlement of 28,000.00 comes out the other end.
+
+## Verification
+
+Every check ran to completion. Nothing was skipped to make a result green.
+
+| Check | Result |
+|---|---|
+| Fresh migration from zero | 134 migrations, 184 tables, 175 RLS-forced |
+| Regulatory retrieval, live | 337,855 bytes from hrsd.gov.sa, hash recorded |
+| Reading and validation | 7 of 7 fields, validation passed |
+| Rule activation | verified 2026-09-10, in force from 2005-09-27 |
+| Backend, every package but `internal/api` | pass |
+| Backend, `internal/api` | pass, 321s |
+| `go vet`, and again with `-tags integration` | clean |
+| `gofmt` | clean |
+| `lint-wording` | passed, 1,496 files |
+| Frontend tests | 598 passing |
+| Typecheck | clean |
+| Production build | clean, `/platform/regulatory-sources` prerendered |
+| Contract | 509 routes, 110 permissions |
+| `verify:api` | ALL SCREEN CONTRACTS VERIFIED |
+| `verify:rbac` | EVERY BOUNDARY HELD |
+| Reachability | **0 genuine gaps** |
+| Saudi onboarding | tenant created in the `sa` market |
+| Production boot | `env=production`, `awaiting_data=0`, listening |
+| Docker rebuild and compose | all four containers healthy |
+
+## Where this leaves the two categories
+
+**Software development: COMPLETE.** Retrieval, storage, provenance, hashing,
+decoding, normalisation, reading, validation, preview, application, audit,
+versioning, effective dating, cache invalidation, calculation, accrual,
+settlement, refusal, re-checking and the screens over all of it.
+
+**Regulatory data: INGESTED AND ACTIVE.** `SA.EOSB.ENTITLEMENT` holds the
+figures Articles 84 and 85 state, read out of the Ministry's own publication,
+with the document, its checksum and the sentence behind every value on record.
+Nothing is awaiting a figure. There is no external data source outstanding for
+end of service.
