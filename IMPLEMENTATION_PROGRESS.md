@@ -9,7 +9,7 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 | | |
 |---|---|
 | **Last verified** | 2026-09-10 |
-| **Branch** | `international-markets-and-counters` |
+| **Branch** | `main`. The feature branch was merged and deleted on 2026-09-10; work lands on `main`. |
 | **Scale** | 134 migrations · 509 routes · 110 permissions · 1,230+ Go test functions |
 | **Software development** | **COMPLETE.** No feature is unbuilt, disabled, unreachable, ungated or waiting for a developer. Zero `TODO`, `FIXME`, `not implemented` or `coming soon` in `backend`, `web-next/src`, `shared/src`, `pos/src` or `scripts`. Zero reachability gaps. |
 | **Regulatory data** | **Ingested and active.** `SA.EOSB.ENTITLEMENT` holds the figures Articles 84 and 85 state, read out of the Ministry of Human Resources and Social Development's own publication of the Labour Law, retrieved and hashed by the product, with the sentence behind every value on record. Nothing is awaiting a figure. |
