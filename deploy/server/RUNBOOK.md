@@ -212,12 +212,40 @@ sudo apt-get install -y caddy
 # /etc/caddy/Caddyfile
 rawsyst.example.com {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:3000
+
+    # The API, addressed directly.
+    #
+    # This route is not optional on a two-core box, and leaving it out is the
+    # easy mistake: the back office DOES proxy `/api/v1` to the API, so the
+    # product works without it and every API call a browser or a till makes
+    # travels browser -> Caddy -> Node -> Go instead of browser -> Caddy -> Go.
+    # Next resolves that rewrite in its own process, which is capped at one
+    # core and 320 MB in `docker-compose.server.yml`, and which exists to serve
+    # prerendered pages rather than to be a proxy. On a busy counter it is the
+    # web container that saturates first, for traffic that never needed it.
+    #
+    # Same origin either way, so nothing about CORS or cookies changes, and the
+    # rewrite stays in `next.config.mjs` as the fallback for a deployment with
+    # no proxy at all.
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    # Everything else is the back office.
+    handle {
+        reverse_proxy 127.0.0.1:3000
+    }
 }
 ```
 
-The back office proxies `/api/v1` to the API itself, so only one upstream is
-needed here. Reload with `sudo systemctl reload caddy`.
+`encode zstd gzip` is where response compression lives; the API does not
+compress and should not, because doing it in both places wastes the CPU this
+machine has least of. It is worth what it costs: measured against the
+development API, `GET /api/v1/permissions` is 24.8 KB and gzips to 5.6 KB, and
+`GET /api/v1/people/roles` is 11.0 KB and gzips to 2.1 KB. Both are fetched
+when somebody signs in.
+
+Reload with `sudo systemctl reload caddy`.
 
 ---
 
