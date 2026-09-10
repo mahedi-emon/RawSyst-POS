@@ -17,6 +17,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/api"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
@@ -35,6 +36,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/maintenance"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
@@ -307,7 +309,21 @@ func run() error {
 		// PREVENTS rather than guarantees, and nothing depends on it.
 		WithLive(hub).
 		WithMetrics(registry, cfg.Observability.MetricsToken).
-		WithReporter(reporter)
+		WithReporter(reporter).
+		// Backup and recovery. The API does not take backups — pg_dump lives
+		// in the postgres image and this one is built from scratch — but it
+		// queues the work, streams a verified artifact out to an operator's
+		// computer, and takes one back in. The object store may be nil, and
+		// the routes say so rather than pretending there is an off-server copy.
+		WithBackups(
+			backup.NewRegister(pool), backup.NewTasks(pool),
+			blob.Open(cfg.Storage),
+			envOr("RAWSYST_BACKUP_PREFIX", "rawsyst"),
+			envOr("RAWSYST_BACKUP_STAGING_DIR", "/staging"),
+		).
+		// The write freeze. Read in front of every business route, which is
+		// the only place it can be enforced for all of them at once.
+		WithMaintenance(maintenance.NewService(pool))
 
 	handler := srv.Handler(
 		httpx.RequestID,
@@ -590,4 +606,16 @@ func corsOrigins() []string {
 		}
 	}
 	return out
+}
+
+// envOr reads a setting, falling back rather than failing.
+//
+// For the two backup settings the API needs — which prefix inside the bucket,
+// and where an uploaded artifact is staged — both of which have a sensible
+// default and neither of which is a secret.
+func envOr(name, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+		return v
+	}
+	return fallback
 }

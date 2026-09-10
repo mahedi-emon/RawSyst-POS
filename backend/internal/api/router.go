@@ -23,6 +23,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
@@ -39,12 +40,14 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/maintenance"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/payments"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/blob"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/cache"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/live"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/metrics"
@@ -209,6 +212,51 @@ type Server struct {
 	// cookie -- which presents as a sign-in that appears to work and then has
 	// no session, the least diagnosable failure available here.
 	secureCookies bool
+
+	// Backup and recovery, which is a platform capability and never a tenant
+	// one -- a dump of this database is every business on the server at once.
+	//
+	// The API does not TAKE backups: `pg_dump` lives in the postgres image and
+	// this one is built from `scratch`. What it does is queue work for the
+	// agent, stream a verified artifact out to an operator's computer, and take
+	// one back in. See platform_backup_handlers.go.
+	backups     *backup.Register
+	backupTasks *backup.Tasks
+	backupStore *blob.Store
+
+	// backupPrefix namespaces snapshots inside the bucket, and backupStaging is
+	// where an uploaded artifact waits for the agent to check it.
+	backupPrefix  string
+	backupStaging string
+
+	// maintenance is the write freeze. Read by a middleware in front of every
+	// route, which is the only place it can be enforced for all of them at
+	// once; see internal/maintenance for why reads stay open.
+	maintenance *maintenance.Service
+}
+
+// WithBackups wires platform backup and recovery.
+//
+// Optional in the sense that the routes report their absence rather than the
+// server failing to start — an installation with no object store configured
+// still serves everything else, and says plainly that it has no off-server
+// backup rather than pretending.
+func (s *Server) WithBackups(
+	register *backup.Register, tasks *backup.Tasks, store *blob.Store,
+	prefix, staging string,
+) *Server {
+	s.backups = register
+	s.backupTasks = tasks
+	s.backupStore = store
+	s.backupPrefix = prefix
+	s.backupStaging = staging
+	return s
+}
+
+// WithMaintenance wires the write freeze.
+func (s *Server) WithMaintenance(m *maintenance.Service) *Server {
+	s.maintenance = m
+	return s
 }
 
 // WithSecureCookies marks session cookies Secure. Call it for any deployment
@@ -2515,6 +2563,72 @@ func (s *Server) Routes() []Route {
 			AccessSuperAdmin, "", s.handleVerifyRates,
 			"signs a reviewed schedule off for production; refused to whoever reviewed it"},
 
+		// --- backup and recovery ---
+		//
+		// AccessSuperAdmin, every one of them, and that is the whole security
+		// model of this subsystem. A full database dump is every business on
+		// this server at once, so there is no tenant permission that could
+		// safely reach it: a permission a business owner can grant themselves
+		// would be a permission that lets one shop download another's books.
+		//
+		// The tenant-scoped `/api/v1/backups` routes above still show a
+		// business the record of ITS OWN backups. They cannot take one, verify
+		// one, download one or restore one, and they never could.
+		{http.MethodGet, "/api/v1/platform/backups/health", AccessSuperAdmin, "",
+			s.handlePlatformBackupHealth,
+			"leads with the last VERIFIED backup, never the last successful " +
+				"run: the second is a more comforting number and a less true one"},
+		{http.MethodGet, "/api/v1/platform/backups", AccessSuperAdmin, "",
+			s.handlePlatformListBackups, ""},
+		{http.MethodPost, "/api/v1/platform/backups", AccessSuperAdmin, "",
+			s.handlePlatformCreateBackup,
+			"queues the work rather than doing it: pg_dump lives in the " +
+				"postgres image and a request that dumped a database would " +
+				"die with the browser tab"},
+		{http.MethodGet, "/api/v1/platform/backups/tasks", AccessSuperAdmin, "",
+			s.handlePlatformBackupTasks, ""},
+		{http.MethodGet, "/api/v1/platform/backups/tasks/{taskID}",
+			AccessSuperAdmin, "", s.handlePlatformBackupTask,
+			"what a screen watching a backup polls; the stage is the truthful " +
+				"name of what is happening, never a computed percentage"},
+		{http.MethodPost, "/api/v1/platform/backups/upload", AccessSuperAdmin, "",
+			s.handlePlatformUploadBackup,
+			"takes an artifact from an operator's computer onto a server that " +
+				"has never seen the machine it came from, checks it against " +
+				"its own manifest, and records it as UPLOADED — never verified"},
+		{http.MethodGet, "/api/v1/platform/backups/{snapshotID}", AccessSuperAdmin, "",
+			s.handlePlatformBackupDetail, ""},
+		{http.MethodGet, "/api/v1/platform/backups/{snapshotID}/download/{what}",
+			AccessSuperAdmin, "", s.handlePlatformDownloadBackup,
+			"streams from the object store straight to the browser; a handler " +
+				"that buffered a multi-gigabyte dump would kill the container " +
+				"on the first real backup"},
+		{http.MethodPost, "/api/v1/platform/backups/{snapshotID}/verify",
+			AccessSuperAdmin, "", s.handlePlatformVerifyBackup,
+			"restores it into a temporary database and compares every table, " +
+				"every business and every policy against the manifest"},
+		{http.MethodPost, "/api/v1/platform/backups/{snapshotID}/validate-restore",
+			AccessSuperAdmin, "", s.handlePlatformValidateRestore,
+			"the rehearsal a production restore requires: production is never " +
+				"opened, and a snapshot that has not passed one is refused"},
+		{http.MethodPost, "/api/v1/platform/backups/{snapshotID}/restore-production",
+			AccessSuperAdmin, "", s.handlePlatformRestoreProduction,
+			"the dangerous one. The confirmation is the snapshot id typed " +
+				"out, the agent takes and verifies a backup of what " +
+				"production holds first, and the old database is renamed " +
+				"aside rather than dropped"},
+		{http.MethodPost, "/api/v1/platform/backups/prune", AccessSuperAdmin, "",
+			s.handlePlatformPruneBackups,
+			"never deletes the newest completed snapshot, never the newest " +
+				"verified one, and nothing at all if it cannot find one"},
+
+		{http.MethodGet, "/api/v1/platform/maintenance", AccessSuperAdmin, "",
+			s.handlePlatformMaintenance, ""},
+		{http.MethodPut, "/api/v1/platform/maintenance", AccessSuperAdmin, "",
+			s.handlePlatformSetMaintenance,
+			"the write freeze a migration needs: what is written after the " +
+				"final backup is on the old server and nowhere else"},
+
 		{http.MethodGet, "/api/v1/platform/health", AccessSuperAdmin, "",
 			s.handlePlatformHealth,
 			"counts, not lists: an operator needs the shape of the load, and " +
@@ -2594,16 +2708,22 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 
 		switch rt.Access {
 		case AccessPublic:
+			// Not frozen. Signing in, refreshing a token and the health checks
+			// have to keep working during a maintenance window, or the only
+			// way to end one would be a database client.
 			r.Method(rt.Method, rt.Pattern, handler)
 
 		case AccessAuthenticated:
-			r.With(s.mw.Authenticate).Method(rt.Method, rt.Pattern, handler)
+			r.With(s.mw.Authenticate, s.frozen(rt)).
+				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessPermission:
-			r.With(s.mw.Authenticate, s.mw.Require(rt.Permission)).
+			r.With(s.mw.Authenticate, s.mw.Require(rt.Permission), s.frozen(rt)).
 				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessSuperAdmin:
+			// Not frozen either, and deliberately: somebody is performing the
+			// migration and they are doing it through this product.
 			r.With(s.mw.Authenticate, s.mw.RequireSuperAdmin).
 				Method(rt.Method, rt.Pattern, handler)
 		}

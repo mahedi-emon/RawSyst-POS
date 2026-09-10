@@ -288,27 +288,42 @@ It refuses to run without an object store configured, because a backup on the
 same disk as the database is not a backup. Set `RAWSYST_S3_ENDPOINT`,
 `RAWSYST_S3_BUCKET` and the credentials in `.env` before the first run.
 
-Then the timer, which takes a backup, verifies it and prunes, every night:
+**And a role that can actually read the database.** RawSyst forces row-level
+security on every tenant table, which applies to the table's owner too, so the
+application's role cannot dump and must not be given the attribute that would
+let it. `BACKUP.md` has the six statements that create `rawsyst_backup`; set
+`RAWSYST_BACKUP_DSN` to it. `backup run` checks this before it starts and names
+what is wrong.
+
+Then the timers. One takes a backup, verifies it and prunes, every night; the
+other rehearses a whole recovery once a week, against disposable resources:
 
 ```bash
-sudo cp deploy/server/rawsyst-backup.service /etc/systemd/system/
-sudo cp deploy/server/rawsyst-backup.timer   /etc/systemd/system/
+sudo cp deploy/server/rawsyst-backup.{service,timer} /etc/systemd/system/
+sudo cp deploy/server/rawsyst-drill.{service,timer}  /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now rawsyst-backup.timer
-systemctl list-timers rawsyst-backup.timer
+sudo systemctl enable --now rawsyst-backup.timer rawsyst-drill.timer
+systemctl list-timers 'rawsyst-*'
 ```
 
-Two things worth saying plainly here, because they are the ones people get
+Three things worth saying plainly here, because they are the ones people get
 wrong:
 
 **A backup is not working because a file was created.** `verify` downloads the
 snapshot, checks it against its manifest, restores it into a temporary database,
-compares the schema version, the table count and the row counts, and drops the
-temporary database. That is what the timer runs every night, and it is the only
-thing that makes the word "backup" true.
+compares the schema version, every table by name, every row count, every
+business's totals, the sequences, the extensions and every row-level-security
+policy, and drops the temporary database. That is what the timer runs every
+night, and it is the only thing that makes the word "backup" true.
+
+**The button on the website needs the agent.** `backup-agent` is in the default
+compose profile and comes up with everything else. Without it, Platform Admin →
+Backup & Recovery queues work that nothing performs. `docker compose ps` should
+list it.
 
 **Do this before the business has any data in it.** A backup system first tested
-on the day it is needed is a backup system nobody has tested.
+on the day it is needed is a backup system nobody has tested. Run
+`$C run --rm backup rehearse` once, now, and read what it says.
 
 ---
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=RawSyst disaster recovery drill, weekly
+Documentation=file:/opt/rawsyst/deploy/server/RECOVERY.md
+
+[Timer]
+# Sunday at 04:30, an hour after the nightly backup, so the two never overlap.
+# They would not anyway — the database refuses two heavy backup operations at
+# once — but a drill that queued behind a backup and then reported a timeout
+# would look like a failed drill, which is the wrong thing to wake up to.
+OnCalendar=Sun *-*-* 04:30:00
+
+RandomizedDelaySec=20min
+
+# A machine that was off on Sunday drills when it comes back. A drill skipped
+# because of a reboot is a week of not knowing.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

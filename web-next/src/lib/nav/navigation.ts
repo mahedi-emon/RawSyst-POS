@@ -967,6 +967,14 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         permissions: [],
         descriptionKey: 'nx.navd.plat.operations.operators',
       },
+      {
+        id: 'backups',
+        labelKey: 'nx.nav.plat.operations.backups',
+        href: '/platform/backups',
+        built: true,
+        permissions: [],
+        descriptionKey: 'nx.navd.plat.operations.backups',
+      },
     ],
   },
   {

@@ -15,7 +15,7 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 | **Regulatory data** | **Ingested and active.** `SA.EOSB.ENTITLEMENT` holds the figures Articles 84 and 85 state, read out of the Ministry of Human Resources and Social Development's own publication of the Labour Law, retrieved and hashed by the product, with the sentence behind every value on record. Nothing is awaiting a figure. |
 | **External dependency** | The Fatoora one-time password. ZATCA issues a compliance certificate only against a password the taxpayer reads from their own portal. The whole workflow around it is built. |
 | **Deployment** | Sized for the production server it goes on: 2 vCPU, 3.7 GiB, 48 GB, Ubuntu 24.04. `docker-compose.server.yml` plus `deploy/server/`. Images 296 MB for both services, down from 438 MB. **Not yet deployed — this repository has no access to that machine.** |
-| **Backups** | Off-server, to any S3-compatible store, verified by restoring into a temporary database every night. `deploy/server/BACKUP.md` and `MIGRATION.md`. |
+| **Backups** | Off-server, to any S3-compatible store, verified nightly by restoring into a temporary database and comparing all 186 tables, every business, every sequence and every policy. Taken from the website, downloaded to a laptop, uploaded to a machine that never saw the old one, restored to production behind a rehearsal and a typed confirmation, and rolled back. Optional AES-256-GCM. `deploy/server/BACKUP.md`, `RECOVERY.md`, `MIGRATION.md`. |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
 
 **Two categories, deliberately kept apart.** Software completeness and
@@ -267,7 +267,8 @@ below satisfy every other criterion and are listed with that exception stated.
 | FE-58 | Supplier portal administration | ✅ | IN PROGRESS | `/buying/suppliers` | `portal.manage` | 11 supplier-portal routes exist |
 | FE-59 | Group companies / consolidation | ✅ | **COMPLETE** | `/oversight/groups` | `group.view` | Plan-gated, and §0.108 is mostly about that: the dev tenant's plan answers 402, so the commercial refusal is the state that is proved live and the populated screen is built from the service's types. |
 | FE-60 | Tills and devices | ✅ | **COMPLETE** | `/settings/devices` | `devices.view` | Market-aware: SA needs an EGS unit. §0.107. `pending` is read against `binding`, so a normal paired till is not reported as a fault. |
-| FE-61 | Backups | ✅ | **COMPLETE** | `/oversight/backups` | `backup.view` | §0.108. "Finished" and "verified" are kept apart, and the risk sentence is the server's own. |
+| FE-61 | Backups | ✅ | **COMPLETE** | `/oversight/backups` | `backup.view` | §0.108. "Finished" and "verified" are kept apart, and the risk sentence is the server's own. A business sees the record of its own backups here; the artifacts are platform-only. |
+| FE-61b | Backup & Recovery, platform | ✅ | **COMPLETE** | `/platform/backups` | super admin only | Sixth pass. Create, verify, rehearse, download, upload, restore to production, roll back, write freeze. 404 to every tenant role, tested. |
 | FE-62 | Plan and billing | ✅ | IN PROGRESS | `/settings/subscription` | `subscription.view` | |
 | FE-63 | Integrations: API keys, webhooks | ✅ | IN PROGRESS | `/settings/integrations` | `integration.view` | Built. A key is readable once, on mint; the list carries a prefix and never the secret. The permission picker offers only what the caller holds, because an over-grant returns 201 with the excess SILENTLY dropped |
 | FE-64 | Import / export | ✅ | **COMPLETE** | `/settings/imports` | `data.import` | §0.108. Staged, checked and committed as three visible acts; the columns come from `/imports/shapes`. |
@@ -373,7 +374,7 @@ what exists and the reconciliation is the assessment of what is done.
 | H1 | Security & Authentication | FE-02, FE-04, FE-05, FE-68, FE-69 | /login, /change-password, /forgot-password, /settings/security | /auth/* | public / authenticated | IN PROGRESS | Refresh rotation, CSRF double-submit and both login challenges verified live. |
 | H2 | Offline-First Architecture & Sync Engine | FE-13 | /pos | /catalog/snapshot, /sync/push | sales.create | IN PROGRESS | The till holds the catalogue in memory. Queued offline sales are a desktop-till concern. |
 | H3 | Device Management | FE-60 | /settings/devices | 12 /devices/* routes | devices.view / devices.manage | COMPLETE | §0.107. Live: a Saudi terminal needs an EGS unit; session counters register active, paired ones pending — and the screen distinguishes those two pendings. An enrolment code is `devices.manage`, asserted. |
-| H4 | Backup & Disaster Recovery | FE-61 | /oversight/backups | /backups/* | backup.view / backup.run | COMPLETE | §0.108. A backup that ran is not a backup that restores, and the screen keeps the two apart. |
+| H4 | Backup & Disaster Recovery | FE-61, FE-61b | /oversight/backups, /platform/backups | /backups/*, /platform/backups/* | backup.view / super admin | COMPLETE | §0.108 and the sixth pass. A backup that ran is not a backup that restores, and nothing short of a restore-and-compare is shown in green. Recovery from a laptop onto a machine that never saw the old server is proved end to end. No PITR, and the recovery point says so. |
 | H5 | SaaS Subscription, Billing & Feature Flags | FE-07, FE-62 | /settings/subscription | /subscription/*, /plans | subscription.view | IN PROGRESS | Entitlements drive navigation already; the billing screen is not built. |
 | H6 | API & Integration Platform | FE-63 | /settings/integrations | /api-keys/*, /webhooks/* | integration.view / manage | IN PROGRESS | Keys and callbacks. https enforced by the database; an endpoint is switched off rather than deleted so the delivery history survives. |
 | H7 | Import / Export & Data Migration | FE-64 | /settings/imports | 7 /imports/* routes, /exports/{kind} | data.import / data.export | COMPLETE | §0.108. Nothing is written until the person commits, and a partial import says how many rows would be left behind. |
@@ -8560,3 +8561,276 @@ Postgres, a real S3-compatible store and the real images.
 What is ready for whoever does have access is the sequence in `RUNBOOK.md`,
 which now begins with the audit and ends with a verified backup **before** the
 application takes its first order.
+
+---
+
+# A BACKUP YOU CAN CARRY AND PUT BACK (2026-09-10, sixth pass)
+
+The pass before this made a backup mean a restore. This one makes it something a
+person can act on: take one from the website, watch it, download it, carry it to
+another machine, put it back, and undo that. Everything below was run against a
+real PostgreSQL, a real S3-compatible store and the real binaries; the numbers
+are measured.
+
+## What the audit found
+
+The previous pass was accurate about what it built, and the routes were honest
+about what they did not do. Reading the code against the requirement produced
+this list, and every line of it is now closed except the two at the bottom,
+which are stated as limitations rather than closed.
+
+| | Was |
+|---|---|
+| Manual backup from the website | The API recorded backups; nothing took one |
+| Platform Backup & Recovery screen | A tenant-scoped record view only |
+| Download to an offline machine | Nothing |
+| Upload from an offline machine | Nothing |
+| Row counts in a verification | Ten hard-coded tables of 186 |
+| Per-business verification | None |
+| Objects, sequences, policies | None |
+| Manifest and dump agreeing | Two reads on two connections, minutes apart |
+| Manifest version compatibility | Any other version refused, which orphans old backups on upgrade |
+| Production restore | Not in the product |
+| Write freeze | Not in the product |
+| Client-side encryption | Not implemented |
+| Audit of download, upload, restore | None |
+| Offline verification of an artifact | Needed the object store |
+| A repeatable recovery drill | None |
+
+## The finding that mattered most
+
+**The application's role cannot take a backup, and must not be able to.**
+
+RawSyst forces row-level security on every tenant table, which applies to the
+owner too. `pg_dump` turns row security off to dump every row, and PostgreSQL
+refuses that to any role without `BYPASSRLS`. Proved on this machine: as
+`rawsyst`, `SELECT count(*) FROM app_user` on a seeded database returns 0, and
+`pg_dump` fails partway with a message about a policy on `account`.
+
+It fails loudly rather than producing an empty dump, which is the one mercy
+here. But a deployment that follows least privilege cannot back up at all, and
+the error names the twentieth thing anybody would check.
+
+So `Run` now checks, before it spends a minute dumping, that the connecting role
+is a superuser or has `BYPASSRLS` **and** may read every table and sequence in
+`public` — and the message is the four statements that fix it. `BACKUP.md` has
+the role.
+
+Two consequences found by running it, not by reading it:
+
+* **A restore leaves the backup role with no grants.** `GRANT SELECT ON ALL
+  TABLES` grants on the objects that exist when it runs; a restore creates new
+  ones. The first backup after a recovery failed with all 186 tables named.
+  Every restore path now re-grants, and `ALTER DEFAULT PRIVILEGES` is the half
+  that keeps it true for the next migration's tables.
+* **A restore as the administrative role produces a database the product cannot
+  read.** `pg_restore --no-owner` leaves objects owned by whoever connected.
+  After the first test cutover the application answered `permission denied for
+  table backup_task` against an entirely intact database. Restores now create
+  the target `OWNER` the application's role and connect as it, which reproduces
+  what `migrate` leaves behind.
+
+## What a verification checks now
+
+Every base table by name with its exact row count — 186 of them, not ten. Every
+business's total and every company's, so a restore that brought one shop back
+and lost another is caught by a number. Every sequence and where it stands,
+because a database whose sequences came back at 1 issues a duplicate invoice
+number on its first write and does it quietly. Every extension. Every
+row-level-security policy **by name** — 178 of them — and how many tables force
+it. The counts of indexes, primary keys, foreign keys, unique constraints, check
+constraints, functions and triggers.
+
+Nothing maintains a list. The inventory asks the catalogue, so a table added
+next month is verified without anybody remembering.
+
+Findings are collected rather than returned at the first one: a report that
+stops at the first problem sends somebody round the loop once per problem, and
+each loop is a restore.
+
+## One instant, for the dump and for the numbers
+
+The old code dumped, then opened a second connection and counted. Those are two
+moments, and every sale rung up between them made the manifest disagree with the
+dump — reported as a corrupt backup, on a backup that was fine.
+
+Now a repeatable-read transaction exports a snapshot, `pg_dump --snapshot` uses
+it, and the inventory is taken inside that same transaction.
+
+## Encryption, implemented rather than described
+
+Optional, off by default, `RAWSYST_BACKUP_ENCRYPTION_KEY` as base64 of 32 bytes.
+AES-256-GCM in 4 MiB chunks, streamed, never buffering a database in memory.
+
+Three things are authenticated beside each chunk: its number, so chunks cannot
+be reordered; a per-stream random prefix, so a chunk cannot be moved between two
+backups sealed with the same key; and a marker on the last chunk, so a truncated
+stream fails rather than decrypting into a shorter valid-looking dump. The third
+is the one people leave out, and truncation is exactly what a half-finished
+upload looks like. All three have tests, including a splice of one backup's
+first chunk into another.
+
+The manifest records a **fingerprint** of the key, so a wrong key produces "this
+was sealed with a1b2… and you have given me d4e5…" rather than "decryption
+failed". It records the key nowhere.
+
+Off by default because turning it on commits the operator to never losing the
+key, and a product that switched it on by default would be arranging for that to
+happen to somebody who never chose it. `BACKUP.md` says so in a block quote.
+
+## The website
+
+`/platform/backups`, `AccessSuperAdmin`, fourteen new routes. Overview with the
+health sentence the server wrote, storage, retention and the write freeze;
+History with the manifest and the verification report; Upload; Operations.
+
+A business owner holding `backup.view` and `backup.run` gets 404 on every one of
+them, and a test attempts all fourteen as an owner, as a cashier and signed out.
+A full dump is every business on the server at once, and no tenant permission can
+safely reach it.
+
+**The agent.** The button needs something listening, and `pg_dump` lives in the
+postgres image while the API is `scratch`. `backup-agent` is a small resident
+service on the backup image that claims work from `backup_task`. It is not a
+scheduler — the nightly backup is still a timer. One heavy operation at a time,
+enforced by a partial unique index rather than by any process's belief.
+
+**No progress bars.** Neither `pg_dump` nor an S3 PUT reports progress, so the
+agent writes the name of the stage and the screen prints it. A frontend test
+fails if any stage label contains a digit.
+
+## Download, upload, and a machine that never saw the old one
+
+Download streams from the object store through the API to the browser, never
+buffered, and only for a backup that has been proved to restore. Three files,
+and the third is there so an operator can check the first with a tool they trust
+more than this software: `sha256sum -c RawSyst_Backup_<id>.sha256`.
+
+Proved: a downloaded artifact passes `sha256sum -c`; one appended byte is caught
+at the size check; one bit flipped in place, length unchanged, is caught at the
+checksum with both hashes named.
+
+Upload takes an artifact from a laptop. The filename is never used — the three
+names are composed from the snapshot id inside the manifest — the bytes are
+streamed to disk and hashed, the manifest must describe the file beside it
+exactly, the file must begin like a dump or a sealed backup, and the record then
+says **UPLOADED**, not verified. Six tests cover the refusals, including a
+manifest whose snapshot id is a traversal path.
+
+Proved end to end: a manifest rewritten to look like it came from another
+server, uploaded through the website, staged, restore-validated into a temporary
+database, and reaching `restore_ready` with 186 tables and 2 businesses.
+
+## Production restore, and rolling it back
+
+Nothing is dropped. The snapshot is restored into a **new** database beside the
+live one, compared against its manifest there, and only then is there a cutover:
+refuse new connections, terminate what is connected, rename the live database to
+`rawsyst_pre_restore_<timestamp>`, rename the restored one into its place, allow
+connections to the old one again. If the second rename fails, the first is undone
+before the error returns.
+
+Before any of that the agent takes a backup of what is live **now** and verifies
+it — skipped only when the live database holds no tables at all, which is a new
+machine with nothing to protect and no object store yet.
+
+It refuses unless: the deployment set `RAWSYST_ALLOW_PRODUCTION_RESTORE=true`,
+the operator typed the snapshot id out, and the snapshot has passed a restore
+rehearsal.
+
+`backup rollback -from …` is the same two renames in the other order, and what
+was serving is renamed aside rather than dropped.
+
+**Proved on a real database**: a cutover with the old database preserved,
+ownership correct, the backup role still able to read, a backup taken
+successfully afterwards, and a rollback that put the original back.
+
+One thing the first attempt got wrong and now handles: after a cutover the
+record of the restore is in the database that was renamed aside, and the one now
+serving has never heard of it. So the first thing after the renames is a row in
+the new database naming where the old one went. That row is the rollback
+instructions.
+
+## The write freeze
+
+A backup at 10:00, a sale at 10:01, DNS switched at 10:05 — that sale is on the
+old server and nowhere else. The only way not to lose it is not to accept it, so
+`platform_maintenance` is one row read in front of every business route. Writes
+get 503 with the operator's own sentence; **reads stay open**, because a cashier
+reading yesterday's totals loses nothing and locking them out turns ten minutes
+into a support call; **platform operators keep working**, or the only way to end
+a freeze would be a database client.
+
+Cached for two seconds, because a query in front of every sale to check a flag
+that changes twice a year is the wrong trade. Tested against a real write and a
+real read.
+
+## Numbers, measured
+
+| | |
+|---|---|
+| database | 27 MB seeded, 186 tables, 178 policies, 2 businesses |
+| dump | 1.2 MB, custom format, compressed |
+| backup | 1–2s |
+| verify, full inventory | 4–9s |
+| whole drill: take, upload, download, check, restore, compare | **6s** |
+| encrypted, same drill | **6s** |
+
+## Tests
+
+24 in `internal/backup`, needing no database or bucket: snapshot ids that are
+paths, retention that cannot empty the store, a manifest carrying no secrets, a
+version 1 manifest read rather than refused, a manifest belonging to another
+snapshot, and eight on the cipher including truncation, a flipped bit and a
+chunk spliced between two backups.
+
+13 in `internal/api` behind `integration`: every route as an owner, as a cashier
+and signed out; `backup.view` and `backup.run` not reaching the platform;
+snapshot ids that are paths; the confirmation; five upload refusals; and the
+write freeze against a real write and a real read.
+
+8 in `web-next`, on the vocabulary: every phase has a label and a colour, the
+safe colour belongs only to the three phases that have actually been restored,
+"not checked" and "proved to restore" cannot converge, and no stage label
+contains a digit.
+
+Whole suites green: `internal/api` 296s, every other backend package, 600
+frontend tests, 27 i18n tests including the scan for English literals in
+components, `tsc`, the production build, the contract check, and reachability —
+523 routes, **0 genuine gaps**.
+
+## Interface
+
+140 keys in English, Arabic and Bangla. Filenames and paths are rendered beside
+the fields rather than inside the sentences, `dir="ltr"`, because a path read
+right-to-left is a path somebody types wrongly — and because a translated
+filename sends people looking for a file that does not exist.
+
+## Documentation
+
+- `BACKUP.md` — rewritten. The backup role, Cloudflare R2 including the free
+  allowance being a billing matter and not an application one, the manifest, the
+  agent, encryption and what it commits you to, both timers, retention, secrets,
+  downloading, RPO and RTO.
+- `RECOVERY.md` — new. Five situations, four rules, the exact commands for each,
+  what to check afterwards, what must never be deleted, every refusal message
+  and what it means, and a checklist.
+- `MIGRATION.md` — the write freeze, taking a copy of the final backup off both
+  machines, and three checklists.
+
+## Limitations, stated rather than closed
+
+**No point-in-time recovery.** The recovery point is up to 24 hours plus however
+long since 03:30. `wal_level=replica` is set, which is the precondition; the
+archive command needs a destination, a retention decision for the segments, and
+a rehearsed restore. Half a PITR setup is worse than none, because it looks like
+protection. The lever that exists today is running the timer more than once a
+day.
+
+**The drill proves the software, not the person.** It cannot prove somebody who
+has never done this can bring the business back under pressure. `RECOVERY.md`
+says to walk it on a spare machine once, with a stopwatch.
+
+**Still not deployed.** RawSyst is not on 40.160.14.32 and I have no access to
+that machine. Everything above is code, configuration and documentation in this
+repository, verified here.

@@ -30,6 +30,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
@@ -47,6 +48,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/maintenance"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
@@ -213,7 +215,15 @@ func newHarness(t *testing.T) *harness {
 		// upgrade -- which is exactly the kind of thing only the real stack
 		// catches.
 		WithLive(hub).
-		WithMetrics(metrics.New(), "")
+		WithMetrics(metrics.New(), "").
+		// Backup and recovery, with NO object store — which is the state a
+		// deployment is in before somebody configures one, and the state these
+		// tests want: what is being checked here is who may reach the routes,
+		// not whether a bucket answers. The store being nil is also the case
+		// most likely to be got wrong, because it is the one nobody runs.
+		WithBackups(backup.NewRegister(pool), backup.NewTasks(pool), nil,
+			"rawsyst-test", t.TempDir()).
+		WithMaintenance(maintenance.NewService(pool))
 	handler := srv.Handler(httpx.RequestID, httpx.Recover)
 
 	ts := httptest.NewServer(handler)

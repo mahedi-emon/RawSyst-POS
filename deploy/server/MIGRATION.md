@@ -206,18 +206,59 @@ is a new server you cannot migrate off, and the time to find that out is now.
 
 This is the only downtime, and it starts here.
 
+### Why it cannot be skipped
+
+```
+10:00   backup taken
+10:01   a till rings up a sale
+10:05   DNS switched to the new server
+```
+
+That sale is on the old server and nowhere else. When the old server is turned
+off, it is gone — and nobody finds out until the day's cash disagrees with the
+till totals. There is no clever way round it. The only way not to lose writes
+made after the final backup is **not to accept them**.
+
+### Turning it on
+
+**Platform Admin → Backup & Recovery → Overview → Write freeze.** Type what
+people should be told, and close writes:
+
+> RawSyst is closed for about ten minutes while its data is moved.
+
+Every business route that writes answers 503 with that sentence. **Reads stay
+open** — a cashier looking at yesterday's totals writes nothing and loses
+nothing, and locking them out of a screen they are reading turns a planned ten
+minutes into a support call. **Platform operators keep working**, which is what
+lets you finish the migration through this product rather than through a
+database client.
+
+It takes up to two seconds to reach every request: the state is one row and it
+is cached for that long, because a query in front of every sale to check a flag
+that changes twice a year is the wrong trade. That is the whole delay.
+
+Tell whoever is at a till first. A minute of "the system is down" that somebody
+was warned about is an inconvenience; the same minute unannounced is an
+incident.
+
+### The heavier version
+
+Stopping the services closes everything, reads included:
+
 ```bash
 # on the OLD server
 docker compose -f docker-compose.yml -f docker-compose.server.yml stop web api worker
 ```
 
-The database stays up: the final backup has to read it. With the API and the
-back office stopped, nothing can write, so the dump that follows is the last
-state of the business and nothing is lost between the dump and the switch.
+The database stays up, because the final backup has to read it. Use this if you
+want the certainty that nothing at all is talking to the database; use the write
+freeze if you would rather people could still look things up. Both give the same
+guarantee about writes.
 
-Tell whoever is at a till first. A minute of "the system is down" that somebody
-was warned about is an inconvenience; the same minute unannounced is an
-incident.
+If you stop the services, the write freeze cannot be turned off from the website
+afterwards — there is no website. Turn it off before you stop them, or turn it
+off on the **new** server after the restore, where the flag arrives with the
+database.
 
 ---
 
@@ -229,8 +270,27 @@ $C run --rm backup run
 $C run --rm backup verify
 ```
 
-Verified, not merely taken. If it does not verify, start the old server again
-and work out why — the migration can wait, the business cannot.
+Verified, not merely taken. If it does not verify, open writes again and work
+out why — the migration can wait, the business cannot.
+
+**Write down the snapshot id.** It is the one thing the next four steps all
+refer to, and the one thing that is annoying to look up in a hurry.
+
+### Take a copy off both machines
+
+Before going any further, put the final backup somewhere that is neither
+server:
+
+```bash
+$C run --rm backup download -to /srv/final
+sha256sum -c /srv/final/RawSyst_Backup_<FINAL ID>.sha256
+```
+
+Then copy those three files to a laptop. This costs two minutes and it is the
+difference between a migration that can go wrong and one that cannot: with them,
+the business can be rebuilt on any machine even if the old server, the new
+server and the bucket all fail on the same afternoon. `RECOVERY.md` section C is
+that procedure.
 
 ---
 
@@ -327,3 +387,64 @@ script that gets halfway and leaves two servers in an unclear state at the exact
 moment nobody wants to debug a script. The parts that benefit from automation —
 taking a backup, checking it restores, keeping the right ones — are automated,
 tested, and run every night.
+
+---
+
+## Checklists
+
+Print these. Tick as you go. The point of a checklist is that it survives being
+tired.
+
+### Before the day
+
+Nothing here touches production. All of it can be done a week ahead.
+
+- [ ] Backups have run **and verified** for seven consecutive nights
+- [ ] `backup health` on the old server is GREEN
+- [ ] The weekly drill has passed at least once: `journalctl -u rawsyst-drill`
+- [ ] I have `.env` from the password manager, and it is complete
+- [ ] I have `RAWSYST_DATA_ENCRYPTION_KEYS`
+- [ ] I have the backup encryption key, if backups are sealed, and I have
+      checked its fingerprint against a manifest
+- [ ] The new server exists, and section 2 has been walked on it once, from a
+      real backup
+- [ ] The new server's own backups run and verify, to its own bucket or prefix
+- [ ] DNS time-to-live has been lowered, so the switch is minutes not hours
+- [ ] Whoever is at a till knows which day and roughly which hour
+- [ ] Somebody other than me knows this is happening and what to do if I stop
+
+### On the day
+
+In order. Do not skip step 3 because step 2 went well.
+
+- [ ] 1. Old server: backup, verify, note the snapshot id
+- [ ] 2. New server: build from it, migrate, start
+- [ ] 3. New server: smoke test — sign in, read a sale, read stock, run a report
+- [ ] 4. Old server: **write freeze on.** Tell the tills
+- [ ] 5. Old server: final backup. Verify it. Note the id
+- [ ] 6. Old server: download the final backup to a laptop and `sha256sum -c` it
+- [ ] 7. New server: restore the final snapshot beside the rehearsal database
+- [ ] 8. New server: migrate, start, smoke test again
+- [ ] 9. New server: check the counts against what the old one reported
+- [ ] 10. Switch DNS
+- [ ] 11. Watch the new server answer real traffic for ten minutes
+- [ ] 12. Old server: stop everything. **Do not destroy it**
+- [ ] 13. New server: write freeze off, if it travelled with the database
+
+If anything between 4 and 10 goes wrong: open writes on the old server, switch
+nothing, and stop. The old server is untouched and still has every row. That is
+the whole reason the order is this way round.
+
+### After
+
+- [ ] The full [What to check](RECOVERY.md#what-to-check) list, on the new server
+- [ ] A fresh backup on the new server, verified
+- [ ] `backup health` on the new server is GREEN
+- [ ] `rawsyst-backup.timer` and `rawsyst-drill.timer` are enabled and listed
+- [ ] The hourly check is clean: `journalctl -u rawsyst-check`
+- [ ] The final snapshot is in the object store, and on a laptop
+- [ ] The old server is off, intact, and will stay that way
+- [ ] Written down: both snapshot ids, both server addresses, the times, and
+      who did it
+
+Then wait a week and read *Decommission* above.

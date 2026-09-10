@@ -216,6 +216,33 @@ type Service struct {
 // NewService builds the reader.
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
 
+// Platform appends one entry that belongs to no tenant.
+//
+// # Why this is not `Write` in a transaction the caller already has
+//
+// Almost every audit entry in this product is written INSIDE the transaction
+// that made the change, so the record and the change cannot disagree. A backup
+// is the exception: the thing being recorded is not a database write at all —
+// it is a file leaving the server, a dump being restored, a database being
+// renamed — and there is no transaction it could join.
+//
+// So it is its own write, and it is best-effort by design. A trail that could
+// fail a recovery would be a trail that caused an outage; the task row and the
+// backup record are a second account of the same act, and losing the audit line
+// is the least bad of the three failures available here.
+//
+// `tenant_id` is NULL because a dump of this database is every tenant at once,
+// so the act belongs to none of them.
+func (s *Service) Platform(ctx context.Context, e Entry) {
+	if s == nil || s.pool == nil {
+		return
+	}
+	e.TenantID = nil
+	_ = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		return Write(ctx, tx, e)
+	})
+}
+
 // Trail returns the records a query matches, and the verbs that appear in this
 // tenant's log at all.
 //
@@ -263,4 +290,24 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// LabelForUser is the name to record against an action, read on its own
+// connection.
+//
+// The transactional `LabelFor` above is what callers inside a transaction use.
+// This one is for the platform paths that have no transaction to borrow — a
+// backup taken, a file downloaded — and it falls back to nothing rather than to
+// an error, for the same reason: a worse label is better than a refused
+// operation.
+func (s *Service) LabelForUser(ctx context.Context, userID uuid.UUID) string {
+	if s == nil || s.pool == nil || userID == uuid.Nil {
+		return ""
+	}
+	var label string
+	_ = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		label = LabelFor(ctx, tx, userID)
+		return nil
+	})
+	return label
 }

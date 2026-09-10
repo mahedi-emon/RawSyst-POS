@@ -114,6 +114,29 @@ func (s *Store) Bucket() string {
 	return s.cfg.Bucket
 }
 
+// EndpointHost is the host objects go to, without the scheme and without
+// anything that could carry a credential.
+//
+// Written into a backup manifest, which is stored beside the backup and read by
+// anybody who can read the bucket. The configured endpoint is a URL and a URL
+// is the shape of string people put a key in; the host is the part that
+// identifies the provider and is safe to write down.
+func (s *Store) EndpointHost() string {
+	if s == nil {
+		return ""
+	}
+	return s.host
+}
+
+// Region is the configured region, for a readout. Empty for providers that do
+// not use one, which includes Cloudflare R2.
+func (s *Store) Region() string {
+	if s == nil {
+		return ""
+	}
+	return s.cfg.Region
+}
+
 func notConfigured() error {
 	return errs.New(errs.CodeUnavailable,
 		"This installation has no object storage configured.")
