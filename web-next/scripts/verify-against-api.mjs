@@ -2767,6 +2767,48 @@ console.log('\nSTAFF, ATTENDANCE AND PAYROLL');
       'accrued',
       'currency',
     ]);
+    // The award on leaving, which is a different question from the provision
+    // above and used to be one this product could not answer. Every
+    // intermediate figure is asserted rather than only the total: the screen
+    // shows the working, and a total that arrives without the wage it was
+    // computed on is a figure nobody can check.
+    const who = eosb.data[0].employee_id;
+    const settlement = await check(
+      'GET /eosb/settlement/{employeeID}',
+      `/eosb/settlement/${who}?company_id=${CO}&reason=resignation`,
+      null,
+    );
+    if (settlement?.data) {
+      expectFields('  end of service settlement', settlement.data, [
+        'employee_id',
+        'joined_on',
+        'leaving_on',
+        'reason',
+        'months_of_service',
+        'wage_basis',
+        'wage',
+        'first_band_months',
+        'first_band_days_per_year',
+        'after_band_months',
+        'after_band_days_per_year',
+        'full_award',
+        'resignation_fraction',
+        'award',
+        'provision',
+        'shortfall',
+      ]);
+    }
+
+    // And that it will not guess. Article 85 reduces a resignation and not a
+    // dismissal, so a settlement with no reason must refuse rather than pick
+    // one — the difference between the two answers is somebody's money.
+    const guessed = await call(`/eosb/settlement/${who}?company_id=${CO}`);
+    if (guessed.status === 200) {
+      console.log('  x a settlement was computed without being told how the service ended');
+      failures += 1;
+    } else {
+      console.log('  ok a settlement refuses to guess how the service ended');
+    }
   } else {
     console.log('  -  nobody is employed; the end-of-service shape was not exercised');
   }

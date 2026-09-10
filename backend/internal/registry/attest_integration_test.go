@@ -157,16 +157,23 @@ func TestRecordingFromASourceFile(t *testing.T) {
 
 	// It shows up as outstanding first, or the report a deployment reads is
 	// not telling it what it is waiting for.
-	open, err := s.Outstanding(ctx, "zz")
+	//
+	// Looked up by key rather than by asserting the whole list. `zz` is this
+	// suite's fixture market and `regulatory_rule` is append-only by trigger,
+	// so every fixture any test in this package has ever seeded is still there
+	// — `health_test.go` adds an onboarding blocker for the boot gate — and a
+	// test that demands `zz` contain exactly one rule is asserting something
+	// append-only data cannot promise.
+	mine, err := outstandingFor(s, ctx, attestTestKey)
 	if err != nil {
 		t.Fatalf("outstanding: %v", err)
 	}
-	if len(open) != 1 || open[0].Key != attestTestKey {
-		t.Fatalf("outstanding reported %+v", open)
+	if mine == nil {
+		t.Fatalf("%s is not reported as outstanding", attestTestKey)
 	}
-	if len(open[0].Fields) != 4 {
+	if len(mine.Fields) != 4 {
 		t.Errorf("reported %v as unfilled; `already_known` holds a figure "+
-			"and is not one of them", open[0].Fields)
+			"and is not one of them", mine.Fields)
 	}
 
 	from := placeholderFrom.AddDate(0, 0, 1)
@@ -181,7 +188,7 @@ func TestRecordingFromASourceFile(t *testing.T) {
 	if len(outcomes) != 1 || outcomes[0].Action != "would record" {
 		t.Fatalf("dry run reported %+v", outcomes)
 	}
-	if still, _ := s.Outstanding(ctx, "zz"); len(still) != 1 {
+	if still, _ := outstandingFor(s, ctx, attestTestKey); still == nil {
 		t.Fatal("a dry run recorded the rule")
 	}
 
@@ -194,8 +201,8 @@ func TestRecordingFromASourceFile(t *testing.T) {
 		t.Fatalf("apply reported %+v", outcomes)
 	}
 
-	// Nothing outstanding, and the value resolves.
-	if still, _ := s.Outstanding(ctx, "zz"); len(still) != 0 {
+	// Not outstanding any more, and the value resolves.
+	if still, _ := outstandingFor(s, ctx, attestTestKey); still != nil {
 		t.Errorf("still outstanding after recording: %+v", still)
 	}
 
@@ -406,4 +413,24 @@ func assertAudited(t *testing.T, s *Service, action string) {
 			"the most consequential act a platform operator performs and it "+
 			"was not being recorded", action)
 	}
+}
+
+// outstandingFor picks one rule out of the fixture market's report.
+//
+// Returns nil when it is not there, so a caller reads "recorded" and "not
+// recorded" as presence rather than as a count of everything `zz` happens to
+// hold.
+func outstandingFor(
+	s *Service, ctx context.Context, key string,
+) (*Unrecorded, error) {
+	open, err := s.Outstanding(ctx, "zz")
+	if err != nil {
+		return nil, err
+	}
+	for i := range open {
+		if open[i].Key == key {
+			return &open[i], nil
+		}
+	}
+	return nil, nil
 }

@@ -125,13 +125,30 @@ func report(ctx context.Context, rules *registry.Service, country string) (int, 
 		return 0, nil
 	}
 
-	blockers := 0
+	// Two counts, not one.
+	//
+	// `!` is a rule no shop in that market can trade without, and a deployment
+	// serving that market genuinely refuses to start. `~` is a capability that
+	// cannot be COMPUTED until somebody records the figure: the software is
+	// built, tested and reachable, it refuses by name where it is used, and
+	// nothing else is affected.
+	//
+	// This used to print one number and exit non-zero on both. A pipeline
+	// therefore failed a release over an end-of-service band nobody had read
+	// yet, and the message it printed — "a deployment will refuse to start" —
+	// was false for that rule. Two conditions, two marks, one exit code that
+	// means what it says.
+	stops, awaiting := 0, 0
 	fmt.Printf("\n  Legal values nobody has recorded yet:\n\n")
 	for _, u := range open {
 		mark := " "
-		if u.Blocker {
+		switch {
+		case u.Blocker && u.Blocks == registry.BlocksOnboarding:
 			mark = "!"
-			blockers++
+			stops++
+		case u.Blocker:
+			mark = "~"
+			awaiting++
 		}
 		fmt.Printf("  %s %-34s %-3s %s\n", mark, u.Key, u.Country,
 			strings.Join(u.Fields, ", "))
@@ -139,21 +156,32 @@ func report(ctx context.Context, rules *registry.Service, country string) (int, 
 			fmt.Printf("      (not in the source pack: record it in Super Admin)\n")
 		}
 	}
-	fmt.Printf("\n  %d outstanding, %d of them blocking release.\n", len(open), blockers)
-	if blockers > 0 {
-		// Named without a runner in front of it. This is the same binary in a
-		// container, where `go` does not exist, and on a development machine,
-		// where it is `go run ./cmd/regulatory` -- printing one of those two
-		// is printing the wrong one half the time.
-		fmt.Printf("\n  A deployment serving those markets will refuse to start.\n")
-		fmt.Printf("  Produce a file to fill in, then record it:\n\n")
-		fmt.Printf("      regulatory -template -country %s > sources.json\n",
-			firstBlockerCountry(open))
-		fmt.Printf("      regulatory -check  -file sources.json\n")
-		fmt.Printf("      regulatory -apply  -file sources.json\n\n")
+
+	fmt.Printf("\n  %d outstanding.\n", len(open))
+	if stops > 0 {
+		fmt.Printf("  ! %d stop a market trading at all.\n", stops)
+	}
+	if awaiting > 0 {
+		fmt.Printf("  ~ %d hold back one capability each. The software for "+
+			"every one of them is complete;\n"+
+			"    each refuses by name where it is used, and a deployment "+
+			"still starts.\n", awaiting)
+	}
+
+	// Named without a runner in front of it. This is the same binary in a
+	// container, where `go` does not exist, and on a development machine, where
+	// it is `go run ./cmd/regulatory` -- printing one of those two is printing
+	// the wrong one half the time.
+	fmt.Printf("\n  Produce a file to fill in, then record it:\n\n")
+	fmt.Printf("      regulatory -template -country %s > sources.json\n",
+		firstBlockerCountry(open))
+	fmt.Printf("      regulatory -check  -file sources.json\n")
+	fmt.Printf("      regulatory -apply  -file sources.json\n\n")
+
+	if stops > 0 {
+		fmt.Printf("  A deployment serving those markets will refuse to start.\n\n")
 		return 1, nil
 	}
-	fmt.Println()
 	return 0, nil
 }
 
@@ -162,6 +190,13 @@ func firstBlockerCountry(open []registry.Unrecorded) string {
 		if u.Blocker {
 			return u.Country
 		}
+	}
+	// Nothing is blocking, so the command is for whatever IS outstanding —
+	// a country with no blocker at all still has values to record, and
+	// printing "sa" at somebody looking at a Bangladeshi rule is printing a
+	// command that writes an empty file.
+	if len(open) > 0 {
+		return open[0].Country
 	}
 	return "sa"
 }

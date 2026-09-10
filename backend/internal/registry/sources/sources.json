@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-09",
+  "version": "2026-09-10",
   "note": "Structure and citation only, never figures. See internal/registry/sources.go for why.",
   "rules": [
     {
@@ -66,6 +66,14 @@
           "unit": "fraction",
           "article": "85",
           "help": "A fraction of the Article 84 award, between 0 and 1."
+        },
+        {
+          "name": "resignation_fraction_over_ten_years",
+          "label": "Fraction on resignation, over ten years",
+          "kind": "decimal",
+          "unit": "fraction",
+          "article": "85",
+          "help": "A fraction of the Article 84 award, between 0 and 1. Article 85 bands the fraction by length of service and this is the last band, so without it a settlement for somebody with eleven years' service has no figure to apply and the software would have to assume one. Record what the article says, including 1 if it says the whole award."
         }
       ]
     },

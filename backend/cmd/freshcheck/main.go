@@ -121,5 +121,36 @@ func main() {
 		  AND lower(country) = 'sa'`).Scan(&onboardingBlockers)
 	fmt.Printf("Saudi onboarding blockers outstanding: %d\n", onboardingBlockers)
 
+	// And which capabilities are waiting on a figure rather than on a
+	// developer. Reported separately from the line above because they are
+	// different conditions: nothing above zero there can trade at all, and
+	// anything here is finished software waiting for somebody to read an
+	// official document. A fresh database that printed only the first number
+	// left the second invisible, which is how "unverified" and "unbuilt"
+	// became the same word.
+	var awaiting []string
+	rows, err := conn.Query(ctx, `
+		SELECT rule_key FROM regulatory_rule
+		WHERE release_blocker AND blocks = 'feature'
+		  AND verified_on IS NULL AND effective_to IS NULL
+		ORDER BY rule_key`)
+	if err == nil {
+		for rows.Next() {
+			var k string
+			if rows.Scan(&k) == nil {
+				awaiting = append(awaiting, k)
+			}
+		}
+		rows.Close()
+	}
+	if len(awaiting) == 0 {
+		fmt.Println("capabilities awaiting a regulatory figure: none")
+	} else {
+		fmt.Printf("capabilities awaiting a regulatory figure: %d (%s)\n",
+			len(awaiting), strings.Join(awaiting, ", "))
+		fmt.Println("  each is implemented and refuses by name at the point " +
+			"of use; record with `regulatory -template` then `-apply`")
+	}
+
 	fmt.Println("\nfresh database came up clean")
 }

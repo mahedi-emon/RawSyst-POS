@@ -114,7 +114,15 @@ how it is laid out and sent is not.
 - [ ] WPS submission lead time before payday
 - [ ] Salary payment window
 - [ ] Required employee identifier fields for the wage file
-- [ ] EOSB accrual formula
+- [ ] EOSB entitlement — `SA.EOSB.ENTITLEMENT`, six figures, all six needed
+      together. Article 84: which wage the award is computed on (basic, basic
+      plus housing, or basic plus all allowances) and the days of wage per year
+      for the first five years and for service after them. Article 85: the
+      fraction of that award payable on **resignation**, for service under two
+      years, two to five, five to ten, and beyond ten. Everything that consumes
+      these is built — the accrual, the settlement, the audit trail, the tests
+      — and refuses by name until they are recorded. `regulatory -template
+      -country sa` writes the file to fill in; nothing here needs a developer.
 - [ ] Leave entitlements and overtime multipliers
 
 ### E-Commerce

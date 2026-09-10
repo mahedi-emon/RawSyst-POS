@@ -391,11 +391,27 @@ func verifySchema(ctx context.Context, pool *db.Pool) error {
 
 // reportRegistryHealth surfaces regulatory verification state at startup.
 //
-// In production an unverified release-blocker refuses to start. Blueprint E8.4
-// names three â€” the ZATCA schema version, the GOSI dated rate schedule and the
-// Mudad wage-file format â€” and shipping with any of them still a placeholder
-// means computing a legal figure from a guess. Failing to boot is a far cheaper
-// failure than a wrong tax return.
+// # Two conditions, and only one of them is a refusal
+//
+// An unverified legal value can mean two entirely different things, and this
+// used to treat them as one:
+//
+//   - Nothing in that market can trade without the figure. A Saudi till cannot
+//     issue an invoice without ZATCA's XML and QR formats, so a deployment
+//     serving Saudi Arabia with either still a placeholder is serving something
+//     broken. Refusing to start is a far cheaper failure than a wrong tax
+//     return, and Blueprint E8.4 asks for exactly that.
+//   - One capability cannot be computed until the figure is on record. The
+//     rest of the product is untouched, and the capability refuses itself by
+//     name the moment somebody asks for it.
+//
+// 0124 recorded which of the two a blocker is, and this gate now reads it.
+// Before that it refused on both, so a complete end-of-service engine waiting
+// on Articles 84 and 85 could stop a whole Saudi deployment from starting.
+// That reported a regulatory-data condition as unfinished software, which is
+// the one thing this gate must never do: a shop cannot open its till, and no
+// amount of development fixes it, because what is missing is a number in a
+// statute rather than a line of code.
 func reportRegistryHealth(
 	ctx context.Context, rules *registry.Service, log *slog.Logger, strict bool,
 ) error {
@@ -411,6 +427,7 @@ func reportRegistryHealth(
 		slog.Int("stale_other", rep.StaleOther),
 		slog.String("served_markets", marketList(rep.ServedMarkets)),
 		slog.Int("blocking_release", len(rep.BlockingRelease)),
+		slog.Int("awaiting_data", len(rep.AwaitingData)),
 		slog.Int("deferred_blockers", len(rep.DeferredBlockers)))
 
 	// Named, not merely counted.
@@ -428,6 +445,32 @@ func reportRegistryHealth(
 				"any use of them is refused meanwhile"))
 	}
 
+	// Capabilities waiting on a figure, in a market this deployment serves.
+	//
+	// This is the honest category, and it is deliberately not a refusal. The
+	// software behind each of these is built, tested and reachable; what is
+	// missing is a number that lives in an official document, and no amount of
+	// development produces one. The capability refuses ITSELF at the point of
+	// use, by name, with the command that records the figure — so the failure
+	// reaches the one person trying to use it instead of everybody.
+	//
+	// Refusing to boot on these was a category error. It reported "a legal
+	// value has not been read yet" as "this build is broken", and the visible
+	// consequence was a Saudi deployment that could not open its till over an
+	// end-of-service band no shop had yet had cause to compute.
+	if len(rep.AwaitingData) > 0 {
+		log.Warn("capabilities awaiting a regulatory figure",
+			slog.String("rules", strings.Join(rep.AwaitingData, ", ")),
+			slog.String("served_markets", marketList(rep.ServedMarkets)),
+			slog.String("note", "the software for each is complete and the "+
+				"figure is not on record. Each capability refuses by name "+
+				"where it is used; nothing else is affected. Record them with "+
+				"`regulatory -template -country "+
+				countryOfRules(rep.AwaitingData, rep.ServedMarkets)+"` then "+
+				"`regulatory -apply -file …`, or in Super Admin > Regulatory "+
+				"Registry"))
+	}
+
 	if len(rep.BlockingRelease) > 0 {
 		if strict {
 			// Named, and told what to do about it.
@@ -438,21 +481,56 @@ func reportRegistryHealth(
 			// needs only the database.
 			return fmt.Errorf(
 				"refusing to start: these legal values have never been verified "+
-					"against their official source: %s. They apply to markets "+
-					"this deployment serves (%s). Record them from a regulatory "+
+					"against their official source, and nothing in their market "+
+					"can trade without them: %s. They apply to markets this "+
+					"deployment serves (%s). Record them from a regulatory "+
 					"source file — `regulatory -template -country %s` writes "+
 					"one to fill in, `regulatory -apply -file …` records it — "+
 					"or, on a deployment that is already up, in Super Admin > "+
 					"Regulatory Registry",
 				strings.Join(rep.BlockingRelease, ", "),
 				marketList(rep.ServedMarkets),
-				firstServedMarket(rep.ServedMarkets))
+				countryOfRules(rep.BlockingRelease, rep.ServedMarkets))
 		}
-		log.Warn("unverified release-blocking regulatory rules",
+		log.Warn("unverified onboarding-blocking regulatory rules",
 			slog.String("rules", strings.Join(rep.BlockingRelease, ", ")),
 			slog.String("note", "this would refuse to start in production"))
 	}
 	return nil
+}
+
+// firstServedMarket is the country code to put in the command the refusal
+// suggests, so it can be pasted rather than adapted.
+func firstServedMarket(markets []string) string {
+	if len(markets) == 0 {
+		return "sa"
+	}
+	return markets[0]
+}
+
+// countryOfRules is the market to put in the command, read from the rules
+// themselves rather than from the served list.
+//
+// A deployment serving Bangladesh and Saudi Arabia was told to run
+// `regulatory -template -country bd` for an outstanding rule whose key begins
+// `SA.` — a command that writes a file with nothing in it, handed to somebody
+// who has just been told something is outstanding. The served list answers
+// "which markets are we in", which is a different question from "where does
+// this rule come from".
+//
+// The key's first two letters ARE the country: `regulatory_rule_key_format`
+// checks `^[A-Z]{2}\.[A-Z0-9_]+\.[A-Z0-9_]+$` on every row, so this is a
+// constraint being read rather than a convention being trusted. Where the rules
+// span markets it names the first, and the template carries every rule for it;
+// running the command twice is a smaller cost than naming a market with nothing
+// outstanding in it.
+func countryOfRules(keys []string, served []string) string {
+	for _, k := range keys {
+		if len(k) >= 3 && k[2] == '.' {
+			return strings.ToLower(k[:2])
+		}
+	}
+	return firstServedMarket(served)
 }
 
 // marketList renders the served markets for a log line or a refusal.
@@ -465,15 +543,6 @@ func marketList(markets []string) string {
 		return "none yet"
 	}
 	return strings.Join(markets, ", ")
-}
-
-// firstServedMarket is the country code to put in the command the refusal
-// suggests, so it can be pasted rather than adapted.
-func firstServedMarket(markets []string) string {
-	if len(markets) == 0 {
-		return "sa"
-	}
-	return markets[0]
 }
 
 // tauriOrigins are the origins the POS presents from inside its own window.

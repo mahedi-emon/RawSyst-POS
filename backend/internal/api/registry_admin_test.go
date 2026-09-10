@@ -894,10 +894,24 @@ func TestEveryUnrecordedLegalValueSaysWhereItComesFrom(t *testing.T) {
 	}
 	var open []unrecorded
 	if err := h.pool.TxAsPlatform(t.Context(), func(tx pgx.Tx) error {
+		// `zz` is excluded, and only `zz`.
+		//
+		// ISO 3166's "unknown country" is this suite's fixture market:
+		// `regulatory_rule` is append-only by trigger, so a rule seeded by a
+		// test cannot be cleaned up and stays in whatever database the suite
+		// ran against. `internal/registry` seeds two — an attestable rule and
+		// an onboarding blocker for the boot gate — and demanding that the
+		// shipped source pack describe where a fixture's figures come from is
+		// demanding a citation for something no authority published.
+		//
+		// The same exclusion, for the same reason, as
+		// `TestVerifiedRulesCarryTheirEvidence`. It is unchanged for SA, BD
+		// and US, which is where every real rule lives.
 		rows, e := tx.Query(t.Context(), `
 			SELECT rule_key, payload FROM regulatory_rule
 			WHERE payload::text LIKE '%__VERIFY__%'
-			  AND effective_to IS NULL`)
+			  AND effective_to IS NULL
+			  AND country <> 'zz'`)
 		if e != nil {
 			return e
 		}

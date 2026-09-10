@@ -13,6 +13,7 @@ import (
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/market"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
@@ -276,7 +277,20 @@ func (s *Service) AccrueEOSB(
 		}
 
 		for _, p := range staff {
-			months := monthsBetween(p.joined, period)
+			// Service at the END of the month being charged, not at its start.
+			//
+			// The charge covers the whole of this month, so the service it is
+			// charged against is the service completed by the end of it. Read
+			// at the start instead, somebody who joined on the 10th of June was
+			// charged nothing for July — a month they worked in full — and the
+			// accrual ran permanently one month behind the settlement for
+			// everybody who did not join on the 1st.
+			//
+			// It also settles the band question the same way `daysFor`
+			// describes it: a person who crosses five years mid-month is into
+			// their sixth by the end of it, and the month being charged belongs
+			// to the higher band.
+			months := monthsBetween(p.joined, period.AddDate(0, 1, -1))
 			if !months.IsPositive() {
 				continue
 			}
@@ -338,7 +352,36 @@ func (s *Service) AccrueEOSB(
 			}
 			charged++
 		}
-		return nil
+
+		// The run is audited, not only its postings.
+		//
+		// Each charge already posts a journal entry naming who posted it, and
+		// each writes an append-only `eosb_accrual` row. Neither answers "who
+		// ran the accrual for August, and on which reading of the entitlement"
+		// — and a month that was never run leaves no journal entry to ask,
+		// which is precisely the case somebody investigates. Every other act in
+		// this product that moves the ledger writes one of these; this did not.
+		//
+		// The entitlement is recorded with it. Correcting the rule later does
+		// not rewrite months already posted, so the trail has to say what was
+		// in force when each month was charged or a re-reading of the law
+		// cannot be reconciled against the provision it produced.
+		if charged == 0 {
+			return nil
+		}
+		return audit.Write(ctx, tx, audit.Entry{
+			TenantID: &scope.TenantID, ActorID: &scope.UserID,
+			ActorLabel: audit.LabelFor(ctx, tx, scope.UserID),
+			Action:     "eosb_accrued",
+			EntityType: "company", EntityID: &scope.CompanyID,
+			After: map[string]any{
+				"period":                   period.Format("2006-01"),
+				"people":                   charged,
+				"wage_basis":               ent.Basis,
+				"days_per_year_first_five": ent.FirstFive.String(),
+				"days_per_year_after_five": ent.AfterFive.String(),
+			},
+		})
 	})
 	return charged, db.Translate(err, "")
 }
@@ -370,6 +413,18 @@ type eosbEntitlement struct {
 
 	FirstFive decimal.Decimal `json:"-"`
 	AfterFive decimal.Decimal `json:"-"`
+
+	// Article 85's fractions, banded by length of service.
+	//
+	// Read for the accrual as well as the settlement, although only the
+	// settlement applies one. A rule that resolves for the monthly charge and
+	// then fails on the day somebody leaves reports itself as usable when it is
+	// not, and the day it would fail is the day a final payment is being
+	// calculated in front of the person waiting for it.
+	ResignUnderTwo  decimal.Decimal `json:"-"`
+	ResignTwoToFive decimal.Decimal `json:"-"`
+	ResignFiveToTen decimal.Decimal `json:"-"`
+	ResignOverTen   decimal.Decimal `json:"-"`
 }
 
 // The wage bases this software knows how to compute.
@@ -392,6 +447,85 @@ func (e eosbEntitlement) daysFor(months decimal.Decimal) decimal.Decimal {
 		return e.FirstFive
 	}
 	return e.AfterFive
+}
+
+// The month boundaries the two articles band on, as completed months.
+//
+// Written out rather than inlined so the settlement and the accrual cannot
+// drift apart: `daysFor` above and `resignationFraction` below both turn on
+// sixty, and a five-year boundary written twice is a five-year boundary that
+// gets corrected once.
+const (
+	eosbTwoYears  = 24
+	eosbFiveYears = 60
+	eosbTenYears  = 120
+)
+
+// resignationFraction is Article 85's share of the award, for somebody who
+// RESIGNS at this much service.
+//
+// The boundary convention is the same one `daysFor` uses and it matters at
+// exactly four dates in a career: a person with exactly twenty-four completed
+// months is into their third year, so they take the two-to-five fraction, not
+// the under-two one. Reading it the other way round would move somebody down a
+// band on their anniversary — the day their entitlement rises.
+//
+// The band above ten years is a figure like the other three. It arrived late:
+// 0092 recorded three fractions, so service beyond ten years had none to apply
+// and the software would have had to assume one. 0132 added the fourth, and
+// this reads it rather than falling back on the whole award, because "the
+// article does not band beyond ten years" is a reading of the article and not
+// something a line of Go is entitled to decide.
+func (e eosbEntitlement) resignationFraction(
+	months decimal.Decimal,
+) decimal.Decimal {
+	switch {
+	case months.LessThan(decimal.NewFromInt(eosbTwoYears)):
+		return e.ResignUnderTwo
+	case months.LessThan(decimal.NewFromInt(eosbFiveYears)):
+		return e.ResignTwoToFive
+	case months.LessThan(decimal.NewFromInt(eosbTenYears)):
+		return e.ResignFiveToTen
+	default:
+		return e.ResignOverTen
+	}
+}
+
+// bandedMonths splits a length of service across the two Article 84 bands.
+//
+// The first five years are entitled at one rate and everything after them at
+// another, so a person with eight years' service is owed sixty months at the
+// first rate and thirty-six at the second — not ninety-six at either.
+func bandedMonths(months decimal.Decimal) (first, after decimal.Decimal) {
+	boundary := decimal.NewFromInt(eosbFiveYears)
+	if months.LessThanOrEqual(boundary) {
+		return months, decimal.Zero
+	}
+	return boundary, months.Sub(boundary)
+}
+
+// award is the Article 84 award for a length of service, on a wage.
+//
+// # Why this agrees with the monthly accrual by construction
+//
+// `AccrueEOSB` charges, for one month, a thirtieth of the wage times the band's
+// days divided by twelve. This is the same expression summed over the months,
+// with the months in each band counted once — so the settlement and the sum of
+// the charges are the same arithmetic and cannot disagree about the ENTITLEMENT.
+//
+// They can still differ in AMOUNT, and legitimately: each accrual is charged on
+// the wage in force that month, and Article 84 computes the award on the LAST
+// wage. A person whose pay rose is owed more than has been provided for, and
+// the settlement reports that difference rather than hiding it. That difference
+// is the whole reason a business accrues monthly instead of finding out at the
+// door.
+func (e eosbEntitlement) award(
+	wage, months decimal.Decimal,
+) decimal.Decimal {
+	first, after := bandedMonths(months)
+	perDay := wage.Div(decimal.NewFromInt(30))
+	days := e.FirstFive.Mul(first).Add(e.AfterFive.Mul(after))
+	return perDay.Mul(days).Div(decimal.NewFromInt(12)).Round(2)
 }
 
 // wage is the pay the award is computed on, for one person.
@@ -456,17 +590,29 @@ func (s *Service) eosbEntitlement(
 		Tx:       tx,
 	}
 
-	// Both bands, each through Decimal, so an unfilled one refuses by the same
+	// Every figure through Decimal, so an unfilled one refuses by the same
 	// placeholder check as the first rather than parsing as zero. A zero band
-	// would accrue nothing for the people it applies to and report success.
-	first, err := s.rules.Decimal(ctx, q, "days_per_year_first_five")
-	if err != nil {
-		return eosbEntitlement{}, err
+	// would accrue nothing for the people it applies to and report success; a
+	// zero resignation fraction would settle a leaver at nothing and look like
+	// arithmetic.
+	for _, f := range []struct {
+		field string
+		into  *decimal.Decimal
+	}{
+		{"days_per_year_first_five", &out.FirstFive},
+		{"days_per_year_after_five", &out.AfterFive},
+		{"resignation_fraction_under_two_years", &out.ResignUnderTwo},
+		{"resignation_fraction_two_to_five_years", &out.ResignTwoToFive},
+		{"resignation_fraction_five_to_ten_years", &out.ResignFiveToTen},
+		{"resignation_fraction_over_ten_years", &out.ResignOverTen},
+	} {
+		v, err := s.rules.Decimal(ctx, q, f.field)
+		if err != nil {
+			return eosbEntitlement{}, err
+		}
+		*f.into = v
 	}
-	after, err := s.rules.Decimal(ctx, q, "days_per_year_after_five")
-	if err != nil {
-		return eosbEntitlement{}, err
-	}
+
 	if err := s.rules.Into(ctx, q, &out); err != nil {
 		return eosbEntitlement{}, err
 	}
@@ -476,7 +622,6 @@ func (s *Service) eosbEntitlement(
 				"computed on. Record it in Super Admin > Regulatory Registry "+
 				"before accruing the benefit.")
 	}
-	out.FirstFive, out.AfterFive = first, after
 
 	// Checked here rather than at the first payslip: a basis this software
 	// cannot compute is a property of the RULE, and finding that out per
@@ -485,6 +630,30 @@ func (s *Service) eosbEntitlement(
 		decimal.Zero, decimal.Zero, decimal.Zero, decimal.Zero,
 	); err != nil {
 		return eosbEntitlement{}, err
+	}
+
+	// A fraction above 1 pays somebody more than the award it is a fraction OF.
+	// The source-file path already refuses one, and this is the second door:
+	// the registry screen writes a payload directly, and an override can be
+	// written for one tenant. Both reach this line and neither goes through the
+	// file's validation.
+	for _, f := range []struct {
+		field string
+		value decimal.Decimal
+	}{
+		{"resignation_fraction_under_two_years", out.ResignUnderTwo},
+		{"resignation_fraction_two_to_five_years", out.ResignTwoToFive},
+		{"resignation_fraction_five_to_ten_years", out.ResignFiveToTen},
+		{"resignation_fraction_over_ten_years", out.ResignOverTen},
+	} {
+		if f.value.GreaterThan(decimal.NewFromInt(1)) {
+			return eosbEntitlement{}, errs.Newf(errs.CodeUnverifiedRule,
+				"The end-of-service rule states %s as %s. It is a fraction of "+
+					"the award, somewhere between 0 and 1 — a third is "+
+					"0.3333, not 33. Correct it in Super Admin > Regulatory "+
+					"Registry.",
+				f.field, f.value.String())
+		}
 	}
 
 	return out, nil
@@ -525,9 +694,250 @@ func (s *Service) EOSBPositions(
 	return out, db.Translate(err, "")
 }
 
+// How somebody's service ended. A closed vocabulary, because Article 85 applies
+// to one of these and not the other, and guessing which from a free-text
+// leaving note is how a settlement gets paid at a third of what is owed.
+const (
+	EOSBLeavingResignation = "resignation"
+	EOSBLeavingTermination = "termination"
+)
+
+// EOSBSettlement is the statutory award owed to one person on the day they
+// leave, with the whole of its working shown.
+//
+// # Why this is not the accrued figure
+//
+// `EOSBPositions` answers what has been PROVIDED FOR: the sum of the monthly
+// charges. This answers what is OWED, which is a different question with a
+// different formula, and the employee screen used to show the first under a
+// heading that promised the second.
+//
+// Two things separate them. Article 84 computes the award on the LAST wage,
+// while each accrual was charged on the wage in force that month, so anybody
+// whose pay has risen is owed more than has been provided. And Article 85 pays
+// a person who RESIGNS a fraction of that award — which is the whole of what
+// the three resignation fractions in `SA.EOSB.ENTITLEMENT` are for, and which
+// nothing in this product could apply until now.
+//
+// Every intermediate figure is carried rather than only the total. A final
+// settlement is a number somebody has to be able to argue with: the person
+// leaving is entitled to see which wage it was computed on, how their service
+// split across the two bands, and what fraction was applied to it. A single
+// figure with no working is a figure nobody can check.
+type EOSBSettlement struct {
+	EmployeeID uuid.UUID `json:"employee_id"`
+	Employee   string    `json:"employee"`
+	Currency   string    `json:"currency"`
+
+	JoinedOn  string `json:"joined_on"`
+	LeavingOn string `json:"leaving_on"`
+	Reason    string `json:"reason"`
+
+	MonthsOfService string `json:"months_of_service"`
+
+	// The rule, as it stood at the leaving date. Echoed so the settlement says
+	// which reading of the law produced it, and so re-running it later cannot
+	// silently answer differently.
+	WageBasis  string `json:"wage_basis"`
+	Wage       string `json:"wage"`
+	RuleAsOf   string `json:"rule_as_of"`
+	VerifiedOn string `json:"rule_verified_on,omitempty"`
+
+	// Article 84, banded.
+	FirstBandMonths string `json:"first_band_months"`
+	FirstBandDays   string `json:"first_band_days_per_year"`
+	AfterBandMonths string `json:"after_band_months"`
+	AfterBandDays   string `json:"after_band_days_per_year"`
+	FullAward       string `json:"full_award"`
+
+	// Article 85. `1` on a termination, where the article does not reduce the
+	// award — stated rather than omitted, so the two cases read the same way
+	// and a reader is never left wondering whether a fraction was forgotten.
+	Fraction string `json:"resignation_fraction"`
+	Award    string `json:"award"`
+
+	// What has already been charged to the provision, and the gap.
+	//
+	// Negative shortfall means over-provided, and it is reported as a negative
+	// rather than clamped: a provision that turns out too large is a real
+	// accounting fact and a business that cannot see it cannot release it.
+	Provision string `json:"provision"`
+	Shortfall string `json:"shortfall"`
+}
+
+// EOSBSettlement computes what one person is owed on leaving.
+//
+// # Why the leaving date is an input rather than a lookup
+//
+// A settlement is normally worked out BEFORE the departure is recorded — that
+// is the point of it, because the figure is what the last payslip has to carry.
+// Reading `left_on` would mean the calculation only becomes available after the
+// event it exists to prepare for. So the date is given, it defaults to a
+// recorded leaving date when there is one, and it is refused if it falls before
+// the person joined.
+//
+// # Why the reason is required and not inferred
+//
+// `Leave` writes the reason into a free-text note. Article 85 turns on whether
+// somebody resigned, and reading that intent out of prose is a guess with a
+// leaver's money on the end of it. The caller states it, from a closed
+// vocabulary, and an unrecognised one is refused.
+//
+// # Why the rule is resolved at the leaving date
+//
+// The same discipline as the accrual. A settlement re-run next year for a
+// person who left last March must give March's answer, so the entitlement is
+// resolved AS OF the leaving date and a rule recorded afterwards does not
+// rewrite it.
+func (s *Service) EOSBSettlement(
+	ctx context.Context, scope Scope, employeeID uuid.UUID,
+	leavingOn time.Time, reason string,
+) (EOSBSettlement, error) {
+	var out EOSBSettlement
+
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	if reason != EOSBLeavingResignation && reason != EOSBLeavingTermination {
+		return out, errs.Newf(errs.CodeInvalidInput,
+			"Say how the service ended: %q or %q. The end-of-service award is "+
+				"reduced by Article 85 when somebody resigns and is not when "+
+				"they are dismissed, so the two are different amounts and this "+
+				"cannot be assumed.",
+			EOSBLeavingResignation, EOSBLeavingTermination)
+	}
+
+	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
+		var country, currency string
+		if e := tx.QueryRow(ctx,
+			`SELECT country, base_currency FROM company WHERE id = $1`,
+			scope.CompanyID).Scan(&country, &currency); e != nil {
+			return e
+		}
+
+		var joined time.Time
+		var left *time.Time
+		var basic, housing, transport, other decimal.Decimal
+		if e := tx.QueryRow(ctx, `
+			SELECT full_name, joined_on, left_on,
+			       basic_salary, housing_allowance,
+			       transport_allowance, other_allowance
+			FROM employee
+			WHERE id = $1 AND company_id = $2`,
+			employeeID, scope.CompanyID).
+			Scan(&out.Employee, &joined, &left,
+				&basic, &housing, &transport, &other); e != nil {
+			return e
+		}
+
+		if leavingOn.IsZero() {
+			if left != nil {
+				leavingOn = *left
+			} else {
+				leavingOn = time.Now().UTC().Truncate(24 * time.Hour)
+			}
+		}
+		leavingOn = leavingOn.UTC().Truncate(24 * time.Hour)
+		if leavingOn.Before(joined) {
+			return errs.Newf(errs.CodeInvalidInput,
+				"That leaving date is %s and they joined on %s. A settlement "+
+					"cannot be computed for service that has not happened.",
+				leavingOn.Format("2006-01-02"), joined.Format("2006-01-02"))
+		}
+
+		ent, e := s.eosbEntitlement(ctx, tx, scope.TenantID, country, leavingOn)
+		if e != nil {
+			return e
+		}
+		wage, e := ent.wage(basic, housing, transport, other)
+		if e != nil {
+			return e
+		}
+
+		months := monthsBetween(joined, leavingOn)
+		first, after := bandedMonths(months)
+		full := ent.award(wage, months)
+
+		fraction := decimal.NewFromInt(1)
+		if reason == EOSBLeavingResignation {
+			fraction = ent.resignationFraction(months)
+		}
+
+		var provision decimal.Decimal
+		if e := tx.QueryRow(ctx, `
+			SELECT coalesce(sum(amount), 0) FROM eosb_accrual
+			WHERE employee_id = $1 AND company_id = $2`,
+			employeeID, scope.CompanyID).Scan(&provision); e != nil {
+			return e
+		}
+
+		award := full.Mul(fraction).Round(2)
+
+		out.EmployeeID = employeeID
+		out.Currency = currency
+		out.JoinedOn = joined.Format("2006-01-02")
+		out.LeavingOn = leavingOn.Format("2006-01-02")
+		out.Reason = reason
+		out.MonthsOfService = months.String()
+		out.WageBasis = ent.Basis
+		out.Wage = wage.StringFixed(2)
+		out.RuleAsOf = leavingOn.Format("2006-01-02")
+		out.FirstBandMonths = first.String()
+		out.FirstBandDays = ent.FirstFive.String()
+		out.AfterBandMonths = after.String()
+		out.AfterBandDays = ent.AfterFive.String()
+		out.FullAward = full.StringFixed(2)
+		out.Fraction = fraction.String()
+		out.Award = award.StringFixed(2)
+		out.Provision = provision.StringFixed(2)
+		out.Shortfall = award.Sub(provision).StringFixed(2)
+
+		// The rule's own verification date, carried onto the settlement.
+		//
+		// A settlement is a document somebody may have to defend, and "which
+		// reading of the Labour Law was this computed from, and had anybody
+		// checked it" is the first question asked of one. Resolving the rule
+		// again here is cheap: it is cached per request and this is a page
+		// somebody opens once per leaver.
+		rule, e := s.rules.Resolve(ctx, registry.Query{
+			Key:      "SA.EOSB.ENTITLEMENT",
+			Country:  country,
+			AsOf:     leavingOn,
+			TenantID: scope.TenantID,
+			Tx:       tx,
+		})
+		if e != nil {
+			return e
+		}
+		if rule.VerifiedOn != nil {
+			out.VerifiedOn = rule.VerifiedOn.Format("2006-01-02")
+		}
+		return nil
+	})
+	if err != nil {
+		return EOSBSettlement{}, db.Translate(err,
+			"That employee was not found.")
+	}
+	return out, nil
+}
+
 // monthsBetween is completed months of service at a period.
 func monthsBetween(from, to time.Time) decimal.Decimal {
 	months := (to.Year()-from.Year())*12 + int(to.Month()) - int(from.Month())
+
+	// The day of the month decides whether the last one is COMPLETED.
+	//
+	// Counting calendar months alone made somebody who joined on the 20th a
+	// full month of service on the 1st, twelve days later. It was invisible
+	// while the only caller was the accrual, which charges on the first of each
+	// month and where a month too many changes only which band a charge falls
+	// in. The settlement made it visible and made it money: a person who joined
+	// on the 20th and resigned on the 5th of their second anniversary month was
+	// moved into the next Article 85 band by a fortnight they had not worked.
+	//
+	// A leaving date whose day is EARLIER than the joining day has not
+	// completed that month, so it does not count.
+	if to.Day() < from.Day() {
+		months--
+	}
 	if months < 0 {
 		months = 0
 	}

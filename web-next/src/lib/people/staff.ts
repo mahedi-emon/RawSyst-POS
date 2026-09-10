@@ -233,13 +233,59 @@ export interface Advance {
   reason?: string;
 }
 
-/** What the business owes somebody if they left today. */
+/**
+ * What has been PROVIDED FOR somebody: the sum of the monthly charges.
+ *
+ * Not what they are owed. `accrued` is a running provision built one month at a
+ * time on the wage in force that month, and the award is Article 84 applied to
+ * the LAST wage and then reduced by Article 85 if they resigned. Anybody whose
+ * pay has risen is owed more than has been provided, which is what
+ * `EOSBSettlement` below reports and this deliberately does not.
+ */
 export interface EOSBPosition {
   employee_id: string;
   employee: string;
   months_of_service: string;
   accrued: string;
   currency: string;
+}
+
+/** How somebody's service ended. Article 85 applies to one of these. */
+export type LeavingReason = 'resignation' | 'termination';
+
+/**
+ * What one person is owed on leaving, with its whole working.
+ *
+ * Every intermediate figure is carried because a final settlement is a number
+ * somebody has to be able to argue with: which wage it was computed on, how the
+ * service split across the two Article 84 bands, and what fraction Article 85
+ * applied to the result. A single total with no working is a total nobody can
+ * check.
+ *
+ * `resignation_fraction` is `1` on a dismissal rather than absent — a missing
+ * fraction reads as one somebody forgot to apply.
+ */
+export interface EOSBSettlement {
+  employee_id: string;
+  employee: string;
+  currency: string;
+  joined_on: string;
+  leaving_on: string;
+  reason: LeavingReason;
+  months_of_service: string;
+  wage_basis: string;
+  wage: string;
+  rule_as_of: string;
+  rule_verified_on?: string;
+  first_band_months: string;
+  first_band_days_per_year: string;
+  after_band_months: string;
+  after_band_days_per_year: string;
+  full_award: string;
+  resignation_fraction: string;
+  award: string;
+  provision: string;
+  shortfall: string;
 }
 
 /**

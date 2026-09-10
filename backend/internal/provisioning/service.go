@@ -56,9 +56,19 @@ func (s *Service) WithRules(rules *registry.Service) *Service {
 // The boot gate asks "may this process start given the tenants it has". That
 // answer changes the moment a tenant is created in a new market, and the
 // process does not re-run it — so a Bangladesh-only deployment could be given a
-// Saudi client at 10:00 and keep serving it on placeholder GOSI, EOSB and WPS
-// values until somebody happened to restart. This closes that window at the
-// only point where the market is chosen.
+// Saudi client at 10:00 and keep selling it a till that cannot issue an invoice
+// until somebody happened to restart. This closes that window at the only point
+// where the market is chosen.
+//
+// # It asks only about rules that stop a market trading
+//
+// 0124 split a release blocker into what it prevents, and this reads
+// `blocks = 'onboarding'` only. The ZATCA invoice formats qualify: without them
+// nothing in Saudi Arabia can be rung up, so onboarding a business would be
+// selling them something broken. End of service and the wage-file layout do
+// not: a shop can trade for a year without processing a leaver or filing a wage
+// run, and `gate()` refuses those calculations by name where they are made. It
+// used to refuse on both, which turned a caution into a wall across a market.
 //
 // # It refuses only where the deployment refuses unverified values anyway
 //

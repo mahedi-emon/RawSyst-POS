@@ -333,6 +333,13 @@ type Unrecorded struct {
 	From    string   `json:"effective_from"`
 	Fields  []string `json:"unfilled_fields"`
 
+	// Blocks is what an unverified blocker actually prevents — BlocksOnboarding
+	// or BlocksFeature (0124). Carried so a report can tell "no shop in that
+	// market can trade" from "one capability cannot be computed", which are
+	// different enough that a deployment pipeline should fail on the first and
+	// not on the second.
+	Blocks string `json:"blocks"`
+
 	// Described says the source pack knows where this value comes from, and so
 	// whether an attestation file can carry it at all.
 	Described bool `json:"described"`
@@ -352,7 +359,7 @@ func (s *Service) Outstanding(
 	out := []Unrecorded{}
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		rows, e := tx.Query(ctx, `
-			SELECT rule_key, country, release_blocker,
+			SELECT rule_key, country, release_blocker, blocks,
 			       to_char(effective_from, 'YYYY-MM-DD'), payload
 			FROM regulatory_rule
 			WHERE effective_to IS NULL
@@ -367,7 +374,7 @@ func (s *Service) Outstanding(
 		for rows.Next() {
 			var u Unrecorded
 			var payload []byte
-			if e := rows.Scan(&u.Key, &u.Country, &u.Blocker, &u.From,
+			if e := rows.Scan(&u.Key, &u.Country, &u.Blocker, &u.Blocks, &u.From,
 				&payload); e != nil {
 				return e
 			}

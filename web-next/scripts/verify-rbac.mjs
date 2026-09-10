@@ -885,6 +885,24 @@ if (!manager) {
   expect('store manager: GET /advances', (await manager.call('GET', q('/advances'))).status, 403);
   expect('store manager: GET /payroll', (await manager.call('GET', q('/payroll'))).status, 403);
   expect('store manager: GET /eosb', (await manager.call('GET', q('/eosb'))).status, 403);
+
+  // The settlement is the same permission and a far more sensitive figure: it
+  // is what one named person will be paid on the day they leave. Refused
+  // before the employee id is even looked at, so a manager cannot learn who
+  // exists by watching 404 turn into 403.
+  expect(
+    'store manager: GET /eosb/settlement/{id}',
+    (
+      await manager.call(
+        'GET',
+        q(
+          '/eosb/settlement/00000000-0000-0000-0000-000000000000' +
+            '?reason=termination',
+        ),
+      )
+    ).status,
+    403,
+  );
 }
 
 if (!hr) {

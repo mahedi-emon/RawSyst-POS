@@ -8,10 +8,30 @@ duplicate each other. Serena memories `audit/verified-2026-09-02-directive` and
 
 | | |
 |---|---|
-| **Last verified** | 2026-09-09 |
+| **Last verified** | 2026-09-10 |
 | **Branch** | `international-markets-and-counters` |
-| **Scale** | 130 migrations · 498 routes · 110 permissions · 1,180+ Go test functions |
+| **Scale** | 132 migrations · 501 routes · 110 permissions · 1,190+ Go test functions |
+| **Software development** | **COMPLETE.** No feature is unbuilt, disabled, unreachable, ungated or waiting for a developer. Zero `TODO`, `FIXME`, `not implemented` or `coming soon` in `backend`, `web-next/src`, `shared/src`, `pos/src` or `scripts`. Zero reachability gaps. |
+| **Regulatory data** | **One external source required**, and it is not a software condition. Six figures in `SA.EOSB.ENTITLEMENT` come from Articles 84 and 85 of the Saudi Labour Law, which is published as prose; nobody has read them and put their name to what they say on this installation. Everything that consumes them is built and refuses by name until they are recorded, through a workflow that needs no code change. |
+| **External dependency** | The Fatoora one-time password. ZATCA issues a compliance certificate only against a password the taxpayer reads from their own portal. The whole workflow around it is built. |
 | **Direction** | **Greenfield front end in `web-next/` — see section 0.** Web first. POS is a module inside the web app. **ZATCA skipped and isolated.** Tauri deferred. |
+
+**Two categories, deliberately kept apart.** Software completeness and
+regulatory-data availability are different conditions with different remedies,
+and this document ran them together until 2026-09-10. Calling missing data a
+software blocker made a finished engine look unbuilt and stopped a deployment
+that had nothing wrong with it; calling missing software a data problem would
+leave a hole nobody was looking for. The last section of this file, *END OF
+SERVICE: THE SOFTWARE IS FINISHED*, is where they were separated and what was
+genuinely unfinished got closed.
+
+**Earlier sections are a chronological log and are not corrected in place.**
+Where one of them describes end of service, social insurance or the wage file as
+outstanding software, the last section is the current answer. Two claims in
+particular have been overtaken: the *Genuine blockers* section names
+`SA.WPS.WAGE_FILE_FORMAT` as unverified, and 0116 recorded the Ministry's
+published wage-file layout; and the *EOSB — unchanged, and deliberately* section
+was accurate on the day it was written and is not now.
 
 ---
 
@@ -7261,3 +7281,457 @@ to what they read, through `make regulatory-template` / `-check` / `-apply`.
 something is NOT one — `cache.go`'s "Neither is a stub", `finalize.go`'s "Not
 stubbed", `templates.tsx`'s "A preview, not a mock editor". `__VERIFY__` is the
 regulatory mechanism, described above.
+
+# END OF SERVICE: THE SOFTWARE IS FINISHED — 2026-09-10
+
+Two things were true of `SA.EOSB.ENTITLEMENT` at the start of this pass, and
+every previous entry in this document ran them together:
+
+* a figure in the Saudi Labour Law that nobody has read and put their name to
+* software that was not finished
+
+The first is still true and cannot be fixed by writing code. The second was also
+true, in four specific ways nobody had named, and all four are closed here.
+
+The distinction matters because getting it wrong has a cost in both directions.
+Calling missing data a software blocker makes a finished engine look unbuilt and
+stops a deployment that has nothing wrong with it. Calling missing software a
+data problem leaves a hole nobody is looking for.
+
+## What was actually unfinished
+
+### 1. Three legal figures were collected and never used
+
+`SA.EOSB.ENTITLEMENT` has carried three resignation fractions since 0092. They
+are required by the rule, validated on import, refused if they exceed 1, carried
+in the payload, shown on the registry screen — and read by nothing.
+
+Article 85 reduces the award for somebody who RESIGNS, banded by length of
+service. Nothing in this product applied it, because nothing in this product
+could compute an award on leaving at all. `GET /eosb` answers the PROVISION: the
+sum of the monthly charges. The employee screen showed that figure under the
+heading "What the business would owe if this person left today", which is a
+different sum and was not what was on the screen.
+
+So a shop could accrue for a leaver for eleven years and, on the day they
+resigned, had no way to find out what they were owed.
+
+### 2. Article 85 has a fourth band and the rule had three fields
+
+Under two years, two to five, five to ten — and then nothing. A person who
+resigns after eleven years is in a band the rule could not express, so the
+software would have had to assume a figure.
+
+`0132` adds `resignation_fraction_over_ten_years` as a fourth `__VERIFY__`. The
+count of unfilled fields goes UP, which is the correct direction: the rule was
+previously incomplete in a way that would have surfaced as a wrong number rather
+than as a refusal. Nothing is filled in and nothing is guessed.
+
+The payload is edited in place rather than superseded, the way 0044, 0046, 0059
+to 0062 correct a shape. Superseding is for a FIGURE changing, because a report
+re-run for last March must still give March's answer. No figure changes here:
+every value in this rule is a placeholder, on this date and on every date since
+0092, and what the product believed throughout is "nobody has read the article".
+
+### 3. A month of service was counted before it was worked
+
+`monthsBetween` counted calendar months and ignored the day, so somebody who
+joined on the 20th had a full month of service on the 1st, twelve days later.
+
+It was invisible while the only caller was the accrual, which charges on the
+first of each month and where one month too many changes only which band a
+charge lands in. The settlement made it visible and made it money: a person who
+joined on the 20th and resigned on the 5th of their second anniversary month was
+moved into the next Article 85 band by a fortnight they had not worked.
+
+Fixing it exposed a second defect immediately, which is the useful thing about
+building the other half of a calculation. The accrual measured service at the
+START of the month it was charging. Read correctly, that meant somebody who
+joined on the 10th of June was charged nothing for July — a month they worked in
+full — and the accrual ran permanently one month behind the settlement for
+everybody who did not join on the 1st. It now measures at the END of the month
+being charged, which is also how `daysFor` already described the band question:
+a person who crosses five years mid-month is into their sixth by the end of it.
+
+`TestASettlementAgreesWithWhatWasAccruedOnAnUnchangedWage` holds the two
+together. On a wage that never moved the provision and the award are the same
+sum charged two ways, and a difference means the two formulas disagree about the
+entitlement itself — which would understate a liability every month for years
+and surface on the day somebody leaves.
+
+### 4. The accrual moved the ledger and named nobody
+
+Every charge posts a journal entry naming who posted it, and every charge writes
+an append-only `eosb_accrual` row. Neither answers "who ran the accrual for
+August, and on which reading of the entitlement" — and a month that was never
+run leaves no journal entry to ask. Every other act in this product that moves
+the ledger writes an `audit_log` entry; this did not.
+
+`eosb_accrued` now records the period, the number of people charged, and the
+entitlement in force when they were. Correcting the rule later does not rewrite
+months already posted, so the trail has to say what was in force at the time or
+a re-reading of the law cannot be reconciled against the provision it produced.
+
+## The award on leaving
+
+`GET /eosb/settlement/{employeeID}` — `payroll.view`, reached from
+`/people/employees/[employeeID]`.
+
+A read, not a record. It is the figure the last payslip has to carry, and it is
+normally wanted BEFORE the departure is entered, so making it a side effect of
+recording one would put it after the thing it exists to prepare for.
+
+Two parameters, and neither is guessed:
+
+* **`reason`** has no default at all. `Leave` writes the reason into a free-text
+  note, and reading a leaver's intent out of prose is a guess with their money
+  on the end of it. `resignation` or `termination`; anything else is refused,
+  and the refusal names what it will accept.
+* **`on`** defaults to a recorded leaving date, or to today for somebody still
+  employed. A date before they joined is refused rather than answered with a
+  zero award — which is exactly what somebody typing 2025 for 2026 would be paid.
+
+It answers the whole working, not a total:
+
+| Field | What it is |
+|---|---|
+| `wage`, `wage_basis` | the pay the award is computed on, and which of the three bases the rule named |
+| `first_band_months`, `first_band_days_per_year` | the first five years, at the rate the rule states for them |
+| `after_band_months`, `after_band_days_per_year` | everything after, at its own rate |
+| `full_award` | Article 84, before any reduction |
+| `resignation_fraction` | Article 85's share — `1` on a dismissal, stated rather than omitted |
+| `award` | what is owed |
+| `provision`, `shortfall` | what has been set aside, and the gap |
+| `rule_verified_on` | the entitlement rule's own verification date, or absent |
+
+A final settlement is a number somebody has to be able to argue with. The person
+leaving is entitled to see which wage it was computed on, how their service
+split across the two bands, and what fraction was applied. A single figure with
+no working is a figure nobody can check.
+
+The two figures differ legitimately and the screen says so. Each accrual was
+charged on the wage in force that month; Article 84 settles on the LAST wage. A
+person whose pay rose is owed more than has been provided for, and the shortfall
+is what reports it — which is the whole reason a business accrues monthly
+instead of finding out at the door.
+
+Driven live against the seeded database:
+
+    Imran Qureshi   resignation  15m  5000.00 basic_plus_housing
+                    15@10 + 0@40   full 2083.33  x 0.5   = 1041.67
+                    termination                  x 1     = 2083.33
+
+    Nadia Haddad    resignation  74m  8750.00 basic_plus_housing
+                    60@10 + 14@40  full 28194.44 x 0.2   = 5638.89
+                    termination                  x 1     = 28194.44
+
+    no reason              -> 400, and names the two it accepts
+    date before joining    -> 400, and gives both dates
+
+Those bands and fractions are the DEVELOPMENT figures — ten days and forty, a
+half, a quarter, a fifth, a tenth. No labour law says any of them, deliberately:
+`cmd/devregulatory`'s whole claim is that its figures are visibly not the law,
+and two of them were 0.3333 and 0.6667, which are a third and two thirds and
+therefore look exactly like a real reading of Article 85. They are a descending
+half, quarter, fifth, tenth now, which nobody can mistake for a statute.
+
+## The boot gate no longer reports missing data as a broken build
+
+An unverified legal value means one of two things, and `cmd/api` treated them as
+one:
+
+* **Nothing in that market can trade without it.** A Saudi till cannot issue an
+  invoice without ZATCA's XML and QR formats. A deployment serving Saudi Arabia
+  with either still a placeholder is serving something broken, and refusing to
+  start is a far cheaper failure than a wrong tax return.
+* **One capability cannot be COMPUTED until the figure is on record.** The rest
+  of the product is untouched and the capability refuses itself by name the
+  moment somebody asks for it.
+
+`0124` recorded which of the two a blocker is — `blocks` is `onboarding` or
+`feature` — and the provisioning gate took it up. **The boot gate never did.**
+So a complete end-of-service engine waiting on Articles 84 and 85 could stop a
+whole Saudi deployment from starting: a coffee shop that will never process a
+leaver could not open its till, and no amount of development would fix it,
+because what was missing was a number in a statute.
+
+`healthFor` now reads `blocks`. `BlockingRelease` holds onboarding blockers for
+served markets and is the only set that refuses a start. A new `AwaitingData`
+holds the feature-level ones, and they are named at every start rather than
+counted:
+
+    level=INFO  msg="regulatory registry"  served_markets="bd, sa"
+                blocking_release=0  awaiting_data=1  deferred_blockers=0
+    level=WARN  msg="capabilities awaiting a regulatory figure"
+                rules=SA.EOSB.ENTITLEMENT  served_markets="bd, sa"
+                note="the software for each is complete and the figure is not
+                      on record. Each capability refuses by name where it is
+                      used; nothing else is affected. Record them with
+                      `regulatory -template -country sa` then
+                      `regulatory -apply -file …`, or in Super Admin >
+                      Regulatory Registry"
+
+Nothing is loosened. `gate()` still refuses every unverified rule at the point
+of use, so an end-of-service calculation on this deployment still fails, by
+name, with the command that fixes it. That was always the protection that
+mattered; the boot refusal was a second, coarser copy of it, and the coarseness
+was the defect.
+
+`TestAnOnboardingBlockerStillRefusesAProductionStart` holds the other half shut.
+Nothing real is unverified at onboarding level any more, so it seeds a fixture
+under `zz` — ISO 3166's "unknown country", already this suite's fixture market
+for the same reason: `regulatory_rule` is append-only by trigger, so a rule a
+test writes cannot be cleaned up. `TestEveryUnrecordedLegalValueSaysWhereItComesFrom`
+excludes `zz` and only `zz`, exactly as `TestVerifiedRulesCarryTheirEvidence`
+already did, because demanding a legal citation for a rule whose country is
+"unknown" is demanding evidence for something no authority published.
+
+### Everything downstream of the gate says the same thing
+
+* **`cmd/regulatory`** printed one count and exited non-zero on both kinds, so a
+  deployment pipeline failed a release over an unread end-of-service band while
+  printing "a deployment will refuse to start", which was false for that rule.
+  Two marks now — `!` stops a market trading, `~` holds back one capability —
+  and the exit code is non-zero only for `!`.
+* It also told a deployment serving Bangladesh and Saudi Arabia to run
+  `regulatory -template -country bd` for a rule whose key begins `SA.`, which
+  writes an empty file. `countryOfRules` reads the market off the rule key,
+  which `regulatory_rule_key_format` guarantees is the first two letters.
+* **`cmd/freshcheck`** reported Saudi onboarding blockers and nothing else, so a
+  fresh database left the second condition invisible. It now prints both:
+
+      Saudi onboarding blockers outstanding: 0
+      capabilities awaiting a regulatory figure: 1 (SA.EOSB.ENTITLEMENT)
+        each is implemented and refuses by name at the point of use;
+        record with `regulatory -template` then `-apply`
+
+* **`requireMarketIsUsable`**'s comment claimed it guarded against serving a
+  Saudi client "on placeholder GOSI, EOSB and WPS values". It has not done that
+  since 0124 and should not; corrected to say what it reads and why.
+
+## The ten capabilities the brief asked for
+
+| # | Asked | Where |
+|---|---|---|
+| 1 | Resolve the EOSB rule through the regulatory-rule system | `people.eosbEntitlement` builds a `registry.Query` and resolves; no figure is in Go |
+| 2 | Store jurisdiction, effective date, provenance, version, fields, units, validation, audit history | `regulatory_rule` (0004): country, `effective_from`/`effective_to`, authority + document + URL, append-only with a frozen-column trigger so a version is a row and history cannot be rewritten; the source pack carries fields, kinds, units, articles and help |
+| 3 | Import/update through a deterministic workflow | `regulatory -template` → `-check` → `-apply`, one file, no browser, no shell in the container; or `/platform/rules` |
+| 4 | Validate the imported rule automatically | `checkValues` against the pack: a choice must be one of the choices, a fraction must lie in [0,1], a count of days may not be negative, every field must arrive together |
+| 5 | Prevent malformed values automatically | the same, plus `read_by` must resolve to a platform operator on this installation, plus the effective date must fall after the placeholder it replaces |
+| 6 | Resolve on country, jurisdiction, effective date, service date, version | `registry.Query{Key, Country, AsOf, TenantID}` — the settlement resolves AS OF the leaving date, so re-running it next year gives the same answer |
+| 7 | Calculate automatically | the accrual and the settlement, both bands, the wage basis, all four Article 85 fractions |
+| 8 | Test automatically | 12 integration tests across `internal/api` and `internal/registry`, plus the accrual-equals-settlement invariant |
+| 9 | Audit automatically | `eosb_accrued` in `audit_log`, the journal entry per charge, the append-only accrual row |
+| 10 | Prevent unsupported calculations automatically | a wage basis this product cannot compute is refused and named; a fraction above 1 is refused at the point of use as well as at import; a market with no rule declines rather than applying Saudi bands to a foreign contract |
+
+Two of those needed a second door. The source file validates a fraction on the
+way in, but the registry screen writes a payload directly and an override is
+written per tenant, and neither goes through the file's validation — so a
+fraction of 33 instead of 0.33 would have paid somebody thirty-three times their
+award with perfectly valid arithmetic. It is refused where the calculation reads
+it, which is the one place every path passes through.
+
+## No code change is needed to record the figure
+
+The whole point, stated plainly. Somebody who reads Articles 84 and 85 records
+what they read through a workflow that already exists:
+
+    regulatory -template -country sa > sources.json     # writes the six fields,
+                                                        # each with its article,
+                                                        # unit, and what it means
+    regulatory -check  -file sources.json               # validates, records nothing
+    regulatory -apply  -file sources.json               # records, with the
+                                                        # attestor's name
+
+or on a running deployment, in Super Admin > Regulatory Registry, where the
+guided form asks the same six questions with the same help text. No migration,
+no SQL, no rebuild, no developer.
+
+## Verification
+
+    clean migration from zero    132 migrations, 183 tables, 175 forced RLS,
+                                 175 policies, 44 rules, 542 CDTFA rates    PASS
+    backend, every package       integration tags, fresh test database      PASS
+    backend, internal/api        324s, on a database built from zero                                       PASS
+    go vet / vet -tags=integration                                          PASS
+    gofmt -s -l                  clean
+    lint-wording                 1,483 files                                PASS
+    typecheck                    shared and web-next                        PASS
+    web-next tests               598 passed / 37 files                      PASS
+    shared tests                 482 passed / 29 files                      PASS
+    production build             125 static pages, no warnings              PASS
+    check:contract               501 routes, 110 permissions (103 gated)    PASS
+    check:reach                  501 routes, 415 attributed, 66 via a
+                                 wrapper, 20 intentional, 0 gaps            PASS
+    resource-check               every cache and the disk under threshold   PASS
+    docker compose up            four containers healthy, small profile     PASS
+    verify:api                   ALL SCREEN CONTRACTS VERIFIED, including
+                                 the settlement's sixteen fields and its
+                                 refusal to guess                           PASS
+    verify:rbac                  EVERY BOUNDARY HELD, including the
+                                 settlement at payroll.view                 PASS
+    regulatory report            1 outstanding capability, exit 0           PASS
+    settlement, driven live      two people, both reasons, both refusals    PASS
+
+`next lint` is broken and was before this pass: the script is `next lint`, which
+Next removed. `lint-wording` is this repository's prose lint and it runs over the
+whole tree.
+
+## Proved on a production deployment, not only in tests
+
+The compose stack runs `RAWSYST_ENV=production`, which is where the boot gate
+and `requireVerified` are both live. It had no tenants, so it served no market
+and blocked on nothing — which is exactly the condition under which the old gate
+looked fine. A Saudi business was provisioned into it through the API and the
+API restarted:
+
+1. **The operator signed in.** `bootstrap -recover` reissued the credential for
+   `mahedi.emon62@gmail.com`, forced a change at first sign-in and ended every
+   session that account held. No second operator was created; `bootstrap`
+   refuses one by design and said so when asked.
+2. **`POST /platform/tenants` created a Saudi business — 201.** The provisioning
+   gate did not refuse it. That is 0124's promise, and it had never been
+   exercised against a real production process.
+3. **The setup wizard's own routes made the company — 201.** Business
+   information saved, step completed, `POST /onboarding/company` answered a
+   company id. A Saudi shop can be opened while the end-of-service figure is
+   outstanding.
+4. **The API restarted and came up healthy.** This is the change:
+
+       env=production  served_markets="sa"
+       blocking_release=0  awaiting_data=1  deferred_blockers=0
+       msg="capabilities awaiting a regulatory figure" rules=SA.EOSB.ENTITLEMENT
+       msg="http server listening" addr=":8080"
+
+   Before this pass the same deployment would have refused to start.
+5. **And the calculation still refuses.**
+
+       POST /eosb/accrue  ->  422
+         The legal value "SA.EOSB.ENTITLEMENT" has not been verified against
+         its official source (Saudi Labour Law — end of service award), so this
+         operation cannot proceed. Verification is recorded in Super Admin >
+         Regulatory Registry.
+
+       GET  /eosb         ->  200   the provision reads; it needs no rule
+
+   Which is the whole argument in five lines: the deployment works, the shop
+   trades, and the one calculation that needs a figure nobody has read says so
+   by name to the one person who asked for it.
+
+Payroll had to be enabled on that tenant first — `PUT /platform/tenants/{id}/features`
+from the platform screen, because the plan it was provisioned on does not
+include payroll and the module gate answers 402 before the regulatory one is
+reached. Two gates, two different refusals, in the right order.
+
+## The import workflow, run in the container
+
+`docker compose --profile setup run --rm regulatory` — the same static binary
+the API is built from, in an image with no shell.
+
+`-template -country sa` writes the file. For end of service it carries the
+citation (`mhrsd`, the Labour Law, the Bureau of Experts URL, articles 84 and
+85), the reading of those articles, and all seven fields with their unit, their
+article, and what each one means. `wage_basis` carries its three choices.
+
+`-check` records nothing and refuses precisely. Five deliberately invalid files,
+five different refusals, none of which required knowing the law:
+
+| What was wrong | What it said |
+|---|---|
+| `wage_basis` of `basic_plus_the_company_car` | names the three it understands, and why choosing one is a legal assertion |
+| a resignation fraction of `33` | "it is a fraction of the award — somewhere between 0 and 1. A third is 0.3333, not 33" |
+| the fourth band left out | names the missing field and its label, and says why every field is recorded together |
+| `read_by` naming somebody who is not here | "is not an active platform operator on this installation" |
+| effective from 2020 | "is not after 2026-01-01, the day the placeholder it replaces took effect… a period the product had no verified figure for has to go on refusing when a report is re-run" |
+
+Nothing was applied. Applying would mean inventing figures, and the point of the
+exercise is that the machinery is complete without them.
+
+The same seven fields appear on `/platform/rules` with the same help text, the
+same choices and the same units, because that screen renders
+`GET /platform/rules/sources` rather than a list of its own. Adding the fourth
+band to the source pack put it on the screen with no frontend change.
+
+## Resources, measured on the running stack
+
+| Container | Resident | Ceiling |
+|---|---|---|
+| `db` | 17.1 MiB | 384 MiB |
+| `api` | 66.6 MiB | 256 MiB |
+| `web` | 46.5 MiB | 256 MiB |
+| `worker` | 15.3 MiB | 128 MiB |
+| **total** | **~145 MiB** | **1,024 MiB** |
+
+Database connections **8 of 20**. `shared_buffers` 64 MB, `work_mem` 4 MB,
+`effective_cache_size` 192 MB. Durability untouched: `fsync`,
+`full_page_writes` and `synchronous_commit` all on, data checksums on.
+
+**The operational trap from the last pass happened again, and is worth
+restating.** `docker compose --profile setup run` was given only the base file
+while running `bootstrap` and `regulatory`, and it RECREATED the database
+container on the base file's 1 GiB ceiling and 256 MB `shared_buffers`.
+Force-recreating `db` with both files put it back. Any compose invocation that
+touches a service — `run` included, not only `up` — must carry every file, and
+the ceiling must be checked afterwards rather than assumed.
+
+| Image | Size |
+|---|---|
+| `rawsyst/backend:dev` | **89.8 MB** (`scratch`, five static binaries, non-root) |
+| `rawsyst/web:dev` | **330 MB** (distroless, no shell, non-root) |
+| `postgres:17-alpine` | 424 MB |
+
+Two stale tags, `rawsyst/backend:local` and `rawsyst/web:local`, were left by an
+earlier build and referenced by no compose file and no container. Removed —
+419 MB, and one less pair of images somebody could deploy by accident.
+
+Caches: Go build 2,372 MB (max 3,000), Go modules 610 MB, npm 710 MB, Next
+output 716 MB, Docker reclaimable 3,820 MB (max 4,000). Every one under its
+threshold, so `make maintenance` cleans nothing — which is the point of the
+thresholds. 12 GB free on the volume, against a 10 GB floor.
+
+Host memory read LOW at 357 MB free while the compose stack, a second API and a
+Next build were all up at once. That is the 8 GB profile behaving exactly as
+`make verify` documents: the suites are staged rather than parallel, because
+running the Go tests, the Next build and a database together is how a process
+gets killed by the OOM reaper and reads as a flaky test.
+
+Duplicate processes: one. A second API on `:8090`, started to run `verify:api`
+and `verify:rbac` against the seeded development database while the compose
+stack held `:8080`. Stopped when the verification finished.
+
+## Where this leaves end of service
+
+**Software: complete.** The rule resolves through the registry at the date of
+the document being processed. Both Article 84 bands, the wage basis and all four
+Article 85 fractions are read from data and none of them is in Go. The accrual
+charges monthly and is audited. The settlement answers what is owed on leaving,
+with its whole working, and refuses to guess how the service ended. Twelve
+integration tests cover it, including the invariant that the accrual and the
+settlement agree. Nothing is waiting for a developer, a migration, a SQL
+statement or a rebuild.
+
+**Regulatory data: an external source is required.** Articles 84 and 85 of the
+Saudi Labour Law are published as prose. Nobody has read them and put their name
+to what they say on this installation, so the six figures are `__VERIFY__` and
+every calculation that needs them refuses by name. Recording them is one person,
+one file, three commands — or one form in Super Admin.
+
+Those two sentences are about different things and this document has run them
+together before. It does not any more.
+
+## Markers
+
+`TODO`, `FIXME`, `XXX`, `HACK`, `not implemented`, `coming soon`,
+`unimplemented`: **none** in `backend`, `web-next/src`, `shared/src`, `pos/src`
+or `scripts`.
+
+Every EOSB-related match for `placeholder`, `stub`, `mock`, `fake`, `temporary`,
+`hard-coded` is now either prose explaining why something is NOT one, or the
+`__VERIFY__` mechanism itself. Two stale ones were corrected in
+`internal/provisioning`, where a comment still claimed the gate guarded against
+serving a client on placeholder EOSB values.
+
+`__VERIFY__` is **five rules**, one of them release-blocking at FEATURE level
+(`SA.EOSB.ENTITLEMENT`, now six unfilled fields rather than five). All five are
+described by the source pack, so all five can be recorded from a file with no
+developer involved. That is the mechanism working, not a gap in it.

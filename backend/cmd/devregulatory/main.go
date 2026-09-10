@@ -65,13 +65,23 @@ var stages = []staged{
 	{
 		key:     "SA.EOSB.ENTITLEMENT",
 		country: "sa",
+		// The fractions were 0, 0.3333 and 0.6667, which are a third and two
+		// thirds and therefore look exactly like a real reading of Article 85.
+		// This file's whole claim is that its figures are visibly not the law,
+		// and two of them were not visibly anything of the sort. A descending
+		// half, quarter, fifth, tenth is unmistakable.
+		//
+		// The fourth band arrived with 0132. Article 85 bands the fraction by
+		// length of service and 0092 recorded three, so service beyond ten
+		// years had none to apply.
 		payload: `{"wage_basis":"basic_plus_housing",
 		           "days_per_year_first_five":"10",
 		           "days_per_year_after_five":"40",
-		           "resignation_fraction_under_two_years":"0",
-		           "resignation_fraction_two_to_five_years":"0.3333",
-		           "resignation_fraction_five_to_ten_years":"0.6667"}`,
-		why: "end-of-service accrual and the positions screen",
+		           "resignation_fraction_under_two_years":"0.5",
+		           "resignation_fraction_two_to_five_years":"0.25",
+		           "resignation_fraction_five_to_ten_years":"0.2",
+		           "resignation_fraction_over_ten_years":"0.1"}`,
+		why: "end-of-service accrual, the positions screen and the settlement",
 	},
 	{
 		key:     "SA.WPS.SUBMISSION_TIMING",

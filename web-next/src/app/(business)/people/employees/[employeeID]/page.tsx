@@ -46,6 +46,7 @@ import {
   monthlyPay,
   type Advance,
   type EOSBPosition,
+  type EOSBSettlement,
   type Employee,
 } from '@/lib/people/staff';
 
@@ -83,9 +84,32 @@ function EmployeeScreen() {
     scope && mayPay ? '/advances' : null,
     scope ?? undefined,
   );
+  const maySeeEOSB = grants.can('payroll.view');
   const eosb = useApiList<EOSBPosition>(
-    scope && grants.can('payroll.view') ? '/eosb' : null,
+    scope && maySeeEOSB ? '/eosb' : null,
     scope ?? undefined,
+  );
+
+  // How the service ended, and when. Neither has a default.
+  //
+  // The reason has none because Article 85 reduces the award for a resignation
+  // and not for a dismissal, so choosing one for the reader chooses an amount.
+  // The date has none because the server's is better: it falls back to a
+  // recorded leaving date, and to today for somebody still employed, and this
+  // screen would have to duplicate that rule to guess the same answer.
+  const [settleReason, setSettleReason] = useState('');
+  const [settleOn, setSettleOn] = useState('');
+
+  // Nothing is asked for until a reason is chosen, so the panel never shows a
+  // figure the caller did not ask a question to get.
+  const settlement = useApi<EOSBSettlement>(
+    scope && maySeeEOSB && settleReason
+      ? `/eosb/settlement/${params.employeeID}`
+      : null,
+    scope
+      ? { ...scope, reason: settleReason, ...(settleOn ? { on: settleOn } : {}) }
+      : undefined,
+    { retry: false },
   );
 
   const [editing, setEditing] = useState(false);
@@ -615,13 +639,136 @@ function EmployeeScreen() {
             </Panel>
           )}
 
-          {position ? (
+          {position || maySeeEOSB ? (
             <Panel title={t('nx.emp.eosb')} description={t('nx.emp.eosbHint')}>
-              <Figure
-                label={t('nx.emp.eosbAccrued')}
-                value={money(position.accrued, position.currency)}
-                caption={t('nx.emp.eosbMonths', { months: position.months_of_service })}
-              />
+              {position ? (
+                <Figure
+                  label={t('nx.emp.eosbAccrued')}
+                  value={money(position.accrued, position.currency)}
+                  caption={t('nx.emp.eosbMonths', {
+                    months: position.months_of_service,
+                  })}
+                />
+              ) : null}
+
+              {/*
+                The settlement is asked for, not shown by default.
+
+                Article 85 reduces the award for somebody who RESIGNS and does
+                not for a dismissal, so there is no figure to display until a
+                reader says which happened. Defaulting to either one would put a
+                number on the screen that the law may not support, and the
+                number is what a leaver is paid.
+              */}
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="text-label text-muted">
+                  {t('nx.emp.eosbSettlement')}
+                </p>
+                <p className="mt-1 max-w-prose text-caption text-muted">
+                  {t('nx.emp.eosbSettlementHint')}
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Field name="leaving_reason" label={t('nx.emp.eosbReason')}>
+                    <Select
+                      value={settleReason}
+                      onChange={(e) => setSettleReason(e.target.value)}
+                    >
+                      <option value="">{t('nx.emp.eosbReasonUnset')}</option>
+                      <option value="resignation">
+                        {t('nx.emp.eosbResignation')}
+                      </option>
+                      <option value="termination">
+                        {t('nx.emp.eosbTermination')}
+                      </option>
+                    </Select>
+                  </Field>
+                  <Field name="leaving_on" label={t('nx.emp.eosbLeavingOn')}>
+                    <Input
+                      type="date"
+                      value={settleOn}
+                      onChange={(e) => setSettleOn(e.target.value)}
+                    />
+                  </Field>
+                </div>
+
+                {settlement.error ? (
+                  <p className="mt-3 max-w-prose text-caption text-critical">
+                    {messageFor(settlement.error)}
+                  </p>
+                ) : null}
+
+                {settlement.data ? (
+                  <div className="mt-4">
+                    <Figure
+                      label={t('nx.emp.eosbAward')}
+                      value={money(
+                        settlement.data.award,
+                        settlement.data.currency,
+                      )}
+                      caption={t('nx.emp.eosbAwardOn', {
+                        date: settlement.data.leaving_on,
+                      })}
+                    />
+                    {/*
+                      The working, not just the total. A leaver is entitled to
+                      see which wage the award was computed on, how their
+                      service split across the two bands, and what fraction was
+                      applied — because a settlement is a figure somebody has to
+                      be able to argue with.
+                    */}
+                    <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <Detail
+                        label={t('nx.emp.eosbWage')}
+                        value={`${money(
+                          settlement.data.wage,
+                          settlement.data.currency,
+                        )} · ${settlement.data.wage_basis}`}
+                      />
+                      <Detail
+                        label={t('nx.emp.eosbService')}
+                        value={t('nx.emp.eosbBands', {
+                          first: settlement.data.first_band_months,
+                          firstDays: settlement.data.first_band_days_per_year,
+                          after: settlement.data.after_band_months,
+                          afterDays: settlement.data.after_band_days_per_year,
+                        })}
+                      />
+                      <Detail
+                        label={t('nx.emp.eosbFullAward')}
+                        value={money(
+                          settlement.data.full_award,
+                          settlement.data.currency,
+                        )}
+                      />
+                      <Detail
+                        label={t('nx.emp.eosbFraction')}
+                        value={settlement.data.resignation_fraction}
+                      />
+                      <Detail
+                        label={t('nx.emp.eosbProvision')}
+                        value={money(
+                          settlement.data.provision,
+                          settlement.data.currency,
+                        )}
+                      />
+                      <Detail
+                        label={t('nx.emp.eosbShortfall')}
+                        value={money(
+                          settlement.data.shortfall,
+                          settlement.data.currency,
+                        )}
+                      />
+                    </dl>
+                    <p className="mt-3 max-w-prose text-caption text-muted">
+                      {settlement.data.rule_verified_on
+                        ? t('nx.emp.eosbRuleVerified', {
+                            on: settlement.data.rule_verified_on,
+                          })
+                        : t('nx.emp.eosbRuleUnverified')}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             </Panel>
           ) : null}
         </aside>

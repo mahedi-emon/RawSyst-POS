@@ -74,7 +74,30 @@ const (
 // Placeholder marks a value that has never been verified against its official
 // source. Seeded rules carry it so an unverified figure can never be silently
 // mistaken for a real one.
+//
+// It is a DATA state, not a code state. A rule holding it says "nobody has read
+// the official document and put their name to what it says"; it says nothing
+// about whether the software that consumes the rule is finished. The two are
+// reported separately everywhere in this package, because conflating them once
+// meant a fully implemented end-of-service engine reading as unfinished work.
 const Placeholder = "__VERIFY__"
+
+// What an unverified release blocker actually prevents, as 0124's `blocks`
+// column records it.
+//
+// Mirrored in Go rather than compared as bare strings so the boot gate, the
+// provisioning gate and the tests all name the same two values, and so the
+// CHECK constraint's vocabulary appears once on this side of the wire.
+const (
+	// BlocksOnboarding — the market cannot be sold into at all until the figure
+	// is on record. Nothing in it can trade.
+	BlocksOnboarding = "onboarding"
+
+	// BlocksFeature — one capability cannot be computed until the figure is on
+	// record. Everything else in that market works, and the capability refuses
+	// itself by name at the point of use.
+	BlocksFeature = "feature"
+)
 
 // Rule is a resolved regulatory value.
 type Rule struct {
@@ -481,9 +504,34 @@ type HealthReport struct {
 	StaleOther      int `json:"stale_other"`       // > 12 months
 
 	// BlockingRelease is the unverified release-blockers that belong to a market
-	// this deployment actually serves. This is the set that refuses a
-	// production start.
+	// this deployment actually serves AND that block onboarding. This is the
+	// set that refuses a production start.
+	//
+	// Restricted to onboarding blockers on purpose. 0124 split a blocker into
+	// what it actually prevents, and the two are not the same failure:
+	//
+	//   onboarding — nothing in that market can trade at all without this. A
+	//                Saudi till cannot issue an invoice without ZATCA's XML and
+	//                QR formats, so serving that market is serving something
+	//                broken, and refusing to start is the cheaper failure.
+	//   feature    — one capability cannot be COMPUTED until the figure is on
+	//                record. The rest of the product is unaffected, and
+	//                `gate()` already refuses that capability at the point of
+	//                use with the rule named.
+	//
+	// The boot gate used to make no distinction, so an end-of-service band
+	// nobody had read yet stopped an entire Saudi deployment from starting — a
+	// shop that will never process a leaver could not open its till. That is a
+	// regulatory-data condition being reported as a broken build.
 	BlockingRelease []string `json:"blocking_release"`
+
+	// AwaitingData is the unverified FEATURE-level blockers for served markets.
+	//
+	// Every one of these is implemented software waiting on a figure from an
+	// official document. Reported at every start, named rather than counted,
+	// and never a reason to refuse one: the capability refuses itself, by name,
+	// on the day somebody tries to use it.
+	AwaitingData []string `json:"awaiting_data"`
 
 	// ServedMarkets is the countries this deployment's tenants trade in, read
 	// from `tenant.market` (0103). Empty on a deployment with no tenants yet.
@@ -539,18 +587,22 @@ func (s *Service) healthFor(ctx context.Context, served []string) (HealthReport,
 		return rep, db.Translate(err, "")
 	}
 
+	// `blocks` is read here rather than assumed. 0124 defaults it to 'feature'
+	// and names the onboarding set explicitly, so a rule added later without
+	// thinking about it is the weaker claim — which is the safe direction for a
+	// gate that can refuse to start a production process.
 	rows, err := tx.Query(ctx, `
-		SELECT rule_key, country FROM regulatory_rule
+		SELECT rule_key, country, blocks FROM regulatory_rule
 		WHERE release_blocker AND verified_on IS NULL AND effective_to IS NULL
 		ORDER BY rule_key`)
 	if err != nil {
 		return rep, db.Translate(err, "")
 	}
-	type blocker struct{ key, country string }
+	type blocker struct{ key, country, blocks string }
 	var blockers []blocker
 	for rows.Next() {
 		var b blocker
-		if err := rows.Scan(&b.key, &b.country); err != nil {
+		if err := rows.Scan(&b.key, &b.country, &b.blocks); err != nil {
 			rows.Close()
 			return rep, db.Translate(err, "")
 		}
@@ -571,10 +623,13 @@ func (s *Service) healthFor(ctx context.Context, served []string) (HealthReport,
 		inService[m] = true
 	}
 	for _, b := range blockers {
-		if inService[strings.ToLower(strings.TrimSpace(b.country))] {
-			rep.BlockingRelease = append(rep.BlockingRelease, b.key)
-		} else {
+		switch {
+		case !inService[strings.ToLower(strings.TrimSpace(b.country))]:
 			rep.DeferredBlockers = append(rep.DeferredBlockers, b.key)
+		case b.blocks == BlocksOnboarding:
+			rep.BlockingRelease = append(rep.BlockingRelease, b.key)
+		default:
+			rep.AwaitingData = append(rep.AwaitingData, b.key)
 		}
 	}
 	return rep, nil
@@ -614,11 +669,11 @@ func (s *Service) UnverifiedBlockersFor(
 	rows, err := tx.Query(ctx, `
 		SELECT rule_key FROM regulatory_rule
 		WHERE release_blocker
-		  AND blocks = 'onboarding'
+		  AND blocks = $2
 		  AND verified_on IS NULL
 		  AND effective_to IS NULL
 		  AND lower(country) = $1
-		ORDER BY rule_key`, market)
+		ORDER BY rule_key`, market, BlocksOnboarding)
 	if err != nil {
 		return nil, db.Translate(err, "")
 	}

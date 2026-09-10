@@ -75,8 +75,48 @@ func contains(keys []string, want string) bool {
 // End of service is the one genuinely outstanding: the entitlement is days of
 // wage per year of service and nobody has confirmed the bands against the
 // Labour Law.
+//
+// It is a FEATURE blocker, and that is the whole point of the rest of this
+// file. The engine that consumes it is complete — both service bands, the wage
+// basis, Article 85's resignation fractions, the accrual, the settlement, the
+// audit entry — and what is missing is a figure in a statute. A deployment must
+// therefore start, report the capability as awaiting its figure, and refuse
+// only the calculation itself.
 var saudiHRBlockers = []string{
 	"SA.EOSB.ENTITLEMENT",
+}
+
+// attestOnboardingKey is a fixture blocker that DOES stop a market trading.
+//
+// Nothing real is unverified at onboarding level any more — every ZATCA format
+// a Saudi invoice depends on is recorded and verified — so the half of the gate
+// that still refuses has no production data left to prove itself against. A
+// fixture under `zz`, ISO 3166's "unknown country", supplies one.
+//
+// `regulatory_rule` is append-only by trigger, so this row cannot be cleaned up
+// and stays in whatever database the suite ran against. That is why `zz` is the
+// country: the invariant that every verified rule carries a legal citation
+// already excludes it, because demanding evidence for a rule whose country is
+// "unknown" is demanding evidence for something no authority published.
+const attestOnboardingKey = "ZZ.TEST.ONBOARDING_BLOCKER"
+
+// seedOnboardingBlocker records the fixture, once per database.
+func seedOnboardingBlocker(t *testing.T, s *Service) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := s.pool.Raw().Exec(ctx, `
+		INSERT INTO regulatory_rule
+		  (rule_key, country, payload, effective_from, source_authority,
+		   source_document, release_blocker, blocks, notes)
+		VALUES ($1, 'zz', '{"format":"__VERIFY__"}'::jsonb, '2020-01-01',
+		        'mhrsd', 'Nothing real', true, 'onboarding',
+		        'Seeded by the boot-gate tests. Nothing in the product reads '
+		        'it; it exists so the half of the gate that still refuses a '
+		        'production start can be proved against a rule that genuinely '
+		        'stops a market trading.')
+		ON CONFLICT DO NOTHING`, attestOnboardingKey); err != nil {
+		t.Fatalf("seed the onboarding blocker: %v", err)
+	}
 }
 
 // A Bangladesh-only deployment starts.
@@ -106,12 +146,19 @@ func TestABangladeshOnlyDeploymentIsNotBlockedBySaudiRules(t *testing.T) {
 	}
 }
 
-// A Saudi deployment is still refused, exactly as before.
+// A Saudi deployment starts, and says what it cannot compute.
 //
-// The other half of the rule, and the one that would fail silently if the
-// filter were ever loosened: where the market IS served, an unverified
-// release-blocker must still stop the process.
-func TestASaudiDeploymentIsStillBlockedByItsOwnUnverifiedRules(t *testing.T) {
+// This is the change 0124 made possible and the gate had not taken up. End of
+// service is what an employer owes somebody who LEAVES: a shop can be onboarded
+// on Monday, trade for a year and have nobody resign, and the entitlement bands
+// never come into it. Refusing to start the whole service over a calculation
+// that may never be performed took a regulatory-data condition and reported it
+// as a broken deployment.
+//
+// Nothing is loosened. The rule is still unverified, still named at every
+// start, and `gate()` still refuses the calculation itself at the point of use
+// — which is the protection that ever mattered.
+func TestASaudiDeploymentStartsWithAFeatureBlockerAndNamesIt(t *testing.T) {
 	s := newRegistry(t)
 
 	rep, err := s.healthFor(context.Background(), []string{"sa"})
@@ -120,22 +167,81 @@ func TestASaudiDeploymentIsStillBlockedByItsOwnUnverifiedRules(t *testing.T) {
 	}
 
 	for _, key := range saudiHRBlockers {
-		if !contains(rep.BlockingRelease, key) {
-			t.Errorf("%s does not block a Saudi deployment; the gate has been "+
-				"weakened for a market it is meant to protect", key)
+		if contains(rep.BlockingRelease, key) {
+			t.Errorf("%s refuses a Saudi production start. It blocks a "+
+				"FEATURE, not onboarding: the software is complete and the "+
+				"figure is not on record, and those are different failures",
+				key)
+		}
+		if !contains(rep.AwaitingData, key) {
+			t.Errorf("%s is not reported as awaiting its figure. An "+
+				"unverified rule that no longer stops a boot must be named at "+
+				"every start, or it becomes invisible", key)
 		}
 		if contains(rep.DeferredBlockers, key) {
-			t.Errorf("%s is reported as deferred on a Saudi deployment", key)
+			t.Errorf("%s is reported as deferred on a Saudi deployment; it "+
+				"applies to a market this deployment serves", key)
 		}
 	}
 }
 
-// A deployment serving both markets is blocked by the Saudi rules.
+// An onboarding blocker still refuses, exactly as before.
+//
+// The other half of the rule, and the one that would fail silently if the split
+// were ever read the wrong way round: where the market IS served and the market
+// cannot trade without the figure, an unverified rule must still stop the
+// process.
+func TestAnOnboardingBlockerStillRefusesAProductionStart(t *testing.T) {
+	s := newRegistry(t)
+	seedOnboardingBlocker(t, s)
+
+	rep, err := s.healthFor(context.Background(), []string{"zz"})
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+
+	if !contains(rep.BlockingRelease, attestOnboardingKey) {
+		t.Errorf("%s does not block a deployment serving its market; the gate "+
+			"has been weakened for the case it exists to protect",
+			attestOnboardingKey)
+	}
+	if contains(rep.AwaitingData, attestOnboardingKey) {
+		t.Errorf("%s is reported as merely awaiting data. Nothing in its "+
+			"market can trade without it, which is a refusal",
+			attestOnboardingKey)
+	}
+}
+
+// A market that is not served defers an onboarding blocker rather than
+// refusing.
+//
+// The two filters are independent and this pins that they compose: blocking
+// requires BOTH that the market is served and that the rule stops trading in
+// it.
+func TestAnOnboardingBlockerForAnUnservedMarketIsDeferred(t *testing.T) {
+	s := newRegistry(t)
+	seedOnboardingBlocker(t, s)
+
+	rep, err := s.healthFor(context.Background(), []string{"bd"})
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+
+	if contains(rep.BlockingRelease, attestOnboardingKey) {
+		t.Errorf("%s blocks a deployment that does not serve its market",
+			attestOnboardingKey)
+	}
+	if !contains(rep.DeferredBlockers, attestOnboardingKey) {
+		t.Errorf("%s is not reported as deferred", attestOnboardingKey)
+	}
+}
+
+// A deployment serving both markets separates the two Saudi conditions.
 //
 // The mixed case is the one a naive implementation gets wrong, by treating the
 // market set as a single value rather than a set: serving Bangladesh must not
 // excuse the Saudi obligations of the Saudi tenants sitting beside it.
-func TestAMixedMarketDeploymentIsBlockedByTheSaudiRules(t *testing.T) {
+func TestAMixedMarketDeploymentStillOwesTheSaudiRules(t *testing.T) {
 	s := newRegistry(t)
 
 	rep, err := s.healthFor(context.Background(), []string{"bd", "sa"})
@@ -144,8 +250,12 @@ func TestAMixedMarketDeploymentIsBlockedByTheSaudiRules(t *testing.T) {
 	}
 
 	for _, key := range saudiHRBlockers {
-		if !contains(rep.BlockingRelease, key) {
-			t.Errorf("%s does not block a deployment that serves Saudi Arabia", key)
+		if !contains(rep.AwaitingData, key) {
+			t.Errorf("%s is not owed by a deployment that serves Saudi Arabia",
+				key)
+		}
+		if contains(rep.DeferredBlockers, key) {
+			t.Errorf("%s is deferred although Saudi Arabia is served", key)
 		}
 	}
 }

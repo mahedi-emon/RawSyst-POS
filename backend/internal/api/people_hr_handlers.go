@@ -839,6 +839,50 @@ func (s *Server) handleEOSBPositions(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
+// handleEOSBSettlement answers what one person is owed on leaving.
+//
+// A read rather than a record. Nothing is written and nothing is posted: this
+// is the figure the last payslip has to carry, and it is normally wanted BEFORE
+// the departure is entered, so making it a side effect of recording one would
+// put it after the thing it exists to prepare for.
+//
+// Both parameters are explicit. `on` defaults to a recorded leaving date, or to
+// today for somebody still employed; `reason` has no default at all, because
+// Article 85 reduces the award for a resignation and not for a dismissal, and
+// picking one for the caller is picking an amount.
+func (s *Server) handleEOSBSettlement(w http.ResponseWriter, r *http.Request) {
+	scope, err := hrScope(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	id, err := parseUUID(chi.URLParam(r, "employeeID"), "employeeID")
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	var on time.Time
+	if raw := r.URL.Query().Get("on"); raw != "" {
+		parsed, e := time.Parse("2006-01-02", raw)
+		if e != nil {
+			httpx.Error(w, r, errs.Validation(
+				"A leaving date is a day, like 2026-09-30.").
+				WithField("on", "Year, month and day."))
+			return
+		}
+		on = parsed
+	}
+
+	out, err := s.people.EOSBSettlement(r.Context(), scope, id, on,
+		r.URL.Query().Get("reason"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 func (s *Server) handleSetCommissionRule(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name       string `json:"name"`

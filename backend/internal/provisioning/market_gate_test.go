@@ -5,9 +5,12 @@
 // The boot gate asks "may this process start given the tenants it has". That
 // answer changes the moment a tenant is created in a new market, and the
 // process does not re-run it — so a Bangladesh-only deployment could be handed a
-// Saudi client at 10:00 and keep serving it on placeholder GOSI, EOSB and WPS
-// values until somebody happened to restart. These tests cover the other end of
-// that window.
+// Saudi client at 10:00 and keep selling it a till that cannot issue an invoice
+// until somebody happened to restart. These tests cover the other end of that
+// window.
+//
+// Only rules that stop a market TRADING are asked about here; see
+// `requireMarketIsUsable` for why end of service is not one of them.
 package provisioning
 
 import (
