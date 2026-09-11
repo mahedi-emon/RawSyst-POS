@@ -138,6 +138,9 @@ type candidate struct {
 	mustChange   bool
 	failed       int
 	lockedUntil  *time.Time
+	// tenantStatus is the BUSINESS's state, not the person's. A switched-off
+	// tenant refuses everybody in it, whatever their own account says.
+	tenantStatus string
 }
 
 // maxCandidates caps how many accounts one email may be checked against.
@@ -258,6 +261,21 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 	// what selected it. Re-checking here would double the cost of the slowest
 	// operation in the request for no additional assurance.
 	_ = lockedUntil
+
+	// The BUSINESS, before the person.
+	//
+	// A switched-off tenant refuses everybody in it, whatever their own account
+	// says. This is the one subscription state that reaches sign-in: suspended
+	// and expired businesses sign in normally and are read-only once inside,
+	// because somebody has to be able to see what they owe and export their
+	// records. Deactivated is the end of the relationship.
+	//
+	// After the password, like every other status check here, so the answer
+	// does not tell an attacker which addresses belong to a real business.
+	if chosen.tenantStatus == "deactivated" {
+		return Session{}, errs.New(errs.CodeForbidden,
+			"This business is no longer active. Contact RawSyst.")
+	}
 
 	// A correct password on a disabled account still fails, but only after the
 	// password check, so the account's existence is not revealed by timing.
@@ -890,7 +908,11 @@ func (s *Service) candidatesFor(
 		rows, err := tx.Query(ctx, `
 			SELECT u.id, u.tenant_id, coalesce(t.name, ''), u.password_hash,
 			       u.status, u.must_change_password, u.failed_attempts,
-			       u.locked_until
+			       u.locked_until,
+			       -- A platform operator has no tenant and is never stopped by
+			       -- one; coalescing to 'active' keeps that true without a
+			       -- second query or a null check at every use.
+			       coalesce(t.status::text, 'active')
 			FROM app_user u
 			LEFT JOIN tenant t ON t.id = u.tenant_id
 			WHERE u.email = $1
@@ -906,7 +928,7 @@ func (s *Service) candidatesFor(
 			var c candidate
 			if err := rows.Scan(&c.userID, &c.tenantID, &c.tenantName,
 				&c.passwordHash, &c.status, &c.mustChange, &c.failed,
-				&c.lockedUntil); err != nil {
+				&c.lockedUntil, &c.tenantStatus); err != nil {
 				return err
 			}
 			out = append(out, c)

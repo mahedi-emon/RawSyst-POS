@@ -2204,6 +2204,12 @@ func (s *Server) Routes() []Route {
 		// AccessAuthenticated because every screen in the product asks it to
 		// decide what to render, including screens a cashier opens, and a
 		// permission would mean a till could not tell whether Wholesale exists.
+		{http.MethodGet, "/api/v1/subscription/standing", AccessAuthenticated, "",
+			s.handleMyStanding,
+			"where this business stands and whether it may still be changed; " +
+				"AccessAuthenticated and no permission, because everybody who " +
+				"is told the product is read-only needs to be told why, not " +
+				"only whoever may look at the bill"},
 		{http.MethodGet, "/api/v1/subscription/entitlements", AccessAuthenticated, "",
 			s.handleGetEntitlements,
 			"every screen reads it to decide what to show, a till included, " +
@@ -2461,6 +2467,17 @@ func (s *Server) Routes() []Route {
 			s.handleSetFeature,
 			"H5's commercial flexibility: a module granted to one client " +
 				"independent of their tier, with the reason recorded"},
+		{http.MethodGet, "/api/v1/platform/tenants/{tenantID}/standing", AccessSuperAdmin, "",
+			s.handleTenantStanding,
+			"where a business stands and what that stops it doing; expiry is " +
+				"worked out from the calendar rather than stored, so this is " +
+				"the answer right now and not the answer a job last wrote"},
+		{http.MethodPut, "/api/v1/platform/tenants/{tenantID}/standing", AccessSuperAdmin, "",
+			s.handleSetTenantStanding,
+			"suspends, reactivates or switches off a business; a suspension " +
+				"leaves every read and export working, because a client who " +
+				"has stopped paying is exactly the one entitled to take their " +
+				"data elsewhere"},
 		{http.MethodPost, "/api/v1/platform/tenants/{tenantID}/invoices", AccessSuperAdmin, "",
 			s.handleIssueSubscriptionInvoice,
 			"the platform billing a client for the software, which is not " +
@@ -2819,11 +2836,12 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 			r.Method(rt.Method, rt.Pattern, handler)
 
 		case AccessAuthenticated:
-			r.With(s.mw.Authenticate, s.frozen(rt)).
+			r.With(s.mw.Authenticate, s.frozen(rt), s.subscribed(rt)).
 				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessPermission:
-			r.With(s.mw.Authenticate, s.mw.Require(rt.Permission), s.frozen(rt)).
+			r.With(s.mw.Authenticate, s.mw.Require(rt.Permission),
+				s.frozen(rt), s.subscribed(rt)).
 				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessSuperAdmin:

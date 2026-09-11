@@ -164,6 +164,85 @@ func (s *Server) handlePlatformSubscription(
 	})
 }
 
+// handleMyStanding answers where the CALLER's own business stands.
+//
+// The tenant comes from the token, so there is nothing to submit that asks
+// about somebody else's. A platform operator has no business of their own and
+// gets the active answer, which is what keeps the console working.
+func (s *Server) handleMyStanding(w http.ResponseWriter, r *http.Request) {
+	a := actor.From(r.Context())
+	if a.IsSuperAdmin || a.TenantID.String() == "" {
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"standing": billing.Standing{
+				State:  billing.StandingActive,
+				SignIn: true, Read: true, Write: true,
+			},
+		})
+		return
+	}
+	out, err := s.billing.ReadStanding(r.Context(), a.TenantID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"standing": out,
+		// The sentences the banner shows, composed once on the server so the
+		// client is not reimplementing the policy in order to describe it.
+		// `blocks` explains something that has already stopped them; `warns`
+		// is about something that has not happened yet, and a screen shows the
+		// two very differently.
+		"blocks": out.Blocks(),
+		"warns":  out.Warns(),
+	})
+}
+
+// handleTenantStanding answers where a business stands right now.
+//
+// Uncached on purpose. The screen that shows this is the screen with the
+// suspend button on it, and being five seconds behind the button somebody just
+// pressed is how an operator presses it twice.
+func (s *Server) handleTenantStanding(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenantParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.billing.ReadStanding(r.Context(), tenantID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"standing": out})
+}
+
+func (s *Server) handleSetTenantStanding(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenantParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req struct {
+		Action string `json:"action"`
+		Reason string `json:"reason"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// The actor comes from the token. Nothing in the body names who did this,
+	// which is what keeps the trail worth reading.
+	a := actor.From(r.Context())
+	out, err := s.billing.SetTenantStanding(r.Context(), a.UserID, tenantID,
+		billing.Transition{Action: req.Action, Reason: req.Reason})
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"standing": out})
+}
+
 func (s *Server) handleSetPlan(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := tenantParam(r)
 	if err != nil {

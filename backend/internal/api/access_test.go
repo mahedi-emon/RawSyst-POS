@@ -111,6 +111,12 @@ type harness struct {
 	// to the database. A warm cache hides how a rule is fetched, which is
 	// exactly what TestASaleDoesNotHoldTwoConnections is measuring.
 	rules *registry.Service
+
+	// billing lets a subscription test drop a tenant's cached standing after
+	// changing it. The standing is held for StandingCacheTTL, so a suspension
+	// written by a test would otherwise not be seen for five seconds — and a
+	// suite that slept that long per case is one somebody deletes.
+	billing *billing.Service
 }
 
 // harnessPoolConns is how many database connections the test server may hold
@@ -201,7 +207,11 @@ func newHarness(t *testing.T) *harness {
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() { _ = hub.Close() })
 
-	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotionsSvc, orders.NewService(pool).WithSales(salesSvc), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billing.NewService(pool), group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), fx.New(pool), rules, audit.NewService(pool),
+	// Named rather than inline, so the harness can hand it to a test that
+	// needs to drop a tenant's cached standing.
+	billingSvc := billing.NewService(pool)
+
+	srv := NewServer(authSvc, mw, authz, provSvc, salesSvc, reports.NewService(pool), vat.NewService(pool, rules), catalog.NewService(pool, rules), syncEngine, purchasingSvc, receivables.NewService(pool), deviceSvc, egs.NewService(pool), branding.NewService(pool), shiftSvc, settlement.NewService(pool), expenses.NewService(pool, rules).WithApprovals(workflowSvc), stockops.NewService(pool), fiscal.NewService(pool), treasury.NewService(pool), assets.NewService(pool), promotionsSvc, orders.NewService(pool).WithSales(salesSvc), loyalty.NewService(pool), wallet.NewService(pool), workflowSvc, notify.NewService(pool), integration.NewService(pool, testCipher(t)), portability.NewService(pool), ops.NewService(pool), labels.NewService(pool, rules), insight.NewService(pool), platformops.NewService(pool), aftersales.NewService(pool), docs.NewService(pool), billingSvc, group.NewService(pool), portalSvc, privacy.NewService(pool, rules), compliance.NewService(pool, rules), people.NewService(pool, rules), fx.New(pool), rules, audit.NewService(pool),
 		func() error { return pool.Health(ctx) }, "test").
 		WithJournals(accounting.NewJournalService(pool)).
 		// The card providers, sealed with the same test keyring the
@@ -230,7 +240,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 
 	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens, authz: authz,
-		shift: shiftSvc, rules: rules, hub: hub}
+		shift: shiftSvc, rules: rules, hub: hub, billing: billingSvc}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role

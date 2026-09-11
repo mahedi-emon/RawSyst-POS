@@ -48,6 +48,7 @@ import { useT } from '@/lib/i18n/locale';
 import { expiryTone } from '@/lib/subscription';
 
 import { ModulesPanel } from './modules';
+import { StandingPanel } from './standing';
 import { useUrlState } from '@/lib/url-state';
 
 interface Tenant {
@@ -716,6 +717,12 @@ function BillingScreen() {
               usually answering "why can they not use X", and that is this
               panel rather than the invoice list. */}
           <ModulesPanel tenantId={tenantId} />
+
+          {/* Suspending, reactivating and switching off. Phase 3 left these
+              out deliberately, because tenant.status was written by dunning
+              and read by nothing — a button that suspended nobody would have
+              been worse than no button. The enforcement exists now. */}
+          <StandingPanel tenantId={tenantId} />
 
           {/* Raising one. The screen could mark an invoice paid and could not
               issue one, so every subscription invoice this product has ever

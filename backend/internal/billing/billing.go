@@ -58,6 +58,10 @@ import (
 // Service carries plans, entitlements and subscription invoices.
 type Service struct {
 	pool *db.Pool
+
+	// standing caches each tenant's commercial standing, because it is asked
+	// in front of every write in the product. See StandingCacheTTL.
+	standing standingCache
 }
 
 // NewService builds the service.
@@ -1108,3 +1112,15 @@ func (s *Service) Permits(
 	})
 	return allowed, err
 }
+
+// A note on what is NOT checked here, deliberately.
+//
+// This answers what the plan SELLS and goes on answering it after the
+// subscription lapses. That is correct: the feature gate wraps reads as well as
+// writes, and a suspended business keeps every read — it has to be able to see
+// its own records and export them.
+//
+// Whether a lapsed business may still CHANGE anything is a different question,
+// asked once for every route by `subscribed()` in the api package rather than
+// module by module here. Putting it in this function would have made a
+// suspended client's own subscription screen refuse to load.

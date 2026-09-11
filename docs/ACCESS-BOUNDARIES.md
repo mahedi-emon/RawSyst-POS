@@ -32,6 +32,7 @@ independently, and the ones nearest the data refuse last.
 | Holds the permission | `Require(permission)` | Middleware |
 | Platform routes | `RequireSuperAdmin`, answering **404** | Middleware |
 | Super admin on tenant routes | `Require` refuses them | Middleware |
+| Subscription still in good standing | `subscribed()` on every tenant route | Middleware, per request |
 | Another tenant's rows | Row-level security, FORCED on 181 tables | Database |
 | Platform operator reading business data | Migration 0006's predicate, table by table | Database |
 
@@ -52,6 +53,8 @@ Every row is a test that runs in CI, not a manual check.
 | Employee, full role | **404** | 200 | 403 | 404 |
 | Employee, view-only | **404** | 200 on reads | 403 on writes | 404 |
 | Disabled employee | 401 | **401** | 401 | 401 |
+| Expired or suspended business | **404** | 200 on reads, **402** on writes | 403 | 404 |
+| Deactivated business | **404** | **403**, and no sign-in | 403 | 404 |
 
 Which test proves which:
 
@@ -77,6 +80,19 @@ Which test proves which:
 | A platform operator sees no business data | `TestPlatformAdminHasNoBusinessDataAccess` |
 | A platform operator cannot read a tenant's roles | `TestPlatformAdminCannotSeeTenantRoles` |
 | The audit trail cannot be edited or deleted | `TestAuditLogIsAppendOnly` |
+| An expired subscription stops the till but not the books | `TestAnExpiredSubscriptionStopsTheTillButNotTheBooks` |
+| Expiry stops every operational module, not just one | `TestExpiryStopsEveryOperationalWrite` |
+| A suspended business is read-only | `TestASuspendedBusinessIsReadOnly` |
+| A lapsed business can still export its data | `TestALapsedBusinessCanStillExportItsData` |
+| A lapsed business can still reach support and sign out | `TestALapsedBusinessCanStillReachSupportAndChangeAPassword` |
+| Past due and trialing keep trading | `TestPastDueAndTrialingKeepTrading` |
+| A deactivated business reaches nothing and cannot sign in | `TestADeactivatedBusinessReachesNothing` |
+| Super Admin can suspend and reactivate | `TestSuperAdminCanSuspendAndReactivateABusiness` |
+| An invalid standing transition is refused | `TestAnInvalidStandingTransitionIsRefused` |
+| Suspending a business is audited | `TestSuspendingABusinessIsAudited` |
+| A lapsed business cannot argue its way out | `TestALapsedBusinessCannotArgueItsWayOut` |
+| Only the platform may change a standing | `TestOnlyThePlatformMayChangeAStanding` |
+| The standing policy itself | `billing/standing_test.go` |
 | A menu item does not lead to a screen the person cannot load | `nav/gates.test.ts` |
 
 ### On cross-tenant testing
@@ -208,6 +224,51 @@ company-scoped, names no other user, and creates a work item rather than a
 financial record; requiring `service.manage` instead would also let counter
 staff change diagnoses and fit parts, which is broader rather than safer.
 
+## What Phase 5 built
+
+`subscription.status` and `tenant.status` had been written since the billing
+tables existed. Dunning moved a subscription to past due and then suspended, set
+the tenant to suspended, and recorded it. Paying the last outstanding invoice
+lifted both. The plan editor wrote a status and a period end.
+
+Every one of those wrote. Nothing read. `tenant.status` was consulted by exactly
+two queries in the product, and both were counters on a dashboard added in Phase
+3. A business marked suspended signed in and traded exactly as before.
+
+`subscribed()` now sits in front of every tenant route, modelled on the
+maintenance freeze next door: the method decides read from write, the standing
+is cached, reads pass, operational writes are refused with 402.
+
+| State | Sign in | Read | Write | Why |
+|---|---|---|---|---|
+| active, trialing | yes | yes | yes | — |
+| past_due | yes | yes | yes | Dunning decides when late becomes stopped |
+| expired | yes | yes | **no** | The period end has passed |
+| suspended | yes | yes | **no** | Somebody or something stopped it |
+| cancelled | yes | yes | **no** | The client left |
+| deactivated | **no** | **no** | **no** | The tenant is switched off |
+
+Five states are read-only rather than locked out, for two reasons. A shop locked
+out entirely cannot see what it owes or find the screen to pay it. And the
+export routes must keep working: a business that has stopped paying is precisely
+the one entitled to take its data elsewhere. Those are GETs, so they pass under
+the same rule as every other read without needing an exception.
+
+A short list of writes stays open — signing out, changing a password, the
+second factor, raising and replying to a support ticket, marking a notification
+read. Each is either recovery or about the person's own account rather than
+about the business. Nothing that records a sale, moves stock, changes a price or
+touches the books is on it.
+
+The precedence between reasons is deliberate and tested: deactivated outranks
+suspended outranks cancelled outranks expired outranks past due. Telling
+somebody their subscription expired when a person suspended them would send
+them to a payment screen that will not help.
+
+`grace_days` is untouched and still belongs to the unpaid-invoice path. It is
+the concession on a late payment, not a licence to trade past the date on the
+agreement.
+
 ## Known limitations
 
 **Revocation is bounded by five seconds, not instant.** `Authorizer` caches
@@ -223,12 +284,24 @@ account's status itself, and so does every authenticated request. A future code
 path that disables an account without revoking its sessions is still caught by
 both. `SetPersonStatus` continues to do both as well.
 
-**Subscription state enforces nothing.** `tenant.status` is written and read by
-nothing, and `billing.Allows` ignores the subscription status and period end. A
-suspended business can still sign in and trade, and an expired subscription
-stops nothing. This is Phase 5's work and is deliberately not started. The
-platform dashboard and the billing screen both say so in plain words next to the
-figures rather than letting an operator assume otherwise.
+**Subscription enforcement has its own five-second window.** A business's
+standing is cached for `billing.StandingCacheTTL`, because it is consulted in
+front of every write in the product and a query per request would be a poor
+trade. A suspension applied this instant may allow writes for up to five more
+seconds in a given API process. Suspending through the platform route drops that
+process's cache immediately, but nothing tells a second API instance, which
+keeps its own copy until the TTL elapses. This is not instant enforcement and is
+not described as such anywhere.
+
+**Expiry, by contrast, needs no job and has no window of its own.** It is
+computed from `current_period_end` against the calendar every time the standing
+is read, so a subscription is expired at midnight with nothing running. Only the
+cache above stands between the date passing and the refusal.
+
+**A tenant with no subscription row reads as active.** Migration 0138 means
+there are none, and the platform dashboard counts any that appear. Refusing
+every write on the platform because a row was missing would be a worse failure
+than the missing row.
 
 **Nav gating is a list, not a derivation.** `nav/gates.test.ts` checks pairs a
 person wrote down. Deriving them by parsing every page and resolving its calls

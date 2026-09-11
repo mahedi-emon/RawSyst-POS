@@ -15,6 +15,7 @@ import { CompanySwitch } from '@/components/shell/company-switch';
 import { GlobalSearch } from '@/components/shell/global-search';
 import { NotificationBell } from '@/components/shell/notification-bell';
 import { SetupNotice } from '@/components/shell/setup-notice';
+import { SubscriptionBanner } from '@/components/shell/subscription-banner';
 import { usePlanFeatures } from '@/lib/api/hooks';
 import { useSession } from '@/lib/auth/session';
 import { CompanyProvider, useCompany } from '@/lib/company/company-context';
@@ -47,6 +48,12 @@ function BusinessShell({ children }: { children: ReactNode }) {
       }
       headerAlerts={<NotificationBell />}
     >
+      {/* Why the product has gone read-only, on every screen rather than
+          discovered halfway through a sale with a customer waiting. Nothing
+          at all when the subscription is in good order, which is almost
+          always. */}
+      <SubscriptionBanner />
+
       {/* One line while first-time setup is unfinished, and nothing at
           all once it is. A tenant is provisioned with an Owner and no
           company, and until the company exists most of this product has
