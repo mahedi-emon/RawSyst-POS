@@ -18,9 +18,32 @@ import { fileURLToPath } from 'node:url';
  */
 const API_ORIGIN = process.env.RAWSYST_API_ORIGIN ?? 'http://localhost:8080';
 
+/**
+ * Hostnames the DEV server will serve its own chunks to.
+ *
+ * Development only. `next dev` refuses `/_next/*` to any origin it does not
+ * recognise, answering 403 — which is a reasonable protection for a dev server
+ * on a laptop, and is invisible until the day somebody tests the two-hostname
+ * split locally. Then every chunk 403s, the page never hydrates, and the login
+ * form silently falls back to a plain GET. Nothing in the console says
+ * "hydration failed"; it just does not work.
+ *
+ * `next build` and `next start` have no such check, so this affects no
+ * deployment. It is here so that testing the split locally is possible at all.
+ *
+ * Driven by the same variable the split itself reads, so there is one name to
+ * set and no hostname written into the repository.
+ */
+const devOrigins = [
+  process.env.RAWSYST_CONSOLE_HOST,
+  process.env.RAWSYST_APP_HOST,
+].filter(Boolean);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  ...(devOrigins.length > 0 ? { allowedDevOrigins: devOrigins } : {}),
 
   // Deploys as a container beside the Go API rather than to a serverless host.
   output: 'standalone',

@@ -230,9 +230,50 @@ Nothing changes. With the variables unset, both halves share one origin exactly
 as before, `/platform` works on `localhost`, and every test that does not
 explicitly configure a console host sees the old behaviour.
 
-To exercise the split locally, set `RAWSYST_CONSOLE_HOST=console.localhost` and
-use that name in the browser. Modern browsers resolve `*.localhost` to loopback
-without a hosts-file entry.
+### Exercising the split locally
+
+Set both hostnames and point the web tier at the API:
+
+```bash
+# the API
+RAWSYST_CONSOLE_HOST=console.rawsyst.local RAWSYST_CONSOLE_URL=http://console.rawsyst.local:3001 RAWSYST_APP_URL=http://app.rawsyst.local:3001 RAWSYST_HTTP_ADDR=:8099 go run ./cmd/api
+
+# the web tier
+RAWSYST_API_ORIGIN=http://127.0.0.1:8099 RAWSYST_CONSOLE_HOST=console.rawsyst.local RAWSYST_APP_HOST=app.rawsyst.local npx next dev -p 3001
+```
+
+`RAWSYST_APP_HOST` is needed **only** for local development. `next dev` refuses
+`/_next/*` to any origin it does not recognise, answering 403 — a reasonable
+protection for a dev server, and one that is invisible until you test the split
+locally. Then every chunk 403s, the page never hydrates, and the login form
+silently falls back to a plain GET with the password in the query string.
+Nothing announces "hydration failed"; it simply does not work. Both hostnames
+are passed to `allowedDevOrigins` from these variables, so there is no hostname
+written into the repository.
+
+`next build` and `next start` have no such check, so this affects no deployment
+and the variable is not needed in Portainer.
+
+**Resolving the names without touching the hosts file.** For HTTP checks, use
+`curl --resolve`:
+
+```bash
+curl --resolve console.rawsyst.local:3001:127.0.0.1      http://console.rawsyst.local:3001/platform
+```
+
+For a browser, launch Chromium with `--host-resolver-rules="MAP
+console.rawsyst.local 127.0.0.1, MAP app.rawsyst.local 127.0.0.1"`. Both
+approaches are per-process and leave the machine unchanged.
+
+If you would rather use the hosts file, the entries are:
+
+```text
+127.0.0.1 app.rawsyst.local
+127.0.0.1 console.rawsyst.local
+```
+
+`*.localhost` also works and needs no entry at all in modern browsers, though
+`curl` on Windows still will not resolve it.
 
 ## Verifying it
 

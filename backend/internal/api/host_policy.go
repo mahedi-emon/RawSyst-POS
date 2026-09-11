@@ -141,31 +141,53 @@ func (s *Server) onTheRightHost(rt Route) func(http.Handler) http.Handler {
 	}
 }
 
-// requestHost is the hostname a request was addressed to.
+// requestHost is the hostname the CLIENT addressed, which is not always the
+// hostname in the `Host` header.
 //
-// `r.Host` is the `Host` header, which every reverse proxy in this deployment
-// preserves: the bundled nginx sets `proxy_set_header Host $host`, Nginx Proxy
-// Manager does the same by default, and Cloudflare forwards the original host
-// to the origin. So the ordinary header is the right answer and no special
-// configuration is needed.
+// # Why X-Forwarded-Host comes first
 //
-// `X-Forwarded-Host` is consulted only when `Host` is absent or is something a
-// proxy substituted for its own upstream address. It is checked SECOND rather
-// than first on purpose: it is the more forgeable of the two and preferring it
-// would let any caller choose their hostname even where the proxy was being
-// careful.
+// Because one of the two proxies in front of this service rewrites `Host` and
+// the other does not, and the rewriting one is the default deployment.
 //
-// Neither is trusted as proof of anything. See the file note: this reduces
-// surface and `RequireSuperAdmin` is what refuses people.
+//	nginx, and Nginx Proxy Manager  Host: console.example.com
+//	                                X-Forwarded-Host: console.example.com
+//
+//	Next's /api/v1 rewrite          Host: 127.0.0.1:8080   <- its own upstream
+//	                                X-Forwarded-Host: console.example.com
+//
+// Next replaces `Host` with the destination it is proxying to, and puts the
+// real one in `X-Forwarded-Host`. So a rule that preferred `Host` saw the API's
+// own address for every request that reached it through the web tier, treated
+// every caller as an unrecognised host, and 404'd the console's own platform
+// API — the control plane, broken, on the deployment shape the documentation
+// recommends.
+//
+// That was the state of this function until a local two-hostname test drove
+// real requests through the web tier and found it. The unit tests could not
+// have: they are handed a pair of header values and cannot know which proxy
+// produces which.
+//
+// Preferring the forwarded header is right for both shapes. Where a proxy
+// preserves `Host` it sets `X-Forwarded-Host` to the same value, so nothing
+// changes; where a proxy rewrites `Host`, the forwarded header is the only
+// place the original survives.
+//
+// # On trusting it
+//
+// This changes nothing about what anybody may do. A caller who can forge
+// `X-Forwarded-Host` can equally forge `Host`, and could before. Neither is
+// treated as proof: see the file note — this reduces surface, and
+// `RequireSuperAdmin` is what refuses people.
 func requestHost(host string, forwarded string) string {
-	if h := normaliseAPIHost(host); h != "" {
-		return h
-	}
-	// A forwarded chain is comma-separated; the first entry is the original.
+	// A forwarded chain is comma-separated; the first entry is the original
+	// client's, the rest are proxies that added themselves.
 	if i := strings.Index(forwarded, ","); i >= 0 {
 		forwarded = forwarded[:i]
 	}
-	return normaliseAPIHost(forwarded)
+	if h := normaliseAPIHost(forwarded); h != "" {
+		return h
+	}
+	return normaliseAPIHost(host)
 }
 
 // normaliseAPIHost strips the port and lower-cases, because a browser sends a

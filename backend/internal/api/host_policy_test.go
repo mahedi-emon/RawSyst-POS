@@ -156,16 +156,39 @@ func TestNoConsoleHostMeansTheAPIBehavesExactlyAsBefore(t *testing.T) {
 	}
 }
 
-func TestTheHostHeaderIsPreferredOverTheForwardedOne(t *testing.T) {
-	// `Host` wins when present. Preferring the forwarded header would let any
-	// caller choose their hostname even where the proxy was being careful.
-	if got := requestHost("app.example.com", "console.example.com"); got != businessHost {
+// The hostname the CLIENT addressed, which is not always the `Host` header.
+//
+// Next's `/api/v1` rewrite replaces `Host` with the address it is proxying to
+// and puts the real hostname in `X-Forwarded-Host`. Measured, not assumed:
+//
+//	host: 127.0.0.1:8097   x-forwarded-host: console.rawsyst.local:3001
+//
+// So a rule that preferred `Host` saw the API's own address for every request
+// that arrived through the web tier and 404'd the console's own platform API.
+// These cases are that bug, written down.
+func TestTheForwardedHostIsPreferredWhenAProxyRewroteHost(t *testing.T) {
+	// Behind Next: `Host` is the upstream, the forwarded header is the truth.
+	if got := requestHost("127.0.0.1:8097", "console.rawsyst.local:3001"); got != "console.rawsyst.local" {
+		t.Errorf("requestHost = %q, want the forwarded hostname — this is the "+
+			"case that broke the console behind the web tier", got)
+	}
+
+	// Behind nginx or Nginx Proxy Manager both headers agree, so preferring
+	// either gives the same answer.
+	if got := requestHost("console.example.com", "console.example.com"); got != consoleHost {
+		t.Errorf("requestHost = %q, want %q", got, consoleHost)
+	}
+
+	// A direct caller sets no forwarded header, so `Host` is all there is.
+	if got := requestHost("app.example.com", ""); got != businessHost {
 		t.Errorf("requestHost = %q, want the Host header", got)
 	}
-	// And it is the fallback, first entry of the chain, when Host is absent.
-	if got := requestHost("", "console.example.com, proxy.internal"); got != consoleHost {
+
+	// A chain names the original client first and the proxies after it.
+	if got := requestHost("127.0.0.1", "console.example.com, proxy.internal"); got != consoleHost {
 		t.Errorf("requestHost = %q, want the first forwarded entry", got)
 	}
+
 	if got := requestHost("", ""); got != "" {
 		t.Errorf("requestHost = %q, want empty", got)
 	}
