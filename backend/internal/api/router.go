@@ -2498,6 +2498,27 @@ func (s *Server) Routes() []Route {
 			s.handleSetFeature,
 			"H5's commercial flexibility: a module granted to one client " +
 				"independent of their tier, with the reason recorded"},
+		{http.MethodGet, "/api/v1/platform/tenants/{tenantID}/users", AccessSuperAdmin, "",
+			s.handleTenantMembers,
+			"who is inside a business: how many of their seats are in use, " +
+				"which of their staff has never signed in, and who an " +
+				"operator is about to reset a password for. Never a password " +
+				"hash and never a role — a tenant's own role definitions stay " +
+				"off the platform plane"},
+		{http.MethodGet, "/api/v1/platform/plans", AccessSuperAdmin, "",
+			s.handlePlanDefinitions,
+			"the price list itself: what each tier sells and the ceilings it " +
+				"carries"},
+		{http.MethodPut, "/api/v1/platform/plans/{tier}/features", AccessSuperAdmin, "",
+			s.handleSetPlanFeature,
+			"puts a module in a tier or takes it out, for everybody on it; " +
+				"until now this was a migration, a build and a deploy for a " +
+				"decision that is a sentence"},
+		{http.MethodPut, "/api/v1/platform/plans/{tier}/limits", AccessSuperAdmin, "",
+			s.handleSetPlanLimits,
+			"the ceilings a tier carries for NEW clients; existing tenants " +
+				"keep their own, because the commonest reason one differs is " +
+				"that somebody raised it on purpose"},
 		{http.MethodGet, "/api/v1/platform/tenants/{tenantID}/standing", AccessSuperAdmin, "",
 			s.handleTenantStanding,
 			"where a business stands and what that stops it doing; expiry is " +

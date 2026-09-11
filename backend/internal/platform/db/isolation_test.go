@@ -354,6 +354,19 @@ func TestPlatformAdminHasNoBusinessDataAccess(t *testing.T) {
 		// rows hold what a person chose to write in a ticket, which is why
 		// this is admissible where a sales invoice would not be.
 		"support_ticket": true, "support_message": true,
+		// The price list: which modules a tier sells, and the ceilings a tier
+		// carries. This is the platform's own product definition and belongs
+		// to nobody's books — it is the same kind of thing as `plan_tier` the
+		// enum, except that a software owner needs to change it without a
+		// migration and a deploy.
+		//
+		// The predicate here is on the WRITE side only. Both tables are
+		// readable by everybody, and have to be: a business is shown what its
+		// plan includes and what its ceilings are, which is the subscription
+		// screen, and `GET /plans` is deliberately public to any signed-in
+		// caller. A price list is not a secret. What a tenant must never do is
+		// edit it, and that is what migration 0139 confines to the platform.
+		"plan_feature": true, "plan_tier_default": true,
 	}
 
 	var offenders []string

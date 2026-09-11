@@ -47,6 +47,7 @@ import { useApi, useApiList } from '@/lib/api/hooks';
 import { useT } from '@/lib/i18n/locale';
 import { expiryTone } from '@/lib/subscription';
 
+import { MembersPanel } from './members';
 import { ModulesPanel } from './modules';
 import { StandingPanel } from './standing';
 import { useUrlState } from '@/lib/url-state';
@@ -723,6 +724,11 @@ function BillingScreen() {
               and read by nothing — a button that suspended nobody would have
               been worse than no button. The enforcement exists now. */}
           <StandingPanel tenantId={tenantId} />
+
+          {/* Who is actually inside the business. An operator answering "how
+              many of your five seats are in use" or "who am I resetting a
+              password for" was asking the client to read it out. */}
+          <MembersPanel tenantId={tenantId} />
 
           {/* Raising one. The screen could mark an invoice paid and could not
               issue one, so every subscription invoice this product has ever

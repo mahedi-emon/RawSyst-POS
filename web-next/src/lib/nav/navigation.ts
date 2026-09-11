@@ -1017,6 +1017,17 @@ export const PLATFORM_NAV: readonly NavSection[] = [
         permissions: [],
         descriptionKey: 'nx.navd.plat.tenants.billing',
       },
+      {
+        // The price list itself, as opposed to one client's copy of it. The
+        // billing screen above changes what ONE business gets; this changes
+        // what a tier includes for everybody on it.
+        id: 'plans',
+        labelKey: 'nx.nav.plat.tenants.plans',
+        href: '/platform/plans',
+        built: true,
+        permissions: [],
+        descriptionKey: 'nx.navd.plat.tenants.plans',
+      },
     ],
   },
   {

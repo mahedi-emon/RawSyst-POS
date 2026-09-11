@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -162,6 +163,74 @@ func (s *Server) handlePlatformSubscription(
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"subscription": out, "invoices": invoices,
 	})
+}
+
+// handleTenantMembers lists the people inside one business.
+func (s *Server) handleTenantMembers(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := tenantParam(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	out, err := s.platform.Members(r.Context(), tenantID, limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+func (s *Server) handlePlanDefinitions(w http.ResponseWriter, r *http.Request) {
+	out, err := s.billing.PlanDefinitions(r.Context())
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+func (s *Server) handleSetPlanFeature(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Feature  string `json:"feature"`
+		Included bool   `json:"included"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	a := actor.From(r.Context())
+	if err := s.billing.SetPlanFeature(r.Context(), a.UserID,
+		chi.URLParam(r, "tier"), req.Feature, req.Included); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.billing.PlanDefinitions(r.Context())
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+func (s *Server) handleSetPlanLimits(w http.ResponseWriter, r *http.Request) {
+	var req billing.Limits
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	a := actor.From(r.Context())
+	if err := s.billing.SetPlanLimits(r.Context(), a.UserID,
+		chi.URLParam(r, "tier"), req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := s.billing.PlanDefinitions(r.Context())
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 // handleMyStanding answers where the CALLER's own business stands.

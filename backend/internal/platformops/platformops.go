@@ -416,6 +416,88 @@ func day(t *time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
+// Member is one person inside a business, as the control plane may see them.
+type Member struct {
+	ID       uuid.UUID `json:"id"`
+	FullName string    `json:"full_name"`
+	Email    string    `json:"email"`
+	Status   string    `json:"status"`
+
+	// LastLogin is empty for somebody who has never signed in, which for a
+	// business that is not using the product is the whole story.
+	LastLogin string `json:"last_login_at,omitempty"`
+	CreatedAt string `json:"created_at"`
+	// MFA says whether this account has a second factor. An operator asked to
+	// reset a password needs to know what else protects the account.
+	MFA bool `json:"mfa_enabled"`
+}
+
+// Members lists the people inside one business.
+//
+// # Why the control plane may see this at all
+//
+// Because the product is sold on it: an operator has to answer "how many of
+// your five seats are in use", "which of your staff has never signed in", and
+// "who am I resetting a password for" without asking the client to read it out.
+// Migration 0006 gives `app_user` the platform predicate for exactly this, and
+// the file note there sets out why — Super Admin creates a tenant's first Owner
+// and performs assisted recovery, and both need to reach this table.
+//
+// # What it deliberately does not return
+//
+// The password hash, and every other column that is not one of the six below.
+// There is nothing to reveal in a hash — it is irreversible, which migration
+// 0006 also says — but a support screen that selected it would put it in a log
+// the first time somebody dumped a response.
+//
+// It returns no roles either. A tenant's own role definitions are NOT readable
+// from the platform plane: `role` and `user_role_assignment` were deliberately
+// left without the platform predicate, and `TestPlatformAdminCannotSeeTenantRoles`
+// keeps it that way. Widening that to decorate a support list would be a poor
+// trade, so the list says who exists and not what they may do.
+func (s *Service) Members(
+	ctx context.Context, tenantID uuid.UUID, limit int,
+) ([]Member, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	out := []Member{}
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `
+			SELECT u.id, u.full_name, u.email, u.status::text,
+			       u.last_login_at, u.created_at, u.mfa_enabled
+			FROM app_user u
+			WHERE u.tenant_id = $1
+			-- The owner first, which for a business created through the
+			-- product is its first account, then the rest newest last. An
+			-- operator opening this is usually looking for the owner.
+			ORDER BY u.created_at, u.id
+			LIMIT $2`, tenantID, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var m Member
+			var lastLogin *time.Time
+			var created time.Time
+			if e := rows.Scan(&m.ID, &m.FullName, &m.Email, &m.Status,
+				&lastLogin, &created, &m.MFA); e != nil {
+				return e
+			}
+			m.CreatedAt = created.UTC().Format(time.RFC3339)
+			if lastLogin != nil {
+				m.LastLogin = lastLogin.UTC().Format(time.RFC3339)
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
 // Action is one thing an operator did, for the platform's own trail.
 type Action struct {
 	At string `json:"at"`
