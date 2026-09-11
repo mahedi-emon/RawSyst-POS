@@ -38,6 +38,20 @@ const SHARED_FILES = new Set([
   '/sitemap.xml',
 ]);
 
+/**
+ * A note on `/api/`, which is passed through here in full.
+ *
+ * That is deliberate and it is not a gap. This rule governs which PAGES a
+ * hostname serves; the API enforces its own half in
+ * `backend/internal/api/host_policy.go`, where `/api/v1/platform/*` answers only
+ * on the console and the business API only on the business hostname.
+ *
+ * Splitting the API here as well would put the same list in two languages for
+ * the two to drift apart, and would achieve nothing: this runs in the web tier,
+ * and anybody calling the API directly never passes through it. The rule has to
+ * live where the routes are, so it does.
+ */
+
 /** Whether a path belongs to the control plane. */
 export function isPlatformPath(path: string): boolean {
   return path === PLATFORM_PREFIX || path.startsWith(PLATFORM_PREFIX + '/');
@@ -70,9 +84,45 @@ export function servesPath(
   if (isShared(path)) return true;
 
   const onConsole = normaliseHost(host) === normaliseHost(configured);
+
+  // The root, on the console, is served rather than 404'd.
+  //
+  // An operator types `console.example.com` into a browser, not
+  // `console.example.com/platform`. Refusing the bare hostname would make the
+  // console look broken to the one person it exists for.
+  //
+  // The page it lands on sends them to `/platform`. That is a LOCAL navigation
+  // and not a jump to the console's own address, which would arrive back here
+  // and go round again — see the note in `app/page.tsx`, which is where the
+  // loop would otherwise be.
+  if (onConsole && path === '/') return true;
   // The console serves the control plane and nothing else; every other origin
   // serves everything else and not the control plane.
   return onConsole === isPlatformPath(path);
+}
+
+/**
+ * Whether two addresses are the same origin.
+ *
+ * Used to answer one question: are we already on the console? Sending somebody
+ * to the console's address from the console is a loop with no exit, and the
+ * page it would loop on is the one an operator always starts from.
+ *
+ * Compares scheme, hostname and port — the whole origin — because a console on
+ * a port in development is the same site as itself and a different one from the
+ * business application on another port.
+ *
+ * An address that will not parse answers `false`, which means "go there". That
+ * is the safe direction: a wrong navigation is visible and recoverable, and a
+ * wrong `true` would strand an operator on the business application with no way
+ * through.
+ */
+export function isSameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
 }
 
 /** A hostname without its port, lower-cased. */

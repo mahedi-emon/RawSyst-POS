@@ -11,7 +11,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { isPlatformPath, normaliseHost, servesPath } from './origin';
+import {
+  isPlatformPath,
+  isSameOrigin,
+  normaliseHost,
+  servesPath,
+} from './origin';
 
 const CONSOLE = 'console.example.com';
 const APP = 'app.example.com';
@@ -36,7 +41,10 @@ describe('the origin rule when a console host is configured', () => {
     // control plane is not a place to run a business from, and a console that
     // quietly served the business app would be one tenant-switching bug away
     // from being one.
-    expect(servesPath(CONSOLE, CONSOLE, '/')).toBe(false);
+    //
+    // `/` is the exception and is asserted separately below: it is the address
+    // an operator actually types, and it renders a page that sends them
+    // straight to `/platform` rather than any business screen.
     expect(servesPath(CONSOLE, CONSOLE, '/dashboard')).toBe(false);
     expect(servesPath(CONSOLE, CONSOLE, '/pos')).toBe(false);
   });
@@ -93,6 +101,55 @@ describe('the origin rule when a console host is configured', () => {
     expect(isPlatformPath('/platform')).toBe(true);
     expect(isPlatformPath('/platform/')).toBe(true);
     expect(isPlatformPath('/platform/tenants')).toBe(true);
+  });
+
+  it('serves the bare console address rather than 404ing it', () => {
+    // An operator types `console.example.com`, not
+    // `console.example.com/platform`. Refusing the bare hostname would make
+    // the console look broken to the one person it exists for.
+    expect(servesPath(CONSOLE, CONSOLE, '/')).toBe(true);
+
+    // The business root is still the business application's, and is still
+    // absent from the console's other paths.
+    expect(servesPath(CONSOLE, APP, '/')).toBe(true);
+    expect(servesPath(CONSOLE, CONSOLE, '/dashboard')).toBe(false);
+  });
+});
+
+describe('knowing whether we are already on the console', () => {
+  // The loop this prevents: the console serves the landing page at its own
+  // root, and the landing page sends a platform operator to the console. From
+  // the console, that is a jump to the page you are already on, which jumps
+  // again, for ever — on the one screen an operator always starts from.
+  it('recognises the console as itself', () => {
+    expect(
+      isSameOrigin('https://console.example.com', 'https://console.example.com'),
+    ).toBe(true);
+    // A trailing slash is the same address.
+    expect(
+      isSameOrigin('https://console.example.com/', 'https://console.example.com'),
+    ).toBe(true);
+  });
+
+  it('tells the two applications apart', () => {
+    expect(
+      isSameOrigin('https://console.example.com', 'https://app.example.com'),
+    ).toBe(false);
+    // Scheme and port count: a development console on a port is a different
+    // site from the business application on another.
+    expect(
+      isSameOrigin('http://console.localhost:3001', 'http://console.localhost:3002'),
+    ).toBe(false);
+    expect(
+      isSameOrigin('https://console.example.com', 'http://console.example.com'),
+    ).toBe(false);
+  });
+
+  it('answers "not here" for an address it cannot read', () => {
+    // Which means "go there". A wrong navigation is visible and recoverable;
+    // a wrong "already here" strands an operator with no way through.
+    expect(isSameOrigin('', 'https://app.example.com')).toBe(false);
+    expect(isSameOrigin('console.example.com', 'https://app.example.com')).toBe(false);
   });
 });
 

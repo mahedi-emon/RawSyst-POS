@@ -112,6 +112,11 @@ type harness struct {
 	// exactly what TestASaleDoesNotHoldTwoConnections is measuring.
 	rules *registry.Service
 
+	// srv is the Server the router was built from, so a test can turn the
+	// hostname split on. The middleware reads the field on every request, so
+	// flipping it needs no rebuild — which is also what makes it safe here.
+	srv *Server
+
 	// billing lets a subscription test drop a tenant's cached standing after
 	// changing it. The standing is held for StandingCacheTTL, so a suspension
 	// written by a test would otherwise not be seen for five seconds — and a
@@ -240,7 +245,8 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(ts.Close)
 
 	return &harness{server: ts, pool: pool, auth: authSvc, tokens: tokens, authz: authz,
-		shift: shiftSvc, rules: rules, hub: hub, billing: billingSvc}
+		shift: shiftSvc, rules: rules, hub: hub, billing: billingSvc,
+		srv: srv}
 }
 
 // seedUserWithRole provisions a tenant and a user holding a seeded role

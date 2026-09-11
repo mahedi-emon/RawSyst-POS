@@ -40,6 +40,9 @@ interface MeResponse {
   permissions: string[];
   store_scope?: string[];
   amount_limit?: string;
+  /** Where the control plane lives. Sent only to a platform operator, and only
+      once the two halves have been given separate hostnames. */
+  console_url?: string;
 }
 
 /** Which of the product's two workspaces this person belongs in. */
@@ -51,6 +54,16 @@ export interface Identity {
   businessId: string | null;
   workspace: Workspace;
   grants: Grants;
+
+  /**
+   * The control plane's own address, when it has one.
+   *
+   * Null on every deployment that has not separated the two halves, and for
+   * everybody who is not a platform operator — the server does not send it,
+   * rather than the client declining to use it. See `handleMe` in the Go API
+   * for why the address is not compiled into the bundle instead.
+   */
+  consoleUrl: string | null;
 }
 
 type Status = 'resolving' | 'signed-in' | 'signed-out';
@@ -80,6 +93,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // The platform operator is the one account that is not inside a
         // business. Everyone else, owner and cashier alike, is.
         workspace: me.is_super_admin ? 'platform' : 'business',
+        consoleUrl: me.console_url ?? null,
         grants: new Grants(
           me.permissions,
           me.is_super_admin,

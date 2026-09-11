@@ -147,14 +147,23 @@ type Server struct {
 	aftersales   *aftersales.Service
 	docs         *docs.Service
 	billing      *billing.Service
-	groups       *group.Service
-	portal       *portal.Service
-	privacy      *privacy.Service
-	compliance   *compliance.Service
-	fx           *fx.Service
-	rules        *registry.Service
-	people       *people.Service
-	audit        *audit.Service
+
+	// consoleHost is the hostname the control plane answers on, empty when the
+	// two halves share one origin. See host_policy.go.
+	consoleHost string
+
+	// consoleURL is the console's full address, for the one place that has to
+	// NAME it: telling a platform operator who signed in on the business
+	// hostname where to go instead. Sent only to an operator; see handleMe.
+	consoleURL string
+	groups     *group.Service
+	portal     *portal.Service
+	privacy    *privacy.Service
+	compliance *compliance.Service
+	fx         *fx.Service
+	rules      *registry.Service
+	people     *people.Service
+	audit      *audit.Service
 
 	// cache is the shared cache and rate-limit store. Optional; see
 	// internal/platform/cache for what a deployment gives up without one.
@@ -278,6 +287,28 @@ func (s *Server) WithPITR(register *backup.WALRegister) *Server {
 }
 
 // WithMaintenance wires the write freeze.
+// WithConsoleHost turns on the hostname split.
+//
+// Empty leaves the API exactly as it was, serving both halves on every
+// hostname, which is how a developer's machine and every deployment that has
+// not opted in must keep working. See host_policy.go for what a configured
+// value changes and, more importantly, for what it does not.
+func (s *Server) WithConsoleHost(host string) *Server {
+	s.consoleHost = normaliseAPIHost(host)
+	return s
+}
+
+// WithConsoleURL gives the API the console's full address, so an operator who
+// signs in on the business hostname can be pointed at it.
+//
+// Separate from the hostname rather than derived: behind a proxy that
+// terminates TLS the scheme is not knowable from here, and guessing "https://"
+// would be wrong in development and right only by luck elsewhere.
+func (s *Server) WithConsoleURL(url string) *Server {
+	s.consoleURL = url
+	return s
+}
+
 func (s *Server) WithMaintenance(m *maintenance.Service) *Server {
 	s.maintenance = m
 	return s
@@ -2818,6 +2849,12 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 		// something worth looking at.
 		handler := s.measured(rt)
 
+		// Which hostname may reach this route at all, applied before anything
+		// else so a platform route on the business hostname is ABSENT rather
+		// than merely refused. Does nothing when no console host is
+		// configured, which is every deployment that has not opted in.
+		hostGate := s.onTheRightHost(rt)
+
 		// H5's subscription gate, where the route belongs to a module a plan
 		// sells. Wrapped INSIDE the access middleware below, so a caller who is
 		// not signed in gets 401 rather than being told what their plan
@@ -2833,21 +2870,21 @@ func (s *Server) Handler(mws ...func(http.Handler) http.Handler) http.Handler {
 			// Not frozen. Signing in, refreshing a token and the health checks
 			// have to keep working during a maintenance window, or the only
 			// way to end one would be a database client.
-			r.Method(rt.Method, rt.Pattern, handler)
+			r.With(hostGate).Method(rt.Method, rt.Pattern, handler)
 
 		case AccessAuthenticated:
-			r.With(s.mw.Authenticate, s.frozen(rt), s.subscribed(rt)).
+			r.With(hostGate, s.mw.Authenticate, s.frozen(rt), s.subscribed(rt)).
 				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessPermission:
-			r.With(s.mw.Authenticate, s.mw.Require(rt.Permission),
+			r.With(hostGate, s.mw.Authenticate, s.mw.Require(rt.Permission),
 				s.frozen(rt), s.subscribed(rt)).
 				Method(rt.Method, rt.Pattern, handler)
 
 		case AccessSuperAdmin:
 			// Not frozen either, and deliberately: somebody is performing the
 			// migration and they are doing it through this product.
-			r.With(s.mw.Authenticate, s.mw.RequireSuperAdmin).
+			r.With(hostGate, s.mw.Authenticate, s.mw.RequireSuperAdmin).
 				Method(rt.Method, rt.Pattern, handler)
 		}
 	}

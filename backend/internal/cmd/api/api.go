@@ -138,6 +138,32 @@ func run() error {
 	}
 	log := logging.New(string(cfg.Env), cfg.ServiceName, build.Version)
 
+	// Said out loud, at startup, once.
+	//
+	// A production deployment with no console hostname serves the platform
+	// control plane on the same address as every shop. That is how this
+	// product has always worked and it is not a fault — but it is a decision,
+	// and a decision nobody made is the one worth naming.
+	//
+	// A warning rather than a refusal to start, deliberately. Every existing
+	// deployment has this unset; failing on it would take working production
+	// systems down on their next restart to enforce a hardening step their
+	// owners have not scheduled yet. The migration path in
+	// docs/DEPLOYMENT-SPLIT-DOMAINS.md is explicit that the variable comes
+	// after the DNS record and the certificate, and a service that refused to
+	// boot before then would make that order impossible to follow.
+	if cfg.Env != config.EnvDevelopment && cfg.ConsoleHost == "" {
+		log.Warn("no console hostname is configured, so the platform control "+
+			"plane answers on the same hostname as the business application; "+
+			"set RAWSYST_CONSOLE_HOST to separate them",
+			slog.String("variable", "RAWSYST_CONSOLE_HOST"),
+			slog.String("guide", "docs/DEPLOYMENT-SPLIT-DOMAINS.md"))
+	}
+	if cfg.ConsoleHost != "" {
+		log.Info("the platform control plane answers on its own hostname",
+			slog.String("console_host", cfg.ConsoleHost))
+	}
+
 	pool, err := db.Open(ctx, cfg.DB)
 	if err != nil {
 		return err
@@ -341,7 +367,10 @@ func run() error {
 		WithPITR(backup.NewWALRegister(pool)).
 		// The write freeze. Read in front of every business route, which is
 		// the only place it can be enforced for all of them at once.
-		WithMaintenance(maintenance.NewService(pool))
+		WithMaintenance(maintenance.NewService(pool)).
+		// The hostname split, off unless configured. See host_policy.go.
+		WithConsoleHost(cfg.ConsoleHost).
+		WithConsoleURL(cfg.ConsoleURL)
 
 	handler := srv.Handler(
 		httpx.RequestID,

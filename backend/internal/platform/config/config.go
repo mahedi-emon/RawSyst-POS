@@ -38,10 +38,41 @@ type Config struct {
 	// of the message instead of a wrong one being asserted, and the operator
 	// handing the account over says it themselves.
 	//
-	// This is the BUSINESS origin, never the control plane's. The console
-	// has its own hostname setting, documented in .env.example; it belongs to
-	// the web tier and is deliberately not read here.
+	// This is the BUSINESS origin, never the control plane's. See ConsoleURL
+	// for the other one.
 	AppURL string
+
+	// ConsoleHost is the hostname the platform control plane answers on.
+	//
+	// Empty means the two halves share one origin, which is how every
+	// deployment worked before the split and how a developer's machine works
+	// now. Setting it turns the separation on: platform routes answer only on
+	// this host, and business routes answer only on every other host.
+	//
+	// A hostname, not a URL: this is compared against the `Host` header, so it
+	// carries no scheme and no path. The port is ignored when comparing,
+	// because a browser sends one and a configuration file usually does not.
+	//
+	// # Read here as well as by the web tier
+	//
+	// Both tiers need it and they enforce different halves. The web tier
+	// decides which PAGES a hostname serves; this decides which API ROUTES it
+	// serves. A split enforced only at the edge is one that a direct call to
+	// the API walks straight past.
+	ConsoleHost string
+
+	// ConsoleURL is the console's full address, for the rare case where
+	// something has to NAME it rather than compare against it.
+	//
+	// Deliberately separate from ConsoleHost rather than derived: the scheme
+	// may be http behind a proxy that terminates TLS, and a port may be in
+	// play in development. Guessing "https://" + host would be wrong in both.
+	//
+	// It is never sent to an unauthenticated caller. The console's address is
+	// not a secret in any strong sense — anybody who can resolve DNS can find
+	// it — but publishing it to every shop in a JavaScript bundle would undo
+	// the modest benefit of not linking to it anywhere.
+	ConsoleURL string
 
 	// Redis, object storage and observability are all OPTIONAL, and every
 	// one of them is a deliberate decision rather than an oversight.
@@ -223,6 +254,13 @@ func Load() (Config, error) {
 		ServiceName: getString("RAWSYST_SERVICE_NAME", "rawsyst-api"),
 		DataRegion:  strings.ToLower(getString("RAWSYST_DATA_REGION", "sa")),
 		AppURL:      strings.TrimRight(strings.TrimSpace(getString("RAWSYST_APP_URL", "")), "/"),
+		// Lower-cased and stripped of any scheme somebody pasted in, because a
+		// hostname compared against a `Host` header has neither. Getting a URL
+		// here instead of a hostname is the most likely way to configure this
+		// wrongly, and silently never matching would look like the split
+		// simply not working.
+		ConsoleHost: hostOnly(getString("RAWSYST_CONSOLE_HOST", "")),
+		ConsoleURL:  strings.TrimRight(strings.TrimSpace(getString("RAWSYST_CONSOLE_URL", "")), "/"),
 		ZATCAEnvironment: strings.ToLower(
 			getString("RAWSYST_ZATCA_ENVIRONMENT", "sandbox")),
 		HTTP: HTTP{
@@ -416,6 +454,26 @@ func Load() (Config, error) {
 			strings.Join(problems, "\n  - "))
 	}
 	return cfg, nil
+}
+
+// hostOnly reduces whatever was configured to a bare, comparable hostname.
+//
+// A `Host` header carries no scheme and no path, so a value that has either
+// would never match anything and the split would look like it was simply not
+// working. Accepting the URL somebody pasted, and reducing it, is better than
+// refusing to start over a form of the right answer.
+//
+// The port is kept if it was given: a development console on :3001 is a real
+// case, and the comparison strips ports on both sides rather than here.
+func hostOnly(raw string) string {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if i := strings.Index(v, "://"); i >= 0 {
+		v = v[i+3:]
+	}
+	if i := strings.IndexAny(v, "/?#"); i >= 0 {
+		v = v[:i]
+	}
+	return v
 }
 
 func getString(key, def string) string {

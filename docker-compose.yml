@@ -242,6 +242,19 @@ services:
       # address out of the message rather than guessing at one; see
       # .env.example.
       RAWSYST_APP_URL: ${RAWSYST_APP_URL:-}
+      # The control plane's own hostname, and its full address.
+      #
+      # The API needs both: the hostname to decide which routes a request may
+      # reach, and the URL for the one place that has to NAME the console —
+      # telling an operator who signed in on the business hostname where to go
+      # instead. Empty leaves the two halves sharing one origin, which is how
+      # every deployment worked before the split.
+      #
+      # The web container is given the hostname too, further down, because the
+      # two tiers enforce different halves of the same rule: the web tier
+      # decides which PAGES a hostname serves, the API which ROUTES it serves.
+      RAWSYST_CONSOLE_HOST: ${RAWSYST_CONSOLE_HOST:-}
+      RAWSYST_CONSOLE_URL: ${RAWSYST_CONSOLE_URL:-}
       RAWSYST_DB_DSN: postgres://${POSTGRES_USER:-rawsyst}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rawsyst}?sslmode=disable
       RAWSYST_JWT_SECRET: ${RAWSYST_JWT_SECRET:?set RAWSYST_JWT_SECRET in .env}
       RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-rawsyst-pos}

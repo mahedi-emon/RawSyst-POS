@@ -121,6 +121,10 @@ var notServedByARoute = map[string]string{
 		"read and write a cache from outside",
 	"reporter": "error reporting; registered once with httpx.OnServerError and " +
 		"called on the way OUT of a failed request rather than by a handler",
+	"consoleHost": "the control plane's hostname, not a service; read by the " +
+		"host gate Handler() wraps around every route, exactly as mw is",
+	"consoleURL": "the control plane's address, not a service; read by " +
+		"handleMe and answered only to a platform operator",
 }
 
 func plural(s []string) string {

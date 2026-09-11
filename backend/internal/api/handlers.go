@@ -257,6 +257,22 @@ type meResponse struct {
 	Permissions  []string    `json:"permissions"`
 	StoreScope   []uuid.UUID `json:"store_scope,omitempty"`
 	AmountLimit  *string     `json:"amount_limit,omitempty"`
+
+	// ConsoleURL is where the control plane lives, sent ONLY to a platform
+	// operator and only when the two halves have been separated.
+	//
+	// # Why it comes from here rather than from the bundle
+	//
+	// An operator who signs in on the business hostname has to be sent
+	// somewhere. Baking the address into the JavaScript as a NEXT_PUBLIC_
+	// variable would ship it to every shop in the world, which publishes the
+	// one thing that is deliberately not linked anywhere.
+	//
+	// Answering it here means it reaches somebody who has already proved they
+	// are a platform operator, and nobody else. It is not a secret in any
+	// strong sense -- anybody who can resolve DNS can find it -- but there is
+	// no reason to hand it out.
+	ConsoleURL string `json:"console_url,omitempty"`
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +294,11 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	// none, which is the ordinary case and means every branch — an empty list
 	// would read as the opposite.
 	resp.StoreScope = g.StoreIDs()
+
+	// Only for an operator, and only once the split is configured.
+	if a.IsSuperAdmin {
+		resp.ConsoleURL = s.consoleURL
+	}
 
 	if limit := g.AmountLimit(); limit != nil {
 		// A decimal string, never a JSON number: the client must not widen a

@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { useSession } from '@/lib/auth/session';
+import { isSameOrigin } from '@/lib/origin';
 import { useT } from '@/lib/i18n/locale';
 import { BUSINESS_NAV, landingFor } from '@/lib/nav/navigation';
 
@@ -27,14 +28,38 @@ export default function Root() {
     }
     if (status === 'signed-in' && identity) {
       if (identity.workspace === 'platform') {
-        // Only reachable when the control plane shares this origin. Where it
-        // has its own hostname, `/platform` is 404 here (see proxy.ts) and
-        // an operator who signed in on the business origin is told to use the
-        // console rather than being bounced into a dead end.
+        // An operator who signed in on the business hostname, where the
+        // control plane no longer lives. Send them to it.
         //
-        // The console's address is deliberately NOT named: this page is served
-        // to every shop, and putting the hostname in it would publish the very
-        // thing that is not linked anywhere.
+        // The address comes from `/auth/me` and is answered only to a platform
+        // operator, so it reaches somebody who has already proved who they
+        // are. Compiling it into the bundle instead would ship the console's
+        // hostname to every shop in the world, which publishes the one thing
+        // that is deliberately not linked anywhere.
+        //
+        // `assign` rather than the router: this is a different ORIGIN, and
+        // Next's client router cannot navigate to one. It also leaves the
+        // business page in history, so nothing loops — coming back lands here
+        // again and goes forward again, which is the intended destination
+        // rather than a cycle.
+        //
+        // Only when we are NOT already there. This same page is what the
+        // console serves at its own root, so assigning the console's address
+        // from the console would load this page again, which would assign it
+        // again — a loop with no exit, on the one screen an operator always
+        // starts from.
+        //
+        // Compared by origin rather than by hostname: the configured value is
+        // a full address and `location.origin` is the same shape, so scheme
+        // and port are included on both sides and a development console on a
+        // port does not read as a different site.
+        if (identity.consoleUrl && !isSameOrigin(identity.consoleUrl, window.location.origin)) {
+          window.location.assign(identity.consoleUrl);
+          return;
+        }
+        // No separate console configured: the two halves share this origin,
+        // which is how every deployment worked before the split and how a
+        // developer's machine works now.
         router.replace('/platform');
         return;
       }
