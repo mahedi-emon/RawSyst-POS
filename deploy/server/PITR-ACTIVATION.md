@@ -13,6 +13,16 @@ complete and tested; the activation is not. Read *Where this stands* first.
 
 ## Where this stands
 
+| | |
+|---|---|
+| Code complete | **Yes** |
+| Tested locally | **Yes** |
+| Production activation | **Pending** — everything below |
+| Production activated | **No** |
+| Production recovery verified | **No** |
+| RTO | **Unknown until tested on the real server** |
+| RPO | **Not confirmed until WAL archiving is activated on production** |
+
 ### Already implemented and tested
 
 | | Proved by |
@@ -38,16 +48,34 @@ Everything in *The plan* below, steps 1 to 9. None of it has been done.
 - Step 11, watching the first 24 hours.
 - Recording the measured RTO into `PITR.md`, which currently says it is unknown.
 
+### Measured locally, and what that is worth
+
+Taken on a development machine with the object store inside the test process.
+**No byte crossed a network, so none of this is an RTO.** It is the shape of the
+cost and the baseline the real measurement is compared against. Full tables in
+`PITR.md`.
+
+- **A base backup is linear in cluster size**, about 21 MB/s here, compressing
+  1.8–2.1x on deliberately incompressible data.
+- **A recovery is not linear in database size.** It is fetch-and-unpack, which
+  scales with the backup, plus replay, which scales with the log written since
+  it. 424 MB recovered in 27 s and 841 MB in 30 s.
+- **`pg_wal` under archive failure** grew 0.94 GiB/hour idle and 52.5 GiB/hour
+  under an artificial hammering. Eight gigabytes of headroom is nine hours
+  idle.
+- **An outage cost no recovery window.** 31 failed attempts, every segment kept,
+  the backlog drained on its own in 37 s, 0 gaps in 58 segments.
+
 ### Not yet measured
 
 These are unknown and are stated as unknown rather than estimated:
 
-- **Base backup duration on the real database.** Both drills used clusters of a
-  few megabytes.
+- **Base backup duration on the real database.** The local figures scale at
+  21 MB/s of cluster; the real one is that rate against real hardware.
 - **Recovery time objective on real data.** Dominated by the download from the
-  object store over the shop's own connection, which no drill exercised.
-- **Archive lag over a real network.** Measured at 200–400 ms to a store on the
-  same machine. To Cloudflare R2 over a domestic line it will be seconds.
+  object store over the shop's own connection, which nothing local exercised.
+- **Archive lag over a real network.** 200–600 ms to a store on the same
+  machine, 3–10 s under load. To Cloudflare R2 over a domestic line, seconds.
 - **WAL generated per trading day**, and therefore the monthly storage and
   request cost of a seven-day window.
 - **Whether `pg_monitor` can be granted.** It can on a self-hosted PostgreSQL.

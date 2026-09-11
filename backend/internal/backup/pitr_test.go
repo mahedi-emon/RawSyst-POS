@@ -296,8 +296,24 @@ func (c *sourceCluster) archiveEverything(t *testing.T) string {
 		t.Fatalf("switching the write-ahead log: %v", err)
 	}
 
+	// The failure count as it stands NOW, not zero.
+	//
+	// A test that deliberately breaks the store leaves failures behind, and
+	// those are the point of it. What this wait cares about is whether
+	// archiving is failing from here on, so it compares against the count at
+	// entry rather than against nothing. Written this way after
+	// TestMeasureDiskUnderArchiveFailure failed on its own success.
+	var failedBefore int64
+	if err := conn.QueryRow(context.Background(),
+		`SELECT failed_count FROM pg_stat_archiver`).Scan(&failedBefore); err != nil {
+		t.Fatalf("reading pg_stat_archiver: %v", err)
+	}
+
 	began := time.Now()
-	deadline := began.Add(60 * time.Second)
+	// Three minutes rather than one. PostgreSQL backs off between archive
+	// retries, so a backlog that is draining after an outage legitimately
+	// takes longer than a segment archived on a healthy server.
+	deadline := began.Add(180 * time.Second)
 	for time.Now().Before(deadline) {
 		var last *string
 		var failed int64
@@ -316,9 +332,13 @@ func (c *sourceCluster) archiveEverything(t *testing.T) string {
 				time.Since(began).Round(time.Millisecond))
 			return *last
 		}
-		if failed > 0 {
-			t.Fatalf("archiving failed %d time(s); PostgreSQL said:\n%s",
-				failed, tailFile(c.log))
+		// A handful of further failures is normal rather than alarming: after
+		// an outage PostgreSQL has a retry already in flight, and it backs off
+		// between attempts. What this is looking for is archiving that is
+		// still completely broken, not the tail of one that has recovered.
+		if failed > failedBefore+5 {
+			t.Fatalf("archiving failed %d more time(s) while waiting; "+
+				"PostgreSQL said:\n%s", failed-failedBefore, tailFile(c.log))
 		}
 		time.Sleep(200 * time.Millisecond)
 	}

@@ -572,76 +572,135 @@ the checks to run afterwards.
 
 ## RPO and RTO
 
-Measured, not estimated. There are two drills and they measure different things.
+### Status, plainly
 
-**The Go drill** (`backend/internal/backup/pitr_test.go`) builds a cluster with
-`initdb`, archives to an in-process object store, and recovers twice. It
-measures the *logic*. Taken on a development machine, Windows, PostgreSQL 18, an
-8 MiB cluster:
-
-| | Measured |
+| | |
 |---|---|
-| Archive lag | 201–404 ms from `pg_switch_wal()` to the object and its sidecar being in the store |
-| Base backup | 1.8 s for 8 MiB → 3.5 MB stored, compressed and sealed |
-| Recovery to a moment | 4 s total (0 s fetch, 2 s replay) |
-| Recovery to the latest point | 3 s total |
+| Code complete | **Yes** |
+| Tested locally | **Yes** — two drills, plus the scale and outage measurements below |
+| Production activation | **Pending.** `PITR-ACTIVATION.md`, none of it done |
+| Production activated | **No** |
+| Production recovery verified | **No** |
+| RTO | **Unknown until tested on the real server** |
+| RPO | **Not confirmed until WAL archiving is activated on production** |
 
-**The container drill** (`deploy/server/pitr-drill.sh`) runs the real images
-against MinIO with the whole committed migration chain applied, so the recovered
-cluster is this product's actual schema. It measures the *deployment*:
+Until activation, this server's recovery point is what the nightly dump gives:
+**up to 24 hours.** Everything below is a local measurement.
 
-| | Measured |
-|---|---|
-| Archive lag | under a second; the readout reported 1 segment and 0–6 s behind throughout |
-| Base backup | under 1 s, 5.6 MB stored, encrypted |
-| Recovery to a moment | 1 s total (0 s fetch, 1 s replay) |
-| Recovery to the latest point | 1 s total |
-| What came back | 191 tables, schema version 136, row-level security still **forced** on 181 of them, 7 sequences at their positions |
+### Local measurements — NOT production figures
 
-**Neither of these durations generalises to a real database.** Both clusters are
-a few megabytes and both object stores are on the same machine. They are
-recorded to show the shape rather than the size, and to be the baseline a real
-measurement is compared against.
+Every number in this section was taken on a development machine: Windows,
+PostgreSQL 18, an object store running **inside the test process**. No byte
+crossed a network. They are recorded to show the shape of the cost and to be the
+baseline a real measurement is compared against. **They are not an RTO and must
+not be quoted as one.**
+
+`backend/internal/backup/pitrscale_test.go`, three sizes:
+
+| Cluster | Base backup | Stored | Rate | Recovery | of which fetch | of which replay |
+|---|---|---|---|---|---|---|
+| 8 MiB | 1.8 s | 3.5 MB | — | 4 s | 0 s | 2 s |
+| 424 MB | 21 s | 199 MiB | 20.5 MB/s | 27 s | 9 s | 16 s |
+| 841 MB | 38 s | 455 MiB | 22.2 MB/s | 30 s | 11 s | 17 s |
+
+Three things are worth reading out of that.
+
+**A base backup is linear in the size of the cluster**, at about 21 MB/s here.
+That rate is the disk and the compression, and it is the one number most likely
+to survive onto a real server, because nothing in it touches the network.
+
+**A recovery is not linear in the size of the database.** It is the sum of two
+different things: fetching and unpacking, which scales with the backup, and
+replaying, which scales with *how much log has been written since the backup* —
+not with how big the database is. Doubling the data moved the recovery from 27
+to 30 seconds because the log to replay was the same either way. Take base
+backups more often to shorten replay; it does nothing for the fetch.
+
+**Compression was 1.8–2.1x**, on deliberately near-incompressible data. Real
+business data does better. Plan storage on this figure and be pleasantly
+surprised rather than the other way round.
+
+The container drill measured the same operations through the real images against
+MinIO, on the full 191-table schema: base backup under a second at 5.6 MB
+stored, both recoveries 1 second, archive lag under a second.
 
 ### The recovery point objective
 
-**The honest number is `archive_timeout` plus the archive lag: about 61
-seconds** with the shipped defaults, on a server whose store is reachable.
+**The honest number is `archive_timeout` plus the archive lag: about 61 seconds**
+with the shipped defaults, on a server whose store is reachable — *once
+archiving is on there,* which it is not.
 
-That is the bound on an idle or lightly-used server, which is the case that
-matters: a busy database fills segments on its own in far less than a minute. It
-is what can be lost if the machine is destroyed at an arbitrary instant, because
-whatever is in the currently open segment has not been shipped.
+Measured archive lag locally: 200–600 ms idle. Under a heavy write load it rose
+to 3–10 seconds, because the archiver is working through a queue. Over a real
+connection to Cloudflare R2 it will be seconds rather than milliseconds, so the
+61 is dominated by `archive_timeout` and the lag is noise against it.
 
 This is **not zero data loss** and this product does not claim it. Zero would
-require synchronous replication to a second machine, which is a different
-architecture with a different bill and a latency cost on every commit at the
-counter. What it is, is roughly **1,400 times better than the 24 hours the
-dumps alone gave**.
+require synchronous replication to a second machine: a different architecture,
+a different bill, and a latency cost on every commit at the counter. What it is,
+is roughly **1,400 times better than the 24 hours** the dumps alone give.
 
 Raising `POSTGRES_ARCHIVE_TIMEOUT` to 300 trades a five-minute window on quiet
 nights for about a fifth of the idle disk writes. Lowering it below 60 buys
-little: the archive lag is already a fraction of a second and the segment write
-is 16 MiB either way.
+little.
 
-### The recovery time objective
+### What is still unknown
 
-**Not yet measured on production-sized data, and that is stated rather than
-estimated.** It is dominated by three things, none of which the drill exercises
-at scale:
+- **Recovery time on production data.** Dominated by the download over the
+  shop's own connection, which no local measurement can stand in for.
+- **WAL generated per trading day**, and therefore the storage and request cost
+  of a seven-day window.
+- **Archive lag over a real network.**
 
-- downloading the base backup from the object store — the shop's connection,
-  not the server;
-- decompressing and unpacking it — the disk;
-- replaying the segments since — roughly linear in how much was written.
+`PITR-ACTIVATION.md` steps 8 and 10 are where these stop being unknown. The
+drill also runs nightly against disposable resources
+(`rawsyst-drill.timer`), so once activated the duration becomes a number that is
+tracked rather than guessed at.
 
-The measurement belongs on the target server, against a real base backup, and it
-is the first item in the pre-production plan in `PREPRODUCTION.md`. Until it is
-taken, the honest statement is: **the mechanism is proved, the duration is not.**
+---
 
-The drill runs nightly against disposable resources (`rawsyst-drill.timer`), so
-the duration on this installation's real data becomes a number that is tracked
-rather than guessed at.
+## When archiving fails: how long is there?
+
+Measured, because the rollback advice in this document turns on it.
+
+`TestMeasureDiskUnderArchiveFailure` takes the store away, writes hard for a
+minute, and watches `pg_wal`:
+
+| | |
+|---|---|
+| Growth under a heavy write load | 896 MiB in 60 s — about **52.5 GiB/hour** |
+| Growth on an idle server | one 16 MiB segment a minute — **0.94 GiB/hour** |
+| Time to exhaust 8 GiB of headroom | **0.2 hours** hammering, **9 hours** idle |
+| Failed attempts recorded | 31, and every segment kept |
+| After the store returned | backlog drained **on its own in 37 s** |
+| Gaps left by the outage | **0** of 58 segments |
+
+The hammering figure is an artificial ceiling — 4.7 million rows in a minute is
+not a shop. The idle floor is the one to plan against, and the truth for a real
+business is between them and much closer to the floor. **Assume the order of
+hours, not minutes, and not days.**
+
+The last two rows are the point. An outage costs disk and time. It does not cost
+a recovery window, because PostgreSQL keeps what it cannot ship and sends it
+when it can. That is the whole reason the archive command is allowed to fail
+loudly.
+
+One honest detail: `pg_wal` measured *larger* just after the backlog drained
+than at the peak of the outage (1.0 GiB against 912 MiB). Shipping a segment does
+not delete it — PostgreSQL recycles it at the next checkpoint. **The disk does
+not come back the instant the store does.** Wait for a checkpoint, or force one.
+
+### Thresholds and what to do at each
+
+| Reading | Where it shows | What it means |
+|---|---|---|
+| `pg_wal` over 2 GiB | amber on the Recovery screen; flagged by `rawsyst-check.sh` | Archiving has probably been failing for a while. Look now. |
+| `pg_wal` over 4 GiB | red | Hours rather than days. Fix the store or turn archiving off. |
+| Last attempt failed, nothing succeeded since | red, with the segment named | The archive stopped at that segment. |
+| Nothing archived for 30 minutes | amber | Ordinary on a closed shop; not during trading. |
+
+The order of response is in *When the object store is down* above, and it starts
+with fixing the store rather than with turning anything off.
 
 ---
 
