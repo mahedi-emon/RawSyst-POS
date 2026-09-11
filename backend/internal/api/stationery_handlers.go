@@ -27,13 +27,18 @@ import (
 // receipt uses, together, because a till syncing two calls can end up holding
 // half of each.
 //
-// # No logo, deliberately
+// # Two callers, and only one of them can print a picture
 //
 // `receipt.ts` is 42 columns of plain text, chosen so it prints on every
 // counter printer rather than only on the ones whose ESC/POS dialect we
-// guessed right. Text cannot hold an image, so the logo is absent from this
-// payload rather than sent and ignored — shipping bytes a client would then
-// wonder why they never saw is worse than not shipping them.
+// guessed right. Text cannot hold an image, so a TILL is sent nothing about a
+// logo rather than sent bytes it would discard — shipping a flag a client
+// would then wonder why it never saw is worse than not shipping it.
+//
+// The browser receipt screen reads the same route and is not a till: it renders
+// HTML and prints through the browser, so it does get the logo flag. The two
+// are told apart by `actor.IsDevice`, which is the same fact this route already
+// rests on to decide whose company it is answering about.
 
 type stationeryResponse struct {
 	// The seller, as the receipt heads itself.
@@ -66,12 +71,22 @@ type stationeryResponse struct {
 	StoreAddress string `json:"store_address"`
 	StorePhone   string `json:"store_phone"`
 
-	// Whether this shop's receipts carry its mark, and where to fetch it. The
-	// image is a separate request on purpose: it is cacheable, it is often
-	// absent, and putting half a megabyte of it in a payload the till caches
-	// for offline use would be a poor trade.
-	ShowLogo  bool      `json:"show_logo"`
-	CompanyID uuid.UUID `json:"company_id"`
+	// Whether this shop's receipts carry its mark, and where to fetch it.
+	//
+	// # Absent for a till, and that is the point
+	//
+	// Pointers, omitted rather than sent as false, because these two are the
+	// only fields on this payload that a till must NOT receive: `receipt.ts`
+	// is 42 columns of plain text and text cannot hold an image, so bytes sent
+	// to a terminal would be discarded and the client would be left wondering
+	// why the logo they uploaded never appeared. The browser receipt screen
+	// prints HTML and can, so it gets them. See `handleTillStationery`.
+	//
+	// The image itself is a separate request either way: it is cacheable, it is
+	// often absent, and putting half a megabyte of it in a payload the till
+	// caches for offline use would be a poor trade.
+	ShowLogo  *bool      `json:"show_logo,omitempty"`
+	CompanyID *uuid.UUID `json:"company_id,omitempty"`
 }
 
 // --- GET /api/v1/pos/stationery -----------------------------------------
@@ -127,8 +142,20 @@ func (s *Server) handleTillStationery(w http.ResponseWriter, r *http.Request) {
 	out.BaseCurrency = seller.BaseCurrency
 	out.StoreAddress = seller.Address
 	out.StorePhone = seller.Phone
-	out.ShowLogo = template.ShowLogo
-	out.CompanyID = companyID
+
+	// The logo, for the callers that can print one.
+	//
+	// A device is the till: plain text, no image, so it is told nothing about a
+	// logo rather than told to fetch one it cannot use. Anybody else on this
+	// route is a person at a browser opening the receipt screen, which renders
+	// HTML and prints through the browser — so it gets the flag and the company
+	// the image hangs off.
+	if !a.IsDevice() {
+		showLogo := template.ShowLogo
+		company := companyID
+		out.ShowLogo = &showLogo
+		out.CompanyID = &company
+	}
 
 	httpx.JSON(w, http.StatusOK, out)
 }

@@ -103,8 +103,14 @@ interface Stationery {
   show_tax_number: boolean;
   store_address: string;
   store_phone: string;
-  show_logo: boolean;
-  company_id: string;
+  // Optional, and only for this screen. `/pos/stationery` serves two callers:
+  // the till, which prints 42 columns of plain text and is deliberately not
+  // sent these, and this screen, which prints HTML through the browser and is.
+  // A browser session is never a device, so they are always present here —
+  // typed optional because the payload genuinely omits them for the other
+  // caller, and pretending otherwise would be a lie the compiler believes.
+  show_logo?: boolean;
+  company_id?: string;
 }
 
 function ReceiptScreen({ invoiceID }: { invoiceID: string }) {

@@ -115,9 +115,21 @@ func TestTheStationeryCarriesWhoIsSelling(t *testing.T) {
 	h := newHarness(t)
 	f := h.seedShop(t, "cashier")
 
+	// A PERSON at a browser, not `f.token`, which is a till's device token.
+	//
+	// This distinction was learned the hard way: the logo fields were first
+	// added to this payload unconditionally, and the till's own test caught it
+	// — a terminal prints 42 columns of plain text and must not be told about
+	// an image it cannot render. The receipt SCREEN is the other caller, prints
+	// HTML, and is always a signed-in person. Asserting the screen's contract
+	// with a device token asserted the wrong one.
+	// An owner rather than a second cashier: `seedShop` has already created
+	// the cashier role in this tenant and role keys are unique per tenant.
+	person := h.seedUserIn(t, f, "owner")
+
 	resp := h.do(t, http.MethodGet,
 		"/api/v1/pos/stationery?company_id="+f.companyID.String()+
-			"&store_id="+f.storeID.String(), f.token, nil)
+			"&store_id="+f.storeID.String(), person, nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reading the stationery: %d — %s",
@@ -153,9 +165,10 @@ func TestAForeignStoreIdPrintsNoAddress(t *testing.T) {
 	mine := h.seedShop(t, "cashier")
 	theirs := h.seedShop(t, "cashier")
 
+	person := h.seedUserIn(t, mine, "owner")
 	resp := h.do(t, http.MethodGet,
 		"/api/v1/pos/stationery?company_id="+mine.companyID.String()+
-			"&store_id="+theirs.storeID.String(), mine.token, nil)
+			"&store_id="+theirs.storeID.String(), person, nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reading the stationery: %d", resp.StatusCode)
