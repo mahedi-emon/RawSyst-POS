@@ -30,7 +30,7 @@
 //
 // It is not the security boundary. `RequireSuperAdmin` in the Go API answers
 // **404** to any caller who is not a platform operator, and that is what
-// actually protects the control plane. This middleware stops the two user
+// actually protects the control plane. This proxy stops the two user
 // interfaces appearing on each other's hostname; it would be worthless on its
 // own and is worth having on top.
 //

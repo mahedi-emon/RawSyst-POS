@@ -28,7 +28,7 @@ export default function Root() {
     if (status === 'signed-in' && identity) {
       if (identity.workspace === 'platform') {
         // Only reachable when the control plane shares this origin. Where it
-        // has its own hostname, `/platform` is 404 here (see middleware.ts) and
+        // has its own hostname, `/platform` is 404 here (see proxy.ts) and
         // an operator who signed in on the business origin is told to use the
         // console rather than being bounced into a dead end.
         //

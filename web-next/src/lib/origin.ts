@@ -1,10 +1,9 @@
 // Which origin may serve which half of this application.
 //
-// The rule itself, separated from the Next middleware that applies it, so it
+// The rule itself, separated from the Next proxy that applies it, so it
 // can be tested as what it is: a pure decision about a hostname and a path.
-// `src/middleware.ts` is a six-line wrapper around `servesPath`, and the file
-// note there explains why the separation exists at all and what it does not
-// protect.
+// `src/proxy.ts` is a six-line wrapper around `servesPath`, and the file note
+// there explains why the separation exists at all and what it does not protect.
 
 /** The control plane's own pages. */
 export const PLATFORM_PREFIX = '/platform';
