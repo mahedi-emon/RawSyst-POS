@@ -135,20 +135,37 @@ describe('a screen that acts is offered to whoever can act', () => {
   it('keeps returns and exchanges apart, because they are two verbs', () => {
     // The same defect on the till: the Returns entry was shown on refund OR
     // exchange, and the screen behind it is guarded on refund alone.
+    //
+    // Exchanging needs both, and this test used to say otherwise. It asserted
+    // that somebody holding only `sales.exchange` was offered Exchanges —
+    // which contradicted the rule asserted ten lines above it, for the same
+    // reason and in the same file. The exchange screen opens by looking a
+    // receipt up and reading its returnable lines, and both of those routes
+    // are `sales.refund`, so that person was being offered a screen whose
+    // first two requests they are refused.
+    //
+    // What the test is FOR is unchanged: the two verbs stay apart. Refunding
+    // does not let somebody exchange, and exchanging alone is not enough to
+    // do it.
     const refunder = new Grants(['sales.refund']);
     const exchanger = new Grants(['sales.exchange']);
+    const both = new Grants(['sales.refund', 'sales.exchange']);
 
-    const refundIds = flattenNavigation(resolveNavigation(BUSINESS_NAV, refunder)).map(
-      (i) => i.id,
-    );
-    const exchangeIds = flattenNavigation(
-      resolveNavigation(BUSINESS_NAV, exchanger),
-    ).map((i) => i.id);
+    const idsFor = (g: Grants) =>
+      flattenNavigation(resolveNavigation(BUSINESS_NAV, g)).map((i) => i.id);
 
-    expect(refundIds).toContain('returns');
-    expect(refundIds).not.toContain('exchanges');
-    expect(exchangeIds).toContain('exchanges');
-    expect(exchangeIds).not.toContain('returns');
+    // Refunding is not exchanging.
+    expect(idsFor(refunder)).toContain('returns');
+    expect(idsFor(refunder)).not.toContain('exchanges');
+
+    // And exchanging on its own reaches neither: not Returns, which is a
+    // different verb, and not Exchanges, which it cannot load.
+    expect(idsFor(exchanger)).not.toContain('returns');
+    expect(idsFor(exchanger)).not.toContain('exchanges');
+
+    // Both, and the screen is offered.
+    expect(idsFor(both)).toContain('exchanges');
+    expect(idsFor(both)).toContain('returns');
   });
 });
 

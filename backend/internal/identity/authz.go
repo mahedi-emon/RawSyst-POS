@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -180,16 +181,32 @@ func NewAuthorizer(pool *db.Pool) *Authorizer {
 	}
 }
 
-// Invalidate drops a user's cached grants. Called whenever a role assignment
-// changes, so a deliberate revocation is immediate rather than merely soon.
+// Invalidate drops a user's cached grants.
+//
+// Nothing in the running product calls this, and the comment here used to say
+// it was called "whenever a role assignment changes, so a deliberate revocation
+// is immediate rather than merely soon". That was not true and had not been for
+// as long as the function existed.
+//
+// What it means in practice is that every revocation — a permission, a role, or
+// an account being disabled — takes effect within `grantsCacheTTL` rather than
+// on the next request. Five seconds is a defensible bound and is the one this
+// product actually offers; "immediate" was a claim nothing delivered.
+//
+// The callers are tests, which narrow an assignment and need the change seen
+// before the TTL elapses. Wiring it into the role-change paths would make the
+// original comment true and is a deliberate change somebody should make on
+// purpose, not a comment anybody should believe in the meantime.
 func (a *Authorizer) Invalidate(userID uuid.UUID) {
 	a.mu.Lock()
 	delete(a.cache, userID)
 	a.mu.Unlock()
 }
 
-// InvalidateAll drops every cached grant. Called when a role's own permission
-// set changes, which affects every user holding it.
+// InvalidateAll drops every cached grant, for a change that affects everybody
+// holding a role rather than one person.
+//
+// Called by tests only, on the same terms as Invalidate above.
 func (a *Authorizer) InvalidateAll() {
 	a.mu.Lock()
 	a.cache = make(map[uuid.UUID]cachedGrants, 64)
@@ -202,18 +219,62 @@ func (a *Authorizer) Resolve(ctx context.Context, act actor.Actor) (*Grants, err
 		return nil, errs.New(errs.CodeUnauthenticated, "You are not signed in.")
 	}
 
-	// The platform plane has no tenant roles. Its authority comes from the
-	// verified IsSuperAdmin claim, and migration 0006 limits what that reaches
-	// to administration tables — business data stays out of reach regardless.
-	if act.IsSuperAdmin {
-		return &Grants{isSuperAdmin: true, permissions: map[string]struct{}{}}, nil
-	}
-
 	a.mu.RLock()
 	entry, hit := a.cache[act.UserID]
 	a.mu.RUnlock()
 	if hit && time.Since(entry.cachedAt) < a.ttl {
 		return entry.grants, nil
+	}
+
+	// The platform plane has no tenant roles. Its authority comes from the
+	// verified IsSuperAdmin claim, and migration 0006 limits what that reaches
+	// to administration tables — business data stays out of reach regardless.
+	//
+	// It still goes through the account check below and through the cache,
+	// which it did not before: it returned here immediately, so a disabled
+	// PLATFORM OPERATOR — the highest-privilege account there is — kept every
+	// power they had until their access token expired.
+	if act.IsSuperAdmin {
+		if err := a.requireAccountIsUsable(ctx, act); err != nil {
+			return nil, err
+		}
+		g := &Grants{isSuperAdmin: true, permissions: map[string]struct{}{}}
+		a.mu.Lock()
+		a.cache[act.UserID] = cachedGrants{grants: g, cachedAt: time.Now()}
+		a.mu.Unlock()
+		return g, nil
+	}
+
+	// Whether the account behind this token still exists and may still be used.
+	//
+	// # Why this is here and not in the token
+	//
+	// It cannot be in the token. An access token is a signed statement about
+	// the past, verified with a key and nothing else -- `TokenService.Verify`
+	// never touches the database, deliberately. So a token issued to somebody
+	// who was in good standing fifteen minutes ago is still cryptographically
+	// perfect after they are disabled.
+	//
+	// Disabling somebody DOES revoke their sessions, so they cannot refresh and
+	// cannot sign in again. But the access token they are already holding kept
+	// working until it expired, and with the default fifteen-minute lifetime
+	// that is a quarter of an hour in which a dismissed member of staff could
+	// keep ringing up sales, moving stock, or reading the books.
+	//
+	// # Why it belongs in exactly this function
+	//
+	// Because this is the one place that already reads the database on every
+	// request, and the file has already argued for what that is worth: the
+	// comment on `grantsCacheTTL` says a revocation "must take effect now",
+	// which is why permissions are resolved per request instead of baked into
+	// the token.
+	//
+	// A revoked PERMISSION took effect in five seconds and a revoked ACCOUNT
+	// took up to fifteen minutes. That was not a decision, it was the account
+	// simply never being looked at. Now both are bounded by the same cache,
+	// and it costs one column on a query that was already being run.
+	if err := a.requireAccountIsUsable(ctx, act); err != nil {
+		return nil, err
 	}
 
 	g := &Grants{
@@ -312,6 +373,53 @@ func (a *Authorizer) Resolve(ctx context.Context, act actor.Actor) (*Grants, err
 	a.mu.Unlock()
 
 	return g, nil
+}
+
+// requireAccountIsUsable refuses a token whose account can no longer sign in.
+//
+// The same rule the sign-in path applies, applied to a session that is already
+// running. `Service.SignIn` permits `active` and `invited` and refuses
+// `suspended` and `disabled`; anything else is not a state a person can hold.
+// Keeping the two in step matters more than the individual values: a state that
+// stops somebody signing in but lets them keep working is the shape of the gap
+// this closes.
+//
+// `invited` is deliberately allowed. Somebody holding a one-time password has
+// to be able to reach the change-password screen, and that screen is an
+// authenticated route like any other. Refusing them here would make a new
+// account impossible to activate.
+//
+// A deleted account refuses too, by finding no row. That is the correct
+// outcome and it fails closed.
+func (a *Authorizer) requireAccountIsUsable(
+	ctx context.Context, act actor.Actor,
+) error {
+	var status string
+	err := a.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT status::text FROM app_user WHERE id = $1`,
+			act.UserID).Scan(&status)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errs.New(errs.CodeUnauthenticated,
+			"Your session is no longer valid. Please sign in again.")
+	}
+	if err != nil {
+		return db.Translate(err, "")
+	}
+
+	switch status {
+	case "active", "invited":
+		return nil
+	}
+
+	// Unauthenticated rather than forbidden, and the difference is not
+	// cosmetic. The browser client answers 401 by trying to refresh; the
+	// refresh finds the session revoked and signs the person out. A 403 would
+	// leave them sitting on a screen full of buttons that all fail.
+	return errs.New(errs.CodeUnauthenticated,
+		"This account has been disabled. Please sign in again, or ask "+
+			"whoever looks after your RawSyst account.")
 }
 
 // All is every permission held, sorted.

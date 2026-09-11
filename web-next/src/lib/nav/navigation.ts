@@ -155,7 +155,18 @@ export const BUSINESS_NAV: readonly NavSection[] = [
         labelKey: 'nx.nav.biz.selling.exchanges',
         href: '/pos/exchanges',
         built: true,
+        // Exchanging is the act. Finding the sale to exchange against is the
+        // read it needs, and both of the screen's reads -- the receipt lookup
+        // and the returnable lines -- are `sales.refund`. Somebody holding
+        // only `sales.exchange` would see the link and collect a 403 on the
+        // very first thing the screen does.
+        //
+        // The same correction three other items already carry, for the same
+        // reason. No seeded role is in that position, so nobody has hit it;
+        // a custom role holding "may exchange" and not "may refund" is an
+        // ordinary thing for an owner to build.
         permissions: ['sales.exchange'],
+        alsoNeeds: ['sales.refund'],
         descriptionKey: 'nx.navd.biz.selling.exchanges',
       },
       {
