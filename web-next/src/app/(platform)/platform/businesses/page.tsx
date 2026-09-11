@@ -39,6 +39,7 @@ import { Badge, PageHeader } from '@/components/ui/panel';
 import { EmptyState } from '@/components/ui/states';
 import type { Column } from '@/components/ui/table';
 import { useT } from '@/lib/i18n/locale';
+import { daysUntil, expiryTone } from '@/lib/subscription';
 import { useUrlState } from '@/lib/url-state';
 
 interface Tenant {
@@ -55,6 +56,22 @@ interface Tenant {
   last_activity?: string;
   /** When it last proved it could restore. Absent is what to act on. */
   backup_verified_at?: string;
+
+  /** The tenant's first account, which for a business created through the
+      product is its owner. See the Go comment for why it is not a join
+      through the Owner role. */
+  owner_name?: string;
+  owner_email?: string;
+
+  subscription_status?: string;
+  subscription_started_on?: string;
+  /** The last day paid for. Absent on a lifetime plan, and on one whose end
+      was never recorded — which the cycle is here to tell apart. */
+  subscription_expires_on?: string;
+  subscription_cycle?: string;
+
+  /** 'complete', or the step the owner is stuck on. */
+  onboarding?: string;
 }
 
 /** A timestamp trimmed to its date. The time of a sale is not the question. */
@@ -85,10 +102,90 @@ function BusinessesScreen() {
       ),
     },
     {
+      key: 'owner',
+      header: t('nx.plat.colOwnerPerson'),
+      // Who to ring. An operator looking at this list is usually about to
+      // contact one of these businesses, and making them open the account to
+      // find a name costs a click every single time.
+      cell: (x) => (
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate">{x.owner_name || '—'}</span>
+          {x.owner_email ? (
+            // Latin and left-to-right: an address is not prose and must not be
+            // reordered by an Arabic page.
+            <span dir="ltr" className="truncate text-caption text-subtle">
+              {x.owner_email}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
       key: 'plan',
       header: t('nx.plat.colPlan'),
       width: 'w-28',
       cell: (x) => <span className="capitalize text-muted">{x.plan_tier ?? '—'}</span>,
+    },
+    {
+      key: 'subscription',
+      header: t('nx.plat.colSubscription'),
+      width: 'w-40',
+      // The commercial state, which was on no platform screen: the route has
+      // answered an expiry date since the table was built and nothing showed
+      // it. An operator could not see which clients were running out.
+      cell: (x) => {
+        const end = x.subscription_expires_on;
+        const status = x.subscription_status;
+
+        if (!status) {
+          // After the backfill this should not happen. If it does, it is the
+          // thing to investigate rather than a blank cell to scroll past.
+          return <Badge tone="critical">{t('nx.plat.noSubscription')}</Badge>;
+        }
+        if (!end) {
+          return x.subscription_cycle === 'lifetime' ? (
+            <span className="text-muted">{t('nx.plat.subLifetime')}</span>
+          ) : (
+            <Badge tone="caution">{t('nx.plat.subNoEnd')}</Badge>
+          );
+        }
+
+        // The same rule the billing screen colours its figure with, so the
+        // list and the screen it opens cannot disagree about whether a client
+        // is running out.
+        const tone = expiryTone({ expiresOn: end, cycle: x.subscription_cycle });
+        if (tone === 'critical') {
+          return <Badge tone="critical">{t('nx.plat.subExpired', { date: end })}</Badge>;
+        }
+        if (tone === 'caution') {
+          return (
+            <Badge tone="caution">
+              {t('nx.plat.subEndsIn', { days: daysUntil(end) })}
+            </Badge>
+          );
+        }
+        return (
+          <time dateTime={end} className="text-muted">
+            {end}
+          </time>
+        );
+      },
+    },
+    {
+      key: 'onboarding',
+      header: t('nx.plat.colOnboarding'),
+      secondary: true,
+      width: 'w-36',
+      // A client who signed up three weeks ago and is still on step two is a
+      // support call that has not happened yet.
+      cell: (x) =>
+        !x.onboarding ? (
+          <span className="text-subtle">—</span>
+        ) : x.onboarding === 'complete' ? (
+          <span className="text-muted">{t('nx.plat.onbComplete')}</span>
+        ) : (
+          <Badge tone="caution">{x.onboarding.replace(/_/g, ' ')}</Badge>
+        ),
     },
     {
       key: 'market',

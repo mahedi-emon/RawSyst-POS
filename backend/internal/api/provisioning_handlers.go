@@ -22,6 +22,18 @@ type createTenantRequest struct {
 	Market     string `json:"market"`
 	OwnerEmail string `json:"owner_email"`
 	OwnerName  string `json:"owner_name"`
+
+	// The commercial terms. All optional: a client is often taken on before
+	// the price is agreed, and the service fills in monthly / 0 / SAR / today
+	// rather than refusing. The dates are validated by
+	// `billing.ResolvePlanDates`, which is also what the billing screen goes
+	// through, so a business signed up here and one edited later cannot end up
+	// with differently-shaped terms.
+	Cycle     string `json:"cycle"`
+	Price     string `json:"price"`
+	Currency  string `json:"currency"`
+	StartedOn string `json:"started_on"`
+	ExpiresOn string `json:"expires_on"`
 }
 
 func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +43,10 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Note what is NOT read from the body: the tenant this owner belongs to.
+	// It is the tenant this request is about to create, and nothing a caller
+	// sends can name a different one -- which is what makes it impossible to
+	// attach a new owner to somebody else's business through this route.
 	out, err := s.provisioning.CreateTenant(r.Context(), provisioning.NewTenant{
 		Name:       req.Name,
 		DataRegion: req.DataRegion,
@@ -38,6 +54,11 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		Market:     req.Market,
 		OwnerEmail: req.OwnerEmail,
 		OwnerName:  req.OwnerName,
+		Cycle:      req.Cycle,
+		Price:      req.Price,
+		Currency:   req.Currency,
+		StartedOn:  req.StartedOn,
+		ExpiresOn:  req.ExpiresOn,
 	})
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -49,6 +70,23 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		"owner_user_id":      out.OwnerUserID,
 		"owner_email":        out.OwnerEmail,
 		"temporary_password": out.TemporaryPassword,
+
+		// What was just committed, so the handover screen can state the terms
+		// rather than the operator opening the billing screen to find out what
+		// they have sold.
+		"plan_tier":  out.PlanTier,
+		"cycle":      out.Cycle,
+		"price":      out.Price,
+		"currency":   out.Currency,
+		"started_on": out.StartedOn,
+		"expires_on": out.ExpiresOn,
+		"login_url":  out.LoginURL,
+
+		// Never "sent". See the MailStatus constants: this says what the
+		// deployment will DO with the message, and in every deployment that
+		// exists today the answer is that nobody receives it.
+		"mail_status": out.MailStatus,
+
 		"detail": "Give the owner their email and this temporary password. They must " +
 			"change it when they first sign in. It is shown once and is not stored " +
 			"anywhere in readable form.",

@@ -27,6 +27,7 @@ func encodedKey(fill byte) string {
 // test that consults the ambient configuration is testing the machine.
 var read = []string{
 	"RAWSYST_ACCESS_TOKEN_TTL",
+	"RAWSYST_APP_URL",
 	"RAWSYST_DATA_ENCRYPTION_KEYS",
 	"RAWSYST_DATA_REGION",
 	"RAWSYST_DB_DSN",

@@ -237,6 +237,11 @@ services:
     environment: &backend-env
       RAWSYST_ENV: ${RAWSYST_ENV:-production}
       RAWSYST_DATA_REGION: ${RAWSYST_DATA_REGION:-sa}
+      # Where a business signs in, for the welcome message a new owner gets to
+      # name. The BUSINESS origin, never the console's. Empty leaves the
+      # address out of the message rather than guessing at one; see
+      # .env.example.
+      RAWSYST_APP_URL: ${RAWSYST_APP_URL:-}
       RAWSYST_DB_DSN: postgres://${POSTGRES_USER:-rawsyst}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rawsyst}?sslmode=disable
       RAWSYST_JWT_SECRET: ${RAWSYST_JWT_SECRET:?set RAWSYST_JWT_SECRET in .env}
       RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-rawsyst-pos}

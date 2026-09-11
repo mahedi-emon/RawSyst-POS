@@ -80,6 +80,40 @@ type Health struct {
 	TicketsOpen    int `json:"tickets_open"`
 	TicketsWaiting int `json:"tickets_waiting_on_support"`
 
+	// The commercial shape of the platform, which is the half of H8 this
+	// dashboard did not have. Everything above counts machinery; these count
+	// the business.
+	//
+	// SuspendedTenants and DeactivatedTenants read `tenant.status`, which is
+	// written and -- as of this phase -- still enforced by nothing. They are
+	// counted here anyway because an operator needs to see what the record
+	// says before anything starts acting on it, and because a count that
+	// stayed at zero would hide the gap rather than show it.
+	SuspendedTenants   int `json:"suspended_tenants"`
+	DeactivatedTenants int `json:"deactivated_tenants"`
+
+	// Owners is the number of businesses that have at least one account, which
+	// is as close to "business owners" as the platform plane can honestly
+	// count: it cannot read the Owner role (see Tenant.OwnerName). A tenant
+	// with no account at all is unreachable and worth noticing.
+	Owners int `json:"business_owners"`
+
+	// ActiveSubscriptions counts the record, not an entitlement. Nothing yet
+	// stops an expired subscription from trading -- that is the next phase --
+	// so "expired" here means "the date has passed", never "has been cut off".
+	ActiveSubscriptions  int `json:"active_subscriptions"`
+	ExpiredSubscriptions int `json:"expired_subscriptions"`
+	TrialSubscriptions   int `json:"trial_subscriptions"`
+	// ExpiringSoon is inside thirty days, which is the window in which an
+	// operator can still do something about it.
+	ExpiringSoon int `json:"subscriptions_expiring_30d"`
+	// NoSubscription should be zero after migration 0137. If it is not, a
+	// business exists with no commercial terms recorded at all.
+	NoSubscription int `json:"tenants_without_subscription"`
+
+	// SignupsThisWeek is new businesses in the last seven days.
+	SignupsThisWeek int `json:"signups_7d"`
+
 	CheckedAt string `json:"checked_at"`
 }
 
@@ -106,6 +140,38 @@ type Tenant struct {
 	// BackupVerified is when this tenant last proved it could restore. Empty
 	// is the answer an operator has to act on.
 	BackupVerified string `json:"backup_verified_at,omitempty"`
+
+	// Who to ring. An operator looking at a list of businesses is usually
+	// about to contact one of them, and a list that makes them open the
+	// account to find a name is a list that costs a click every time.
+	//
+	// This is the tenant's FIRST user, not "the user holding the Owner role" --
+	// because `role` and `user_role_assignment` are deliberately not readable
+	// from the platform plane (migration 0006 says why, and widening that to
+	// prettify a list would be a poor trade). Provisioning creates the owner
+	// before any other account exists, so for a business created through the
+	// product these are the same person. For one whose first account was later
+	// deleted, they are not, and the column is a best effort rather than an
+	// authority.
+	OwnerName  string `json:"owner_name,omitempty"`
+	OwnerEmail string `json:"owner_email,omitempty"`
+
+	// The commercial relationship. Empty across the board means no
+	// subscription row exists at all, which after migration 0137 should be
+	// impossible -- and if it is ever seen again, it is the thing to
+	// investigate rather than something to render as a blank cell.
+	SubStatus  string `json:"subscription_status,omitempty"`
+	SubStarted string `json:"subscription_started_on,omitempty"`
+	// SubExpires is the last day paid for. Empty is a lifetime subscription OR
+	// one whose end was never recorded, and those are not the same thing --
+	// which is why SubCycle is here to tell them apart.
+	SubExpires string `json:"subscription_expires_on,omitempty"`
+	SubCycle   string `json:"subscription_cycle,omitempty"`
+
+	// Onboarding is 'complete', or the step the owner is stuck on. A client
+	// who signed up three weeks ago and is still on step two is a support call
+	// that has not happened yet.
+	Onboarding string `json:"onboarding,omitempty"`
 }
 
 // Overview is H8's dashboard, in one read.
@@ -161,13 +227,48 @@ func (s *Service) Overview(ctx context.Context) (Health, error) {
 			  (SELECT count(*)::int FROM support_ticket
 			   WHERE status NOT IN ('resolved', 'closed')),
 			  (SELECT count(*)::int FROM support_ticket
-			   WHERE status IN ('open', 'waiting_on_support'))`).
+			   WHERE status IN ('open', 'waiting_on_support')),
+
+			  -- The commercial half. tenant.status first: what the record
+			  -- says, which is not yet what the product enforces.
+			  (SELECT count(*)::int FROM tenant WHERE status = 'suspended'),
+			  (SELECT count(*)::int FROM tenant WHERE status = 'deactivated'),
+			  (SELECT count(DISTINCT u.tenant_id)::int FROM app_user u
+			   WHERE u.tenant_id IS NOT NULL),
+
+			  -- Active means the row says active AND the date has not passed.
+			  -- A subscription marked active whose period ended last March is
+			  -- not an active subscription; counting it as one is how the
+			  -- number an operator trusts stops matching the money.
+			  (SELECT count(*)::int FROM subscription
+			   WHERE status = 'active'
+			     AND (current_period_end IS NULL
+			          OR current_period_end >= current_date)),
+			  (SELECT count(*)::int FROM subscription
+			   WHERE current_period_end IS NOT NULL
+			     AND current_period_end < current_date
+			     AND status <> 'cancelled'),
+			  (SELECT count(*)::int FROM subscription WHERE status = 'trialing'),
+			  (SELECT count(*)::int FROM subscription
+			   WHERE current_period_end IS NOT NULL
+			     AND current_period_end >= current_date
+			     AND current_period_end < current_date + 30),
+			  (SELECT count(*)::int FROM tenant t
+			   WHERE NOT EXISTS (
+			     SELECT 1 FROM subscription s WHERE s.tenant_id = t.id)),
+
+			  (SELECT count(*)::int FROM tenant
+			   WHERE created_at > now() - interval '7 days')`).
 			Scan(&h.Tenants, &h.ActiveTenants, &h.Companies, &h.Users,
 				&h.ActiveUsers, &h.Terminals,
 				&h.JobsQueued, &h.JobsRunning, &h.JobsFailed, &h.JobsDead,
 				&h.SubmissionsPending, &h.SubmissionsFailed,
 				&h.TenantsBackedUp, &h.TenantsUnprotected,
-				&h.SyncFailures, &h.TicketsOpen, &h.TicketsWaiting)
+				&h.SyncFailures, &h.TicketsOpen, &h.TicketsWaiting,
+				&h.SuspendedTenants, &h.DeactivatedTenants, &h.Owners,
+				&h.ActiveSubscriptions, &h.ExpiredSubscriptions,
+				&h.TrialSubscriptions, &h.ExpiringSoon, &h.NoSubscription,
+				&h.SignupsThisWeek)
 	})
 
 	// Measured whether or not the query succeeded, because the interesting
@@ -227,8 +328,22 @@ func (s *Service) Tenants(ctx context.Context, f TenantFilter) ([]Tenant, error)
 			       (SELECT max(i.issued_at) FROM sales_invoice i
 			        WHERE i.tenant_id = t.id),
 			       (SELECT max(b.verified_at) FROM backup_record b
-			        WHERE b.tenant_id = t.id)
+			        WHERE b.tenant_id = t.id),
+			       o.full_name, o.email,
+			       s.status, s.started_on, s.current_period_end, s.cycle,
+			       CASE WHEN p.completed_at IS NOT NULL THEN 'complete'
+			            ELSE p.current_step::text END
 			FROM tenant t
+			LEFT JOIN subscription s ON s.tenant_id = t.id
+			LEFT JOIN onboarding_progress p ON p.tenant_id = t.id
+			-- The tenant's first account. See the comment on Tenant.OwnerName
+			-- for why this is not a join through the Owner role.
+			LEFT JOIN LATERAL (
+			  SELECT u.full_name, u.email FROM app_user u
+			  WHERE u.tenant_id = t.id
+			  ORDER BY u.created_at, u.id
+			  LIMIT 1
+			) o ON true
 			WHERE ($1::text IS NULL OR t.name ILIKE '%' || $1 || '%')
 			  AND ($2::text IS NULL OR t.market = $2)
 			  AND ($3::text IS NULL OR t.status::text = $3)
@@ -252,8 +367,13 @@ func (s *Service) Tenants(ctx context.Context, f TenantFilter) ([]Tenant, error)
 			var t Tenant
 			var created time.Time
 			var lastActivity, verified *time.Time
+			var ownerName, ownerEmail, subStatus, subCycle, onboarding *string
+			var subStarted, subExpires *time.Time
 			if e := rows.Scan(&t.ID, &t.Name, &t.Plan, &t.Status, &t.Market, &t.Companies,
-				&t.Users, &created, &lastActivity, &verified); e != nil {
+				&t.Users, &created, &lastActivity, &verified,
+				&ownerName, &ownerEmail,
+				&subStatus, &subStarted, &subExpires, &subCycle,
+				&onboarding); e != nil {
 				return e
 			}
 			t.CreatedAt = created.UTC().Format(time.RFC3339)
@@ -263,7 +383,109 @@ func (s *Service) Tenants(ctx context.Context, f TenantFilter) ([]Tenant, error)
 			if verified != nil {
 				t.BackupVerified = verified.UTC().Format(time.RFC3339)
 			}
+			t.OwnerName = text(ownerName)
+			t.OwnerEmail = text(ownerEmail)
+			t.SubStatus = text(subStatus)
+			t.SubCycle = text(subCycle)
+			t.Onboarding = text(onboarding)
+			// Dates, not timestamps. A subscription runs in whole days and
+			// rendering a midnight on the end of one is an invitation to read
+			// a time zone into a commercial term that has none.
+			t.SubStarted = day(subStarted)
+			t.SubExpires = day(subExpires)
 			out = append(out, t)
+		}
+		return rows.Err()
+	})
+	return out, db.Translate(err, "")
+}
+
+// text is a nullable column as a string, with absent reading as empty.
+func text(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// day is a nullable date column, written as a date and not a timestamp.
+func day(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02")
+}
+
+// Action is one thing an operator did, for the platform's own trail.
+type Action struct {
+	At string `json:"at"`
+	// Actor is the label recorded at the time, which survives the account
+	// being deleted. Empty for something the system did on its own.
+	Actor  string `json:"actor,omitempty"`
+	Action string `json:"action"`
+	// TenantName rather than only the id: an operator reading their own trail
+	// is checking what they did to a named client, and a list of uuids is a
+	// list nobody audits.
+	TenantID   *uuid.UUID `json:"tenant_id,omitempty"`
+	TenantName string     `json:"tenant_name,omitempty"`
+	EntityType string     `json:"entity_type,omitempty"`
+}
+
+// RecentActions is the platform's own audit trail, newest first.
+//
+// # Why this route had to exist
+//
+// Super Admin actions have been audited since provisioning was built --
+// `tenant_provisioned`, `subscription_set`, operator changes, every one of
+// them written inside the transaction of the thing it records. Nothing could
+// read them. The only audit route in the product is `GET /api/v1/audit`, which
+// is tenant-scoped behind `accounting.view`, and a Super Admin is refused every
+// tenant route by design. So the trail was write-only: complete, permanent,
+// and visible to nobody without database access.
+//
+// An audit trail nobody can read is a compliance artefact rather than a
+// control. This is the read side.
+//
+// # What it deliberately does not return
+//
+// The `before` and `after` payloads. They are the detail of a change and they
+// are where a careless entry would put something sensitive; this is a "what has
+// been happening" list, not an investigation tool, and the columns it returns
+// are the four an operator scans. Anything deeper is a question for the row
+// itself, asked by somebody with the access to ask it.
+func (s *Service) RecentActions(ctx context.Context, limit int) ([]Action, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 25
+	}
+
+	out := []Action{}
+	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// Row-level security does the confining, not this WHERE clause: the
+		// audit policy is `tenant_id = current_tenant_id() OR
+		// is_platform_admin()`, and this runs on the platform plane. A tenant
+		// asking the same question through their own route sees only their own
+		// rows, from the same table, without this code knowing the difference.
+		rows, e := tx.Query(ctx, `
+			SELECT a.occurred_at, coalesce(a.actor_label, ''), a.action,
+			       a.tenant_id, coalesce(t.name, ''), a.entity_type
+			FROM audit_log a
+			LEFT JOIN tenant t ON t.id = a.tenant_id
+			ORDER BY a.occurred_at DESC, a.id DESC
+			LIMIT $1`, limit)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var a Action
+			var at time.Time
+			if e := rows.Scan(&at, &a.Actor, &a.Action, &a.TenantID,
+				&a.TenantName, &a.EntityType); e != nil {
+				return e
+			}
+			a.At = at.UTC().Format(time.RFC3339)
+			out = append(out, a)
 		}
 		return rows.Err()
 	})

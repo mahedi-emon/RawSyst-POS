@@ -164,7 +164,20 @@ func run() error {
 		return err
 	}
 
-	provSvc := provisioning.NewService(pool).WithRules(rules)
+	// The welcome message a new business owner gets, and an honest account of
+	// what will become of it. The worker picks its mailer from exactly this
+	// condition -- logged in development, refused anywhere else, never
+	// silently discarded -- so reading the same condition here is what lets
+	// the operator be told the truth on the screen where they take the client
+	// on, rather than finding out from the failed-jobs view a day later.
+	mailState := provisioning.MailQueuedNoProvider
+	if cfg.Env == config.EnvDevelopment {
+		mailState = provisioning.MailQueuedForLogging
+	}
+	provSvc := provisioning.NewService(pool).
+		WithRules(rules).
+		WithMail(jobs.NewQueue(pool), mailState).
+		WithAppURL(cfg.AppURL)
 
 	// Signing never happens here in any environment — the key lives in the
 	// terminal's OS keystore and never reaches this process. What this stack

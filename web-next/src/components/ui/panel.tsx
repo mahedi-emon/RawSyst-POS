@@ -167,7 +167,9 @@ export function Figure({
   /** Set quieter than the figure, so the number reads first. */
   currency?: string;
   caption?: ReactNode;
-  tone?: 'positive' | 'critical';
+  /** `caution` is a figure that needs attention but is not yet a failure:
+      a subscription running out this month, an allowance nearly reached. */
+  tone?: 'positive' | 'critical' | 'caution';
   /** Makes the whole figure a drill-through. A KPI you cannot open is trivia. */
   href?: string;
 }) {
@@ -179,6 +181,7 @@ export function Figure({
           'num mt-1 flex items-baseline gap-1.5 text-display font-semibold tracking-tight',
           tone === 'positive' && 'text-positive-fg',
           tone === 'critical' && 'text-critical-fg',
+          tone === 'caution' && 'text-caution-fg',
         )}
       >
         {currency && (

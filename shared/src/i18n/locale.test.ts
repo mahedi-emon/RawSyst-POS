@@ -141,6 +141,11 @@ describe('the string catalogue', () => {
       // what the server refuses anything else as.
       'nx.biz.logoHint',
       'nx.biz.logoNotAnImage',
+      // Names the environment variable to set, because that is the actual
+      // remedy and an operator reading this sentence is about to go and edit a
+      // deployment file. A transliteration would be an instruction that does
+      // not work.
+      'nx.plat.newNoAppUrl',
     ]);
     // Two things are Latin by construction and are not translation failures:
     // interpolation placeholders like `{time}`, which are key names rather than

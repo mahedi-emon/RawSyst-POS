@@ -45,6 +45,7 @@ import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
 import { useT } from '@/lib/i18n/locale';
+import { expiryTone } from '@/lib/subscription';
 
 import { ModulesPanel } from './modules';
 import { useUrlState } from '@/lib/url-state';
@@ -81,6 +82,9 @@ interface Subscription {
   grace_days: number;
   outstanding: string;
   trial_ends_on?: string;
+  /** The last day paid for. Absent on a lifetime plan, and on one whose end
+      was never recorded — which are not the same thing. */
+  current_period_end?: string;
   limits: Limits;
 }
 
@@ -170,10 +174,41 @@ function BillingScreen() {
   const plans = useApi<{ plans: Record<string, string[]> }>('/plans');
   const tiers = Object.keys(plans.data?.plans ?? {});
 
+  // The whole plan, not just the tier.
+  //
+  // This form used to send `{ tier }` alone, and the route refuses a
+  // subscription with no cycle and no price -- so the Change plan button
+  // returned 400 every single time it was pressed, for as long as it has
+  // existed. Nothing here was ever editable.
+  //
+  // Seeded from the subscription and re-seeded when the operator picks a
+  // different client, so a price typed for one business can never be sent for
+  // another.
   const [tier, setTier] = useState('');
+  const [cycle, setCycle] = useState('');
+  const [price, setPrice] = useState('');
+  const [status, setStatus] = useState('');
+  const [startedOn, setStartedOn] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
   useEffect(() => {
-    if (sub?.tier) setTier(sub.tier);
-  }, [sub?.tier]);
+    if (!sub) return;
+    setTier(sub.tier);
+    setCycle(sub.cycle);
+    setPrice(sub.price);
+    setStatus(sub.status);
+    setStartedOn(sub.started_on ?? '');
+    setExpiresOn(sub.current_period_end ?? '');
+  }, [sub]);
+
+  /** Whether anything in the plan form differs from what is on file. */
+  const planChanged =
+    !!sub &&
+    (tier !== sub.tier ||
+      cycle !== sub.cycle ||
+      price !== sub.price ||
+      status !== sub.status ||
+      startedOn !== (sub.started_on ?? '') ||
+      expiresOn !== (sub.current_period_end ?? ''));
 
   async function saveLimits() {
     setBusy(true);
@@ -218,7 +253,22 @@ function BillingScreen() {
     setFieldErrors(null);
     setNote(null);
     try {
-      await api.put(`/platform/tenants/${tenantId}/subscription`, { tier });
+      // Every field the route needs. The dates are sent as typed and
+      // validated on the server -- a period that ends before it starts, or a
+      // lifetime plan given a renewal date, is refused there rather than here,
+      // because a rule only the browser enforces is one curl skips.
+      await api.put(`/platform/tenants/${tenantId}/subscription`, {
+        tier,
+        cycle,
+        price,
+        currency: sub?.currency,
+        status,
+        grace_days: sub?.grace_days,
+        started_on: startedOn,
+        // A cleared box on a cycled plan means "work it out from the cycle"
+        // rather than "no expiry": only a lifetime subscription has none.
+        expires_on: cycle === 'lifetime' ? '' : expiresOn,
+      });
       setNote(t('nx.plat.biPlanSaved'));
       void refetch();
     } catch (e) {
@@ -459,7 +509,33 @@ function BillingScreen() {
               />
             </div>
 
-            <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-line pt-4">
+            {/* How long the client has, which was on no screen at all: the
+                route has answered `current_period_end` since the table was
+                built and nothing rendered it. An operator could not see when
+                a subscription ran out, let alone change it. */}
+            <div className="mt-4 grid gap-4 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Figure label={t('nx.plat.biStarted')} value={sub.started_on} />
+              <Figure
+                label={t('nx.plat.biExpires')}
+                // A lifetime subscription genuinely has no end; a cycled one
+                // with no end recorded is a gap somebody should close, and the
+                // two must not render as the same empty cell.
+                value={
+                  sub.current_period_end ??
+                  (sub.cycle === 'lifetime'
+                    ? t('nx.plat.biNoExpiry')
+                    : t('nx.plat.biExpiryUnknown'))
+                }
+                tone={expiryTone({ expiresOn: sub.current_period_end, cycle: sub.cycle })}
+              />
+              <Figure label={t('nx.plat.biStatus')} value={sub.status} />
+              <Figure
+                label={t('nx.plat.biGrace')}
+                value={String(sub.grace_days)}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-4 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field name="tier" label={t('nx.plat.biChangeTier')}>
                 <Select value={tier} onChange={(e) => setTier(e.target.value)}>
                   {/* Falls back to the client's own tier while the list is in
@@ -476,21 +552,92 @@ function BillingScreen() {
                 </Select>
               </Field>
 
-              {/* What the tier being chosen actually grants. An operator moving
-                  a client between tiers is deciding what that client may do,
-                  and the answer was on no screen at all. */}
-              {tier ? (
-                <p className="max-w-prose basis-full pb-1 text-caption text-muted">
-                  <span className="text-fg">{t('nx.plat.biTierIncludes')}: </span>
-                  {(plans.data?.plans?.[tier] ?? []).length > 0
-                    ? (plans.data?.plans?.[tier] ?? []).join(', ')
-                    : t('nx.plat.biTierNothing')}
-                </p>
+              <Field name="cycle" label={t('nx.plat.biChangeCycle')}>
+                <Select value={cycle} onChange={(e) => setCycle(e.target.value)}>
+                  <option value="monthly">{t('nx.plat.biCycleMonthly')}</option>
+                  <option value="yearly">{t('nx.plat.biCycleYearly')}</option>
+                  <option value="lifetime">{t('nx.plat.biCycleLifetime')}</option>
+                </Select>
+              </Field>
+
+              <Field name="price" label={t('nx.plat.biChangePrice')}>
+                {/* Latin and left-to-right: an amount is digits, not prose. */}
+                <Input
+                  dir="ltr"
+                  inputMode="decimal"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              </Field>
+
+              <Field
+                name="started_on"
+                label={t('nx.plat.biChangeStarted')}
+                hint={t('nx.plat.biStartedHint')}
+              >
+                <Input
+                  type="date"
+                  value={startedOn}
+                  onChange={(e) => setStartedOn(e.target.value)}
+                />
+              </Field>
+
+              {/* Hidden for a lifetime plan rather than disabled, because a
+                  greyed box still invites the question. The server refuses an
+                  expiry on a lifetime subscription either way. */}
+              {cycle !== 'lifetime' ? (
+                <Field
+                  name="expires_on"
+                  label={t('nx.plat.biChangeExpires')}
+                  hint={t('nx.plat.biExpiresHint')}
+                >
+                  <Input
+                    type="date"
+                    value={expiresOn}
+                    onChange={(e) => setExpiresOn(e.target.value)}
+                  />
+                </Field>
               ) : null}
+
+              <Field
+                name="status"
+                label={t('nx.plat.biChangeStatus')}
+                hint={t('nx.plat.biStatusHint')}
+              >
+                <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="trialing">{t('nx.plat.biStatusTrialing')}</option>
+                  <option value="active">{t('nx.plat.biStatusActive')}</option>
+                  <option value="past_due">{t('nx.plat.biStatusPastDue')}</option>
+                  <option value="suspended">{t('nx.plat.biStatusSuspended')}</option>
+                  <option value="cancelled">{t('nx.plat.biStatusCancelled')}</option>
+                </Select>
+              </Field>
+            </div>
+
+            {/* What the tier being chosen actually grants. An operator moving
+                a client between tiers is deciding what that client may do,
+                and the answer was on no screen at all. */}
+            {tier ? (
+              <p className="mt-4 max-w-prose text-caption text-muted">
+                <span className="text-fg">{t('nx.plat.biTierIncludes')}: </span>
+                {(plans.data?.plans?.[tier] ?? []).length > 0
+                  ? (plans.data?.plans?.[tier] ?? []).join(', ')
+                  : t('nx.plat.biTierNothing')}
+              </p>
+            ) : null}
+
+            {/* Said plainly, because it is the question an operator will ask
+                the moment they change a status to suspended and nothing
+                happens. Enforcement is the next phase's work. */}
+            <p className="mt-2 max-w-prose text-caption text-subtle">
+              {t('nx.plat.biNotEnforcedYet')}
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button
                 busy={busy}
                 busyLabel={t('nx.plat.biSaving')}
-                disabled={tier === sub.tier}
+                disabled={!planChanged}
                 onClick={() => void savePlan()}
               >
                 {t('nx.plat.biSavePlan')}

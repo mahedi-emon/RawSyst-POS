@@ -89,6 +89,51 @@ func TestACodeCannotBeUsedTwice(t *testing.T) {
 	}
 }
 
+// A code that has run out of time is refused.
+//
+// The single-use and guess-limit rules both have tests; the clock did not, and
+// it is the one an implementation can lose silently. Nothing observable changes
+// when an expiry check stops working -- every test still passes, every code
+// still works, and the only difference is that a code intercepted last March is
+// still good today.
+//
+// The expiry is moved in the database rather than by waiting ten minutes,
+// because a test that sleeps for its subject's lifetime is a test somebody
+// eventually deletes.
+func TestACodeDoesNotOutliveItsWindow(t *testing.T) {
+	svc, pool := testService(t)
+	ctx := context.Background()
+	email := uniqueEmail(t)
+	seedUser(t, pool, email)
+	q := &captureQueue{}
+	if err := svc.RequestReset(ctx, email, nil, q); err != nil {
+		t.Fatalf("requesting: %v", err)
+	}
+	code := q.sent[0].Code
+
+	// Backdate the window so the live code is now a stale one. Still unused
+	// and still unguessed: expiry is the only thing being tested.
+	if err := pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// Both timestamps move, and they have to: `prr_window_ordered` on the
+		// table refuses a request that expires before it was made. The
+		// constraint is doing its job -- the window is dragged an hour into
+		// the past, keeping its shape.
+		_, e := tx.Exec(ctx, `
+			UPDATE password_reset_request
+			SET requested_at = now() - interval '1 hour',
+			    expires_at   = now() - interval '50 minutes'
+			WHERE used_at IS NULL`)
+		return e
+	}); err != nil {
+		t.Fatalf("backdating the window: %v", err)
+	}
+
+	if err := svc.CompleteReset(ctx, email, code, "far-too-late-password-99"); err == nil {
+		t.Fatal("a code was accepted after it expired, so an intercepted code " +
+			"never stops being useful")
+	}
+}
+
 // Guessing is bounded. Five wrong answers kill the code, so a six-digit space
 // cannot be walked inside its ten-minute life.
 func TestGuessingBurnsTheCode(t *testing.T) {

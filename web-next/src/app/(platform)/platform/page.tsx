@@ -46,7 +46,30 @@ interface Health {
   sync_failures_24h: number;
   tickets_open: number;
   tickets_waiting_on_support: number;
+
+  /** The commercial half. Counting machinery is not the same as counting the
+      business, and this screen only had the first. */
+  suspended_tenants: number;
+  deactivated_tenants: number;
+  business_owners: number;
+  active_subscriptions: number;
+  expired_subscriptions: number;
+  trial_subscriptions: number;
+  subscriptions_expiring_30d: number;
+  tenants_without_subscription: number;
+  signups_7d: number;
+
   checked_at: string;
+}
+
+/** One entry in the platform's own audit trail. */
+interface Action {
+  at: string;
+  actor?: string;
+  action: string;
+  tenant_id?: string;
+  tenant_name?: string;
+  entity_type?: string;
 }
 
 export default function PlatformHealthPage() {
@@ -58,6 +81,19 @@ export default function PlatformHealthPage() {
     refetchInterval: 30_000,
     staleTime: 0,
   });
+
+  // The platform's own trail, which until now could be read by nothing: the
+  // only audit route is tenant-scoped behind `accounting.view`, and a Super
+  // Admin is refused every tenant route by design. It was written from the day
+  // provisioning existed and visible to nobody without database access.
+  //
+  // Refetched more slowly than the figures. A queue backing up is worth
+  // noticing in thirty seconds; a record of what somebody did is not.
+  const trail = useApi<{ data: Action[] }>(
+    '/platform/audit',
+    { limit: 8 },
+    { refetchInterval: 120_000 },
+  );
 
   return (
     <>
@@ -221,6 +257,112 @@ export default function PlatformHealthPage() {
                 />
                 <Row label={t('nx.plat.terminals')} value={data.terminals} />
               </ul>
+            </Panel>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            <Panel
+              title={t('nx.plat.commercialTitle')}
+              description={t('nx.plat.commercialDesc')}
+            >
+              <ul className="flex flex-col">
+                <Row
+                  label={t('nx.plat.subsActive')}
+                  value={data.active_subscriptions}
+                  href="/platform/businesses?status=active"
+                />
+                <Row
+                  label={t('nx.plat.subsExpired')}
+                  value={data.expired_subscriptions}
+                  // The date has passed. It does NOT mean the business has
+                  // been cut off: nothing enforces expiry yet, and a figure
+                  // that implied otherwise would be read as reassurance.
+                  hint={t('nx.plat.subsExpiredHint')}
+                  bad={data.expired_subscriptions > 0}
+                />
+                <Row
+                  label={t('nx.plat.subsExpiring')}
+                  value={data.subscriptions_expiring_30d}
+                  hint={t('nx.plat.subsExpiringHint')}
+                  bad={data.subscriptions_expiring_30d > 0}
+                />
+                <Row
+                  label={t('nx.plat.subsTrialing')}
+                  value={data.trial_subscriptions}
+                />
+                <Row
+                  label={t('nx.plat.subsNone')}
+                  value={data.tenants_without_subscription}
+                  // Should be zero. A business with no commercial terms at all
+                  // is the thing to investigate, not a blank to scroll past.
+                  hint={t('nx.plat.subsNoneHint')}
+                  bad={data.tenants_without_subscription > 0}
+                />
+              </ul>
+            </Panel>
+
+            <Panel
+              title={t('nx.plat.standingTitle')}
+              description={t('nx.plat.standingDesc')}
+            >
+              <ul className="flex flex-col">
+                <Row
+                  label={t('nx.plat.bizTrading')}
+                  value={data.tenants - data.suspended_tenants - data.deactivated_tenants}
+                />
+                <Row
+                  label={t('nx.plat.bizSuspended')}
+                  value={data.suspended_tenants}
+                  bad={data.suspended_tenants > 0}
+                />
+                <Row
+                  label={t('nx.plat.bizDeactivated')}
+                  value={data.deactivated_tenants}
+                />
+                <Row label={t('nx.plat.bizOwners')} value={data.business_owners} />
+                <Row
+                  label={t('nx.plat.bizNew')}
+                  value={data.signups_7d}
+                  href="/platform/businesses"
+                />
+              </ul>
+              {/* Said once, plainly, where the suspended count is. An operator
+                  who suspends a business and sees this number move will
+                  otherwise assume something happened to that business. */}
+              <p className="rule mt-3 pt-3 text-caption text-subtle">
+                {t('nx.plat.statusNotEnforced')}
+              </p>
+            </Panel>
+
+            <Panel
+              title={t('nx.plat.trailTitle')}
+              description={t('nx.plat.trailDesc')}
+            >
+              {trail.isLoading && !trail.data ? (
+                <Skeleton className="h-40 w-full" />
+              ) : (trail.data?.data ?? []).length === 0 ? (
+                <p className="text-body text-muted">{t('nx.plat.trailEmpty')}</p>
+              ) : (
+                <ul className="flex flex-col">
+                  {(trail.data?.data ?? []).map((a, i) => (
+                    <li
+                      key={`${a.at}-${i}`}
+                      className="border-b border-line py-2.5 last:border-b-0"
+                    >
+                      {/* The verb as the product writes it: snake case, past
+                          tense, every row something that already happened. */}
+                      <p className="text-body text-fg">
+                        {a.action.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-caption text-subtle">
+                        {[a.actor, a.tenant_name].filter(Boolean).join(' · ') ||
+                          t('nx.plat.trailSystem')}
+                      </p>
+                      <p className="text-caption text-subtle">{a.at}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Panel>
           </div>
 

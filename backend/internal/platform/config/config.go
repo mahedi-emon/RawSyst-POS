@@ -26,6 +26,23 @@ type Config struct {
 	DataRegion  string // sa | eu | asia | other — the region THIS stack serves
 	ServiceName string
 
+	// AppURL is where a business signs in, as an outsider would type it.
+	//
+	// The product never needs this to serve a request -- every route is
+	// same-origin and reached by relative path. It is needed the moment
+	// something has to TELL somebody where the product is: the welcome message
+	// a new owner gets names an address, and an address the server has to guess
+	// from a request header is one an attacker can choose.
+	//
+	// Empty is honest rather than broken. The address is then simply left out
+	// of the message instead of a wrong one being asserted, and the operator
+	// handing the account over says it themselves.
+	//
+	// This is the BUSINESS origin, never the control plane's. The console
+	// has its own hostname setting, documented in .env.example; it belongs to
+	// the web tier and is deliberately not read here.
+	AppURL string
+
 	// Redis, object storage and observability are all OPTIONAL, and every
 	// one of them is a deliberate decision rather than an oversight.
 
@@ -205,6 +222,7 @@ func Load() (Config, error) {
 		Env:         env,
 		ServiceName: getString("RAWSYST_SERVICE_NAME", "rawsyst-api"),
 		DataRegion:  strings.ToLower(getString("RAWSYST_DATA_REGION", "sa")),
+		AppURL:      strings.TrimRight(strings.TrimSpace(getString("RAWSYST_APP_URL", "")), "/"),
 		ZATCAEnvironment: strings.ToLower(
 			getString("RAWSYST_ZATCA_ENVIRONMENT", "sandbox")),
 		HTTP: HTTP{

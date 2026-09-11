@@ -87,6 +87,21 @@ type NotifyPayload struct {
 	// ExpiresInMinutes so the mail can say it without doing arithmetic on a
 	// timestamp in a template.
 	ExpiresInMinutes int `json:"expires_in_minutes"`
+
+	// The rest are for a new business owner's welcome message and are empty
+	// for every other kind. Carried here rather than in a payload of their own
+	// because the queue takes one shape per job kind and this struct already
+	// is it -- the portal code kind bends `Email` to hold a phone number for
+	// the same reason.
+	//
+	// There is deliberately no password field and there never should be. The
+	// temporary credential is shown to the operator once, on screen, and
+	// handed over by them; putting it in a queued message would write it to
+	// the jobs table in readable form and then to a mail server's logs.
+	BusinessName string `json:"business_name,omitempty"`
+	LoginURL     string `json:"login_url,omitempty"`
+	PlanTier     string `json:"plan_tier,omitempty"`
+	PlanUntil    string `json:"plan_until,omitempty"`
 }
 
 // NotifyKindPasswordReset is the `notify.send` payload kind for a reset code.

@@ -41,6 +41,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -491,6 +492,25 @@ type NewPlan struct {
 	TrialEndsOn string
 	GraceDays   int
 	Note        string
+
+	// StartedOn is the day the commercial relationship begins. Empty keeps
+	// whatever the subscription already says, and falls back to today for a
+	// subscription being written for the first time.
+	//
+	// It is settable because a client is very often signed up on a date that
+	// is not the date somebody got round to typing them in, and a start date
+	// the operator cannot correct is one they will correct in the database.
+	StartedOn string
+
+	// ExpiresOn is the last day paid for: `current_period_end`. Empty means
+	// "work it out from the cycle", which is what this route did
+	// unconditionally before -- a monthly plan ends a month from the start, a
+	// yearly one a year.
+	//
+	// A lifetime subscription has no expiry, and giving it one is refused
+	// rather than ignored: an operator who typed a date into that box believes
+	// something about the account that would not otherwise be true.
+	ExpiresOn string
 }
 
 // SetPlan writes the subscription and moves the tenant's tier with it.
@@ -534,44 +554,42 @@ func (s *Service) SetPlan(
 		grace = 14
 	}
 
-	var trial *time.Time
-	if in.TrialEndsOn != "" {
-		d, perr := time.Parse("2006-01-02", in.TrialEndsOn)
-		if perr != nil {
-			return Subscription{}, errs.New(errs.CodeInvalidInput,
-				"That trial end date is not a date.")
-		}
-		trial = &d
-	}
-
-	// A lifetime subscription has no renewal date; anything else renews at the
-	// end of the cycle it is on.
-	periodEnd := ""
-	switch in.Cycle {
-	case "monthly":
-		periodEnd = time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")
-	case "yearly":
-		periodEnd = time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
-	}
-
 	err = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// The existing start, so "leave the start alone" can still be the
+		// basis for a period end worked out from the cycle. Absent for a
+		// tenant who has never had a subscription written.
+		var existing *time.Time
+		if e := tx.QueryRow(ctx,
+			`SELECT started_on FROM subscription WHERE tenant_id = $1`,
+			tenantID).Scan(&existing); e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
+
+		dates, e := ResolvePlanDates(in, existing, time.Now().UTC())
+		if e != nil {
+			return e
+		}
+
 		if _, e := tx.Exec(ctx, `
 			INSERT INTO subscription (
-			  tenant_id, tier, cycle, price, currency, status, trial_ends_on,
-			  current_period_end, grace_days, note)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,nullif($8,'')::date,$9,nullif($10,''))
+			  tenant_id, tier, cycle, price, currency, status, started_on,
+			  trial_ends_on, current_period_end, grace_days, note)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::date,nullif($8,'')::date,
+			        nullif($9,'')::date,$10,nullif($11,''))
 			ON CONFLICT (tenant_id) DO UPDATE SET
 			  tier = excluded.tier,
 			  cycle = excluded.cycle,
 			  price = excluded.price,
 			  currency = excluded.currency,
 			  status = excluded.status,
+			  started_on = excluded.started_on,
 			  trial_ends_on = excluded.trial_ends_on,
 			  current_period_end = excluded.current_period_end,
 			  grace_days = excluded.grace_days,
 			  note = excluded.note`,
-			tenantID, in.Tier, in.Cycle, price, currency, status, trial,
-			periodEnd, grace, strings.TrimSpace(in.Note)); e != nil {
+			tenantID, in.Tier, in.Cycle, price, currency, status,
+			dates.StartedOn, dates.TrialEndsOn, dates.ExpiresOn, grace,
+			strings.TrimSpace(in.Note)); e != nil {
 			return db.Translate(e, "That plan could not be saved.")
 		}
 
@@ -589,6 +607,11 @@ func (s *Service) SetPlan(
 			After: map[string]any{
 				"tier": in.Tier, "cycle": in.Cycle,
 				"price": price.StringFixed(2), "currency": currency,
+				"status": status, "started_on": dates.StartedOn,
+				// Named rather than omitted when there is none: "lifetime, so
+				// no expiry" and "nobody set one" read identically in a trail
+				// that simply leaves the key out.
+				"expires_on": expiryLabel(dates.ExpiresOn),
 			},
 		})
 	})
@@ -596,6 +619,107 @@ func (s *Service) SetPlan(
 		return Subscription{}, db.Translate(err, "")
 	}
 	return s.SubscriptionOf(ctx, tenantID)
+}
+
+// PlanDates is when a subscription runs from and to, resolved.
+//
+// StartedOn is always a date. ExpiresOn is empty only for a lifetime plan,
+// which is the one kind that genuinely has no end.
+type PlanDates struct {
+	StartedOn   string
+	ExpiresOn   string
+	TrialEndsOn string
+}
+
+// dateOnly is how every date on a subscription is written and read.
+const dateOnly = "2006-01-02"
+
+// ResolvePlanDates works out the period from what the operator typed.
+//
+// Pure, and separated from the write for that reason: these are the rules an
+// operator most often gets wrong -- a trial ending before it starts, an expiry
+// before the start, a lifetime plan given a renewal date -- and they are worth
+// testing without a database in the way.
+//
+// # Why an empty expiry box still produces a date
+//
+// Before dates were settable this route derived the period end from the clock
+// every time, unconditionally. A subscription with no end at all is one that
+// nothing can ever find as expired, so an empty box still yields a date for any
+// plan that has a cycle. Only "lifetime" has none.
+func ResolvePlanDates(in NewPlan, existingStart *time.Time, now time.Time) (PlanDates, error) {
+	bad := func(msg string) (PlanDates, error) {
+		return PlanDates{}, errs.New(errs.CodeInvalidInput, msg)
+	}
+
+	// The start: what was typed, else what the subscription already said, else
+	// today. A blank box means "leave it alone", never "reset it to today" --
+	// silently restarting a two-year-old client's subscription because
+	// somebody edited their price would be a quiet rewrite of history.
+	start := now
+	switch {
+	case strings.TrimSpace(in.StartedOn) != "":
+		d, err := time.Parse(dateOnly, strings.TrimSpace(in.StartedOn))
+		if err != nil {
+			return bad("That start date is not a date.")
+		}
+		start = d
+	case existingStart != nil:
+		start = *existingStart
+	}
+
+	out := PlanDates{StartedOn: start.Format(dateOnly)}
+
+	if raw := strings.TrimSpace(in.TrialEndsOn); raw != "" {
+		d, err := time.Parse(dateOnly, raw)
+		if err != nil {
+			return bad("That trial end date is not a date.")
+		}
+		if !d.After(start) {
+			return bad("A trial has to end after the subscription starts.")
+		}
+		out.TrialEndsOn = d.Format(dateOnly)
+	}
+
+	typed := strings.TrimSpace(in.ExpiresOn)
+
+	if in.Cycle == "lifetime" {
+		if typed != "" {
+			return bad("A lifetime subscription does not expire. Choose a " +
+				"monthly or yearly cycle to give it an end date.")
+		}
+		return out, nil
+	}
+
+	if typed == "" {
+		// Derived from the START, not from the clock. Backdating a start to
+		// last January and getting an expiry next month would be a period
+		// nobody asked for.
+		if in.Cycle == "yearly" {
+			out.ExpiresOn = start.AddDate(1, 0, 0).Format(dateOnly)
+		} else {
+			out.ExpiresOn = start.AddDate(0, 1, 0).Format(dateOnly)
+		}
+		return out, nil
+	}
+
+	d, err := time.Parse(dateOnly, typed)
+	if err != nil {
+		return bad("That expiry date is not a date.")
+	}
+	if !d.After(start) {
+		return bad("The subscription has to end after it starts.")
+	}
+	out.ExpiresOn = d.Format(dateOnly)
+	return out, nil
+}
+
+// expiryLabel names the absence of an expiry for the audit trail.
+func expiryLabel(expires string) string {
+	if expires == "" {
+		return "never"
+	}
+	return expires
 }
 
 // ---------------------------------------------------------------------------

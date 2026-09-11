@@ -44,6 +44,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
 )
 
@@ -115,6 +116,10 @@ func (h NotifyHandler) Run(ctx context.Context, j Job) error {
 	switch p.Kind {
 	case identity.NotifyKindPasswordReset:
 		subject, body := passwordResetMessage(p)
+		return h.Mailer.Send(ctx, p.Email, subject, body)
+
+	case provisioning.NotifyKindOwnerInvitation:
+		subject, body := ownerInvitationMessage(p)
 		return h.Mailer.Send(ctx, p.Email, subject, body)
 
 	case portal.NotifyKindPortalCode:
@@ -203,6 +208,55 @@ func passwordResetMessage(p identity.NotifyPayload) (subject, body string) {
 			"password has not changed. If it keeps happening, tell whoever "+
 			"looks after your RawSyst account.\n",
 		p.FullName, p.Code, p.ExpiresInMinutes)
+	return subject, body
+}
+
+// ownerInvitationMessage is what a new business owner is told.
+//
+// # What is deliberately not in it
+//
+// The password. It is generated once, shown to the operator on one screen, and
+// never stored in readable form -- so the operator hands it over by whatever
+// channel they are already using to talk to their new client, and it never
+// reaches the jobs table, this function, or a mail server's logs. A welcome
+// mail carrying a working credential is a credential sitting in an inbox for
+// as long as the inbox exists.
+//
+// So this message is the half that is safe to write down: where to sign in,
+// which address is the username, what they bought, and what to do first. It is
+// useless to anybody who intercepts it, which is the point.
+//
+// Not translated, for the reason `passwordResetMessage` gives: the worker has
+// no locale for a person it is mailing, and storing one on `app_user` is the
+// fix. Same known gap, same shape.
+func ownerInvitationMessage(p identity.NotifyPayload) (subject, body string) {
+	subject = "Your RawSyst account for " + p.BusinessName
+
+	where := "Ask whoever set your account up for the address to sign in at."
+	if p.LoginURL != "" {
+		where = "Sign in at:\n\n    " + p.LoginURL
+	}
+
+	until := ""
+	if p.PlanUntil != "" && p.PlanUntil != "never" {
+		until = fmt.Sprintf(" Your subscription runs until %s.", p.PlanUntil)
+	}
+
+	body = fmt.Sprintf(
+		"Hello %s,\n\n"+
+			"An account has been set up for %s on the %s plan.%s\n\n"+
+			"%s\n\n"+
+			"Your username is this email address: %s\n\n"+
+			"Your password was given to you separately by whoever set the "+
+			"account up -- it is deliberately not in this message. You will "+
+			"be asked to choose your own password the first time you sign "+
+			"in, and you cannot use the product until you do.\n\n"+
+			"After that you will be taken through setting up your business: "+
+			"your company details, your first store, and your tax "+
+			"registration. You can stop partway and come back to it.\n\n"+
+			"If you were not expecting this, tell whoever sent it to you "+
+			"before signing in.\n",
+		p.FullName, p.BusinessName, p.PlanTier, until, where, p.Email)
 	return subject, body
 }
 

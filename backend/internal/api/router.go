@@ -2736,6 +2736,12 @@ func (s *Server) Routes() []Route {
 			s.handleListTenants,
 			"active means somebody traded in the last thirty days; counting a " +
 				"signup as active is how a platform tells itself a story"},
+		{http.MethodGet, "/api/v1/platform/audit", AccessSuperAdmin, "",
+			s.handlePlatformAudit,
+			"the platform's own trail, which was written from the day " +
+				"provisioning existed and could be read by nothing: the only " +
+				"audit route is tenant-scoped behind accounting.view, and a " +
+				"Super Admin is refused every tenant route by design"},
 		{http.MethodGet, "/api/v1/platform/jobs/failed", AccessSuperAdmin, "",
 			s.handleFailedJobs, ""},
 		{http.MethodPost, "/api/v1/platform/jobs/{jobID}/retry", AccessSuperAdmin, "",

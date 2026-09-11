@@ -98,6 +98,13 @@ type setPlanRequest struct {
 	TrialEndsOn string `json:"trial_ends_on"`
 	GraceDays   int    `json:"grace_days"`
 	Note        string `json:"note"`
+
+	// The subscription's validity, both optional. An absent start keeps the
+	// one the subscription already has; an absent expiry is worked out from
+	// the cycle. See `billing.ResolvePlanDates` for the rules and why they are not
+	// enforced in the browser alone.
+	StartedOn string `json:"started_on"`
+	ExpiresOn string `json:"expires_on"`
 }
 
 type setFeatureRequest struct {
@@ -174,7 +181,8 @@ func (s *Server) handleSetPlan(w http.ResponseWriter, r *http.Request) {
 			Tier: req.Tier, Cycle: req.Cycle, Price: req.Price,
 			Currency: req.Currency, Status: req.Status,
 			TrialEndsOn: req.TrialEndsOn, GraceDays: req.GraceDays,
-			Note: req.Note,
+			Note:      req.Note,
+			StartedOn: req.StartedOn, ExpiresOn: req.ExpiresOn,
 		})
 	if err != nil {
 		httpx.Error(w, r, err)

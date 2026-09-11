@@ -13,10 +13,13 @@ package provisioning
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
@@ -32,9 +35,44 @@ type Service struct {
 	// rules is the regulatory registry, consulted before a tenant is created in
 	// a market. Optional; see WithRules.
 	rules *registry.Service
+
+	// mail queues the new owner's welcome message. Optional, on the same terms
+	// as rules: a caller that has not wired it creates the business anyway and
+	// says so in the result, rather than failing a provisioning run over a
+	// message.
+	mail identity.Enqueuer
+
+	// appURL is where a business signs in, for the welcome message to name.
+	// Empty leaves the address out rather than guessing at one.
+	appURL string
+
+	// mailState is what this deployment will actually DO with a queued
+	// message, which is not the same as whether it was queued. See MailStatus.
+	mailState string
 }
 
 func NewService(pool *db.Pool) *Service { return &Service{pool: pool} }
+
+// WithMail wires the welcome message and says what will become of it.
+//
+// `state` is one of the MailStatus constants and describes the WORKER's
+// configuration, not this process's: a message queued into a deployment whose
+// mailer only logs has not been sent to anybody, and the operator handing over
+// the account is the one who needs to know that. The alternative -- reporting
+// "queued" and leaving it there -- is how an owner is left waiting for a mail
+// that was never going to arrive.
+func (s *Service) WithMail(mail identity.Enqueuer, state string) *Service {
+	s.mail = mail
+	s.mailState = state
+	return s
+}
+
+// WithAppURL tells provisioning where the business application answers, so the
+// welcome message can name it. Empty leaves it unmentioned.
+func (s *Service) WithAppURL(url string) *Service {
+	s.appURL = strings.TrimRight(strings.TrimSpace(url), "/")
+	return s
+}
 
 // WithRules gives provisioning the regulatory registry, so creating a tenant can
 // refuse a market whose legal values are still placeholders.
@@ -118,6 +156,61 @@ func plural(n int, one, many string) string {
 	return many
 }
 
+// NotifyKindOwnerInvitation is the `notify.send` payload kind for the message
+// a new business owner gets.
+const NotifyKindOwnerInvitation = "owner_invitation"
+
+// mailStatus is what this deployment will do with the message it just queued.
+func (s *Service) mailStatus() string {
+	if s.mail == nil {
+		return MailNotConfigured
+	}
+	if s.mailState == "" {
+		// Wired without saying what happens to it. Reported as the weakest
+		// claim available rather than the most flattering one.
+		return MailQueuedNoProvider
+	}
+	return s.mailState
+}
+
+// What a deployment does with a queued message. Reported to the operator with
+// the new account, because "we queued it" is not an answer to "did they get
+// it".
+//
+// These are deliberately four different words for four different situations,
+// and none of them is "sent". Nothing in this product can honestly say sent
+// until a provider is wired and has acknowledged the message; see the file
+// comment on jobs/notify.go for why that decision has not been made yet.
+const (
+	// MailQueuedForLogging: the worker will write the message to its log and
+	// mark the job done. Development. Nobody receives anything.
+	MailQueuedForLogging = "queued_for_logging"
+
+	// MailQueuedNoProvider: the worker will REFUSE the job, which retries,
+	// escalates, and appears in the failed-jobs view. That is the honest
+	// outcome for a deployment with no mail provider, and it is visible rather
+	// than silent.
+	MailQueuedNoProvider = "queued_no_provider"
+
+	// MailQueued: queued into a deployment that has a provider wired. No such
+	// deployment exists yet; the constant exists so that wiring one is a
+	// one-line change here rather than a rewrite of this vocabulary.
+	MailQueued = "queued"
+
+	// MailNotConfigured: nothing was queued, because this process has no queue
+	// wired at all. The business was still created.
+	MailNotConfigured = "not_configured"
+)
+
+// expiryLabel names the absence of an expiry, so a lifetime subscription and
+// an unrecorded one do not read identically in the audit trail.
+func expiryLabel(expires string) string {
+	if expires == "" {
+		return "never"
+	}
+	return expires
+}
+
 // NewTenant is a provisioning request.
 type NewTenant struct {
 	// Name is the trading name shown to the Owner. The legal entity is captured
@@ -149,6 +242,21 @@ type NewTenant struct {
 
 	OwnerEmail string
 	OwnerName  string
+
+	// The commercial terms, all optional and all with a defensible default.
+	//
+	// A tenant used to be created with no `subscription` row at all, and the
+	// read path coalesced that absence into a report of an ACTIVE subscription
+	// on the tenant's tier -- so the platform stated a commercial relationship
+	// that existed nowhere, and nothing could ever find it expired because it
+	// had no end date to compare against. The row is written here now, in the
+	// same transaction as the tenant, so there is no window in which a business
+	// exists without commercial terms.
+	Cycle     string
+	Price     string
+	Currency  string
+	StartedOn string
+	ExpiresOn string
 }
 
 // Provisioned is the result. The temporary password is returned once and never
@@ -158,6 +266,27 @@ type Provisioned struct {
 	OwnerUserID       uuid.UUID `json:"owner_user_id"`
 	OwnerEmail        string    `json:"owner_email"`
 	TemporaryPassword string    `json:"temporary_password"`
+
+	// What the operator has just committed the client to, echoed back so the
+	// handover screen can state it rather than the operator having to open the
+	// billing screen to find out what they just sold.
+	PlanTier  string `json:"plan_tier"`
+	Cycle     string `json:"cycle"`
+	Price     string `json:"price"`
+	Currency  string `json:"currency"`
+	StartedOn string `json:"started_on"`
+	// ExpiresOn is absent for a lifetime subscription, which is the only kind
+	// that genuinely never ends.
+	ExpiresOn string `json:"expires_on,omitempty"`
+
+	// LoginURL is where to send the owner. Empty when the deployment has not
+	// been told its own address, in which case the screen says so rather than
+	// showing a link that goes nowhere.
+	LoginURL string `json:"login_url,omitempty"`
+
+	// MailStatus is one of the constants above: what will actually become of
+	// the welcome message, never a claim that it was delivered.
+	MailStatus string `json:"mail_status"`
 }
 
 // CreateTenant provisions a tenant, its limits, its Owner role and the Owner's
@@ -192,9 +321,64 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 		return Provisioned{}, err
 	}
 
-	out := Provisioned{OwnerEmail: req.OwnerEmail, TemporaryPassword: tempPassword}
+	// The same rules the platform billing screen goes through, so a client
+	// signed up here and a client whose plan is edited later cannot end up
+	// with differently-shaped commercial terms.
+	dates, err := billing.ResolvePlanDates(billing.NewPlan{
+		Cycle:     req.Cycle,
+		StartedOn: req.StartedOn,
+		ExpiresOn: req.ExpiresOn,
+	}, nil, time.Now().UTC())
+	if err != nil {
+		return Provisioned{}, err
+	}
+
+	out := Provisioned{
+		OwnerEmail: req.OwnerEmail, TemporaryPassword: tempPassword,
+		PlanTier: req.PlanTier, Cycle: req.Cycle,
+		Price: req.Price, Currency: req.Currency,
+		StartedOn: dates.StartedOn, ExpiresOn: dates.ExpiresOn,
+		MailStatus: s.mailStatus(),
+	}
+	if s.appURL != "" {
+		out.LoginURL = s.appURL + "/login"
+	}
 
 	err = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// The double-submit guard, and it has to be here rather than in the
+		// browser.
+		//
+		// A disabled button stops the second press; it does not stop a
+		// reloaded form, a retried request, a flaky connection, or anybody
+		// with curl. Two identical businesses is the expensive mistake to
+		// make, because unpicking one means deleting a tenant that a real
+		// person may already have signed into.
+		//
+		// The pair, not the name alone. Two unrelated shops called "Al Noor
+		// Bakery" is ordinary and must stay possible. The SAME name owned by
+		// the SAME address is a repeat of one request.
+		//
+		// And note what this is not: a rule that one person owns one business.
+		// The same owner across differently-named businesses is supported all
+		// the way through -- sign-in asks which one -- and nothing here
+		// narrows that.
+		var clash bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+			  SELECT 1 FROM tenant t
+			  JOIN app_user u ON u.tenant_id = t.id
+			  WHERE lower(btrim(t.name)) = lower(btrim($1))
+			    AND u.email = $2)`,
+			req.Name, req.OwnerEmail).Scan(&clash); err != nil {
+			return err
+		}
+		if clash {
+			return errs.New(errs.CodeConflict,
+				"A business with that name already exists for that owner. If "+
+					"this is a second business for the same person, give it a "+
+					"name that tells them apart.")
+		}
+
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO tenant (name, data_region, plan_tier, market)
 			VALUES ($1, $2::data_region, $3::plan_tier, $4)
@@ -230,6 +414,38 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 			INSERT INTO onboarding_progress (tenant_id) VALUES ($1)`,
 			out.TenantID); err != nil {
 			return err
+		}
+
+		// The commercial terms, in the same transaction as the business they
+		// describe. See the comment on NewTenant's plan fields for what used
+		// to happen instead.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO subscription
+			  (tenant_id, tier, cycle, price, currency, status, started_on,
+			   current_period_end)
+			VALUES ($1, $2::plan_tier, $3, $4::numeric, $5, 'active',
+			        $6::date, nullif($7,'')::date)`,
+			out.TenantID, req.PlanTier, out.Cycle, out.Price, out.Currency,
+			dates.StartedOn, dates.ExpiresOn); err != nil {
+			return err
+		}
+
+		// Inside the transaction, so a business that exists and a message that
+		// will be sent commit together. A message queued for a tenant whose
+		// creation then rolled back would tell somebody they have an account
+		// they do not have.
+		if s.mail != nil {
+			if err := s.mail.QueueNotification(ctx, tx, identity.NotifyPayload{
+				Kind:         NotifyKindOwnerInvitation,
+				Email:        req.OwnerEmail,
+				FullName:     req.OwnerName,
+				BusinessName: req.Name,
+				LoginURL:     out.LoginURL,
+				PlanTier:     req.PlanTier,
+				PlanUntil:    expiryLabel(dates.ExpiresOn),
+			}); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -286,6 +502,17 @@ func (s *Service) CreateTenant(ctx context.Context, req NewTenant) (Provisioned,
 			After: map[string]any{
 				"plan_tier": req.PlanTier, "data_region": req.DataRegion,
 				"market": req.Market,
+				// The commercial terms belong in the same entry as the
+				// business: "who took this client on, on what plan, until
+				// when" is one question and reading it from two rows that can
+				// be minutes apart is how it gets answered wrongly.
+				"cycle": out.Cycle, "price": out.Price,
+				"currency": out.Currency, "started_on": out.StartedOn,
+				"expires_on": expiryLabel(out.ExpiresOn),
+				// Never the password, the hash, or anything derived from
+				// either. The owner's address is enough to say who was given
+				// an account.
+				"owner_email": req.OwnerEmail,
 			},
 		})
 	})
@@ -349,6 +576,40 @@ func (r *NewTenant) validate() error {
 			"Choose starter, professional, business or enterprise.")
 		bad = true
 	}
+
+	switch r.Cycle {
+	case "monthly", "yearly", "lifetime":
+	case "":
+		r.Cycle = "monthly"
+	default:
+		v.WithField("cycle",
+			"A subscription is billed monthly, yearly, or once.")
+		bad = true
+	}
+
+	// Zero rather than refused. A client is very often taken on before the
+	// price is agreed -- a pilot, a migration, a reseller's account -- and a
+	// form that insisted on a number would be answered with a made-up one.
+	r.Price = strings.TrimSpace(r.Price)
+	if r.Price == "" {
+		r.Price = "0"
+	} else if p, err := decimal.NewFromString(r.Price); err != nil || p.IsNegative() {
+		v.WithField("price", "That price is not an amount.")
+		bad = true
+	}
+
+	r.Currency = strings.ToUpper(strings.TrimSpace(r.Currency))
+	switch {
+	case r.Currency == "":
+		r.Currency = "SAR"
+	case len(r.Currency) != 3:
+		v.WithField("currency", "Name the currency the client is billed in.")
+		bad = true
+	}
+
+	// The dates themselves are checked by `billing.ResolvePlanDates`, which is
+	// the one place those rules live. Doing it here as well would be two
+	// answers to the same question, free to drift apart.
 
 	if bad {
 		return v

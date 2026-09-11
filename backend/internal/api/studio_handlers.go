@@ -491,6 +491,20 @@ func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"data": out, "page": page})
 }
 
+// handlePlatformAudit is the read side of the platform's own audit trail.
+//
+// See `platformops.RecentActions` for why a write-only trail was the state of
+// things until now.
+func (s *Server) handlePlatformAudit(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	out, err := s.platform.RecentActions(r.Context(), limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
 func (s *Server) handleFailedJobs(w http.ResponseWriter, r *http.Request) {
 	out, err := s.platform.FailedJobs(r.Context())
 	if err != nil {

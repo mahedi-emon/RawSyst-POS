@@ -314,3 +314,136 @@ dashboard landing view**, and **no activate/suspend/disable control** — the
 latter because the underlying enforcement does not work yet, and a button that
 appears to suspend a business while the business keeps trading would be worse
 than no button. Both belong to Phase 3 and Phase 5.
+
+---
+
+## 9. Phase 3 — the control centre, and the subscription that was not there
+
+Phase 3 asked for a Super Admin dashboard and a complete business onboarding
+workflow. Most of both already existed. What did not exist was the thing
+underneath them, and finding it changed what this phase was about.
+
+### What was already built
+
+The inspection found six of the eight objectives substantially present: the
+landing page with live platform figures, the business list with server-side
+search, filtering and keyset paging, the create-business form, a transactional
+`CreateTenant`, one-time temporary passwords with forced change, a hashed
+one-time expiring reset-token table with replay detection and a guess limit, an
+honest three-way mailer seam, and audit writes inside the transaction of every
+action they record.
+
+Authorization needed no change at all. `RequireSuperAdmin` answering 404,
+`Require` refusing a super admin on tenant routes, the mutual-exclusion token
+invariant, forced row-level security — all intact, all still passing, and no Go
+file in `identity` was touched.
+
+### The defect this phase actually fixed
+
+A business was created with **no `subscription` row at all**. The read path
+then left-joined the absence and coalesced it:
+
+```sql
+coalesce(s.tier, t.plan_tier), coalesce(s.status, 'active'), ...
+```
+
+So `GET /platform/tenants/{id}/subscription` answered with a complete,
+plausible, **active** subscription for a client who had none. Every business
+ever created through the product was in that state.
+
+The wrong counting is the smaller half. The serious half is that
+`current_period_end` was NULL and coalesced to nothing, so **there was no date
+for anything to compare against**. A subscription with no end cannot expire.
+Phase 5's enforcement would have swept the table for subscriptions past their
+period end, found none — for every client, for ever — passed every test written
+against it, and enforced nothing.
+
+Migration 0137 backfills the missing rows. It writes exactly what the coalesce
+was already asserting and not one thing more, except `started_on`, which comes
+from the tenant's own `created_at` rather than claiming every existing client
+signed up today. `current_period_end` is left NULL, because the platform never
+recorded it and inventing a date would expire somebody.
+
+### The migration that ran and did nothing
+
+Migration 0137 reported success and inserted zero rows.
+
+Migrations run on an ordinary pool connection. `Pool.Migrate` sets no GUC,
+because the schema changes it usually carries do not need one. Row-level
+security on `tenant` is FORCED and its policy is `id = current_tenant_id() OR
+is_platform_admin()`. With neither set, both halves are false for every row, so
+`SELECT ... FROM tenant` read an empty table. **Inserting nothing is not an
+error**, so nothing failed. `schema_migration` recorded version 137 and the
+table was untouched.
+
+It was caught by reading `tenants_without_subscription` on the dashboard
+immediately afterwards and seeing a number that should have been zero. That
+figure was added in the same phase for an unrelated reason and is the only
+thing that would have shown this.
+
+Migration 0138 redoes it inside the `DO` block that sets `app.platform_admin`
+locally — the pattern a dozen migrations from 0042 onward already use. 0137 was
+left alone: `Pool.Migrate` hashes every migration and refuses to start if one
+changed after it was applied.
+
+The regression guard is `TestATenantBackfillSetsThePlatformFlag`, which reads
+the migration files: a migration that reads rows `FROM tenant` in a data
+statement must set the flag. Every one of the thirty migrations that does this
+already followed the rule — 0137 was the only one that did not.
+
+It is a source check rather than a behaviour test on purpose. A migration runs
+once, and on a fresh database a broken one produces the same silent nothing as a
+correct one with no rows to work on. The whole-table invariant is not available
+either: test fixtures insert tenants directly, never through provisioning, so a
+test database legitimately holds hundreds with no subscription. "Every tenant
+has one" would be a statement about fixtures, not about the product.
+
+It was checked by adding a deliberately bad migration and watching it fail.
+
+### The button that never worked
+
+The platform billing screen's **Change plan** button sent `{ tier }` alone.
+`SetPlan` refuses a subscription with no cycle and no price, so it returned 400
+every time it was pressed, for as long as it has existed. Nothing on that screen
+was ever editable. It now sends the whole plan.
+
+### What else was added
+
+| Gap | Now |
+|---|---|
+| No start or expiry control | `ResolvePlanDates` — a pure, tested resolver; start, expiry and trial settable, derived from the start rather than the clock when left blank |
+| List had no owner or commercial columns | Owner name and address, subscription status, expiry with a tone, onboarding step |
+| Dashboard counted machinery only | Active, expired, trialing, expiring within 30 days, businesses with no terms at all, suspended, deactivated, signups this week |
+| Audit trail readable by nothing | `GET /api/v1/platform/audit`, and a recent-activity panel |
+| Handover showed only a password | Plan, validity, login URL, and an honest delivery status |
+| Double submit created two businesses | Refused in the transaction on name plus owner address |
+
+### Email, stated precisely
+
+- **Code implemented.** A new `owner_invitation` message kind, queued inside the
+  creation transaction, rendered by the worker.
+- **Local delivery verified.** Run against a live stack, the worker logs the
+  message at WARN with the correct body, naming the login URL, the username, the
+  plan and the validity.
+- **Production email configuration pending.** No provider is wired. In
+  development the worker logs; anywhere else it refuses the job, which retries,
+  escalates and appears in failed jobs.
+
+The API reports one of four words and **none of them is "sent"**:
+`queued_for_logging`, `queued_no_provider`, `queued`, `not_configured`. Three of
+the four mean the owner will be told nothing, and the handover screen says so in
+a sentence rather than leaving the operator to infer it.
+
+The message deliberately carries **no password**. The temporary credential is
+shown to the operator once, on screen, and handed over by them; putting it in a
+queued message would write it to the jobs table in readable form and from there
+to whatever a mail provider logs. A test asserts it appears in neither the queue
+nor the audit trail.
+
+### Still deliberately missing
+
+No activate, suspend or disable control. `tenant.status` is written and read by
+nothing, and a button that appears to suspend a business while the business
+keeps trading would be worse than no button. Both the dashboard and the billing
+screen now say this in plain words where the figures are, rather than letting an
+operator assume otherwise. It is Phase 5's work.
