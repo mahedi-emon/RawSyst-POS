@@ -163,7 +163,9 @@ func TestTheSoftwareOwnerCanChangeWhatAPlanIncludes(t *testing.T) {
 		t.Skip("starter already includes everything enterprise does")
 	}
 
-	// Grant it to starter.
+	// Grant it to starter, having first arranged to put it back.
+	restorePlanFeature(t, h, admin, "starter", feature)
+
 	grant := h.do(t, http.MethodPut, "/api/v1/platform/plans/starter/features",
 		admin, map[string]any{"feature": feature, "included": true})
 	defer grant.Body.Close()
@@ -171,11 +173,6 @@ func TestTheSoftwareOwnerCanChangeWhatAPlanIncludes(t *testing.T) {
 		t.Fatalf("granting %s to starter: %d — %s",
 			feature, grant.StatusCode, readBody(t, grant))
 	}
-	t.Cleanup(func() {
-		r := h.do(t, http.MethodPut, "/api/v1/platform/plans/starter/features",
-			admin, map[string]any{"feature": feature, "included": false})
-		r.Body.Close()
-	})
 
 	after, _ := decodeJSON(t, grant)["data"].([]any)
 	if !hasString(toStrings(after[0].(map[string]any)["features"]), feature) {
@@ -308,17 +305,23 @@ func TestChangingAPlanIsAudited(t *testing.T) {
 	h := newHarness(t)
 	admin := h.login(t, h.seedSuperAdmin(t))
 
+	// Put it back to what it WAS, read first rather than assumed.
+	//
+	// This cleanup used to write `included: true`, and starter has never
+	// included payroll — so every run of this test left the price list changed
+	// and the entitlement suite failed on the NEXT run against the same
+	// database, complaining that "payroll is not in the starter tier and was
+	// allowed". A shared table, a cleanup that guesses, and a failure that
+	// appears in a different file on a later day: register the restore before
+	// the change, from the value that is actually there.
+	restorePlanFeature(t, h, admin, "starter", "payroll")
+
 	set := h.do(t, http.MethodPut, "/api/v1/platform/plans/starter/features",
 		admin, map[string]any{"feature": "payroll", "included": false})
 	set.Body.Close()
 	if set.StatusCode != http.StatusOK {
 		t.Fatalf("changing a plan: %d", set.StatusCode)
 	}
-	t.Cleanup(func() {
-		r := h.do(t, http.MethodPut, "/api/v1/platform/plans/starter/features",
-			admin, map[string]any{"feature": "payroll", "included": true})
-		r.Body.Close()
-	})
 
 	trail := h.do(t, http.MethodGet, "/api/v1/platform/audit?limit=50", admin, nil)
 	defer trail.Body.Close()
@@ -334,6 +337,43 @@ func TestChangingAPlanIsAudited(t *testing.T) {
 }
 
 // --- small helpers --------------------------------------------------------
+
+// restorePlanFeature reads what a tier includes now and puts it back afterwards.
+//
+// `plan_feature` is platform-wide: it has no tenant id, so nothing about the
+// test harness rolls a change to it back, and a test that edits the price list
+// edits it for every test that runs after — in this process and in every later
+// one against the same database. Restoring a REMEMBERED value rather than a
+// written-down one is what makes that safe; a cleanup that hardcodes what it
+// thinks the seed said is a cleanup that corrupts the seed the day it is wrong.
+func restorePlanFeature(
+	t *testing.T, h *harness, admin, tier, feature string,
+) {
+	t.Helper()
+
+	resp := h.do(t, http.MethodGet, "/api/v1/platform/plans", admin, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reading the price list: %d", resp.StatusCode)
+	}
+
+	was := false
+	plans, _ := decodeJSON(t, resp)["data"].([]any)
+	for _, p := range plans {
+		row, _ := p.(map[string]any)
+		if row["tier"] != tier {
+			continue
+		}
+		was = hasString(toStrings(row["features"]), feature)
+	}
+
+	t.Cleanup(func() {
+		r := h.do(t, http.MethodPut,
+			"/api/v1/platform/plans/"+tier+"/features", admin,
+			map[string]any{"feature": feature, "included": was})
+		r.Body.Close()
+	})
+}
 
 func toStrings(v any) []string {
 	raw, _ := v.([]any)
