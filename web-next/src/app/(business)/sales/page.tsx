@@ -20,6 +20,7 @@
 // hidden, because a day with more invoices than the page holds is a fact.
 
 import { ArrowLeft, ArrowRight, ReceiptText } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 
 import { RequirePermission } from '@/components/auth/guard';
@@ -219,16 +220,24 @@ function SalesScreen() {
     {
       key: 'reprint',
       header: t('nx.sales.colReprint'),
-      width: 'w-28',
+      width: 'w-40',
       cell: (r) => (
-        <Button
-          size="sm"
-          variant="ghost"
-          busy={reprinting === r.id}
-          onClick={() => void reprint(r)}
-        >
-          {t('nx.sales.reprint')}
-        </Button>
+        <span className="flex flex-wrap gap-1">
+          {/* The receipt itself. This screen could record a reprint and could
+              not produce the thing being reprinted — the route existed, the
+              document did not. */}
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/sales/${r.id}/receipt`}>{t('nx.sales.openReceipt')}</Link>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            busy={reprinting === r.id}
+            onClick={() => void reprint(r)}
+          >
+            {t('nx.sales.reprint')}
+          </Button>
+        </span>
       ),
     },
   ];

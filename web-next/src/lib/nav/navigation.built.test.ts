@@ -180,6 +180,10 @@ describe('the sidebar offers only what exists', () => {
       '/orders/[orderID]', // a row on /orders
       '/orders/new', // an action on /orders
       '/orders/[orderID]/documents/[kind]', // printed from one order
+      // The receipt for one sale, printed from a row on /sales. Until it was
+      // built the product could record a reprint and could not produce the
+      // thing being reprinted.
+      '/sales/[invoiceID]/receipt',
       '/money/expenses/[expenseID]', // a row on /money/expenses
       '/money/expenses/new', // an action on /money/expenses
       '/money/reconcile/[statementID]', // a row on /money/reconcile

@@ -60,6 +60,14 @@ type Scope struct {
 	TenantID  uuid.UUID
 	CompanyID uuid.UUID
 	UserID    uuid.UUID
+
+	// StoreID names the branch, for the one thing that is a branch's rather
+	// than a company's: the address and telephone number a receipt prints.
+	//
+	// Optional. Zero means no branch in scope, and `ReadSeller` then prints no
+	// address rather than choosing one — the wrong branch on a receipt sends a
+	// customer back to the wrong door.
+	StoreID uuid.UUID
 }
 
 // Logo is what the Back Office shows about a company's mark. The bytes are

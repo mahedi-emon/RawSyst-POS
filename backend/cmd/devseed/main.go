@@ -50,6 +50,7 @@ import (
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
@@ -149,6 +150,22 @@ func run(email, name, password, operator string) error {
 		OwnerName:  "Demo Owner",
 	})
 	if err != nil {
+		// Already seeded, which on a developer's machine is the usual case.
+		//
+		// Provisioning refuses a second business with the same name under the
+		// same owner, because in production that is somebody pressing create
+		// twice. Here it means the demo shop is already there, and the useful
+		// thing to do is hand back a working password for it rather than
+		// refuse and leave the developer to work out why.
+		if e := errs.As(err); e != nil && e.Code == errs.CodeConflict {
+			if password == "" {
+				return fmt.Errorf(
+					"%s already exists. Re-run with -password to set a known "+
+						"password on its owner, or use -email to seed a "+
+						"different business", name)
+			}
+			return resetExistingOwner(ctx, pool, email, password)
+		}
 		return fmt.Errorf("create tenant: %w", err)
 	}
 
@@ -1860,5 +1877,41 @@ func seedLotsAndCards(
 		return fmt.Errorf("issue a gift card: %w", err)
 	}
 
+	return nil
+}
+
+// resetExistingOwner puts a known password on a demo business that is already
+// seeded, so re-running this tool is useful rather than merely refused.
+//
+// Development only: `run` has already established that, and this tool refuses
+// to touch anything else long before it reaches here.
+func resetExistingOwner(
+	ctx context.Context, pool *db.Pool, email, password string,
+) error {
+	hash, err := identity.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	err = pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		tag, e := tx.Exec(ctx, `
+			UPDATE app_user
+			   SET password_hash = $2, must_change_password = false,
+			       status = CASE WHEN status = 'disabled' THEN status
+			                     ELSE 'active'::user_status END,
+			       failed_attempts = 0, locked_until = NULL
+			 WHERE email = $1 AND tenant_id IS NOT NULL`, email, hash)
+		if e != nil {
+			return e
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("no business account uses %s", email)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  that business is already seeded; %s can sign in with the "+
+		"password you supplied\n", email)
 	return nil
 }

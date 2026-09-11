@@ -304,6 +304,18 @@ type Seller struct {
 	// The counter used to print "Total 0.00" with no code at all, which is
 	// legible only to somebody who already knows which country they are in.
 	BaseCurrency string
+
+	// Where the customer actually stood, and the number they would ring.
+	//
+	// The STORE's, not the company's. A receipt names the branch that served
+	// somebody -- a chain's head office address on a till receipt is no use to
+	// a customer coming back with a return, and the Saudi simplified-invoice
+	// rules expect the supplier's place of supply.
+	//
+	// Empty when the shop has not filled them in, which is honest: a receipt
+	// that printed a blank line is better than one that printed "null".
+	Address string
+	Phone   string
 }
 
 // ReadSeller names the business, for the surfaces that print one.
@@ -311,11 +323,24 @@ func (s *Service) ReadSeller(ctx context.Context, scope Scope) (Seller, error) {
 	var out Seller
 	err := s.pool.Tx(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
-			SELECT coalesce(nullif(btrim(trade_name), ''), legal_name),
-			       coalesce(vat_number, ''),
-			       base_currency
-			FROM company WHERE id = $1`, scope.CompanyID).
-			Scan(&out.Name, &out.VATNumber, &out.BaseCurrency)
+			SELECT coalesce(nullif(btrim(c.trade_name), ''), c.legal_name),
+			       coalesce(c.vat_number, ''),
+			       c.base_currency,
+			       coalesce(s.address, ''), coalesce(s.phone, '')
+			FROM company c
+			-- The branch, where there is one to name. A company with several
+			-- stores and no store in scope prints no address rather than
+			-- picking one arbitrarily, because the wrong branch on a receipt
+			-- sends a customer to the wrong door.
+			--
+			-- Joined on the company as well as the id, so a store belonging to
+			-- somebody else produces no address rather than theirs. That makes
+			-- the id safe to take from a request without a separate check:
+			-- the worst a wrong one can do is print nothing.
+			LEFT JOIN store s ON s.id = $2 AND s.company_id = c.id
+			WHERE c.id = $1`, scope.CompanyID, scope.StoreID).
+			Scan(&out.Name, &out.VATNumber, &out.BaseCurrency,
+				&out.Address, &out.Phone)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Seller{}, errs.New(errs.CodeNotFound, "That business was not found.")

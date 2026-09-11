@@ -149,9 +149,15 @@ function SignInForm() {
             {t('nx.auth.signIn')}
           </Button>
 
+          {/* `py-2` is not decoration: it is what makes this a touch target.
+              Measured at 320px it was 18px tall, under the 24px minimum, and
+              this is the one link on the screen somebody reaches for when they
+              are already locked out and already frustrated. Padding the anchor
+              rather than adding a wrapper keeps the tappable area and the
+              underlined text the same shape. */}
           <a
             href="/forgot-password"
-            className="text-center text-label text-muted underline underline-offset-4 hover:text-fg"
+            className="self-center px-2 py-2 text-center text-label text-muted underline underline-offset-4 hover:text-fg"
           >
             {t('nx.auth.forgot')}
           </a>

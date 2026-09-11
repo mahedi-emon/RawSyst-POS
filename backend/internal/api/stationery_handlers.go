@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
@@ -57,6 +59,19 @@ type stationeryResponse struct {
 	ReturnPolicyAr string `json:"return_policy_ar"`
 
 	ShowTaxNumber bool `json:"show_tax_number"`
+
+	// Where the customer stood and the number they would ring. The BRANCH's,
+	// because a chain's head office address is no use to somebody coming back
+	// with a return. Empty when the shop has not filled them in.
+	StoreAddress string `json:"store_address"`
+	StorePhone   string `json:"store_phone"`
+
+	// Whether this shop's receipts carry its mark, and where to fetch it. The
+	// image is a separate request on purpose: it is cacheable, it is often
+	// absent, and putting half a megabyte of it in a payload the till caches
+	// for offline use would be a poor trade.
+	ShowLogo  bool      `json:"show_logo"`
+	CompanyID uuid.UUID `json:"company_id"`
 }
 
 // --- GET /api/v1/pos/stationery -----------------------------------------
@@ -70,8 +85,17 @@ func (s *Server) handleTillStationery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The branch, so the receipt can print the address and telephone number of
+	// the shop the customer actually stood in. Optional, and safe to take from
+	// the request: `ReadSeller` joins the store to its company, so an id
+	// belonging to somebody else yields no address rather than theirs.
+	storeID, _ := optionalUUID(r.URL.Query().Get("store_id"), "store_id")
+
 	scope := branding.Scope{
 		TenantID: a.TenantID, CompanyID: companyID, UserID: a.UserID,
+	}
+	if storeID != nil {
+		scope.StoreID = *storeID
 	}
 
 	// A counter sale is a simplified invoice, so that is the template a receipt
@@ -101,6 +125,10 @@ func (s *Server) handleTillStationery(w http.ResponseWriter, r *http.Request) {
 	out.StoreName = seller.Name
 	out.VATNumber = seller.VATNumber
 	out.BaseCurrency = seller.BaseCurrency
+	out.StoreAddress = seller.Address
+	out.StorePhone = seller.Phone
+	out.ShowLogo = template.ShowLogo
+	out.CompanyID = companyID
 
 	httpx.JSON(w, http.StatusOK, out)
 }
