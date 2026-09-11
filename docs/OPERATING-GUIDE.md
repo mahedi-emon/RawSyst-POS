@@ -304,8 +304,13 @@ to four decimals and posted as the change in the rounded valuation rather than
 the rounded change, so the entries telescope and the two agree by construction.
 
 **Reports → Financial statements** produces a trial balance, a profit and loss
-and a balance sheet and a cash flow statement from those entries. **Reports → Tax return** produces the
-VAT return from the same ledger, not from a parallel calculation.
+and a balance sheet and a cash flow statement from those entries. **Reports → Tax return** arrives at every
+figure on the VAT return **twice, by paths that share nothing** — output tax
+added up from the tax on every invoice line, and read again from the Output VAT
+account the posting engine produced; input tax the same way against the
+supplier bills. Each pair must agree exactly, and a pair that does not means
+something posted wrongly. Finding that before a return is filed is the
+difference between a correction and a penalty.
 
 ### Closing a month
 
