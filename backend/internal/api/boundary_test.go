@@ -46,9 +46,12 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
 )
 
 // --- 1. a mutation must not hide behind a reading permission --------------
@@ -229,6 +232,113 @@ func TestADisabledEmployeeStopsWorking(t *testing.T) {
 	}
 }
 
+// The whole sequence, in order, for somebody who is dismissed mid-shift.
+//
+// The individual refusals are asserted above and elsewhere. This exists because
+// the ORDER is the thing that matters to the person being locked out: they have
+// a token in a tab, a cookie in the browser, and a URL in their history, and
+// every one of those has to stop working. Proving each separately leaves open
+// the possibility that one of them lets the others back in.
+//
+// It also pins the cache window, which is the honest limit of this design and
+// the number that belongs in a test rather than only in a document.
+func TestEveryDoorShutsOnADismissedEmployee(t *testing.T) {
+	h := newHarness(t)
+	email := h.seedUserWithRole(t, "cashier")
+
+	// Sign in the way a browser does, so there is a real refresh cookie and a
+	// real CSRF pair to try afterwards.
+	signIn := signInRaw(t, h, email, false)
+	refreshCookie := cookieNamed(signIn, refreshCookieName)
+	csrfCookie := cookieNamed(signIn, csrfCookieName)
+	token, _ := decodeLogin(t, signIn)["access_token"].(string)
+	signIn.Body.Close()
+
+	if token == "" || refreshCookie == nil || csrfCookie == nil {
+		t.Fatal("signing in did not produce a token and the session cookies")
+	}
+
+	// 1. The token works, so every refusal below is about the disabling.
+	if got := h.statusWithToken(t, "/api/v1/auth/me", token); got != http.StatusOK {
+		t.Fatalf("the token did not work before disabling: %d", got)
+	}
+
+	// 2. Dismissed.
+	h.disableUser(t, email)
+
+	// 3. The cache is the only thing between them and the door, and its window
+	// is real: for up to `grantsCacheTTL` the old grants answer. Rather than
+	// sleeping five seconds in every CI run, the cache is dropped the way the
+	// product would if anything called Invalidate — which nothing does, so the
+	// five-second window below is the honest figure and is asserted as such.
+	h.authz.Invalidate(userIDOf(t, h, email))
+
+	// 4. The access token they are already holding.
+	if got := h.statusWithToken(t, "/api/v1/auth/me", token); got != http.StatusUnauthorized {
+		t.Errorf("the old access token still works: %d, want 401", got)
+	}
+
+	// 5. A protected route that reads real data, not just their own identity.
+	if got := h.statusWithToken(t, "/api/v1/catalog/products", token); got != http.StatusUnauthorized {
+		t.Errorf("the old token still reads the catalogue: %d, want 401", got)
+	}
+
+	// 6. The refresh cookie, with its CSRF echo, which is the one thing that
+	// could mint a NEW token and undo all of the above.
+	req, _ := http.NewRequest(http.MethodPost,
+		h.server.URL+"/api/v1/auth/refresh", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(refreshCookie)
+	req.AddCookie(csrfCookie)
+	req.Header.Set(csrfHeaderName, csrfCookie.Value)
+	refreshed, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("refreshing: %v", err)
+	}
+	defer refreshed.Body.Close()
+	if refreshed.StatusCode < 400 {
+		t.Errorf("a dismissed employee refreshed their session: %d. Every "+
+			"other refusal is undone by this one.", refreshed.StatusCode)
+	}
+
+	// 7. Signing in again from scratch.
+	again := h.do(t, http.MethodPost, "/api/v1/auth/login", "",
+		map[string]string{"email": email, "password": testPassword})
+	again.Body.Close()
+	if again.StatusCode == http.StatusOK {
+		t.Error("a dismissed employee signed in again")
+	}
+
+	// 8. Typing a URL. The API is the same surface either way — the browser
+	// sends the same request the screen would — so a "direct URL" reaches
+	// exactly this, and there is no separate door to shut.
+	if got := h.statusWithToken(t, "/api/v1/dashboard/overview", token); got == http.StatusOK {
+		t.Error("a screen's own data still loads for a dismissed employee")
+	}
+}
+
+// statusWithToken calls a path and reports only the status.
+func (h *harness) statusWithToken(t *testing.T, path, token string) int {
+	t.Helper()
+	resp := h.do(t, http.MethodGet, path, token, nil)
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+// The cache window is five seconds, and that is the limit of this design.
+//
+// Asserted rather than described, because it is the number somebody will want
+// when they ask how long a dismissed employee can keep working, and a figure
+// that lives only in a comment drifts away from the code under it.
+func TestRevocationIsBoundedByTheGrantsCache(t *testing.T) {
+	if identity.GrantsCacheTTL > 5*time.Second {
+		t.Errorf("the grants cache is %v. Every revocation — a permission, a "+
+			"role, a disabled account — takes that long to bite, because "+
+			"nothing in the product calls Invalidate. Anything longer needs "+
+			"deciding rather than drifting.", identity.GrantsCacheTTL)
+	}
+}
+
 // A disabled PLATFORM OPERATOR stops working too.
 //
 // The higher-stakes half of the same gap, and it was worse: `Resolve` returned
@@ -316,7 +426,115 @@ func userIDOf(t *testing.T, h *harness, email string) uuid.UUID {
 	return id
 }
 
-// --- 3. the owner is not a platform operator ------------------------------
+// --- 3. a reading permission does not act for other people ----------------
+
+// Asking for time off is asking for your OWN time off.
+//
+// `POST /leave` is gated on `hr.view`, deliberately: asking is not granting,
+// and granting is `hr.manage`. The route's own note says "anybody who can see
+// the directory can ask", and asking for yourself is what that meant.
+//
+// What it did was take the employee from the REQUEST BODY and check nothing, so
+// anybody who could see the staff directory could file leave in anybody else's
+// name — including the owner's. `requested_by` recorded who really asked, and
+// the request lands as `requested` and cannot become attendance without a
+// manager deciding it, so this was never a way to take unapproved time off. It
+// was a way to put rows in somebody else's record that they did not put there.
+//
+// This is the case the guarded-route walk cannot reach: the caller HOLDS the
+// permission the route asks for, so it is skipped as legitimately allowed. The
+// authorization that was missing is about the argument, not the route.
+func TestAskingForLeaveMeansYourOwnLeave(t *testing.T) {
+	h := newHarness(t)
+
+	// One shop, two people: the owner keeps the records, the other does not.
+	shop := h.seedShop(t, "owner")
+	clerkEmail, clerkUserID := h.newUserInTenant(t, shop.tenantID, "accountant")
+	clerk := h.login(t, clerkEmail)
+
+	scoped := func(path string) string {
+		return path + "?company_id=" + shop.companyID.String()
+	}
+
+	// An employee record for the clerk, linked to their login, and one for a
+	// colleague who has none.
+	mine := h.newEmployee(t, shop, scoped("/api/v1/employees"), clerkUserID.String())
+	colleague := h.newEmployee(t, shop, scoped("/api/v1/employees"), "")
+
+	leave := func(employeeID string) map[string]any {
+		return map[string]any{
+			"employee_id": employeeID, "kind": "annual", "is_paid": true,
+			"starts_on": "2026-11-02", "ends_on": "2026-11-06",
+		}
+	}
+
+	// Their own: allowed. This is the whole reason the route is gated on a
+	// reading permission rather than on `hr.manage`, and the fix must not
+	// cost it.
+	own := h.do(t, http.MethodPost, scoped("/api/v1/leave"), clerk, leave(mine))
+	defer own.Body.Close()
+	if own.StatusCode != http.StatusCreated {
+		t.Fatalf("somebody could not ask for their own time off: %d — %s",
+			own.StatusCode, readBody(t, own))
+	}
+
+	// A colleague's: refused.
+	theirs := h.do(t, http.MethodPost, scoped("/api/v1/leave"), clerk,
+		leave(colleague))
+	defer theirs.Body.Close()
+	if theirs.StatusCode != http.StatusForbidden {
+		t.Errorf("an employee filed leave in a colleague's name: %d, want 403. "+
+			"Holding hr.view is permission to SEE the directory, not to act "+
+			"for the people in it.", theirs.StatusCode)
+	}
+
+	// And the owner still can, because entering leave for somebody with no
+	// login of their own is what keeping the records means.
+	byOwner := h.do(t, http.MethodPost, scoped("/api/v1/leave"), shop.token,
+		leave(colleague))
+	defer byOwner.Body.Close()
+	if byOwner.StatusCode != http.StatusCreated {
+		t.Errorf("a manager could not enter leave for their staff: %d — %s",
+			byOwner.StatusCode, readBody(t, byOwner))
+	}
+}
+
+// newEmployee adds a member of staff and returns their id. `userID` empty is
+// somebody with no login — a cleaner paid in cash, somebody on a paper rota.
+func (h *harness) newEmployee(
+	t *testing.T, shop *shopFixture, path, userID string,
+) string {
+	t.Helper()
+	body := map[string]any{
+		"full_name": "Staff " + randomSuffix(),
+		"position":  "Assistant",
+		// Required: length of service decides the end-of-service benefit.
+		"joined_on": "2025-01-06",
+	}
+	if userID != "" {
+		body["user_id"] = userID
+	}
+	resp := h.do(t, http.MethodPost, path, shop.token, body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("creating an employee: %d — %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	out := decodeJSON(t, resp)
+	if id, ok := out["id"].(string); ok && id != "" {
+		return id
+	}
+	// Some create routes answer {"data": {...}}.
+	if data, ok := out["data"].(map[string]any); ok {
+		if id, ok := data["id"].(string); ok {
+			return id
+		}
+	}
+	t.Fatalf("the created employee has no id: %v", out)
+	return ""
+}
+
+// --- 4. the owner is not a platform operator ------------------------------
 
 // An owner holds everything their business has, and nothing of the platform's.
 //

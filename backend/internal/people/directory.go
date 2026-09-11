@@ -610,15 +610,41 @@ func (s *Service) RequestLeave(
 
 	var out LeaveRequest
 	err := s.pool.TxAsTenant(ctx, scope.TenantID, func(tx pgx.Tx) error {
-		var ok bool
+		// Who this leave is for, and whether the caller may ask on their
+		// behalf.
+		//
+		// The employee comes from the request body, and until now nothing
+		// checked it. `POST /leave` is gated on `hr.view` on purpose — asking
+		// for time off is not granting it, and granting is `hr.manage` — but
+		// the effect was that anybody who could see the staff directory could
+		// file leave in anybody else's name, including the owner's.
+		//
+		// `requested_by` recorded who really asked, so it was attributable
+		// rather than anonymous, and the request lands as `requested` and
+		// cannot become attendance without a manager deciding it. So this was
+		// never a way to take paid time off somebody has not approved. It was
+		// a way to put rows in another person's record that they did not put
+		// there, and to make a manager deal with them.
+		var ownerUser *uuid.UUID
 		e := tx.QueryRow(ctx,
-			`SELECT true FROM employee WHERE id = $1 AND company_id = $2`,
-			employeeID, scope.CompanyID).Scan(&ok)
+			`SELECT user_id FROM employee WHERE id = $1 AND company_id = $2`,
+			employeeID, scope.CompanyID).Scan(&ownerUser)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return errs.New(errs.CodeNotFound, "That employee was not found.")
 		}
 		if e != nil {
 			return e
+		}
+
+		// An employee record with no login belongs to somebody who cannot ask
+		// for themselves — a cleaner paid in cash, somebody who works from a
+		// paper rota. Their leave has to be entered by whoever keeps the
+		// records, which is what `hr.manage` is.
+		mine := ownerUser != nil && *ownerUser == scope.UserID
+		if !scope.MayActForOthers && !mine {
+			return errs.New(errs.CodeForbidden,
+				"You can ask for your own time off. Asking on somebody "+
+					"else's behalf is something their manager does.")
 		}
 
 		var id uuid.UUID

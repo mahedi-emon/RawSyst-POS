@@ -69,6 +69,9 @@ Which test proves which:
 | A disabled employee stops working immediately | `TestADisabledEmployeeStopsWorking` |
 | A disabled platform operator stops working immediately | `TestADisabledPlatformOperatorStopsWorking` |
 | An invited owner can still change their one-time password | `TestAnInvitedOwnerCanStillChangeTheirPassword` |
+| Every door shuts on a dismissed employee, in order | `TestEveryDoorShutsOnADismissedEmployee` |
+| The revocation window is five seconds and no more | `TestRevocationIsBoundedByTheGrantsCache` |
+| Asking for leave means your own leave | `TestAskingForLeaveMeansYourOwnLeave` |
 | Row-level security cannot be bypassed at the connection | `TestConnectionCannotBypassRowLevelSecurity` |
 | Cross-tenant read, read-by-id and write are impossible | `TestCrossTenantReadIsImpossible` and siblings |
 | A platform operator sees no business data | `TestPlatformAdminHasNoBusinessDataAccess` |
@@ -120,6 +123,28 @@ being looked at.
 has to reach the change-password screen, and refusing them would make a new
 business impossible to activate.
 
+### The refresh path let them straight back in — fixed
+
+Found by testing the sequence rather than the parts. A dismissed employee was
+refused at every door above and then **refreshed their session and was issued a
+brand new access token**, which undoes all of it.
+
+`Refresh` checked `user_session.revoked_at` and nothing about the account.
+Disabling somebody through the staff screen revokes their sessions, so in
+practice the check caught them — but the two mechanisms are independent, and
+anything that disables an account without also revoking sessions left this path
+minting fresh credentials.
+
+It now reads the account's status in the same query that loads the session, and
+refuses on the same rule the sign-in path uses. That is the principle the
+function already stated for scopes — "re-read on refresh rather than copied from
+the old token, so narrowing somebody's scope takes effect at the next refresh" —
+applied to the account rather than only to its scopes.
+
+The lesson is in the shape of the test, not the fix: each refusal passed on its
+own, and the one that mattered was only visible when they were run in the order
+a real person meets them.
+
 ### A menu item nobody could load — fixed
 
 `/pos/exchanges` was offered on `sales.exchange`, and the screen opens by
@@ -150,12 +175,38 @@ route table:
 | `POST /installments/quote` | Previews a schedule, creates nothing |
 | `POST /promotions/quote` | Prices a cart as it is built; nothing is redeemed until the sale is finalised |
 | `POST /pos/sales/{id}/reprint` | Reprinting is looking a sale up again |
-| `POST /leave` | Asking for time off is not granting it; the decision is `hr.manage` |
+| `POST /leave` | Asking for time off is not granting it; the decision is `hr.manage`. **Now constrained to your own record** unless you hold `hr.manage` — see below |
 | `POST /service-jobs` | A counter that can see repair jobs books them in; it is one conversation with the customer |
 
-The last two genuinely create a record. That is the product's considered answer
-rather than an oversight, and it is now written down where a sixth would have to
-be argued for.
+The last two genuinely create a record, and reviewing them found a defect in one.
+
+### Asking for leave meant asking for anyone's leave — fixed
+
+`POST /leave` took the employee from the **request body** and checked nothing.
+The route's own note says "anybody who can see the directory can ask", and
+asking *for yourself* is what that meant — but anybody holding `hr.view` could
+file leave in anybody else's name, including the owner's.
+
+It was never a way to take unapproved time off: `requested_by` records who
+really asked, the request lands as `requested`, and it cannot become attendance
+without somebody holding `hr.manage` deciding it. It was a way to put rows in
+another person's record that they did not put there, and to make a manager deal
+with them.
+
+Now: without `hr.manage`, the employee named must be your own record. Somebody
+with no login of their own — a cleaner paid in cash, somebody on a paper rota —
+still has their leave entered by whoever keeps the records, which is what
+`hr.manage` is for.
+
+This is the case the guarded-route walk cannot reach by construction. The caller
+*holds* the permission the route asks for, so the walk skips it as legitimately
+allowed. The authorization that was missing was about the argument, not the
+route.
+
+`POST /service-jobs` was reviewed on the same terms and kept. It is tenant- and
+company-scoped, names no other user, and creates a work item rather than a
+financial record; requiring `service.manage` instead would also let counter
+staff change diagnoses and fit parts, which is broader rather than safer.
 
 ## Known limitations
 
@@ -167,11 +218,10 @@ running product calls them** — their comments claimed otherwise until Phase 4
 and have been corrected. Wiring them into the role-change paths is a deliberate
 improvement somebody should make on purpose.
 
-**A disabled user's own refresh cookie is rejected, but only because the session
-is revoked.** The two mechanisms are independent: if a future path disables an
-account without revoking sessions, the access-token check above still refuses
-within five seconds, and the refresh would not. Disabling through
-`SetPersonStatus` does both.
+**Both halves of disablement are now independent.** The refresh path checks the
+account's status itself, and so does every authenticated request. A future code
+path that disables an account without revoking its sessions is still caught by
+both. `SetPersonStatus` continues to do both as well.
 
 **Subscription state enforces nothing.** `tenant.status` is written and read by
 nothing, and `billing.Allows` ignores the subscription status and period end. A

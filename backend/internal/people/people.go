@@ -73,6 +73,19 @@ type Scope struct {
 	// is made once at the boundary rather than in each query. False means the
 	// pay fields come back empty.
 	MaySeePay bool
+
+	// MayActForOthers is `hr.manage`, carried in the same way and for the same
+	// reason: the decision belongs at the boundary, and the service is where
+	// the row that proves it lives.
+	//
+	// False confines somebody to their own record. `POST /leave` is gated on
+	// `hr.view` — deliberately, because asking for time off is not granting it
+	// and the grant is a separate permission — but the route took the employee
+	// from the REQUEST BODY and checked nothing, so anybody who could see the
+	// staff directory could file leave in anybody else's name. The route's own
+	// note says "anybody who can see the directory can ask", and asking for
+	// yourself is what that meant.
+	MayActForOthers bool
 }
 
 // claimNo takes the next number for a document kind.

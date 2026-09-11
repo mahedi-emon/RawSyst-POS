@@ -173,6 +173,13 @@ type Authorizer struct {
 // terminal scanning items in a burst.
 const grantsCacheTTL = 5 * time.Second
 
+// GrantsCacheTTL is the same value, readable from outside the package.
+//
+// Exported so a test can assert the window rather than describe it. It is the
+// honest bound on every revocation this product performs — a permission, a
+// role, or a disabled account — because nothing calls Invalidate.
+const GrantsCacheTTL = grantsCacheTTL
+
 func NewAuthorizer(pool *db.Pool) *Authorizer {
 	return &Authorizer{
 		pool:  pool,

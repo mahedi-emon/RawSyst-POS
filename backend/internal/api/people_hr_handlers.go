@@ -38,6 +38,9 @@ func hrScope(r *http.Request) (people.Scope, error) {
 		CompanyID: companyID,
 		UserID:    a.UserID,
 		MaySeePay: g != nil && g.Can("hr.view_pay"),
+		// Whether this person may act on somebody else's record, rather than
+		// only their own. See the field's note in the people package.
+		MayActForOthers: g != nil && g.Can("hr.manage"),
 	}, nil
 }
 

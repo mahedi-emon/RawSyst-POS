@@ -421,17 +421,21 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (Session, er
 		// the binding rather than silently handing the till a token with no
 		// terminal on it.
 		deviceID *uuid.UUID
+		// Whether the account is still one a person may sign in as.
+		status string
 	)
 
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			SELECT t.id, t.session_id, s.user_id, s.tenant_id, t.generation,
-			       t.expires_at, t.used_at, s.revoked_at, s.device_id
+			       t.expires_at, t.used_at, s.revoked_at, s.device_id,
+			       u.status::text
 			FROM session_refresh_token t
 			JOIN user_session s ON s.id = t.session_id
+			JOIN app_user u     ON u.id = s.user_id
 			WHERE t.token_hash = $1`, hash).
 			Scan(&tokenID, &sessionID, &userID, &tenantID, &generation,
-				&tokenExp, &usedAt, &revokedAt, &deviceID)
+				&tokenExp, &usedAt, &revokedAt, &deviceID, &status)
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -455,6 +459,30 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (Session, er
 	if revokedAt != nil || tokenExp.Before(time.Now()) {
 		return Session{}, errs.New(errs.CodeUnauthenticated,
 			"Your session has expired. Please sign in again.")
+	}
+
+	// Whether the account may still be used at all.
+	//
+	// Refusing on `revoked_at` alone was not enough, and it is the strongest
+	// refusal in the product being undone by the weakest assumption.
+	// Disabling somebody through the staff screen revokes their sessions, so
+	// in practice the check above caught them — but the two mechanisms are
+	// independent, and anything that disables an account WITHOUT revoking
+	// sessions left this path minting brand new access tokens for them. Every
+	// other refusal is downstream of that: a new token undoes the middleware
+	// check, and the person is back in.
+	//
+	// This is the same principle the scope re-read below already states —
+	// refresh is where the product asks again what is still true — applied to
+	// the account rather than only to its scopes. `active` and `invited` for
+	// the reason the sign-in path gives: somebody holding a one-time password
+	// has to be able to use it.
+	switch status {
+	case "active", "invited":
+	default:
+		return Session{}, errs.New(errs.CodeUnauthenticated,
+			"This account has been disabled. Please sign in again, or ask "+
+				"whoever looks after your RawSyst account.")
 	}
 
 	a := actor.Actor{UserID: userID, SessionID: sessionID}
