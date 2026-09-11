@@ -53,6 +53,26 @@ services:
       # under sustained write load and irrelevant under a developer's.
       - -c
       - max_wal_size=256MB
+
+      # Archiving OFF, and this is the one place in the repository where that
+      # is the right default.
+      #
+      # This file is the 8 GB development profile. A development machine has no
+      # object store, and an archive_command that cannot reach one exits
+      # non-zero — correctly — which makes PostgreSQL keep every segment until
+      # the disk is full. Turning it on here would mean a developer's laptop
+      # filling up overnight as the price of a setting they never asked for.
+      #
+      # Set POSTGRES_ARCHIVE_MODE=on with a real bucket to exercise it locally;
+      # `docker-compose.pitr.yml` brings up MinIO and does exactly that.
+      - -c
+      - archive_mode=${POSTGRES_ARCHIVE_MODE:-off}
+      - -c
+      - archive_command=/rawsyst backup wal archive %p %f
+      - -c
+      - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT:-300}
+      - -c
+      - max_wal_senders=${POSTGRES_MAX_WAL_SENDERS:-4}
       - -c
       - log_min_duration_statement=500
       # The API asks for at most 8 here (below), the worker for 4. Twenty

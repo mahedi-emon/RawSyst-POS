@@ -61,6 +61,8 @@ import { useT, type Key } from '@/lib/i18n/locale';
 import { saveAs } from '@/lib/download';
 import { fileSize } from '@/lib/oversight/records';
 import { useUrlState } from '@/lib/url-state';
+
+import { Recovery } from './pitr';
 import {
   ARTIFACT_NAMES,
   PHASE_LABEL,
@@ -72,11 +74,17 @@ import {
   type BackupTask,
 } from '@/lib/platform/backups';
 
-type View = 'overview' | 'history' | 'upload' | 'operations';
+type View = 'overview' | 'recovery' | 'history' | 'upload' | 'operations';
 
 // Named here so an unknown `?view=` in a shared link falls back rather than
 // rendering nothing at all.
-const VIEWS: readonly View[] = ['overview', 'history', 'upload', 'operations'];
+const VIEWS: readonly View[] = [
+  'overview',
+  'recovery',
+  'history',
+  'upload',
+  'operations',
+];
 
 function BackupsScreen() {
   const t = useT();
@@ -180,6 +188,7 @@ function BackupsScreen() {
         onChange={(v) => setView(v)}
         items={[
           { id: 'overview', label: t('nx.pbk.tab.overview') },
+          { id: 'recovery', label: t('nx.pbk.tab.recovery') },
           {
             id: 'history',
             label: t('nx.pbk.tab.history'),
@@ -193,6 +202,10 @@ function BackupsScreen() {
 
       {tab === 'overview' && (
         <Overview health={health.data} loading={health.isLoading} onAsk={ask} busy={busy} />
+      )}
+
+      {tab === 'recovery' && (
+        <Recovery running={Boolean(running)} onAsk={ask} busy={busy} />
       )}
 
       {tab === 'history' && (

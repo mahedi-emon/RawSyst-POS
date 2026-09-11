@@ -186,6 +186,13 @@ const PLATFORM = new Set([
   'SELECT',
   'INPUT',
   'BUTTON',
+  // The confirmation token for a point-in-time recovery. A person types it and
+  // therefore reads it, so it is not obviously exempt — but the API compares it
+  // byte for byte, so a translated one would be a confirmation the server
+  // refuses and a button that does nothing without saying why. The SENTENCE
+  // around it is translated: `nx.pitr.field.confirm` is "Type {word}" in each
+  // catalogue and this is interpolated into it.
+  'RECOVER',
 ]);
 
 /** Prose, as opposed to an identifier, a class name or a code. */

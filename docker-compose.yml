@@ -59,12 +59,49 @@ x-logging: &logging
 services:
   db:
     logging: *logging
-    image: postgres:17-alpine
+    # PostgreSQL plus the binary that ships its write-ahead log off the
+    # machine, because `archive_command` is a command run INSIDE this
+    # container. deploy/postgres/Dockerfile says why that is this product's own
+    # binary rather than a shell script with a presigned URL in it.
+    build:
+      context: .
+      dockerfile: deploy/postgres/Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+    image: rawsyst/postgres:${VERSION:-dev}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-rawsyst}
       POSTGRES_USER: ${POSTGRES_USER:-rawsyst}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+      # --- the write-ahead log archive -----------------------------------
+      #
+      # These reach `archive_command`, which inherits the postmaster's
+      # environment. They are the ONLY credentials this container holds beyond
+      # its own, and they are here rather than handed over a socket from the
+      # agent for one reason: archiving must keep working while the agent is
+      # restarting. An archiver that stops when another container stops is an
+      # archiver that fills this disk during a deploy.
+      #
+      # Nothing here is ever printed. `rawsyst backup wal archive` says nothing
+      # at all on success and prints this product's own sentence on failure;
+      # the object store layer never puts a signed URL in an error.
+      RAWSYST_S3_ENDPOINT: ${RAWSYST_S3_ENDPOINT:-}
+      RAWSYST_S3_BUCKET: ${RAWSYST_S3_BUCKET:-}
+      RAWSYST_S3_REGION: ${RAWSYST_S3_REGION:-us-east-1}
+      RAWSYST_S3_ACCESS_KEY_ID: ${RAWSYST_S3_ACCESS_KEY_ID:-}
+      RAWSYST_S3_SECRET_ACCESS_KEY: ${RAWSYST_S3_SECRET_ACCESS_KEY:-}
+      RAWSYST_S3_PATH_STYLE: ${RAWSYST_S3_PATH_STYLE:-true}
+      RAWSYST_BACKUP_PREFIX: ${RAWSYST_BACKUP_PREFIX:-rawsyst}
+      # The same key the dumps are sealed with. A lost key is a lost archive as
+      # well as a lost backup; deploy/server/PITR.md says what that commits you
+      # to.
+      RAWSYST_BACKUP_ENCRYPTION_KEY: ${RAWSYST_BACKUP_ENCRYPTION_KEY:-}
+      RAWSYST_WAL_ARCHIVE_TIMEOUT: ${RAWSYST_WAL_ARCHIVE_TIMEOUT:-2m}
+      RAWSYST_WAL_ARCHIVE_RETRIES: ${RAWSYST_WAL_ARCHIVE_RETRIES:-3}
+      # Named in the replication line the entrypoint adds to pg_hba.conf.
+      RAWSYST_BACKUP_ROLE: ${RAWSYST_BACKUP_ROLE:-rawsyst_backup}
       # Checksums catch silent corruption on cheap disks, which is the storage
       # a small shop's server actually has. Cannot be turned on later without a
       # dump and reload, so it is on from the first byte.
@@ -86,13 +123,72 @@ services:
       # and makes it avoid indexes it should use.
       - -c
       - random_page_cost=1.1
-      # WAL kept for point-in-time recovery. The architecture doc commits to an
-      # RPO of 15 minutes through continuous archiving; this is the local half —
-      # the archive command belongs to whatever ships the segments off the box.
+      # --- continuous archiving -------------------------------------------
+      #
+      # `replica` is the minimum level that writes enough for the log to be
+      # replayed somewhere else. `minimal` would make point-in-time recovery
+      # impossible and would not say so until somebody tried one.
       - -c
       - wal_level=replica
       - -c
       - max_wal_size=1GB
+      #
+      # ARCHIVE_MODE IS THE SWITCH. On, with an archive_command that exits
+      # non-zero when the upload fails — at which point PostgreSQL KEEPS the
+      # segment and retries. That is the safe direction and it has a cost: a
+      # store that stays unreachable means pg_wal grows until the disk is full.
+      # The agent watches that number every minute and the dashboard goes amber
+      # long before it matters. The alternative — an archive_command that
+      # succeeded anyway — is a green archive with a hole in it, which nobody
+      # finds until a recovery.
+      #
+      # With no object store configured, `wal archive` refuses immediately and
+      # every segment is retained. So a deployment that turns this on without
+      # RAWSYST_S3_BUCKET fills its disk: .env.example says so beside both
+      # variables, and `rawsyst backup wal preflight` says it in one command.
+      #
+      # # Why the default here is OFF and .env.example says on
+      #
+      # Because the two failures are not symmetrical. Archiving on with no
+      # bucket fills the disk and the first symptom is Postgres refusing to
+      # write — silent until it is an outage. Archiving off is reported RED by
+      # `wal status`, RED on the Recovery screen, and refused by name by
+      # `wal preflight`.
+      #
+      # A production server gets `on` from its own `.env`, which is copied from
+      # `.env.example`, which sets it and explains it. Somebody running
+      # `docker compose up` to look at the product gets `off` and a red light
+      # rather than a full disk overnight.
+      - -c
+      - archive_mode=${POSTGRES_ARCHIVE_MODE:-off}
+      - -c
+      - archive_command=/rawsyst backup wal archive %p %f
+      #
+      # How long PostgreSQL waits before closing a partly-filled segment and
+      # archiving it. This is the RPO on an idle server, directly: at 60s the
+      # most that can be lost is the last minute of trading.
+      #
+      # It is not free. A forced switch writes a whole 16 MiB segment however
+      # little is in it, so an idle night is about 23 GiB of local writes —
+      # which compresses to a few kilobytes per segment in the bucket, so the
+      # storage and the bandwidth are negligible and the disk writes are not.
+      # On a consumer SSD that is decades of endurance; on a cheap VPS with a
+      # small disk it is worth raising. Trading hours fill segments on their
+      # own and are unaffected either way.
+      - -c
+      - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT:-60}
+      #
+      # Two, because `pg_basebackup --wal-method=stream` opens a second
+      # connection to stream the log written while it copies. One would make
+      # every base backup fail at the last step.
+      - -c
+      - max_wal_senders=${POSTGRES_MAX_WAL_SENDERS:-4}
+      #
+      # Enough log kept locally that a base backup running for an hour does not
+      # have its own starting segment recycled out from under it. 1GB is about
+      # sixty segments.
+      - -c
+      - wal_keep_size=${POSTGRES_WAL_KEEP_SIZE:-1GB}
       # Slow queries, so a table that has outgrown its index is visible before a
       # cashier notices. 500ms is well above anything on the checkout path.
       - -c
@@ -129,6 +225,10 @@ services:
   migrate:
     build:
       context: ./backend
+      # By NAME, because Docker builds the LAST stage when no target is
+      # given, and that is the postgres-based `backup` stage. See the
+      # comment on `FROM scratch AS runtime` in backend/Dockerfile.
+      target: runtime
       args:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
@@ -193,6 +293,10 @@ services:
     profiles: ["setup"]
     build:
       context: ./backend
+      # By NAME, because Docker builds the LAST stage when no target is
+      # given, and that is the postgres-based `backup` stage. See the
+      # comment on `FROM scratch AS runtime` in backend/Dockerfile.
+      target: runtime
       args:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
@@ -229,6 +333,10 @@ services:
     profiles: ["setup"]
     build:
       context: ./backend
+      # By NAME, because Docker builds the LAST stage when no target is
+      # given, and that is the postgres-based `backup` stage. See the
+      # comment on `FROM scratch AS runtime` in backend/Dockerfile.
+      target: runtime
       args:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
@@ -258,6 +366,10 @@ services:
     profiles: ["setup"]
     build:
       context: ./backend
+      # By NAME, because Docker builds the LAST stage when no target is
+      # given, and that is the postgres-based `backup` stage. See the
+      # comment on `FROM scratch AS runtime` in backend/Dockerfile.
+      target: runtime
       args:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
@@ -329,6 +441,33 @@ services:
       # deployment says otherwise in its own environment, where nobody with a
       # browser can change it.
       RAWSYST_ALLOW_PRODUCTION_RESTORE: ${RAWSYST_ALLOW_PRODUCTION_RESTORE:-false}
+
+      # --- point-in-time recovery ------------------------------------------
+      #
+      # The dumps above are photographs; this is the film. A base backup is a
+      # byte-level copy of the cluster, and the write-ahead log is replayed
+      # onto it — which is the only way to get back a moment nobody
+      # photographed. The agent reads the same bucket and the same key the
+      # archiver in the db container writes with.
+      #
+      # How far back the recovery window reaches. It costs whatever
+      # write-ahead log the shop generates in that time, which is a small
+      # fraction of what one base backup costs — so this is the cheap dial and
+      # KEEP_BASE_BACKUPS is the expensive one.
+      RAWSYST_PITR_RETENTION_DAYS: ${RAWSYST_PITR_RETENTION_DAYS:-7}
+      # The fewest physical copies kept whatever their age. Two, so that a
+      # corrupt newest one does not leave no point-in-time recovery at all on
+      # the day it is the thing being used.
+      RAWSYST_PITR_KEEP_BASE_BACKUPS: ${RAWSYST_PITR_KEEP_BASE_BACKUPS:-2}
+      RAWSYST_PITR_MAX_BASE_BACKUPS: ${RAWSYST_PITR_MAX_BASE_BACKUPS:-8}
+      # Bounds on the two long operations. A base backup that hangs holds a
+      # replication connection and a staging volume and tells nobody.
+      RAWSYST_BASE_BACKUP_TIMEOUT: ${RAWSYST_BASE_BACKUP_TIMEOUT:-2h}
+      RAWSYST_PITR_TIMEOUT: ${RAWSYST_PITR_TIMEOUT:-4h}
+      # How often the agent takes a reading of the archive: two listings a
+      # minute. Turn it down on a metered store.
+      RAWSYST_WAL_OBSERVE_INTERVAL: ${RAWSYST_WAL_OBSERVE_INTERVAL:-1m}
+      RAWSYST_BACKUP_ROLE: ${RAWSYST_BACKUP_ROLE:-rawsyst_backup}
     volumes:
       # A dump is staged on disk and streamed out; it is never held in memory.
       # Its own volume so a large one cannot fill the container's writable
@@ -379,7 +518,18 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${BACKUP_AGENT_MEMORY:-256M}
+          # Raised from 256M when point-in-time recovery arrived, and the
+          # reason is worth stating: a recovery starts a SECOND PostgreSQL as a
+          # child of this container, so that postmaster's shared buffers and
+          # its backends are charged here. The recovered instance is configured
+          # with 128MB of shared buffers and twenty connections (see
+          # pitrinstance.go), which with the agent's own footprint lands
+          # comfortably inside this.
+          #
+          # An agent that only ever takes dumps does not need it: 256M is still
+          # right for a deployment with no object store, where the four
+          # point-in-time task kinds refuse anyway.
+          memory: ${BACKUP_AGENT_MEMORY:-768M}
     depends_on:
       db:
         condition: service_healthy
@@ -390,6 +540,10 @@ services:
     logging: *logging
     build:
       context: ./backend
+      # By NAME, because Docker builds the LAST stage when no target is
+      # given, and that is the postgres-based `backup` stage. See the
+      # comment on `FROM scratch AS runtime` in backend/Dockerfile.
+      target: runtime
       args:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}
@@ -441,6 +595,10 @@ services:
     logging: *logging
     build:
       context: ./backend
+      # By NAME, because Docker builds the LAST stage when no target is
+      # given, and that is the postgres-based `backup` stage. See the
+      # comment on `FROM scratch AS runtime` in backend/Dockerfile.
+      target: runtime
       args:
         VERSION: ${VERSION:-dev}
     image: rawsyst/backend:${VERSION:-dev}

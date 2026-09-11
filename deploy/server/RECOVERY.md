@@ -3,8 +3,10 @@
 Something has gone wrong. This document is what to do about it.
 
 **[BACKUP.md](BACKUP.md)** is how backups are taken and what makes one
-trustworthy. **[MIGRATION.md](MIGRATION.md)** is a planned move to another
-server, which is a different thing and is calmer.
+trustworthy. **[PITR.md](PITR.md)** is how to get back to a moment *between* two
+backups, which is the answer when something was deleted at a known time rather
+than when the server was lost. **[MIGRATION.md](MIGRATION.md)** is a planned move
+to another server, which is a different thing and is calmer.
 
 ---
 
@@ -31,6 +33,8 @@ Four rules. Every procedure below obeys them and none of them is negotiable.
 | | Go to |
 |---|---|
 | The data is wrong and the server is fine | [A. Put a backup back](#a-put-a-backup-back) |
+| Something was deleted or overwritten at a known time | [PITR.md, emergency incident procedure](PITR.md#emergency-incident-procedure) |
+| You need to know whether point-in-time recovery is even switched on here | [PITR-ACTIVATION.md](PITR-ACTIVATION.md), *Where this stands* |
 | The server is gone; you have the bucket | [B. Rebuild from the object store](#b-rebuild-from-the-object-store) |
 | The server **and** the bucket are gone; you have three files | [C. Rebuild from a laptop](#c-rebuild-from-a-laptop) |
 | A restore you just did was the wrong decision | [D. Roll it back](#d-roll-it-back) |

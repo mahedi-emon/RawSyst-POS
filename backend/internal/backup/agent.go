@@ -56,6 +56,17 @@ type Agent struct {
 	// which is what puts files there.
 	StagingDir string
 
+	// PITR is everything the point-in-time half needs: the archive, the base
+	// backup connection, and where to unpack a cluster. Nil on a deployment
+	// with no object store, where the four point-in-time task kinds refuse
+	// with a sentence rather than a nil dereference. See agentpitr.go.
+	PITR *PITRSupport
+
+	// Observer keeps the archive readout current on a timer. Nil means nothing
+	// writes `wal_archive_state`, which is a dashboard that says "never
+	// observed" rather than a dashboard that lies.
+	Observer *ArchiveObserver
+
 	// Maintenance is the write freeze, held on for the cutover of a production
 	// restore. Without it, a sale rung up during the two renames would land in
 	// the database being renamed out of the way and be lost — which is the
@@ -92,6 +103,15 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	reap := time.NewTicker(a.Abandoned / 4)
 	defer reap.Stop()
+
+	// The archive readout, on its own timer beside the queue. In a goroutine
+	// rather than in the loop below because the loop blocks for as long as a
+	// task takes, and a two-hour base backup that suspended the health readout
+	// for two hours would go dark at the one moment the disk is most likely to
+	// be filling.
+	if a.Observer != nil {
+		go a.Observer.Run(ctx)
+	}
 
 	for {
 		select {
@@ -184,6 +204,14 @@ func (a *Agent) run(ctx context.Context, task Task) (any, error) {
 		return a.restoreProduction(ctx, opts, task)
 	case TaskPrune:
 		return a.prune(ctx, opts)
+	case TaskBaseBackup:
+		return a.baseBackup(ctx, task)
+	case TaskPITRRestore:
+		return a.pitrRestore(ctx, task)
+	case TaskWALVerify:
+		return a.walVerify(ctx, task)
+	case TaskWALPrune:
+		return a.walPrune(ctx, task)
 	default:
 		return nil, errs.Newf(errs.CodeInvalidInput,
 			"This agent does not know how to %q. It is running a different "+

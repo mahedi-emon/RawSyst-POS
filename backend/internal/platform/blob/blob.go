@@ -348,11 +348,43 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 // complete. Bounded: a listing that never terminates would loop, so a page that
 // returns no keys and claims to be truncated ends it.
 func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
+	objects, err := s.ListDetailed(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(objects))
+	for _, o := range objects {
+		keys = append(keys, o.Key)
+	}
+	return keys, nil
+}
+
+// Object is one entry in a listing.
+type Object struct {
+	Key          string
+	Size         int64
+	LastModified time.Time
+}
+
+// ListDetailed returns every object under a prefix with its size.
+//
+// # Why the size is worth a separate method
+//
+// "How much is the write-ahead log archive costing" is otherwise a HEAD per
+// object, which for a week of segments is thousands of round trips to answer a
+// question a dashboard asks every minute. The listing response already carries
+// the size; `List` was simply throwing it away.
+//
+// `List` is kept and is now this, with the sizes dropped — the callers that
+// only want names should not have to say so twice.
+func (s *Store) ListDetailed(
+	ctx context.Context, prefix string,
+) ([]Object, error) {
 	if s == nil {
 		return nil, notConfigured()
 	}
 
-	var keys []string
+	var objects []Object
 	token := ""
 	for page := 0; page < 1000; page++ {
 		query := url.Values{}
@@ -394,7 +426,9 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 
 		var listing struct {
 			Contents []struct {
-				Key string `xml:"Key"`
+				Key          string `xml:"Key"`
+				Size         int64  `xml:"Size"`
+				LastModified string `xml:"LastModified"`
 			} `xml:"Contents"`
 			IsTruncated           bool   `xml:"IsTruncated"`
 			NextContinuationToken string `xml:"NextContinuationToken"`
@@ -404,10 +438,17 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 				"The object store's listing could not be understood.")
 		}
 		for _, c := range listing.Contents {
-			keys = append(keys, c.Key)
+			o := Object{Key: c.Key, Size: c.Size}
+			// A timestamp a store declined to send, or sent in a form this
+			// does not read, is left zero rather than guessed at. Nothing here
+			// decides to delete anything on the strength of it.
+			if t, err := time.Parse(time.RFC3339, c.LastModified); err == nil {
+				o.LastModified = t.UTC()
+			}
+			objects = append(objects, o)
 		}
 		if !listing.IsTruncated || listing.NextContinuationToken == "" {
-			return keys, nil
+			return objects, nil
 		}
 		token = listing.NextContinuationToken
 	}

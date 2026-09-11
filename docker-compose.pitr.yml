@@ -1,0 +1,175 @@
+# The point-in-time recovery drill, against the real images.
+#
+# # What this is for
+#
+# `backend/internal/backup/pitr_test.go` proves the mechanism: it builds a
+# cluster with initdb, archives to an in-process object store, and recovers
+# twice. That is the right place for the logic and it deliberately does not
+# exercise the deployment — the image, the entrypoint that edits pg_hba.conf,
+# the compose wiring, the agent as a resident process, or a real
+# S3-compatible store over HTTP.
+#
+# This does. It is a self-contained stack: MinIO, a PostgreSQL built from
+# `deploy/postgres/Dockerfile` with archiving on, and the backup image. Nothing
+# in it touches the development stack, the development database or the real
+# bucket — different project name, different volumes, its own credentials.
+#
+#     docker compose -f docker-compose.pitr.yml -p rawsyst-pitr up -d
+#     bash deploy/server/pitr-drill.sh
+#     docker compose -f docker-compose.pitr.yml -p rawsyst-pitr down -v
+#
+# # Why the credentials here are hard-coded and that is fine
+#
+# They are MinIO's defaults for a stack that exists for the length of one drill,
+# on a loopback network, with `-v` removing its volumes afterwards. There is
+# nothing in it but a table of numbers this file creates. A `.env` for it would
+# be one more file that looks like it holds a secret and does not.
+
+name: rawsyst-pitr
+
+services:
+  # The object store. MinIO because it is the S3-compatible server that runs in
+  # one container with no configuration, and because the product speaks the
+  # protocol rather than a vendor SDK — so passing this drill is evidence about
+  # R2 and Amazon too.
+  store:
+    image: minio/minio:latest
+    command: server /data --address :9000
+    environment:
+      MINIO_ROOT_USER: drilluser
+      MINIO_ROOT_PASSWORD: drillpassword
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - store-data:/data
+
+  # The bucket. A one-shot rather than a line in the drill script, so the stack
+  # is usable on its own and so `up` does not report healthy before there is
+  # anywhere to write.
+  store-init:
+    image: minio/mc:latest
+    depends_on:
+      store:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set drill http://store:9000 drilluser drillpassword &&
+      mc mb --ignore-existing drill/rawsyst-drill &&
+      echo 'bucket ready'
+      "
+
+  # PostgreSQL, with the archiver in it. Built from this repository, which is
+  # the point: a drill against `postgres:17-alpine` would prove nothing about
+  # the image the server actually runs.
+  db:
+    build:
+      context: .
+      dockerfile: deploy/postgres/Dockerfile
+      args:
+        VERSION: ${VERSION:-drill}
+    image: rawsyst/postgres:${VERSION:-drill}
+    depends_on:
+      store-init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: rawsyst
+      POSTGRES_USER: rawsyst
+      POSTGRES_PASSWORD: drillpassword
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      RAWSYST_BACKUP_ROLE: rawsyst_backup
+
+      # What archive_command reads. The same five variables the real server
+      # passes, which is what makes this a test of the deployment rather than of
+      # a special case.
+      RAWSYST_S3_ENDPOINT: http://store:9000
+      RAWSYST_S3_BUCKET: rawsyst-drill
+      RAWSYST_S3_REGION: us-east-1
+      RAWSYST_S3_ACCESS_KEY_ID: drilluser
+      RAWSYST_S3_SECRET_ACCESS_KEY: drillpassword
+      RAWSYST_S3_PATH_STYLE: "true"
+      RAWSYST_BACKUP_PREFIX: drill
+      # Encryption ON in the drill, deliberately. The failure it catches — a key
+      # configured on one container and not the other, so segments are sealed
+      # and cannot be read back — is invisible until a recovery.
+      RAWSYST_BACKUP_ENCRYPTION_KEY: ${RAWSYST_DRILL_KEY:-c2VjcmV0LWRyaWxsLWtleS0zMi1ieXRlcy1sb25nISE=}
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/rawsyst backup wal archive %p %f
+      # Two seconds, so a drill produces several segments in under a minute.
+      # A real server uses sixty; see .env.example for what that number costs.
+      - -c
+      - archive_timeout=2
+      - -c
+      - max_wal_senders=4
+      - -c
+      - wal_keep_size=64MB
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - fsync=off
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rawsyst -d rawsyst && psql -U rawsyst -d rawsyst -c 'SELECT 1' >/dev/null"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  # The agent image, run one command at a time by the drill script. Not resident
+  # here: the drill wants to watch each step finish rather than poll a queue.
+  backup:
+    build:
+      context: ./backend
+      target: backup
+      args:
+        VERSION: ${VERSION:-drill}
+    image: rawsyst/backup:${VERSION:-drill}
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      RAWSYST_ENV: development
+      RAWSYST_DB_DSN: postgres://rawsyst:drillpassword@db:5432/rawsyst?sslmode=disable
+      RAWSYST_BACKUP_DSN: postgres://rawsyst:drillpassword@db:5432/rawsyst?sslmode=disable
+      RAWSYST_BACKUP_ADMIN_DSN: postgres://rawsyst:drillpassword@db:5432/postgres?sslmode=disable
+      # config.Load insists on these outside the two commands that skip it.
+      # Values that exist rather than values that mean anything: this stack has
+      # no API and issues no token.
+      RAWSYST_JWT_SECRET: drill-jwt-secret-that-is-long-enough-for-config
+      RAWSYST_DATA_ENCRYPTION_KEYS: "1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+      RAWSYST_S3_ENDPOINT: http://store:9000
+      RAWSYST_S3_BUCKET: rawsyst-drill
+      RAWSYST_S3_REGION: us-east-1
+      RAWSYST_S3_ACCESS_KEY_ID: drilluser
+      RAWSYST_S3_SECRET_ACCESS_KEY: drillpassword
+      RAWSYST_S3_PATH_STYLE: "true"
+      RAWSYST_BACKUP_PREFIX: drill
+      RAWSYST_BACKUP_ENCRYPTION_KEY: ${RAWSYST_DRILL_KEY:-c2VjcmV0LWRyaWxsLWtleS0zMi1ieXRlcy1sb25nISE=}
+
+      RAWSYST_BACKUP_TEMP_DIR: /staging
+      RAWSYST_BACKUP_STAGING_DIR: /staging
+      # A drill cluster is a few megabytes and the staging volume is whatever
+      # the host has. The real default of 100 is about a server where the
+      # staging volume IS the database's volume.
+      RAWSYST_BACKUP_MIN_FREE_PERCENT: "1"
+      RAWSYST_PITR_RETENTION_DAYS: "7"
+      RAWSYST_PITR_KEEP_BASE_BACKUPS: "1"
+    volumes:
+      - backup-staging:/staging
+
+volumes:
+  store-data:
+  db-data:
+  backup-staging:

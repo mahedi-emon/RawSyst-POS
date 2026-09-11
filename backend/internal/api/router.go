@@ -230,6 +230,13 @@ type Server struct {
 	backupTasks *backup.Tasks
 	backupStore *blob.Store
 
+	// walBackups is the point-in-time half: the archive readout, the physical
+	// base backups and the audit of recoveries. Separate from `backups`
+	// because they answer different questions about different artefacts — a
+	// dump and a byte-level copy of the cluster are not two kinds of the same
+	// thing. See platform_pitr_handlers.go.
+	walBackups *backup.WALRegister
+
 	// backupPrefix namespaces snapshots inside the bucket, and backupStaging is
 	// where an uploaded artifact waits for the agent to check it.
 	backupPrefix  string
@@ -256,6 +263,17 @@ func (s *Server) WithBackups(
 	s.backupStore = store
 	s.backupPrefix = prefix
 	s.backupStaging = staging
+	return s
+}
+
+// WithPITR wires the write-ahead log archive and point-in-time recovery.
+//
+// Separate from `WithBackups` so that an installation can have dumps without
+// having point-in-time recovery, which is the state every existing deployment
+// is in until it turns archiving on. The routes report its absence with a
+// sentence that says what is missing rather than failing to start.
+func (s *Server) WithPITR(register *backup.WALRegister) *Server {
+	s.walBackups = register
 	return s
 }
 
@@ -2634,6 +2652,67 @@ func (s *Server) Routes() []Route {
 			s.handlePlatformPruneBackups,
 			"never deletes the newest completed snapshot, never the newest " +
 				"verified one, and nothing at all if it cannot find one"},
+
+		// --- point-in-time recovery ---
+		//
+		// AccessSuperAdmin, every one of them, for exactly the reason the dump
+		// routes above are: a physical copy of this cluster is every business
+		// at once, and a recovery of one produces a readable copy of all of
+		// them at an earlier moment. A tenant permission that reached this
+		// would be a permission that lets one shop recover another's books.
+		//
+		// Nothing here returns a credential, a presigned URL, an object path
+		// or an encryption key. See platform_pitr_handlers.go.
+		{http.MethodGet, "/api/v1/platform/pitr", AccessSuperAdmin, "",
+			s.handlePITRStatus,
+			"served from the reading the agent takes on a timer, because a " +
+				"screen polls this and a bucket listing is a round trip to " +
+				"another company; a reading older than fifteen minutes is " +
+				"marked stale rather than shown as though it were now"},
+		{http.MethodGet, "/api/v1/platform/pitr/window", AccessSuperAdmin, "",
+			s.handlePITRWindow,
+			"reads the store rather than the cached reading, because this is " +
+				"the question asked immediately before somebody commits to a " +
+				"recovery; `?at=` turns it into whether that exact moment is " +
+				"reachable, answered with a sentence rather than a boolean"},
+		{http.MethodGet, "/api/v1/platform/pitr/base-backups", AccessSuperAdmin,
+			"", s.handleListBaseBackups,
+			"the PHYSICAL copies, which are not the dumps: the write-ahead " +
+				"log describes changes to pages and can only be replayed onto " +
+				"one of these"},
+		{http.MethodPost, "/api/v1/platform/pitr/base-backups", AccessSuperAdmin,
+			"", s.handleCreateBaseBackup,
+			"queues a pg_basebackup of the whole cluster, then a recovery of " +
+				"it to `immediate` — stored is not verified, and the cheapest " +
+				"proof a copy is readable is recovering it"},
+		{http.MethodGet, "/api/v1/platform/pitr/recoveries", AccessSuperAdmin,
+			"", s.handleListRecoveries,
+			"every recovery, including the refused ones: who asked to read " +
+				"every business at an earlier moment is what an investigation " +
+				"would need, and a row written only on success would leave " +
+				"the interesting ones unrecorded"},
+		{http.MethodGet, "/api/v1/platform/pitr/failures", AccessSuperAdmin, "",
+			s.handleArchiveFailures,
+			"the failed archive attempts PostgreSQL recorded; the reason is " +
+				"deliberately not copied out of its log, because an " +
+				"archive_command error can carry a signed URL"},
+		{http.MethodPost, "/api/v1/platform/pitr/verify", AccessSuperAdmin, "",
+			s.handleVerifyArchive,
+			"a listing and small reads by default; `deep_sample` also " +
+				"downloads and decrypts that many segments, which is the only " +
+				"check that proves the bytes are readable and is charged by " +
+				"the gigabyte"},
+		{http.MethodPost, "/api/v1/platform/pitr/prune", AccessSuperAdmin, "",
+			s.handlePruneArchive,
+			"a dry run unless `apply` is set, which is the opposite of the " +
+				"convention everywhere else here and is deliberate: this is " +
+				"the only route that removes the last copy of something"},
+		{http.MethodPost, "/api/v1/platform/pitr/restore", AccessSuperAdmin, "",
+			s.handlePITRRestore,
+			"recovers to a chosen moment inside a PostgreSQL of its own, on a " +
+				"socket nothing else can reach. It cannot touch production and " +
+				"there is no code path from it to the live cluster; replacing " +
+				"production is still the restore-production route above"},
 
 		{http.MethodGet, "/api/v1/platform/maintenance", AccessSuperAdmin, "",
 			s.handlePlatformMaintenance, ""},

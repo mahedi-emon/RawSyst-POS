@@ -220,6 +220,48 @@ if have docker && docker info >/dev/null 2>&1; then
     if [ -n "${failed:-}" ] && [ "$failed" != "ok" ]; then
       flag "last backup failure" "$failed"
     fi
+
+    # The write-ahead log archive, which answers a different question again.
+    #
+    # A verified backup from last night says the recovery point is 24 hours.
+    # The archive says whether it is a minute. Both matter and neither implies
+    # the other, so they are two lines rather than one word.
+    #
+    # Read from the row the agent writes every minute rather than by listing
+    # the bucket: this script runs on a timer and should not make a network
+    # call to another company to answer a local question. `observed_at` is
+    # checked so a stale reading is reported as stale rather than as healthy.
+    read -r health lag observed < <(docker exec "$db" psql \
+      -U "${POSTGRES_USER:-rawsyst}" -d "${POSTGRES_DB:-rawsyst}" -tAc \
+      "SELECT coalesce(health, 'unknown'),
+              coalesce(lag_segments, -1),
+              round(extract(epoch from now() - observed_at) / 60)
+         FROM wal_archive_state WHERE only_row" 2>/dev/null | tr '|' ' ')
+
+    if [ -z "${health:-}" ] || [ "$health" = "unknown" ]; then
+      line "wal archive" "not observed (point-in-time recovery may be off)"
+    elif [ -n "${observed:-}" ] && [ "${observed%.*}" -gt 15 ]; then
+      flag "wal archive" "reading is ${observed%.*} minutes old"
+      tip "docker compose ... --profile backup logs backup-agent"
+    elif [ "$health" = "green" ]; then
+      line "wal archive" "green, ${lag} segment(s) behind"
+    else
+      flag "wal archive" "$health"
+      tip "docker compose ... --profile backup run --rm backup wal status"
+      tip "See deploy/server/PITR.md"
+    fi
+
+    # The local write-ahead log directory, which is the number that turns a
+    # broken archive into an outage. When shipping fails PostgreSQL keeps every
+    # segment — correctly — and the disk fills.
+    walbytes=$(docker exec "$db" psql -U "${POSTGRES_USER:-rawsyst}" \
+      -d "${POSTGRES_DB:-rawsyst}" -tAc \
+      "SELECT coalesce(pg_wal_bytes, 0) FROM wal_archive_state WHERE only_row" \
+      2>/dev/null)
+    if [ -n "${walbytes:-}" ] && [ "$walbytes" -gt $((2 * 1024 * 1024 * 1024)) ]; then
+      flag "local pg_wal" "$((walbytes / 1024 / 1024)) MB and growing"
+      tip "archiving is probably failing; the disk fills until it works again"
+    fi
   fi
 else
   flag "docker" "not answering"

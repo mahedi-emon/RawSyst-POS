@@ -321,6 +321,11 @@ func run() error {
 			envOr("RAWSYST_BACKUP_PREFIX", "rawsyst"),
 			envOr("RAWSYST_BACKUP_STAGING_DIR", "/staging"),
 		).
+		// Point-in-time recovery: the write-ahead log archive, the physical
+		// base backups and the audit of recoveries. Wired separately from the
+		// dumps because a deployment can have one without the other, and every
+		// deployment has exactly that until archiving is turned on.
+		WithPITR(backup.NewWALRegister(pool)).
 		// The write freeze. Read in front of every business route, which is
 		// the only place it can be enforced for all of them at once.
 		WithMaintenance(maintenance.NewService(pool))

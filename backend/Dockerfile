@@ -69,7 +69,20 @@ RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
 
 # --- run --------------------------------------------------------------------
 
-FROM scratch
+# NAMED, and every compose service that wants this image asks for it by name.
+#
+# Docker builds the LAST stage in a file when no target is given, and the last
+# stage here is `backup` — which is `postgres:17-alpine` and fourteen times the
+# size. So a `docker build ./backend` with no `--target` quietly produces the
+# heavy image and tags it `rawsyst/backend`, and everything still WORKS, because
+# compose overrides the entrypoint anyway. What is lost is the whole reason this
+# stage is `scratch`: no shell for a command-injection bug to reach, and nothing
+# to patch on a CVE Tuesday.
+#
+# Nothing catches that. The container runs, the API answers, and the only
+# symptom is a number in `docker images` nobody reads. Hence the name, and hence
+# `target: runtime` on every service below that uses it.
+FROM scratch AS runtime
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo

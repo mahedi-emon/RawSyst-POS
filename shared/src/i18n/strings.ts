@@ -9605,6 +9605,128 @@ export const en = {
   'nx.pos.offersFound': '{n} offers apply, worth {amount}.',
   'nx.pos.takeOffers': 'Apply them',
   'nx.pos.noOffers': 'No campaign applies to this sale.',
+
+  // --- Point-in-Time Recovery, the platform operator's screen (nx.pitr) -----
+  //
+  // A dump is a photograph of a moment. The write-ahead log archive is the
+  // film: a physical copy of the cluster plus every change since restores ANY
+  // moment inside a window. These strings keep the two apart, because the one
+  // thing this screen must never do is let "verified" on a dump be read as a
+  // claim about how far back the business can be taken.
+  'nx.pbk.tab.recovery': "Recovery",
+
+  'nx.pitr.standing': "What can be recovered",
+  'nx.pitr.neverObserved': "Nothing has looked at the archive yet. The agent takes a reading every minute; if this stays empty, the agent is not running.",
+  'nx.pitr.staleReading': "This reading is more than fifteen minutes old, so it describes how the archive was rather than how it is. The agent that refreshes it may have stopped.",
+  'nx.pitr.yes': "Yes",
+  'nx.pitr.no': "No",
+
+  'nx.pitr.health.green': "Archiving",
+  'nx.pitr.health.amber': "Needs looking at",
+  'nx.pitr.health.red': "Not protected",
+
+  'nx.pitr.fig.windowStart': "Window starts",
+  'nx.pitr.fig.windowStartCaption': "Kept for {n} days",
+  'nx.pitr.fig.windowEnd': "Window ends",
+  'nx.pitr.fig.lag': "Archive lag",
+  'nx.pitr.fig.lagValue': "{n} segments",
+  'nx.pitr.fig.lagCaption': "{n}s since the last one arrived",
+  'nx.pitr.fig.available': "Recovery available",
+  'nx.pitr.fig.segments': "Segments archived",
+  'nx.pitr.fig.localWal': "Log held on this server",
+  'nx.pitr.fig.localWalCaption': "Grows when archiving fails",
+  'nx.pitr.fig.attempts': "Archived in total",
+  'nx.pitr.fig.failedTotal': "{n} attempts failed",
+  'nx.pitr.fig.gaps': "Gaps in the archive",
+
+  'nx.pitr.archiveTitle': "The archive itself",
+  'nx.pitr.storeError': "The object store said",
+
+  'nx.pitr.planTitle': "Recover to a moment",
+  'nx.pitr.planIntro': "Restores a physical copy of the cluster into a database of its own and replays the log up to the moment you choose. The live database is never opened and cannot be reached from here.",
+  'nx.pitr.notAvailable': "There is no recovery to offer yet. It needs archiving switched on, an object store that answers, and at least one physical base backup for the log to be replayed onto.",
+
+  'nx.pitr.target.beforeTime': "Just before a moment",
+  'nx.pitr.target.time': "At a moment",
+  'nx.pitr.target.latest': "The latest point available",
+  'nx.pitr.target.immediate': "The base backup itself",
+  'nx.pitr.target.lsn': "An exact log position",
+  'nx.pitr.target.name': "A named restore point",
+
+  'nx.pitr.help.beforeTime': "Stops just before the moment you give, so a transaction that committed exactly then is left out. This is the one to use when you know when the mistake happened.",
+  'nx.pitr.help.time': "Stops at the moment you give, including anything that committed exactly then.",
+  'nx.pitr.help.latest': "Replays everything the archive holds. The answer to losing the server rather than to undoing a mistake.",
+  'nx.pitr.help.immediate': "Stops as soon as the copy is consistent, replaying nothing after it. The cheapest way to prove a base backup is sound.",
+  'nx.pitr.help.lsn': "Stops at an exact position in the log. For when the position is already known from an investigation.",
+  'nx.pitr.help.name': "Stops at a point somebody marked deliberately before a risky change. Safer than a clock, because it names a moment rather than guessing at one.",
+
+  'nx.pitr.field.target': "Recover to",
+  'nx.pitr.field.moment': "Moment",
+  'nx.pitr.field.momentHint': "Read in this computer's time zone, so type the time you would read off a clock beside you.",
+  'nx.pitr.field.lsn': "Log position",
+  'nx.pitr.field.lsnHint': "Written like 1A/B2C30000.",
+  'nx.pitr.field.name': "Restore point",
+  'nx.pitr.field.nameHint': "Letters, digits, dots, dashes and underscores.",
+  'nx.pitr.field.confirm': "Type {word}",
+  'nx.pitr.field.confirmHint': "The last thing between a mis-click and a readable copy of every business on this server.",
+
+  'nx.pitr.check': "Check that moment",
+  'nx.pitr.recoverable': "That moment is inside the window. It would be replayed onto base backup {base}.",
+  'nx.pitr.badMoment': "That is not a moment this can read. Pick a date and a time.",
+  'nx.pitr.warning': "A recovery produces a working copy of every business on this server as they were at the chosen moment, held on the backup volume until it is removed. It does not touch the live database and cannot: replacing that is a separate decision, made on the History tab, and it needs a rehearsal that passed and a write freeze.",
+  'nx.pitr.recover': "Recover",
+  'nx.pitr.oneAtATime': "One recovery at a time. Each unpacks a copy of the cluster and starts a database of its own, and two at once on this server would be an outage caused by the thing meant to prevent one.",
+
+  'nx.pitr.basesTitle': "Physical base backups",
+  'nx.pitr.basesIntro': "A byte-level copy of the cluster. The log describes changes to pages and can only be replayed onto one of these, which is why a dump cannot stand in for it.",
+  'nx.pitr.takeBase': "Take a base backup",
+  'nx.pitr.basesCaption': "Physical base backups, newest first",
+  'nx.pitr.noBases': "No physical copy yet",
+  'nx.pitr.noBasesWhy': "Without one there is nothing for the archive to be replayed onto, so there is no point-in-time recovery however much log has been shipped.",
+  'nx.pitr.timeline': "Timeline {n}",
+  'nx.pitr.sealed': "Encrypted",
+  'nx.pitr.notSealed': "Not encrypted",
+
+  'nx.pitr.base.running': "Copying",
+  'nx.pitr.base.uploading': "Uploading",
+  'nx.pitr.base.stored': "Stored, not checked",
+  'nx.pitr.base.verified': "Proved to recover",
+  'nx.pitr.base.invalid': "Did not check out",
+  'nx.pitr.base.failed': "Failed",
+  'nx.pitr.base.expired': "Removed by retention",
+
+  'nx.pitr.historyTitle': "Recoveries",
+  'nx.pitr.historyIntro': "Every recovery asked for, including the ones that were refused. Who asked, which moment they chose, and where the replay actually stopped.",
+  'nx.pitr.historyCaption': "Recoveries, newest first",
+  'nx.pitr.noRecoveries': "Nothing has been recovered",
+  'nx.pitr.noRecoveriesWhy': "Recover to the base backup itself once, on a quiet afternoon, so the first time is not during an incident.",
+  'nx.pitr.byTheSchedule': "By the schedule",
+
+  'nx.pitr.recovery.running': "Running",
+  'nx.pitr.recovery.succeeded': "Succeeded",
+  'nx.pitr.recovery.failed': "Failed",
+  'nx.pitr.recovery.refused': "Refused",
+
+  'nx.pitr.col.taken': "Taken",
+  'nx.pitr.col.state': "State",
+  'nx.pitr.col.where': "Where in the log",
+  'nx.pitr.col.size': "Size",
+  'nx.pitr.col.asked': "Asked for",
+  'nx.pitr.col.target': "Target",
+  'nx.pitr.col.reached': "Replay stopped at",
+
+  'nx.pitr.maintTitle': "Keeping the archive honest",
+  'nx.pitr.maintIntro': "Two jobs that are about the archive rather than about a recovery: proving it is intact, and removing what nothing can still need.",
+  'nx.pitr.checkArchive': "Check the archive",
+  'nx.pitr.previewRetention': "What would be removed",
+  'nx.pitr.applyRetention': "Remove it",
+  'nx.pitr.retentionHint': "The check lists every segment, confirms each is the length its own record says, and downloads a handful to prove they can still be read. Retention removes only what sits before the oldest base backup still kept — never anything a retained one would need to replay.",
+  'nx.pitr.failuresTitle': "Failed archive attempts",
+  'nx.pitr.noFailures': "None recorded. Every segment that has been offered has been accepted.",
+  'nx.pitr.failuresCaption': "Failed archive attempts, newest first",
+  'nx.pitr.col.segment': "Segment",
+  'nx.pitr.col.failedAt': "Failed at",
+  'nx.pitr.col.reason': "Reason",
 } as const;
 
 /** Every string the interface can show. */

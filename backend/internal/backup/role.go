@@ -86,7 +86,14 @@ type RoleReport struct {
 	// GrantedBypass is true when this run added BYPASSRLS to a role that did
 	// not have it, which is the one attribute that makes a dump possible.
 	GrantedBypass bool `json:"granted_bypassrls"`
-	PasswordSet   bool `json:"password_set"`
+
+	// GrantedReplication is true when this run added REPLICATION to a role
+	// that did not have it. `pg_basebackup` copies the cluster over a
+	// replication connection, which is a different thing from reading the
+	// tables and is refused to a role without this attribute.
+	GrantedReplication bool `json:"granted_replication"`
+
+	PasswordSet bool `json:"password_set"`
 
 	// Statements are what ran, with any password removed. Safe to log, and
 	// meant to be: an operator reading a deploy log should be able to see
@@ -97,6 +104,10 @@ type RoleReport struct {
 	// VerifyDSN was empty.
 	Verified   *bool  `json:"verified,omitempty"`
 	VerifyNote string `json:"verify_note,omitempty"`
+
+	// MonitorNote is set when the one best-effort grant did not take. See the
+	// statement list: everything else here either succeeds or fails the run.
+	MonitorNote string `json:"monitor_note,omitempty"`
 
 	DryRun bool `json:"dry_run"`
 }
@@ -209,10 +220,11 @@ func EnsureRole(ctx context.Context, opts RoleOptions) (*RoleReport, error) {
 		}
 	}
 
-	var existed, hasBypass bool
+	var existed, hasBypass, hasReplication bool
 	err = conn.QueryRow(ctx,
-		`SELECT true, rolbypassrls FROM pg_roles WHERE rolname = $1`, role).
-		Scan(&existed, &hasBypass)
+		`SELECT true, rolbypassrls, rolreplication FROM pg_roles
+		  WHERE rolname = $1`, role).
+		Scan(&existed, &hasBypass, &hasReplication)
 	if err != nil && err != pgx.ErrNoRows {
 		return nil, errs.Wrap(err, errs.CodeInternal,
 			"The database would not say whether "+role+" exists.")
@@ -239,17 +251,23 @@ func EnsureRole(ctx context.Context, opts RoleOptions) (*RoleReport, error) {
 	switch {
 	case !existed:
 		stmts = append(stmts, fmt.Sprintf(
-			`CREATE ROLE %s LOGIN PASSWORD %s BYPASSRLS `+
-				`NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION`,
+			`CREATE ROLE %s LOGIN PASSWORD %s BYPASSRLS REPLICATION `+
+				`NOSUPERUSER NOCREATEDB NOCREATEROLE`,
 			quoteIdent(role), quoteLiteral(opts.Password)))
 		report.Created = true
 		report.PasswordSet = true
 		report.GrantedBypass = true
+		report.GrantedReplication = true
 	default:
 		if !hasBypass {
 			stmts = append(stmts,
 				`ALTER ROLE `+quoteIdent(role)+` BYPASSRLS`)
 			report.GrantedBypass = true
+		}
+		if !hasReplication {
+			stmts = append(stmts,
+				`ALTER ROLE `+quoteIdent(role)+` REPLICATION`)
+			report.GrantedReplication = true
 		}
 		// Never silently: an existing role keeps its password unless one was
 		// deliberately supplied, so re-running this on every deploy does not
@@ -259,10 +277,34 @@ func EnsureRole(ctx context.Context, opts RoleOptions) (*RoleReport, error) {
 				quoteIdent(role), quoteLiteral(opts.Password)))
 			report.PasswordSet = true
 		}
-		// A role that exists must still not be able to do more than read.
+		// A role that exists must still not be able to do more than read the
+		// database and copy the cluster.
 		stmts = append(stmts, `ALTER ROLE `+quoteIdent(role)+
-			` NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION`)
+			` NOSUPERUSER NOCREATEDB NOCREATEROLE`)
 	}
+
+	// REPLICATION, which is new here and is worth being explicit about.
+	//
+	// `pg_basebackup` copies the cluster over a REPLICATION connection, which
+	// is a different thing from reading the tables and is refused to a role
+	// without this attribute. It is granted to the BACKUP role and to nothing
+	// else.
+	//
+	// It is not an escalation of what this role can read: it already has
+	// BYPASSRLS, so it can already read every row of every business. What it
+	// adds is a second way to get the same bytes out, over a protocol that
+	// bypasses SQL — which is why the pg_hba.conf line admitting it is a
+	// separate line, and why `deploy/server/PITR.md` says to scope that line
+	// to this role by name rather than to `all`.
+	//
+	// pg_monitor is granted so that the archive readout can call
+	// `pg_ls_waldir()` and see how much write-ahead log has piled up locally.
+	// That number is the early warning for the one failure mode archiving has
+	// — a disk filling up because uploads are failing — and without the grant
+	// it reads as zero, which is a health check reporting a comfortable number
+	// it could not measure. Best effort: a managed PostgreSQL may refuse the
+	// grant, and the readout says so rather than failing.
+	monitorGrant := `GRANT pg_monitor TO ` + quoteIdent(role)
 
 	// The same five the restore path reapplies, and for the same reason: the
 	// ALTER DEFAULT PRIVILEGES pair is what keeps the grant true for tables a
@@ -279,6 +321,7 @@ func EnsureRole(ctx context.Context, opts RoleOptions) (*RoleReport, error) {
 	for _, s := range stmts {
 		report.Statements = append(report.Statements, redactPassword(s))
 	}
+	report.Statements = append(report.Statements, monitorGrant+"  -- best effort")
 	if opts.DryRun {
 		return report, nil
 	}
@@ -288,6 +331,19 @@ func EnsureRole(ctx context.Context, opts RoleOptions) (*RoleReport, error) {
 			return report, errs.Wrap(err, errs.CodeInternal,
 				"Setting the backup role up failed at: "+redactPassword(s))
 		}
+	}
+
+	// Best effort, and the only statement here that is. A managed PostgreSQL
+	// may not let anybody grant a predefined role, and the consequence is that
+	// one number in the archive readout — how much write-ahead log has piled
+	// up locally — reads as zero. That is worth a note and is not worth
+	// refusing to set up a backup role over.
+	if _, err := conn.Exec(ctx, monitorGrant); err != nil {
+		report.MonitorNote = "pg_monitor could not be granted to " + role +
+			", so the archive readout cannot measure how much write-ahead log " +
+			"has piled up locally and will report it as zero. That number is " +
+			"the early warning for a failing archive. Grant it by hand as a " +
+			"superuser, or accept the gap knowingly."
 	}
 
 	// ALTER DEFAULT PRIVILEGES applies to objects created by the role that ran

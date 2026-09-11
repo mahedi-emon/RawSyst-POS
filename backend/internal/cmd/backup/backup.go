@@ -89,8 +89,21 @@ func run(args []string) error {
 	from := fs.String("from", "",
 		"the database a production restore renamed aside, to put back")
 	jsonOut := fs.Bool("json", false, "machine-readable output")
-	if err := fs.Parse(rest); err != nil {
-		return err
+
+	// `wal` and `pitr` own their own flags entirely, so the flag set above must
+	// not see them.
+	//
+	// Everything else here takes its options from one shared set, which works
+	// because the action is a bare word and Go's flag package stops at the
+	// first non-flag argument. `pitr -target time` starts with a flag, so the
+	// shared set would try to interpret `-target` and fail with "flag provided
+	// but not defined" before the command it belongs to ever ran. Found by the
+	// drill in deploy/server/pitr-drill.sh, which is what a drill is for.
+	ownsItsFlags := action == "wal" || action == "pitr"
+	if !ownsItsFlags {
+		if err := fs.Parse(rest); err != nil {
+			return err
+		}
 	}
 
 	// `check` needs nothing: no database, no bucket, no configuration. That is
@@ -99,6 +112,19 @@ func run(args []string) error {
 	// missing RAWSYST_JWT_SECRET cannot stop somebody checking their backup.
 	if action == "check" {
 		return doCheck(*dumpFile, *manifestFile, *jsonOut)
+	}
+
+	// `wal archive` and `wal restore` need nothing either, and for a stronger
+	// reason: they run INSIDE the PostgreSQL container, as archive_command and
+	// restore_command, in an environment with no application database and no
+	// signing key. Loading the product's configuration there would refuse to
+	// start and every segment would fail to archive with a message about a
+	// missing JWT secret. See internal/cmd/backup/wal.go.
+	//
+	// Dispatched from the raw arguments rather than from `rest`, because the
+	// flag set above would try to interpret PostgreSQL's `%p` and `%f`.
+	if handled, err := runHook(args); handled {
+		return err
 	}
 
 	cfg, err := config.Load()
@@ -149,11 +175,13 @@ func run(args []string) error {
 	// not stop a backup from being taken — the backup is the thing that
 	// matters, and the row about it is not.
 	var register *backup.Register
+	var walRegister *backup.WALRegister
 	var tasks *backup.Tasks
 	var maintenanceSvc *maintenance.Service
 	if pool, err := db.Open(ctx, cfg.DB); err == nil {
 		defer pool.Close()
 		register = backup.NewRegister(pool)
+		walRegister = backup.NewWALRegister(pool)
 		tasks = backup.NewTasks(pool)
 		maintenanceSvc = maintenance.NewService(pool)
 	}
@@ -178,13 +206,24 @@ func run(args []string) error {
 	case "rehearse":
 		return doRehearse(ctx, opts, *jsonOut)
 	case "agent":
-		return doAgent(ctx, opts, cfg, register, tasks, maintenanceSvc, *once)
+		return doAgent(ctx, opts, cfg, register, walRegister, tasks, maintenanceSvc, *once)
 	case "rollback":
 		return doRollback(ctx, cfg, *from)
 	case "health":
 		return doHealth(ctx, register, *jsonOut)
 	case "role":
 		return doRole(ctx, cfg, opts, *dryRun, *jsonOut)
+
+	// --- point-in-time recovery ---
+	//
+	// `wal archive` and `wal restore` never reach here; they were handled
+	// above, before the configuration was loaded.
+	case "wal":
+		return doWAL(ctx, cfg, opts, walRegister, rest)
+	case "basebackup":
+		return doBaseBackup(ctx, cfg, opts, walRegister, *jsonOut)
+	case "pitr":
+		return doPITR(ctx, cfg, opts, walRegister, rest)
 	case "-h", "--help", "help":
 		usage()
 		return nil
@@ -644,8 +683,8 @@ func doRehearse(
 
 func doAgent(
 	ctx context.Context, opts backup.Options, cfg config.Config,
-	register *backup.Register, tasks *backup.Tasks,
-	maintenanceSvc *maintenance.Service, once bool,
+	register *backup.Register, walRegister *backup.WALRegister,
+	tasks *backup.Tasks, maintenanceSvc *maintenance.Service, once bool,
 ) error {
 	if register == nil || tasks == nil {
 		return fmt.Errorf("the agent needs a database connection: it takes " +
@@ -676,6 +715,38 @@ func doAgent(
 		},
 		Poll:      duration("RAWSYST_BACKUP_AGENT_POLL", 5*time.Second),
 		Abandoned: duration("RAWSYST_BACKUP_AGENT_ABANDONED", 6*time.Hour),
+	}
+
+	// The point-in-time half, wired only when there is somewhere to archive to.
+	// Without a store the four new task kinds refuse with a sentence, which is
+	// the right answer: there is no point-in-time recovery to have.
+	staging := env("RAWSYST_BACKUP_STAGING_DIR", "/staging")
+	baseDSN := env("RAWSYST_BACKUP_DSN", cfg.DB.DSN)
+	wal := walOptions(cfg, opts)
+	if wal.Configured() {
+		agent.PITR = &backup.PITRSupport{
+			WAL:            wal,
+			BaseDSN:        baseDSN,
+			ObserveDSN:     baseDSN,
+			Register:       walRegister,
+			StagingDir:     staging,
+			Policy:         backup.PITRPolicyFromEnv(),
+			MinFreePercent: intEnv("RAWSYST_BACKUP_MIN_FREE_PERCENT", 100),
+			AppVersion:     opts.AppVersion,
+			GitCommit:      opts.GitCommit,
+			Environment:    opts.Environment,
+			SourceHost:     opts.SourceHost,
+			BinDir:         os.Getenv("RAWSYST_POSTGRES_BIN"),
+			BaseTimeout:    duration("RAWSYST_BASE_BACKUP_TIMEOUT", 2*time.Hour),
+			RestoreTimeout: duration("RAWSYST_PITR_TIMEOUT", 4*time.Hour),
+		}
+		agent.Observer = &backup.ArchiveObserver{
+			DSN:      baseDSN,
+			WAL:      wal,
+			Register: walRegister,
+			Interval: duration("RAWSYST_WAL_OBSERVE_INTERVAL",
+				backup.DefaultObserveInterval),
+		}
 	}
 
 	if once {
@@ -897,6 +968,21 @@ func usage() {
   role          create or repair the role that takes the backup, and prove it
                 can read. Idempotent; -dry-run says what it would do
 
+Point-in-time recovery — a dump is a photograph, this is the film:
+
+  basebackup    take a PHYSICAL copy of the cluster with pg_basebackup. The
+                thing the write-ahead log is replayed onto; a dump cannot be
+  pitr          recover to a moment, into a PostgreSQL of its own. Production
+                is never opened. -window prints what is recoverable and stops
+  wal status    is the archive working, and what window does it cover
+  wal verify    check the archive; -deep N downloads and reads N segments
+  wal gaps      every timeline, every hole, and how far replay can reach
+  wal prune     remove what nothing can still need; -apply to actually do it
+  wal preflight can this server archive and recover at all
+  wal list      the physical base backups
+  wal archive   run by PostgreSQL as archive_command. Not for people
+  wal restore   run by PostgreSQL as restore_command. Not for people
+
 Environment:
   RAWSYST_DB_DSN                 the database
   RAWSYST_BACKUP_DSN             a role that may read past row-level security.
@@ -923,7 +1009,21 @@ Environment:
   RAWSYST_BACKUP_TEMP_DIR        where a dump is staged
   RAWSYST_BACKUP_STAGING_DIR     where an uploaded artifact waits
 
-See deploy/server/BACKUP.md, MIGRATION.md and RECOVERY.md.
+Point-in-time recovery:
+  RAWSYST_PITR_RETENTION_DAYS    how far back the recovery window reaches (7)
+  RAWSYST_PITR_KEEP_BASE_BACKUPS the fewest physical copies kept, whatever
+                                 their age (2)
+  RAWSYST_PITR_MAX_BASE_BACKUPS  the most kept (8)
+  RAWSYST_WAL_ARCHIVE_TIMEOUT    how long one segment may take (2m)
+  RAWSYST_WAL_ARCHIVE_RETRIES    before PostgreSQL is told to keep it (3)
+  RAWSYST_WAL_SEGMENT_SIZE       only if this cluster was initialised with
+                                 something other than 16MB
+  RAWSYST_WAL_OBSERVE_INTERVAL   how often the agent takes a reading (1m)
+  RAWSYST_BASE_BACKUP_TIMEOUT    2h
+  RAWSYST_PITR_TIMEOUT           4h
+  RAWSYST_POSTGRES_BIN           where pg_ctl and postgres are, if not on PATH
+
+See deploy/server/PITR.md, BACKUP.md, MIGRATION.md and RECOVERY.md.
 `)
 }
 

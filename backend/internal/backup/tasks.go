@@ -48,6 +48,19 @@ const (
 	TaskRestoreValidate   = "restore_validate"
 	TaskRestoreProduction = "restore_production"
 	TaskPrune             = "prune"
+
+	// The point-in-time recovery half, added in 0136. `base_backup` takes a
+	// physical copy of the cluster; `pitr_restore` recovers one to a moment
+	// inside an isolated PostgreSQL. Both are heavy and the database allows one
+	// heavy task at a time across all of them.
+	TaskBaseBackup  = "base_backup"
+	TaskPITRRestore = "pitr_restore"
+
+	// These two are listings and small reads, so they are deliberately NOT
+	// heavy: blocking a retention run behind a two-hour base backup would mean
+	// the disk fills while the policy waits.
+	TaskWALVerify = "wal_verify"
+	TaskWALPrune  = "wal_prune"
 )
 
 // Task states.
@@ -80,6 +93,25 @@ type Task struct {
 	Error    string          `json:"error,omitempty"`
 }
 
+// decodeParams reads back what the request asked for.
+//
+// A task row with unreadable parameters is a task this build cannot run, and
+// saying so is better than running it with the zero value — which for a
+// recovery would mean silently recovering to `latest` instead of to the moment
+// somebody typed.
+func (t Task) decodeParams() (Params, error) {
+	var p Params
+	if len(t.Params) == 0 {
+		return p, nil
+	}
+	if err := json.Unmarshal(t.Params, &p); err != nil {
+		return p, errs.Wrap(err, errs.CodeInvalidInput,
+			"That task was queued with parameters this build cannot read. It "+
+				"was almost certainly queued by a different version.")
+	}
+	return p, nil
+}
+
 // Tasks is the queue.
 type Tasks struct{ pool *db.Pool }
 
@@ -103,6 +135,59 @@ type Params struct {
 	// object store, because it arrived from somebody's computer.
 	FromUpload bool   `json:"from_upload,omitempty"`
 	StagedAt   string `json:"staged_at,omitempty"`
+
+	// --- point-in-time recovery -------------------------------------------
+
+	// BaseBackupID is which physical copy a recovery starts from. Empty means
+	// the agent picks the newest one that finished before the target, which is
+	// almost always what somebody means and is always what they want when they
+	// have not thought about it.
+	BaseBackupID string `json:"base_backup_id,omitempty"`
+
+	// The recovery target, as three fields rather than as the `RecoveryTarget`
+	// struct. Deliberate: this JSON is written by an HTTP handler and read by
+	// a different build of the agent, and three scalar fields with a validator
+	// on each side survive that better than a nested object whose shape both
+	// ends have to agree on.
+	TargetKind  string `json:"target_kind,omitempty"`
+	TargetValue string `json:"target_value,omitempty"`
+	TargetAt    string `json:"target_at,omitempty"`
+	Timeline    uint32 `json:"target_timeline,omitempty"`
+
+	// Keep leaves the recovered cluster running so somebody can connect to it.
+	// Never set by an ordinary drill.
+	Keep bool `json:"keep_recovered,omitempty"`
+
+	// DeepSample is how many segments an archive check downloads and reads.
+	// Zero is the cheap check.
+	DeepSample int `json:"deep_sample,omitempty"`
+
+	// Apply turns a retention run from a report into a deletion. Absent means
+	// a dry run, which is the right default for the only routine here that
+	// removes the last copy of something.
+	Apply bool `json:"apply,omitempty"`
+}
+
+// Target rebuilds the recovery target a request asked for.
+//
+// Validated by the caller: this only reassembles, so a malformed timestamp
+// becomes a zero time and `RecoveryTarget.Validate` refuses it, rather than
+// this silently picking a moment of its own.
+func (p Params) Target() RecoveryTarget {
+	t := RecoveryTarget{
+		Kind:     p.TargetKind,
+		Value:    p.TargetValue,
+		Timeline: p.Timeline,
+	}
+	if t.Kind == "" {
+		t.Kind = TargetLatest
+	}
+	if p.TargetAt != "" {
+		if at, err := time.Parse(time.RFC3339, p.TargetAt); err == nil {
+			t.At = at.UTC()
+		}
+	}
+	return t
 }
 
 // Enqueue asks for work.
@@ -118,14 +203,28 @@ func (t *Tasks) Enqueue(
 	}
 	switch kind {
 	case TaskCreate, TaskVerify, TaskRestoreValidate,
-		TaskRestoreProduction, TaskPrune:
+		TaskRestoreProduction, TaskPrune,
+		TaskBaseBackup, TaskPITRRestore, TaskWALVerify, TaskWALPrune:
 	default:
 		return Task{}, errs.Newf(errs.CodeInvalidInput,
 			"There is no backup operation called %q.", kind)
 	}
-	if kind != TaskCreate && kind != TaskPrune && !ValidSnapshotID(snapshotID) {
-		return Task{}, errs.New(errs.CodeInvalidInput,
-			"That is not a snapshot id.")
+	switch kind {
+	case TaskCreate, TaskPrune, TaskBaseBackup, TaskWALVerify, TaskWALPrune:
+		// About everything, or about something that does not exist yet.
+	case TaskPITRRestore:
+		// A recovery may name the base backup to start from and may leave the
+		// choice to the agent, which picks the newest one that finished before
+		// the target. An id that IS given has to be one.
+		if snapshotID != "" && !ValidSnapshotID(snapshotID) {
+			return Task{}, errs.New(errs.CodeInvalidInput,
+				"That is not a base backup id.")
+		}
+	default:
+		if !ValidSnapshotID(snapshotID) {
+			return Task{}, errs.New(errs.CodeInvalidInput,
+				"That is not a snapshot id.")
+		}
 	}
 
 	body, err := json.Marshal(params)

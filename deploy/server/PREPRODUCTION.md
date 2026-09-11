@@ -10,6 +10,7 @@ that does not do what it says.
 
 Its companions: [RUNBOOK.md](RUNBOOK.md) builds the machine,
 [BACKUP.md](BACKUP.md) explains the backup system,
+[PITR.md](PITR.md) explains continuous archiving and recovery to a moment,
 [SECRETS.md](SECRETS.md) is what a dump cannot carry, and
 [RECOVERY.md](RECOVERY.md) is what to do when something has gone wrong.
 
@@ -252,6 +253,94 @@ the database restore alone.
 
 ---
 
+## 9b. Point-in-time recovery, on this server's real data
+
+For a server that is being built now, the steps below are enough and belong in
+this order. For a server that is **already running and trading**, use
+[PITR-ACTIVATION.md](PITR-ACTIVATION.md) instead: it does the same work in an
+order that cannot fill the disk of a machine somebody is depending on, with a
+write freeze around each restart and a rollback for each step.
+
+`PITR.md` is the reference; this is the checklist, and it is the one that turns
+the measured numbers in that document from "on a laptop" into "on this machine".
+Everything here is safe: nothing below opens the live database for writing.
+
+- [ ] **Preflight.** One command says whether this server is configured to
+      archive and to recover at all.
+      ```bash
+      $C run --rm backup wal preflight
+      ```
+      Every line must say `ok`. The two that fail on a fresh server are
+      `archive_mode` (set `POSTGRES_ARCHIVE_MODE=on` and restart `db`) and the
+      replication line in `pg_hba.conf` (the db image adds it on every start —
+      if it is missing, the image is stale, so rebuild it).
+
+- [ ] **Segments are actually arriving.** Force one and watch it land.
+      ```bash
+      $C exec db psql -U rawsyst -c "SELECT pg_switch_wal()"
+      sleep 5
+      $C run --rm backup wal status
+      ```
+      `last archived` must name a segment and `last archived at` must be
+      seconds ago. **Write down the archive lag.** That number plus
+      `POSTGRES_ARCHIVE_TIMEOUT` is this installation's recovery point.
+
+- [ ] **A base backup, watched.** This is the one that takes real time on real
+      data.
+      ```bash
+      time $C run --rm backup basebackup
+      ```
+      **Write down the duration and the stored size.** Confirm it says
+      `encrypted true` if a key is configured; if it says false and you expected
+      true, stop and fix the key before anything else.
+
+- [ ] **It recovers.** The cheapest proof, replaying only the log the backup
+      carries.
+      ```bash
+      time $C run --rm backup pitr -target immediate
+      ```
+      Must end `PASSED`, and must report the table count and schema version this
+      server actually has.
+
+- [ ] **The window is real.** After the base backup and a few minutes of
+      archiving:
+      ```bash
+      $C run --rm backup pitr -window
+      $C run --rm backup wal verify -deep 8
+      ```
+      The window must span from the base backup to within a minute or two of
+      now, with no gaps, and the deep check must pass — it downloads and
+      decrypts eight segments, which is the only check that proves the bytes are
+      readable.
+
+- [ ] **Recovery to a moment, with a stopwatch.** Pick a moment a few minutes
+      ago, inside the window.
+      ```bash
+      time $C run --rm backup pitr -target before_time -at <moment> -keep
+      ```
+      **Write down the total, the fetch time and the replay time.** Connect with
+      the printed connection string, count something, then stop it:
+      ```bash
+      $C run --rm backup -- pg_ctl -D <the printed data directory> stop
+      ```
+      This is the **RTO for a point-in-time recovery on this server**, and it is
+      the number `PITR.md` says is not yet measured. Once you have it, put it
+      there.
+
+- [ ] **Retention says something sensible.**
+      ```bash
+      $C run --rm backup wal prune
+      ```
+      On a server with one base backup it will report a horizon and remove
+      nothing, which is correct. It must not say `REFUSED`.
+
+- [ ] **The website agrees.** Sign in as the platform operator, open
+      **Backup & Recovery → Recovery**. The health word, the window and the base
+      backup must match what the command line just said. If the screen says
+      "stale", the agent is not running.
+
+---
+
 ## 10. The last two, and only when the rest passed
 
 - [ ] `RAWSYST_ALLOW_PRODUCTION_RESTORE` stays `false` until there is a reason.
@@ -272,7 +361,9 @@ pressure, at night, without this document open in front of them. Only walking
 has, "we have backups" is a statement about files rather than about the
 business.
 
-It also cannot shorten the recovery point. With a daily backup and no
-continuous WAL archiving, up to a day of trading is on this server only. See
-*Recovery point and recovery time* in `BACKUP.md`, which states the window
+It also cannot shorten the recovery point on its own. What shortens it is
+continuous archiving, which section 9b above validates: with it on and a base
+backup taken, the window is about a minute rather than a day. With it off, up to
+a day of trading is on this server only. See *Recovery point and recovery time*
+in `BACKUP.md` and *RPO and RTO* in `PITR.md`, which state the window
 rather than softening it.

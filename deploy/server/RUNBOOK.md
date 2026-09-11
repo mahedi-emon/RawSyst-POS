@@ -323,16 +323,33 @@ let it. `BACKUP.md` has the six statements that create `rawsyst_backup`; set
 `RAWSYST_BACKUP_DSN` to it. `backup run` checks this before it starts and names
 what is wrong.
 
-Then the timers. One takes a backup, verifies it and prunes, every night; the
-other rehearses a whole recovery once a week, against disposable resources:
+Then the timers. One takes a backup, verifies it and prunes, every night; one
+takes a PHYSICAL copy of the cluster weekly and proves it recovers; the third
+rehearses a whole recovery once a week, against disposable resources:
 
 ```bash
-sudo cp deploy/server/rawsyst-backup.{service,timer} /etc/systemd/system/
-sudo cp deploy/server/rawsyst-drill.{service,timer}  /etc/systemd/system/
+sudo cp deploy/server/rawsyst-backup.{service,timer}     /etc/systemd/system/
+sudo cp deploy/server/rawsyst-basebackup.{service,timer} /etc/systemd/system/
+sudo cp deploy/server/rawsyst-drill.{service,timer}      /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now rawsyst-backup.timer rawsyst-drill.timer
+sudo systemctl enable --now   rawsyst-backup.timer rawsyst-basebackup.timer rawsyst-drill.timer
 systemctl list-timers 'rawsyst-*'
 ```
+
+Turning archiving on for a server that is **already trading** is
+[PITR-ACTIVATION.md](PITR-ACTIVATION.md) rather than this section: the order
+there is arranged so that a wrong bucket is found before it can fill the disk.
+
+**The base backup timer is the one that makes the write-ahead log worth
+archiving.** The log describes changes to pages and can only be replayed onto a
+physical copy; without one, archiving ships segments that nothing can ever use.
+`PITR.md` is the whole story, and
+
+```bash
+docker compose $C run --rm backup wal preflight
+```
+
+says in one command whether this server is set up to archive and to recover.
 
 Three things worth saying plainly here, because they are the ones people get
 wrong:

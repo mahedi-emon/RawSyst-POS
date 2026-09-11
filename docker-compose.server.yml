@@ -122,15 +122,47 @@ services:
       - -c
       - max_parallel_maintenance_workers=1
 
-      # Write-ahead log. Kept for point-in-time recovery, as the base file
-      # explains; 512 MB is a compromise between checkpoint frequency and the
-      # disk this sits on.
+      # Write-ahead log. 512 MB is a compromise between checkpoint frequency
+      # and the disk this sits on.
       - -c
       - wal_level=replica
       - -c
       - max_wal_size=512MB
       - -c
       - min_wal_size=128MB
+
+      # Continuous archiving, repeated here because this file replaces the
+      # base file's `command` list rather than adding to it. A settings block
+      # that appeared in one and not the other would be a production server
+      # quietly not archiving while the development machine did — which is the
+      # worst possible direction for this particular difference.
+      #
+      # The base file explains every one of these at length; the short version
+      # is that archive_command exits non-zero when an upload fails, PostgreSQL
+      # then KEEPS the segment, and that is the safe direction because the
+      # failure is a disk filling up rather than an archive with a hole in it.
+      #
+      # ON by default HERE and off in the base file, which is the one place the
+      # two disagree and is deliberate. This file is the production profile: a
+      # server running it has a bucket, and archiving is the point. The base
+      # file is also what somebody runs to look at the product, where a full
+      # disk overnight would be the price of a setting they never chose.
+      #
+      # A server that genuinely has no object store sets this to `off` in its
+      # own `.env` and accepts a 24-hour recovery point, which BACKUP.md states
+      # plainly. It should not be left on with nowhere to ship to.
+      - -c
+      - archive_mode=${POSTGRES_ARCHIVE_MODE:-on}
+      - -c
+      - archive_command=/rawsyst backup wal archive %p %f
+      - -c
+      - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT:-60}
+      # Two are needed by `pg_basebackup --wal-method=stream`, which opens a
+      # second connection for the log written while it copies.
+      - -c
+      - max_wal_senders=${POSTGRES_MAX_WAL_SENDERS:-4}
+      - -c
+      - wal_keep_size=${POSTGRES_WAL_KEEP_SIZE:-1GB}
       # Spread the checkpoint write over most of the interval instead of
       # letting it arrive as a spike. On two cores a checkpoint storm is felt
       # at the counter.

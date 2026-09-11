@@ -1,0 +1,53 @@
+[Unit]
+# Take a PHYSICAL copy of the cluster, prove it recovers, then remove what
+# nothing can still need. In that order, weekly.
+#
+# # Why this is a separate unit from rawsyst-backup.service
+#
+# Because it protects against a different thing and costs a different amount. A
+# `pg_dump` is a photograph, runs in minutes, and is taken nightly. A base
+# backup is a byte-level copy of the cluster, takes as long as the database is
+# large, and is the thing the write-ahead log is replayed ONTO — without one the
+# archive recovers nothing at all.
+#
+# Weekly rather than nightly for the same reason: a seven-day recovery window
+# needs one base backup older than seven days plus the log since, and a second
+# copy of the cluster every night would cost seven times the storage to shorten
+# the replay by hours nobody is waiting on.
+#
+# # Why prune runs last and only on success
+#
+# `ExecStartPost` stops at the first failure, so nothing is ever deleted on a
+# night when the new copy could not be proved. Retention deletes the write-ahead
+# log in front of the OLDEST kept base backup; doing that after a failed base
+# backup would shorten the recovery window while nothing new had been added to
+# it.
+Description=RawSyst physical base backup, verified
+Documentation=file:/opt/rawsyst/deploy/server/PITR.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/rawsyst
+
+# Longer than the dump's forty-five minutes, because this copies every byte of
+# the cluster rather than a compressed logical export of it. Still bounded: a
+# base backup that hangs holds a replication connection and a staging volume and
+# tells nobody.
+TimeoutStartSec=3h
+
+# Two cores, and the till has first claim on them. `--checkpoint=fast` makes
+# this spike the disk on purpose; being nice about the CPU is what keeps a
+# checkout from stuttering through it.
+Nice=10
+IOSchedulingClass=idle
+
+Environment=COMPOSE=-f docker-compose.yml -f docker-compose.server.yml --profile backup
+
+# `basebackup` stores it. `pitr -target immediate` is what proves it: the
+# cheapest possible recovery, replaying only the log the copy carries, into a
+# PostgreSQL of its own. Stored is not verified.
+ExecStart=/usr/bin/docker compose $COMPOSE run --rm backup basebackup
+ExecStartPost=/usr/bin/docker compose $COMPOSE run --rm backup pitr -target immediate
+ExecStartPost=/usr/bin/docker compose $COMPOSE run --rm backup wal prune -apply

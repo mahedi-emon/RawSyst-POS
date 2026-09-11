@@ -741,26 +741,44 @@ role, and now say why.
 
 A 24-hour RPO means a business that loses this server at 22:00 loses its
 trading day. That is the honest number for a daily logical dump and it is stated
-here rather than softened.
+here rather than softened. It is also no longer the number this installation
+runs on — see the section below, and `deploy/server/PITR.md` for the measured
+one.
 
 **To do better, take backups more often.** The timer is a systemd unit and
 `OnCalendar=*-*-* 03,15:30:00` is two a day. Each one costs a dump, a verify and
 its storage.
 
-### Point-in-time recovery is not implemented
+### Point-in-time recovery, which is the other half
 
-Continuous WAL archiving would take the recovery point from a day to minutes.
-`wal_level=replica` is already set, which is the precondition, and the archive
-command belongs to whatever ships the segments off the machine.
+**It is implemented.** `deploy/server/PITR.md` is the whole of it.
 
-It is **not configured**, and this product does not claim it. Configuring it
-needs somewhere to ship to, a retention decision for the segments, a base backup
-strategy, and a restore procedure that has been rehearsed — and half of a PITR
-setup is worse than none, because it looks like protection.
+The short version: `wal_level=replica` was always the precondition, and what was
+missing was everything else — somewhere to ship the segments, a retention
+decision for them, a physical base backup for them to be replayed onto, and a
+restore procedure that had been rehearsed. Half of a setup like that is worse
+than none, because it looks like protection. All four are now there.
 
-If the 24-hour window is not acceptable for your business, that is a real
-conversation about `pgBackRest` or `WAL-G` in front of the same object store,
-and it is an addition to what is here rather than a replacement for it.
+What it changes about the numbers on this page:
+
+| | Dumps alone | With continuous archiving |
+|---|---|---|
+| Recovery point | up to 24 hours | about 61 seconds |
+| Recovery to an arbitrary moment | no | yes, inside a seven-day window |
+| Needs the same major version | no | yes, for the physical half |
+
+The dumps on this page do not go away and are not reduced in importance. They
+are the half that survives a corrupt cluster, that restores one database rather
+than the whole server, and that can be read on any machine with a PostgreSQL on
+it. A corrupted page is inside a base backup and inside the log; it is not
+inside a dump.
+
+Two commands worth knowing from here:
+
+```bash
+docker compose run --rm backup wal preflight   # can this server archive at all
+docker compose run --rm backup wal status      # is it, and how far back
+```
 
 ---
 
@@ -793,7 +811,9 @@ whatever watches this machine.
 **The key.** If encryption is on, the key is not on this server and cannot be
 recovered by anything here. That is the arrangement, not a gap.
 
-**Point-in-time recovery.** See above.
+**Point-in-time recovery.** Implemented; see above and PITR.md. What is not
+automated there is the same thing that is not automated here: the key, and the
+decision to recover.
 
 **The decision to restore.** Every destructive operation needs a person: the
 snapshot id typed out, a rehearsal that passed, and a deployment that has

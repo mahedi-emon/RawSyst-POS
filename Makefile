@@ -145,10 +145,28 @@ verify: ## Everything that does not need a running server, in memory order
 # --- docker ------------------------------------------------------------------
 
 .PHONY: images
-images: ## Build both production images and report their sizes
-	@docker build -f backend/Dockerfile -t rawsyst/backend:local ./backend
+images: ## Build every production image and report their sizes
+	@docker build -f backend/Dockerfile --target runtime -t rawsyst/backend:local ./backend
+	@docker build -f backend/Dockerfile --target backup -t rawsyst/backup:local ./backend
+	@# PostgreSQL plus the write-ahead log archiver. The database image is built
+	@# from this repository rather than pulled because `archive_command` is a
+	@# command run inside that container; deploy/postgres/Dockerfile says why it
+	@# is this product's own binary rather than a shell script.
+	@docker build -f deploy/postgres/Dockerfile -t rawsyst/postgres:local .
 	@docker build -f web-next/Dockerfile -t rawsyst/web:local .
 	@docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' | grep '^rawsyst/'
+
+.PHONY: pitr-drill
+pitr-drill: ## Archive, damage and recover a cluster through the real images
+	@# The DEPLOYMENT half of the point-in-time recovery proof: the database
+	@# image, the entrypoint that adds the replication line to pg_hba.conf, the
+	@# compose wiring, a dedicated backup role, the real migration chain and a
+	@# real S3-compatible store over HTTP.
+	@#
+	@# The LOGIC half is `go test ./internal/backup`, which builds a cluster with
+	@# initdb and proves the same pair of claims without Docker. Both exist
+	@# because they fail for different reasons.
+	@bash deploy/server/pitr-drill.sh
 
 .PHONY: up-small
 up-small: ## Bring the stack up with the 8GB profile
