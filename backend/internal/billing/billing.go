@@ -555,6 +555,26 @@ func (s *Service) SetPlan(
 	}
 
 	err = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		// That there is a client behind the id at all.
+		//
+		// The route parses the id and does not check it, so without this the
+		// INSERT reaches the foreign key and the operator is told "a
+		// referenced record does not exist" -- which reads as a fault in the
+		// product rather than as a mistyped client id, and disagrees with the
+		// 404 the READ on the same screen gives for the same id.
+		//
+		// Nothing was ever corrupted by that: the key held and the transaction
+		// rolled back. It was only ever a bad answer to a simple mistake.
+		var exists bool
+		if e := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM tenant WHERE id = $1)`,
+			tenantID).Scan(&exists); e != nil {
+			return e
+		}
+		if !exists {
+			return errs.New(errs.CodeNotFound, "That client was not found.")
+		}
+
 		// The existing start, so "leave the start alone" can still be the
 		// basis for a period end worked out from the cycle. Absent for a
 		// tenant who has never had a subscription written.

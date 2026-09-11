@@ -565,6 +565,60 @@ func TestTheWelcomeMessageCarriesNoPassword(t *testing.T) {
 	})
 }
 
+// A plan set against a business that does not exist is refused as not found.
+//
+// `tenantParam` parses the id and does not check that anything is behind it, so
+// this used to reach the INSERT and fail on the foreign key -- which answers
+// with whatever the database error translates to rather than with the answer
+// the GET on the same screen gives for the same id.
+//
+// It never corrupted anything: the foreign key held and the transaction rolled
+// back. What it did was tell an operator who mistyped a client id that their
+// plan "could not be saved", which reads as a fault in the product rather than
+// as a wrong id.
+func TestAPlanForANonexistentBusinessIsNotFound(t *testing.T) {
+	h := newHarness(t)
+	admin := h.login(t, h.seedSuperAdmin(t))
+
+	ghost := uuid.NewString()
+	body := map[string]any{
+		"tier": "business", "cycle": "yearly", "price": "100.00",
+		"currency": "SAR", "status": "active",
+	}
+
+	// The read half of the same screen already answers 404. The write half has
+	// to agree, or one id gives two different accounts of itself.
+	get := h.do(t, http.MethodGet,
+		"/api/v1/platform/tenants/"+ghost+"/subscription", admin, nil)
+	get.Body.Close()
+	if get.StatusCode != http.StatusNotFound {
+		t.Errorf("reading an unknown client: status %d, want 404", get.StatusCode)
+	}
+
+	put := h.do(t, http.MethodPut,
+		"/api/v1/platform/tenants/"+ghost+"/subscription", admin, body)
+	defer put.Body.Close()
+	if put.StatusCode != http.StatusNotFound {
+		t.Errorf("setting a plan on an unknown client: status %d, want 404 — %s",
+			put.StatusCode, readBody(t, put))
+	}
+
+	// And nothing was written for it either way.
+	ctx := context.Background()
+	_ = h.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		var n int
+		if e := tx.QueryRow(ctx,
+			`SELECT count(*)::int FROM subscription WHERE tenant_id = $1`,
+			ghost).Scan(&n); e != nil {
+			return e
+		}
+		if n != 0 {
+			t.Errorf("%d subscription row(s) exist for a business that does not", n)
+		}
+		return nil
+	})
+}
+
 // --- the trail -----------------------------------------------------------
 
 // 17. A Super Admin action can be read back.

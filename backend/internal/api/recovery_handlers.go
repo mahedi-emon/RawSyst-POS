@@ -163,7 +163,7 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.auth.CompleteReset(
-		r.Context(), req.Email, req.Code, req.NewPassword,
+		r.Context(), req.Email, req.Code, req.NewPassword, callerIP(r),
 	); err != nil {
 		httpx.Error(w, r, err)
 		return

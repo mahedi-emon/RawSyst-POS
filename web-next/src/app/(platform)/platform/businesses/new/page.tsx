@@ -49,6 +49,7 @@ import { PageHeader, Panel } from '@/components/ui/panel';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useT } from '@/lib/i18n/locale';
+import { mailOutcome } from '@/lib/mail-outcome';
 
 interface Provisioned {
   tenant_id: string;
@@ -78,12 +79,15 @@ interface Provisioned {
    * failure is visible in the failed-jobs view rather than silent. The
    * operator handing the account over is the person who needs to know that,
    * because in every current case they are the delivery mechanism.
+   *
+   * One of `queued`, `queued_for_logging`, `queued_no_provider` or
+   * `not_configured`. Typed as a plain string rather than as that union,
+   * because it arrives as JSON from a separate container: a rolling deploy can
+   * put an API in front of this page that sends a word it has never heard of,
+   * and a union here would be a promise the wire cannot keep. `MailOutcome`
+   * handles an unrecognised word by making the weakest claim available.
    */
-  mail_status:
-    | 'queued'
-    | 'queued_for_logging'
-    | 'queued_no_provider'
-    | 'not_configured';
+  mail_status: string;
 }
 
 /**
@@ -94,18 +98,12 @@ interface Provisioned {
  * the difference — so each says plainly whether they need to pass the details
  * on themselves, rather than leaving them to infer it from a status word.
  */
-function MailOutcome({ status }: { status: Provisioned['mail_status'] }) {
+function MailOutcome({ status }: { status: string }) {
   const t = useT();
-
-  const [key, tone] = {
-    queued: ['nx.plat.newMailQueued', 'ok'],
-    // The message reaches a log file. Nobody receives it.
-    queued_for_logging: ['nx.plat.newMailLogged', 'warn'],
-    // The job will fail and show up in the failed-jobs view, which is the
-    // honest outcome for a deployment with no provider: visible, not silent.
-    queued_no_provider: ['nx.plat.newMailNoProvider', 'warn'],
-    not_configured: ['nx.plat.newMailNotConfigured', 'warn'],
-  }[status] as [Parameters<ReturnType<typeof useT>>[0], 'ok' | 'warn'];
+  // Never throws, and an unrecognised word resolves to the weakest claim
+  // rather than to a guess at delivery. See the module for why that direction
+  // is the one that matters on this particular screen.
+  const [key, tone] = mailOutcome(status);
 
   return (
     <span className={tone === 'warn' ? 'text-caution-fg' : undefined}>

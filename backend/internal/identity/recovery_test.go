@@ -5,6 +5,7 @@ package identity
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -42,7 +43,7 @@ func TestAForgottenPasswordCanBeRecoveredWithACode(t *testing.T) {
 	}
 
 	const chosen = "a-password-they-chose-themselves-9"
-	if err := svc.CompleteReset(ctx, email, code, chosen); err != nil {
+	if err := svc.CompleteReset(ctx, email, code, chosen, nil); err != nil {
 		t.Fatalf("completing: %v", err)
 	}
 
@@ -80,12 +81,78 @@ func TestACodeCannotBeUsedTwice(t *testing.T) {
 	}
 	code := q.sent[0].Code
 
-	if err := svc.CompleteReset(ctx, email, code, "first-choice-password-77"); err != nil {
+	if err := svc.CompleteReset(ctx, email, code, "first-choice-password-77", nil); err != nil {
 		t.Fatalf("first use: %v", err)
 	}
-	if err := svc.CompleteReset(ctx, email, code, "second-choice-password-88"); err == nil {
+	if err := svc.CompleteReset(ctx, email, code, "second-choice-password-88", nil); err == nil {
 		t.Fatal("the same code was accepted twice, so an intercepted code stays " +
 			"live after its owner has used it")
+	}
+}
+
+// Recovering an account leaves a trail, like every other way a password
+// changes.
+//
+// It was the only one that did not. Changing your own password writes
+// `password_changed`, a platform operator resetting somebody's writes
+// `password_reset_by_super_admin`, and recovering by code wrote nothing —
+// while ending every session the account had, and being the path somebody
+// taking an account over would use.
+//
+// The gap was invisible for as long as nothing could read the trail. Now that
+// the platform audit route exists, an operator asking what happened to an
+// account would have been shown a blank where the answer was.
+func TestRecoveringAnAccountIsRecorded(t *testing.T) {
+	svc, pool := testService(t)
+	ctx := context.Background()
+	email := uniqueEmail(t)
+	userID, _ := seedUser(t, pool, email)
+	q := &captureQueue{}
+	if err := svc.RequestReset(ctx, email, net.ParseIP("203.0.113.7"), q); err != nil {
+		t.Fatalf("requesting: %v", err)
+	}
+	chosen := "a-freshly-chosen-password-42"
+	if err := svc.CompleteReset(
+		ctx, email, q.sent[0].Code, chosen, net.ParseIP("203.0.113.7"),
+	); err != nil {
+		t.Fatalf("completing: %v", err)
+	}
+
+	if err := pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		var n int
+		var after, ip string
+		e := tx.QueryRow(ctx, `
+			SELECT count(*)::int,
+			       coalesce(max(after_value::text), ''),
+			       coalesce(max(host(ip)), '')
+			FROM audit_log
+			WHERE action = 'password_reset_by_code' AND actor_id = $1`,
+			userID).Scan(&n, &after, &ip)
+		if e != nil {
+			return e
+		}
+		if n != 1 {
+			t.Fatalf("%d trail entries for a recovery, want exactly 1", n)
+		}
+		if ip != "203.0.113.7" {
+			t.Errorf("the entry records the address %q, want the caller's", ip)
+		}
+		// The consequence, said plainly: this ended every session the account
+		// had, which is not obvious from the verb.
+		if !strings.Contains(after, "sessions_revoked") {
+			t.Errorf("the entry does not record that sessions were revoked: %s",
+				after)
+		}
+		// Never the credential. The fact of the reset is the evidence.
+		for _, secret := range []string{chosen, q.sent[0].Code} {
+			if strings.Contains(after, secret) {
+				t.Errorf("the trail contains a credential, in a table that " +
+					"cannot be edited or deleted")
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("reading the trail: %v", err)
 	}
 }
 
@@ -128,7 +195,7 @@ func TestACodeDoesNotOutliveItsWindow(t *testing.T) {
 		t.Fatalf("backdating the window: %v", err)
 	}
 
-	if err := svc.CompleteReset(ctx, email, code, "far-too-late-password-99"); err == nil {
+	if err := svc.CompleteReset(ctx, email, code, "far-too-late-password-99", nil); err == nil {
 		t.Fatal("a code was accepted after it expired, so an intercepted code " +
 			"never stops being useful")
 	}
@@ -152,14 +219,14 @@ func TestGuessingBurnsTheCode(t *testing.T) {
 		wrong = "111111"
 	}
 	for i := 0; i < MaxResetAttempts; i++ {
-		if err := svc.CompleteReset(ctx, email, wrong, "whatever-password-11"); err == nil {
+		if err := svc.CompleteReset(ctx, email, wrong, "whatever-password-11", nil); err == nil {
 			t.Fatal("a wrong code was accepted")
 		}
 	}
 
 	// The real one no longer works either. That is the design: the code is
 	// dead, not the account, and asking for a new one is one click.
-	if err := svc.CompleteReset(ctx, email, real, "too-late-password-22"); err == nil {
+	if err := svc.CompleteReset(ctx, email, real, "too-late-password-22", nil); err == nil {
 		t.Error("the code survived five wrong guesses, so the space can be walked")
 	}
 }

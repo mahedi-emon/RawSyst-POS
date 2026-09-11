@@ -38,6 +38,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
+
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
 )
 
@@ -233,8 +235,13 @@ func (s *Service) RequestReset(
 }
 
 // CompleteReset exchanges a code for a new password.
+//
+// `from` is the caller's address, recorded in the audit entry. Blueprint A4.2
+// requires recovery to record where it came from; the request row already holds
+// the address the CODE was asked for, and this is the address it was spent at.
+// They are usually the same and the interesting case is when they are not.
 func (s *Service) CompleteReset(
-	ctx context.Context, email, code, newPassword string,
+	ctx context.Context, email, code, newPassword string, from net.IP,
 ) error {
 	email = strings.TrimSpace(strings.ToLower(email))
 	code = strings.TrimSpace(code)
@@ -278,13 +285,14 @@ func (s *Service) CompleteReset(
 	err = s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		var (
 			requestID uuid.UUID
+			tenantID  uuid.UUID
 			codeHash  string
 			attempts  int
 		)
 		// The newest live request for this address, locked so two exchanges of
 		// the same code cannot both succeed.
 		e := tx.QueryRow(ctx, `
-			SELECT r.id, r.user_id, r.code_hash, r.attempts
+			SELECT r.id, r.user_id, r.tenant_id, r.code_hash, r.attempts
 			FROM password_reset_request r
 			JOIN app_user u ON u.id = r.user_id
 			WHERE u.email = $1
@@ -295,7 +303,7 @@ func (s *Service) CompleteReset(
 			ORDER BY r.requested_at DESC
 			LIMIT 1
 			FOR UPDATE OF r`, email, MaxResetAttempts).
-			Scan(&requestID, &userID, &codeHash, &attempts)
+			Scan(&requestID, &userID, &tenantID, &codeHash, &attempts)
 
 		if errors.Is(e, pgx.ErrNoRows) {
 			return refuse
@@ -331,7 +339,7 @@ func (s *Service) CompleteReset(
 		// asking them to choose again immediately is the product not believing
 		// what just happened. Unlike an issued temporary password, which they
 		// did not choose.
-		_, e = tx.Exec(ctx, `
+		if _, e = tx.Exec(ctx, `
 			UPDATE app_user
 			   SET password_hash = $2,
 			       must_change_password = false,
@@ -339,8 +347,44 @@ func (s *Service) CompleteReset(
 			                     THEN 'active'::user_status ELSE status END,
 			       failed_attempts = 0,
 			       locked_until = NULL
-			 WHERE id = $1`, userID, hash)
-		return e
+			 WHERE id = $1`, userID, hash); e != nil {
+			return e
+		}
+
+		// In the trail, like every other way a password changes.
+		//
+		// It was the only one that was not. Changing your own password writes
+		// `password_changed`; a platform operator resetting somebody's writes
+		// `password_reset_by_super_admin`; recovering an account by code wrote
+		// nothing at all -- and it is the path that ends every session the
+		// account had and the one somebody taking an account over would use.
+		//
+		// That gap was invisible while nothing could read the trail. The
+		// platform audit route makes it visible, and an operator asking "what
+		// happened to this account" must not be shown a gap where the answer
+		// is.
+		//
+		// The actor is the account itself: nobody approved this, which is what
+		// separates self-service recovery from the assisted kind. Blueprint
+		// A4.2 calls it the same event without the approver, and the entry says
+		// exactly that.
+		//
+		// The code is not recorded, and neither is the password or its hash.
+		// The fact of the reset is the evidence; the credential is not.
+		return audit.Write(ctx, tx, audit.Entry{
+			TenantID: &tenantID, ActorID: &userID,
+			ActorLabel: audit.LabelFor(ctx, tx, userID),
+			Action:     "password_reset_by_code",
+			EntityType: "app_user", EntityID: &userID,
+			IP: ipString(from),
+			After: map[string]any{
+				"self_service": true,
+				// Said plainly, because the consequence is not obvious from
+				// the verb and it is the part somebody reviewing an incident
+				// needs to know.
+				"sessions_revoked": true,
+			},
+		})
 	})
 	if err != nil {
 		return err
@@ -353,6 +397,18 @@ func (s *Service) CompleteReset(
 	// stale; if it was an account takeover being undone, they are the
 	// attacker's — and there is no way to tell which from here.
 	return s.RevokeAllForUser(ctx, userID, "password reset by code")
+}
+
+// ipString is an address for the audit trail, empty when there is none.
+//
+// An empty string rather than the literal "<nil>" that String() gives for a nil
+// address, which would go into the trail as text somebody later has to know is
+// not an address.
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 // generateResetCode returns a uniformly random six-digit code.
