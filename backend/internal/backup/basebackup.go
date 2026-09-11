@@ -825,6 +825,46 @@ func DeleteBaseBackup(
 	return removed, nil
 }
 
+// --- naming the pieces, for a caller outside this package -------------------
+
+// The four files a base backup is made of, named for callers that have to ask
+// for one by name — the download route and the command line.
+//
+// Exported as functions rather than as the constants themselves for the same
+// reason `DatabaseObject()` is: these names are fixed for ever once a backup
+// has been written with them, and a constant somebody could reassign in a test
+// is a name that could drift from what is in the store.
+func BaseTarObject() string        { return baseTarObject }
+func BaseWALTarObject() string     { return baseWALTarObject }
+func BasePGManifestObject() string { return basePGManifestObject }
+func BaseManifestObject() string   { return baseManifestObject }
+
+// BaseArtifactNames are the file names a downloaded base backup gets on the
+// operator's own computer.
+//
+// Prefixed and dated like the dump artifacts, so a folder holding several of
+// both sorts still sorts and still says what each file is. The `.enc` is NOT
+// added here: whether a file is sealed is a property of its bytes and is
+// recorded in the manifest, and a name that claimed it would be wrong on any
+// installation that has encryption off.
+type BaseArtifactNames struct {
+	Base       string
+	WAL        string
+	Manifest   string
+	PGManifest string
+}
+
+// BaseNamesFor is the local file names for one base backup.
+func BaseNamesFor(id string) BaseArtifactNames {
+	prefix := "RawSyst_BaseBackup_" + id
+	return BaseArtifactNames{
+		Base:       prefix + ".base.tar.gz",
+		WAL:        prefix + ".pg_wal.tar.gz",
+		Manifest:   prefix + ".manifest.json",
+		PGManifest: prefix + ".backup_manifest",
+	}
+}
+
 // --- small file helpers -----------------------------------------------------
 
 func hashFile(path string) (int64, string, error) {

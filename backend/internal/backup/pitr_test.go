@@ -35,6 +35,8 @@ package backup
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -805,6 +807,109 @@ func TestAnIncompleteBaseBackupIsNotOfferedAsARecoverySource(t *testing.T) {
 	}
 }
 
+func TestABaseBackupCanBeCarriedAwayAndStillChecksOut(t *testing.T) {
+	// The download path, end to end: every component addressable by name, every
+	// one coming back byte for byte, and the manifest able to prove it.
+	//
+	// A physical copy is deliberately the LESS portable half — it reads only on
+	// its own major version and is useless without the archive — so what this
+	// holds to is narrower than the dump equivalent. It is that an operator
+	// leaving a storage provider, or opening an artifact somewhere else after a
+	// recovery failed, gets the real bytes and a way to tell.
+	needPostgres(t)
+	if testing.Short() {
+		t.Skip("builds a cluster")
+	}
+
+	f := newFakeStore(t)
+	const prefix = "carry"
+	pitrEnvFor(t, f, prefix)
+	source := startSource(t, f, prefix)
+	source.exec(t, `CREATE TABLE thing (id int PRIMARY KEY)`)
+	source.exec(t, `INSERT INTO thing SELECT generate_series(1, 40)`)
+	source.archiveEverything(t)
+
+	opts := f.walOptions()
+	opts.Prefix = prefix
+	base, err := TakeBaseBackup(context.Background(), BaseBackupOptions{
+		DSN: source.dsn(), WAL: opts, StagingDir: t.TempDir(),
+		MinFreePercent: 1, Timeout: 10 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("base backup: %v", err)
+	}
+
+	// Every component the manifest lists must be addressable and must come back
+	// matching the checksum recorded for it.
+	for _, name := range []string{
+		BaseTarObject(), BaseWALTarObject(), BasePGManifestObject(),
+	} {
+		key, err := BaseBackupKey(prefix, base.ID, name)
+		if err != nil {
+			t.Fatalf("%s has no object key: %v", name, err)
+		}
+		body, err := opts.Store.Get(context.Background(), key)
+		if err != nil {
+			t.Fatalf("%s could not be downloaded: %v", name, err)
+		}
+		component, ok := base.Component(name)
+		if !ok {
+			t.Fatalf("the manifest does not describe %s", name)
+		}
+		if got := hexSHA256(body); got != component.SHA256 {
+			t.Errorf("%s came down as %s, the manifest says %s",
+				name, got, component.SHA256)
+		}
+		if int64(len(body)) != component.Bytes {
+			t.Errorf("%s is %d bytes, the manifest says %d",
+				name, len(body), component.Bytes)
+		}
+	}
+
+	// The manifest itself is downloadable too, and is the one thing that is
+	// never encrypted: it is what tells somebody holding the other files WHICH
+	// key they need, so sealing it would make it useless for that.
+	key, err := BaseBackupKey(prefix, base.ID, BaseManifestObject())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := opts.Store.Get(context.Background(), key)
+	if err != nil {
+		t.Fatalf("the manifest could not be downloaded: %v", err)
+	}
+	if IsSealed(body) {
+		t.Error("the manifest is encrypted, so nobody holding the files can " +
+			"find out which key opens them")
+	}
+
+	// And nothing else is addressable. The four names are a fixed switch; a
+	// request for anything else must not become a path in somebody's bucket.
+	for _, bad := range []string{
+		"../../etc/passwd", "postgresql.conf", "", "..",
+		"base.tar.gz/../../../secret",
+	} {
+		if _, err := BaseBackupKey(prefix, base.ID, bad); err == nil {
+			t.Errorf("%q was turned into an object key", bad)
+		}
+	}
+	for _, badID := range []string{"../other", "", "a/b"} {
+		if _, err := BaseBackupKey(prefix, badID, BaseTarObject()); err == nil {
+			t.Errorf("base backup id %q was turned into an object key", badID)
+		}
+	}
+
+	// The local file names say what each file is and which backup it came from,
+	// so a folder holding several does not become a puzzle.
+	names := BaseNamesFor(base.ID)
+	for _, n := range []string{
+		names.Base, names.WAL, names.Manifest, names.PGManifest,
+	} {
+		if !strings.Contains(n, base.ID) {
+			t.Errorf("%q does not name the backup it came from", n)
+		}
+	}
+}
+
 func TestAnEncryptedArchiveRecoversWithTheKeyAndNotWithout(t *testing.T) {
 	needPostgres(t)
 	if testing.Short() {
@@ -1046,6 +1151,12 @@ func TestAnInterruptedRecoveryLeavesNothingBehind(t *testing.T) {
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// hexSHA256 is the checksum in the form a manifest records it.
+func hexSHA256(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
 
 // archivedSegments is every whole segment the store holds for one timeline,
 // in order.

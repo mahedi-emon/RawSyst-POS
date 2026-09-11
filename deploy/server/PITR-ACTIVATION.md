@@ -25,6 +25,7 @@ complete and tested; the activation is not. Read *Where this stands* first.
 | Corrupt segment, truncated segment, missing segment, wrong key, no key, incomplete base backup, unreachable store, invalid timestamp, timeline mismatch, interrupted recovery | `wal_test.go` and `pitr_test.go`, one test each |
 | The database image builds, starts, and adds its own `pg_hba.conf` replication line | Container drill; verified again on the local stack |
 | The backup agent starts and claims work against the migrated schema | Container drill; local stack, 5.2 MiB resident |
+| A base backup can be downloaded, checksum-checked, and is refused a path outside its own prefix | `TestABaseBackupCanBeCarriedAwayAndStillChecksOut` |
 | Backend suite, race detector, `govulncheck`, frontend suite, typecheck, lint, production build, API contract, route reachability | Run in full; all pass |
 
 ### Required before production activation
@@ -300,6 +301,15 @@ time $C run --rm backup basebackup
 - [ ] It says `encrypted true` if a key is configured.
 - [ ] **Write down the duration and the stored size.** This is the first of the
       two unmeasured numbers.
+- [ ] Pull it down once, to prove the copy is retrievable and that you are not
+      locked in to the storage provider:
+      ```bash
+      $C run --rm backup basebackup -download -to /srv/out
+      ```
+      Four files, each checked against the manifest as it lands. They come down
+      **sealed** if encryption is on; the manifest names the key fingerprint.
+      This is not a substitute for the dump you carry on a laptop — see
+      *Carrying a base backup away* in `PITR.md` for why.
 
 Then prove it recovers, which is the cheapest possible recovery — it replays
 only the log the backup carries:

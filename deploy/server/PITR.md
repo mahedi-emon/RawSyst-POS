@@ -249,6 +249,47 @@ docker compose run --rm backup wal status
 
 ---
 
+## Carrying a base backup away
+
+```bash
+docker compose run --rm backup basebackup -download -to /srv/out
+docker compose run --rm backup basebackup -download -base <id> -to /srv/out
+```
+
+or, on the website, **Platform → Backup & Recovery → Recovery**, the download
+on a base backup row.
+
+Four files come down: `base.tar.gz`, `pg_wal.tar.gz`, PostgreSQL's own
+`backup_manifest`, and this product's `manifest.json`. Each is checked against
+the checksum in the manifest as it is written, and a file that does not match is
+deleted rather than left on disk with a plausible name.
+
+**This is not the laptop copy, and it should not be mistaken for one.** The
+thing to carry on a laptop is a `pg_dump` snapshot — `backup download` — because
+it restores onto any machine with a PostgreSQL on it, survives a corrupt
+cluster, and is what `RECOVERY.md` section C is built on. A physical base backup
+is the opposite of portable:
+
+- it only reads on the **same PostgreSQL major version**;
+- it carries any page corruption with it, byte for byte;
+- on its own it recovers exactly one moment — its own consistency point —
+  because everything after that is in the archive, which is still in the bucket.
+
+So this exists for two situations rather than as a routine:
+
+- **Leaving a storage provider.** A base backup that can only be copied by the
+  account that owns the bucket is a backup held hostage by a billing
+  relationship.
+- **An investigation.** When a recovery fails on the server, opening the
+  artifact somewhere else is the difference between a diagnosis and a guess.
+
+The files come down **sealed** when encryption is on, because that is what the
+store holds. Neither the API nor the download command has the key. The manifest
+is deliberately never encrypted — it is what tells somebody holding the other
+three files which key opens them, and sealing it would make it useless for that.
+
+---
+
 ## Recovering to a timestamp
 
 Always into an isolated PostgreSQL. Production is never opened by this and

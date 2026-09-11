@@ -33,9 +33,14 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
 	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
@@ -185,6 +190,147 @@ func (s *Server) handleListBaseBackups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, list)
+}
+
+// handleDownloadBaseBackup streams one file of a physical base backup out.
+//
+// # Why this exists, given that a base backup is the less portable half
+//
+// A `pg_dump` snapshot is the thing to carry on a laptop: it restores onto any
+// machine with a PostgreSQL on it, it survives a corrupt cluster, and
+// `RECOVERY.md` section C is a whole procedure built on having three files and
+// nothing else. A base backup is none of those things — it only reads on its
+// own major version, it carries any page corruption with it, and on its own it
+// recovers exactly one moment.
+//
+// It is offered anyway, for two situations that are real:
+//
+//   - The bucket is being migrated, or its provider is being left. A base
+//     backup that can only be copied by the account that owns the bucket is a
+//     backup held hostage by a billing relationship.
+//   - An investigation. When a recovery fails on the server, being able to take
+//     the artifact somewhere else and open it is the difference between a
+//     diagnosis and a guess.
+//
+// # What comes out
+//
+// The bytes exactly as the store holds them, which means STILL SEALED when
+// encryption is on. The API does not hold the key and does not decrypt — see
+// `walOptions`. An operator who downloads this needs the key from wherever the
+// key is kept, which is the arrangement `SECRETS.md` describes and not an
+// inconvenience to be designed away.
+//
+// # There is no path here
+//
+// The object key is composed from the configured prefix, an id that
+// `ValidSnapshotID` has restricted to letters, digits, dash and underscore, and
+// one of four fixed names chosen by a switch. `BaseBackupKey` refuses anything
+// else. Nothing from the request reaches the store as a path.
+func (s *Server) handleDownloadBaseBackup(w http.ResponseWriter, r *http.Request) {
+	// Streams a copy of the whole cluster out of the object store. The same
+	// class as a dump download, for the same reason. See
+	// platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupTransfer) {
+		return
+	}
+	opts, err := s.walOptions()
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	id := chi.URLParam(r, "baseID")
+	if !backup.ValidSnapshotID(id) {
+		httpx.Error(w, r, errs.New(errs.CodeNotFound, "No such base backup."))
+		return
+	}
+
+	// The manifest first, and not only to name the file.
+	//
+	// It is what proves the backup is COMPLETE: a manifest is written after
+	// every component is in the store and before the marker. Handing somebody
+	// a `base.tar.gz` from a backup whose upload died would be handing them a
+	// truncated cluster to carry away and discover later.
+	manifest, err := backup.ReadBaseManifest(r.Context(), opts, id)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	names := backup.BaseNamesFor(id)
+	var object, filename, contentType string
+	switch chi.URLParam(r, "what") {
+	case "", "base":
+		object, filename = backup.BaseTarObject(), names.Base
+		contentType = "application/octet-stream"
+	case "wal":
+		object, filename = backup.BaseWALTarObject(), names.WAL
+		contentType = "application/octet-stream"
+	case "manifest":
+		object, filename = backup.BaseManifestObject(), names.Manifest
+		contentType = "application/json"
+	case "pg-manifest":
+		object, filename = backup.BasePGManifestObject(), names.PGManifest
+		contentType = "application/json"
+	default:
+		httpx.Error(w, r, errs.New(errs.CodeInvalidInput,
+			"A base backup has four parts: base, wal, manifest and "+
+				"pg-manifest."))
+		return
+	}
+
+	key, err := backup.BaseBackupKey(opts.Prefix, id, object)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	body, size, err := s.backupStore.GetStream(r.Context(), key)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	defer body.Close()
+
+	// Audited BEFORE the bytes leave, because a download that is interrupted
+	// halfway still took the data as far as the wire. A trail that recorded
+	// only completed downloads would miss the interesting ones.
+	//
+	// The key fingerprint is in the entry and the key is not. Knowing WHICH
+	// key a carried-away artifact needs is what somebody investigating wants;
+	// the key itself has no business in a row every operator can read.
+	sealed := manifest.Encryption != nil
+	fingerprint := ""
+	if sealed {
+		fingerprint = manifest.Encryption.KeyFingerprint
+	}
+	s.auditBackup(r, "base_backup_downloaded", id, map[string]any{
+		"part": object, "bytes": size,
+		"encrypted": sealed, "key_fingerprint": fingerprint,
+	})
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	}
+	// The checksum of the object as stored, so whoever downloads it can check
+	// the file without opening the manifest — and, when it is sealed, the
+	// fingerprint of the key they will need. Neither is secret.
+	if c, ok := manifest.Component(object); ok && c.SHA256 != "" {
+		w.Header().Set("X-RawSyst-SHA256", c.SHA256)
+	}
+	if sealed {
+		w.Header().Set("X-RawSyst-Encrypted", "aes-256-gcm")
+		w.Header().Set("X-RawSyst-Key-Fingerprint", fingerprint)
+	}
+	w.WriteHeader(http.StatusOK)
+
+	// Nothing useful can be sent after this point: the status line has gone. A
+	// failure here ends the download short, which is what every interrupted
+	// download looks like, and the checksum is what tells the operator.
+	_, _ = io.Copy(w, body)
 }
 
 // handleListRecoveries is the audit trail of who recovered what to when.

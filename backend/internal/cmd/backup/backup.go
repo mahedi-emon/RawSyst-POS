@@ -99,7 +99,8 @@ func run(args []string) error {
 	// shared set would try to interpret `-target` and fail with "flag provided
 	// but not defined" before the command it belongs to ever ran. Found by the
 	// drill in deploy/server/pitr-drill.sh, which is what a drill is for.
-	ownsItsFlags := action == "wal" || action == "pitr"
+	ownsItsFlags := action == "wal" || action == "pitr" ||
+		action == "basebackup"
 	if !ownsItsFlags {
 		if err := fs.Parse(rest); err != nil {
 			return err
@@ -112,6 +113,16 @@ func run(args []string) error {
 	// missing RAWSYST_JWT_SECRET cannot stop somebody checking their backup.
 	if action == "check" {
 		return doCheck(*dumpFile, *manifestFile, *jsonOut)
+	}
+
+	// So does `help`, and for a reason worth one line of code: the moment
+	// somebody most needs the list of commands is the moment the server is
+	// broken, and a help text that refuses to print until RAWSYST_JWT_SECRET is
+	// set is a help text that is missing exactly then.
+	switch action {
+	case "-h", "--help", "help":
+		usage()
+		return nil
 	}
 
 	// `wal archive` and `wal restore` need nothing either, and for a stronger
@@ -221,7 +232,7 @@ func run(args []string) error {
 	case "wal":
 		return doWAL(ctx, cfg, opts, walRegister, rest)
 	case "basebackup":
-		return doBaseBackup(ctx, cfg, opts, walRegister, *jsonOut)
+		return doBaseBackup(ctx, cfg, opts, walRegister, rest)
 	case "pitr":
 		return doPITR(ctx, cfg, opts, walRegister, rest)
 	case "-h", "--help", "help":
@@ -971,7 +982,9 @@ func usage() {
 Point-in-time recovery — a dump is a photograph, this is the film:
 
   basebackup    take a PHYSICAL copy of the cluster with pg_basebackup. The
-                thing the write-ahead log is replayed onto; a dump cannot be
+                thing the write-ahead log is replayed onto; a dump cannot be.
+                -download [-base ID] [-to DIR] pulls one onto this computer
+                instead — sealed, and useless without the archive beside it
   pitr          recover to a moment, into a PostgreSQL of its own. Production
                 is never opened. -window prints what is recoverable and stops
   wal status    is the archive working, and what window does it cover

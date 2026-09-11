@@ -34,11 +34,15 @@ package backup
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -452,9 +456,24 @@ func doWALPreflight(
 
 func doBaseBackup(
 	ctx context.Context, cfg config.Config, opts backup.Options,
-	register *backup.WALRegister, asJSON bool,
+	register *backup.WALRegister, args []string,
 ) error {
+	fs := flag.NewFlagSet("backup basebackup", flag.ExitOnError)
+	download := fs.Bool("download", false,
+		"pull a base backup onto this computer instead of taking a new one")
+	baseID := fs.String("base", "",
+		"which base backup to download. Default: the newest completed one")
+	to := fs.String("to", ".", "where to put a downloaded base backup")
+	asJSON := fs.Bool("json", false, "machine-readable output")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
 	wal := walOptions(cfg, opts)
+	if *download {
+		return doBaseDownload(ctx, wal, *baseID, *to, *asJSON)
+	}
+
 	id, _ := register.StartBase(ctx, nil, "")
 
 	manifest, err := backup.TakeBaseBackup(ctx, backup.BaseBackupOptions{
@@ -468,7 +487,7 @@ func doBaseBackup(
 		Environment:    opts.Environment,
 		SourceHost:     opts.SourceHost,
 		Progress: func(stage string) {
-			if !asJSON {
+			if !*asJSON {
 				fmt.Printf("  %s\n", stage)
 			}
 		},
@@ -482,7 +501,7 @@ func doBaseBackup(
 	}
 	_ = register.BaseStored(ctx, id, manifest)
 
-	if asJSON {
+	if *asJSON {
 		return print(manifest)
 	}
 	fmt.Printf("\n  %s\n", manifest.ID)
@@ -496,6 +515,144 @@ func doBaseBackup(
 	fmt.Println("\n  Stored. NOT yet verified — `rawsyst backup pitr " +
 		"-target immediate -base " + manifest.ID + "` proves it recovers.")
 	return nil
+}
+
+// doBaseDownload pulls a base backup onto this computer.
+//
+// # What this is for, and what it is not
+//
+// It is NOT the laptop copy. That is `backup download`, which fetches a
+// `pg_dump` snapshot: portable across major versions, readable on any machine
+// with a PostgreSQL, and the thing `RECOVERY.md` section C is built on. A
+// physical base backup is none of those — it only reads on its own major
+// version and it is useless without the write-ahead log archive beside it.
+//
+// It exists for the two situations where the alternative is being stuck:
+// leaving a storage provider, and opening an artifact somewhere else when a
+// recovery has failed on the server.
+//
+// # The files come down SEALED
+//
+// When encryption is on, what lands on disk is ciphertext, because that is what
+// the store holds. Decrypting it needs the key from wherever the key is kept.
+// The manifest that comes with it names the fingerprint, so there is no
+// guessing about WHICH key — see `SECRETS.md`.
+func doBaseDownload(
+	ctx context.Context, wal backup.WALOptions, id, to string, asJSON bool,
+) error {
+	if id == "" {
+		bases, err := backup.CompletedBaseBackups(ctx, wal)
+		if err != nil {
+			return err
+		}
+		if len(bases) == 0 {
+			return errors.New(
+				"there is no completed base backup to download")
+		}
+		id = bases[0].ID
+	}
+
+	// The manifest first, and not only to know the file names. It is what
+	// proves the backup is COMPLETE: it is written after every component is in
+	// the store. Downloading from one whose upload died would mean carrying a
+	// truncated cluster away and discovering it later.
+	manifest, err := backup.ReadBaseManifest(ctx, wal, id)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(to, 0o700); err != nil {
+		return fmt.Errorf("could not create %s: %w", to, err)
+	}
+
+	names := backup.BaseNamesFor(id)
+	files := []struct{ object, local string }{
+		{backup.BaseTarObject(), names.Base},
+		{backup.BaseWALTarObject(), names.WAL},
+		{backup.BasePGManifestObject(), names.PGManifest},
+		{backup.BaseManifestObject(), names.Manifest},
+	}
+
+	var written []string
+	var total int64
+	for _, f := range files {
+		if !asJSON {
+			fmt.Printf("  %s\n", f.local)
+		}
+		n, err := fetchBaseFile(ctx, wal, id, f.object, filepath.Join(to, f.local))
+		if err != nil {
+			return err
+		}
+		written = append(written, f.local)
+		total += n
+	}
+
+	if asJSON {
+		return print(map[string]any{
+			"base_backup_id": id,
+			"files":          written,
+			"bytes":          total,
+			"encrypted":      manifest.Encryption != nil,
+			"directory":      to,
+		})
+	}
+	fmt.Printf("\n  %s, %s, into %s\n", id, human(total), to)
+	if manifest.Encryption != nil {
+		fmt.Printf("  SEALED with key %s. Without that key these files are "+
+			"not a backup.\n", manifest.Encryption.KeyFingerprint)
+	}
+	fmt.Printf("  PostgreSQL %s. A physical copy only reads on its own major "+
+		"version.\n", manifest.PostgresVersion)
+	fmt.Println("  It also needs the write-ahead log archive to recover to " +
+		"anything but its own consistency point. See deploy/server/PITR.md.")
+	return nil
+}
+
+// fetchBaseFile streams one component onto disk, checking it on the way.
+//
+// Streamed and hashed as it goes: a base backup is the size of the database and
+// nothing here holds one in memory. The checksum is compared against the
+// manifest afterwards and a mismatch removes the file, because a corrupt
+// artifact left on disk with a plausible name is worse than no artifact.
+func fetchBaseFile(
+	ctx context.Context, wal backup.WALOptions, id, object, dest string,
+) (int64, error) {
+	key, err := backup.BaseBackupKey(wal.Prefix, id, object)
+	if err != nil {
+		return 0, err
+	}
+	body, _, err := wal.Store.GetStream(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+	defer body.Close()
+
+	f, err := os.Create(dest)
+	if err != nil {
+		return 0, fmt.Errorf("could not write %s: %w", dest, err)
+	}
+	defer f.Close()
+
+	sum := sha256.New()
+	n, err := io.Copy(io.MultiWriter(f, sum), body)
+	if err != nil {
+		os.Remove(dest)
+		return 0, fmt.Errorf("could not write %s: %w", dest, err)
+	}
+
+	// The manifest describes the three components it lists. It does not
+	// describe itself, so there is nothing to compare that one against.
+	manifest, err := backup.ReadBaseManifest(ctx, wal, id)
+	if err == nil {
+		if c, ok := manifest.Component(object); ok && c.SHA256 != "" {
+			if got := hex.EncodeToString(sum.Sum(nil)); got != c.SHA256 {
+				os.Remove(dest)
+				return 0, fmt.Errorf(
+					"%s came down with the wrong checksum (%s, expected %s); "+
+						"the file has been removed", object, got, c.SHA256)
+			}
+		}
+	}
+	return n, nil
 }
 
 func doPITR(

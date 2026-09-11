@@ -58,8 +58,13 @@ BACKUP_DSN='postgres://rawsyst_backup:drillrolepassword@db:5432/rawsyst?sslmode=
 ADMIN_DSN='postgres://rawsyst:drillpassword@db:5432/postgres?sslmode=disable'
 
 # Every backup command after the role exists connects as the backup role.
+#
+# MSYS_NO_PATHCONV stops Git Bash rewriting an argument that starts with `/`
+# into a Windows path before Docker ever sees it. `-to /staging/carried` becomes
+# `C:/Program Files/Git/staging/carried` without it, which fails on a directory
+# nobody asked for. It means nothing on Linux and is harmless there.
 backup() {
-	"${COMPOSE[@]}" run --rm -T \
+	MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" run --rm -T \
 		-e RAWSYST_DB_DSN="$APP_DSN" \
 		-e RAWSYST_BACKUP_DSN="$BACKUP_DSN" \
 		-e RAWSYST_BACKUP_ADMIN_DSN="$ADMIN_DSN" \
@@ -205,6 +210,20 @@ backup pitr -target before_time -at "$GOOD" || fail "the recovery failed"
 
 step "Recovering to the latest point"
 backup pitr -target latest || fail "the latest recovery failed"
+
+step "Carrying a base backup away"
+# Not a substitute for the dump somebody keeps on a laptop -- a physical copy
+# only reads on its own major version and needs the archive beside it. It is
+# here because leaving a storage provider, and opening an artifact somewhere
+# else after a failed recovery, are both real and both impossible without it.
+#
+# Every file is checked against the manifest as it lands, and one that does not
+# match is deleted rather than left on disk with a plausible name.
+backup basebackup -download -to /staging/carried \
+	|| fail "the base backup could not be downloaded"
+MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" run --rm -T --entrypoint sh backup -c \
+	'ls -l /staging/carried && test "$(ls /staging/carried | wc -l)" -eq 4' \
+	|| fail "the download did not produce four files"
 
 step "Retention"
 backup wal prune || fail "retention refused"

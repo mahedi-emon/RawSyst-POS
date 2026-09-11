@@ -2685,6 +2685,13 @@ func (s *Server) Routes() []Route {
 			"queues a pg_basebackup of the whole cluster, then a recovery of " +
 				"it to `immediate` — stored is not verified, and the cheapest " +
 				"proof a copy is readable is recovering it"},
+		{http.MethodGet,
+			"/api/v1/platform/pitr/base-backups/{baseID}/download/{what}",
+			AccessSuperAdmin, "", s.handleDownloadBaseBackup,
+			"streams a physical copy out of the object store, STILL SEALED " +
+				"where encryption is on: the API does not hold the key. For " +
+				"leaving a storage provider, and for opening an artifact " +
+				"somewhere else when a recovery has failed on the server"},
 		{http.MethodGet, "/api/v1/platform/pitr/recoveries", AccessSuperAdmin,
 			"", s.handleListRecoveries,
 			"every recovery, including the refused ones: who asked to read " +

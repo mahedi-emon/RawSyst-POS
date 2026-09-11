@@ -35,7 +35,14 @@
 // flow on the History tab, which takes a dump, a rehearsal that passed, a fresh
 // verified backup and a write freeze.
 
-import { AlertTriangle, Database, Play, Search, ShieldCheck } from 'lucide-react';
+import {
+  AlertTriangle,
+  Database,
+  Download,
+  Play,
+  Search,
+  ShieldCheck,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -47,6 +54,7 @@ import { DataTable, TableSkeleton, type Column } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
 import { messageFor } from '@/lib/api/errors';
 import { useApi, useApiList } from '@/lib/api/hooks';
+import { saveAs } from '@/lib/download';
 import { useT, type Key } from '@/lib/i18n/locale';
 import { fileSize } from '@/lib/oversight/records';
 import {
@@ -454,6 +462,31 @@ function BaseBackups({
   onAsk: (path: string, body?: unknown) => Promise<void>;
 }) {
   const t = useT();
+  const [pulling, setPulling] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Pulls the four files of one base backup, one request each.
+  //
+  // They come down SEALED where encryption is on, because that is what the
+  // store holds and the API does not have the key. That is said on the screen
+  // rather than discovered when somebody tries to open one — see
+  // `nx.pitr.downloadNote`.
+  async function download(base: string) {
+    setPulling(base);
+    setError(null);
+    try {
+      for (const part of ['manifest', 'pg-manifest', 'base', 'wal'] as const) {
+        const { blob, filename } = await api.download(
+          `/platform/pitr/base-backups/${base}/download/${part}`,
+        );
+        saveAs(blob, filename);
+      }
+    } catch (e) {
+      setError(messageFor(e, t));
+    } finally {
+      setPulling('');
+    }
+  }
 
   const columns: Column<BaseBackup>[] = [
     {
@@ -506,6 +539,28 @@ function BaseBackups({
         </div>
       ),
     },
+    {
+      key: 'download',
+      header: t('nx.pitr.col.copy'),
+      cell: (r) => (
+        <Button
+          variant="ghost"
+          // Only a copy that finished can be carried away. `running` and
+          // `uploading` have no manifest yet, and the manifest is what proves
+          // every piece reached the store.
+          disabled={
+            pulling !== '' ||
+            (r.status !== 'stored' && r.status !== 'verified')
+          }
+          onClick={() => download(r.base_backup_id)}
+        >
+          <Download aria-hidden />
+          {pulling === r.base_backup_id
+            ? t('nx.pitr.downloading')
+            : t('nx.pitr.download')}
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -522,6 +577,7 @@ function BaseBackups({
         </Button>
       }
     >
+      {error && <FormError message={error} className="mb-4" />}
       {rows.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}
@@ -529,12 +585,17 @@ function BaseBackups({
           description={t('nx.pitr.noBasesWhy')}
         />
       ) : (
-        <DataTable
-          caption={t('nx.pitr.basesCaption')}
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.id}
-        />
+        <>
+          <DataTable
+            caption={t('nx.pitr.basesCaption')}
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.id}
+          />
+          <p className="mt-3 max-w-[68ch] text-caption text-subtle">
+            {t('nx.pitr.downloadNote')}
+          </p>
+        </>
       )}
     </Panel>
   );

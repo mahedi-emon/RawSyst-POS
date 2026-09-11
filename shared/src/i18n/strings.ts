@@ -9727,6 +9727,11 @@ export const en = {
   'nx.pitr.col.segment': "Segment",
   'nx.pitr.col.failedAt': "Failed at",
   'nx.pitr.col.reason': "Reason",
+
+  'nx.pitr.col.copy': "Copy",
+  'nx.pitr.download': "Download",
+  'nx.pitr.downloading': "Downloading",
+  'nx.pitr.downloadNote': "Four files each: the cluster, the log written while it was copied, and two manifests. They come down encrypted if encryption is on, because that is what the store holds and this server does not hand the key to a browser. This is not the copy to keep on a laptop — a physical copy only reads on its own PostgreSQL version and needs the archive beside it. The dump on the History tab is the portable one.",
 } as const;
 
 /** Every string the interface can show. */
