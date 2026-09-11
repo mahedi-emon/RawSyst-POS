@@ -355,7 +355,56 @@ on the day it is needed is a backup system nobody has tested. Run
 
 ---
 
-## 9. Moving to another server
+## 9. Before it carries a business
+
+**[PREPRODUCTION.md](PREPRODUCTION.md), top to bottom, on this machine.**
+
+Sections 1 to 8 above build a server that runs. That document is the separate
+question of whether it can be recovered, and it is not the same question: a
+server that serves perfectly and cannot be restored is a server that will one
+day lose a shop's year.
+
+It is ten steps and safe on a machine that is not yet serving. The ones that
+are not optional:
+
+- The application's database role must print `f | f` for superuser and
+  bypassrls. If it does not, this server has no tenant isolation at all, and
+  everything else is moot.
+- `backup role` must end green, and must be re-runnable.
+- A backup must be taken, listed **with the provider's own client** rather than
+  only with this product, verified, and downloaded to somewhere off the server.
+- The application-level drill in step 9: restore into a database beside the
+  live one, start the product against it, and check that a second business
+  still cannot see the first one's data — then take a new backup **from the
+  restored database** and verify that too.
+
+Record the elapsed times. They are your RPO and RTO, and a number you measured
+on your own hardware is worth more than any number in a document.
+
+### Production prerequisites, as a list
+
+- [ ] `.env` complete, `chmod 600`, and stored in a secret store off this
+      machine. [SECRETS.md](SECRETS.md) is the inventory.
+- [ ] `RAWSYST_ENV=production`.
+- [ ] Application role `NOSUPERUSER NOBYPASSRLS`.
+- [ ] `rawsyst_backup` created and checked green.
+- [ ] `RAWSYST_BACKUP_DSN` set, and its password in the secret store.
+- [ ] An object store that is **not** this server, reachable, with a bucket.
+- [ ] `RAWSYST_BACKUP_ENCRYPTION_KEY` decided: set and stored in two places,
+      or deliberately left off with a reason. See [BACKUP.md](BACKUP.md).
+- [ ] `RAWSYST_DATA_ENCRYPTION_KEYS` stored in two places. Losing it does not
+      lose the database; it loses the sealed columns for ever.
+- [ ] One backup taken, verified, and downloaded off the server.
+- [ ] Both systemd timers enabled, and one backup forced by hand rather than
+      waited for.
+- [ ] `backup health` GREEN.
+- [ ] The application-level drill done, with its times written down.
+- [ ] `RAWSYST_ALLOW_PRODUCTION_RESTORE` left `false`.
+- [ ] TLS terminating in front, and 8080 and 3000 on loopback only.
+
+---
+
+## 10. Moving to another server
 
 `deploy/server/MIGRATION.md`, when the time comes. Read it before you need it:
 the rehearsal it opens with is the difference between a ten-minute cutover and

@@ -63,6 +63,10 @@ const MaxUploadBytes = 8 << 30
 // --- reading ----------------------------------------------------------------
 
 func (s *Server) handlePlatformBackupHealth(w http.ResponseWriter, r *http.Request) {
+	// A read a screen polls. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupRead) {
+		return
+	}
 	if s.backups == nil {
 		httpx.Error(w, r, backupsNotWired())
 		return
@@ -113,6 +117,10 @@ func (s *Server) handlePlatformBackupHealth(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handlePlatformListBackups(w http.ResponseWriter, r *http.Request) {
+	// A read a screen polls. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupRead) {
+		return
+	}
 	if s.backups == nil {
 		httpx.Error(w, r, backupsNotWired())
 		return
@@ -127,6 +135,10 @@ func (s *Server) handlePlatformListBackups(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handlePlatformBackupDetail(w http.ResponseWriter, r *http.Request) {
+	// A read a screen polls. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupRead) {
+		return
+	}
 	id, err := s.snapshotParam(r)
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -141,6 +153,10 @@ func (s *Server) handlePlatformBackupDetail(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handlePlatformBackupTasks(w http.ResponseWriter, r *http.Request) {
+	// A read a screen polls. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupRead) {
+		return
+	}
 	if s.backupTasks == nil {
 		httpx.Error(w, r, backupsNotWired())
 		return
@@ -156,6 +172,10 @@ func (s *Server) handlePlatformBackupTasks(w http.ResponseWriter, r *http.Reques
 
 // handlePlatformBackupTask is what a screen watching an operation polls.
 func (s *Server) handlePlatformBackupTask(w http.ResponseWriter, r *http.Request) {
+	// A read a screen polls. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupRead) {
+		return
+	}
 	if s.backupTasks == nil {
 		httpx.Error(w, r, backupsNotWired())
 		return
@@ -176,11 +196,19 @@ func (s *Server) handlePlatformBackupTask(w http.ResponseWriter, r *http.Request
 // --- asking for work --------------------------------------------------------
 
 func (s *Server) handlePlatformCreateBackup(w http.ResponseWriter, r *http.Request) {
+	// Queues a dump of the whole database. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupHeavy) {
+		return
+	}
 	s.queueBackupTask(w, r, backup.TaskCreate, "", backup.Params{},
 		"backup_requested")
 }
 
 func (s *Server) handlePlatformVerifyBackup(w http.ResponseWriter, r *http.Request) {
+	// Queues a restore into a scratch database. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupHeavy) {
+		return
+	}
 	id, err := s.snapshotParam(r)
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -191,6 +219,10 @@ func (s *Server) handlePlatformVerifyBackup(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handlePlatformValidateRestore(w http.ResponseWriter, r *http.Request) {
+	// Queues a full rehearsal of a restore. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupHeavy) {
+		return
+	}
 	id, err := s.snapshotParam(r)
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -201,6 +233,10 @@ func (s *Server) handlePlatformValidateRestore(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handlePlatformPruneBackups(w http.ResponseWriter, r *http.Request) {
+	// Deletes snapshots. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupDestructive) {
+		return
+	}
 	s.queueBackupTask(w, r, backup.TaskPrune, "", backup.Params{},
 		"backup_retention_requested")
 }
@@ -216,6 +252,10 @@ func (s *Server) handlePlatformPruneBackups(w http.ResponseWriter, r *http.Reque
 func (s *Server) handlePlatformRestoreProduction(
 	w http.ResponseWriter, r *http.Request,
 ) {
+	// Replaces the live database. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupDestructive) {
+		return
+	}
 	id, err := s.snapshotParam(r)
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -291,6 +331,10 @@ func (s *Server) queueBackupTask(
 func (s *Server) handlePlatformDownloadBackup(
 	w http.ResponseWriter, r *http.Request,
 ) {
+	// Streams the whole database out of the object store. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupTransfer) {
+		return
+	}
 	id, err := s.snapshotParam(r)
 	if err != nil {
 		httpx.Error(w, r, err)
@@ -424,6 +468,10 @@ func (s *Server) handlePlatformDownloadBackup(
 func (s *Server) handlePlatformUploadBackup(
 	w http.ResponseWriter, r *http.Request,
 ) {
+	// Brings a whole database back in, up to 8 GiB. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupTransfer) {
+		return
+	}
 	if s.backups == nil || s.backupStaging == "" {
 		httpx.Error(w, r, errs.New(errs.CodeUnavailable,
 			"This server has nowhere to stage an uploaded backup. Set "+
@@ -673,6 +721,10 @@ func looksLikeADump(path string, expectSealed bool) error {
 // --- maintenance ------------------------------------------------------------
 
 func (s *Server) handlePlatformMaintenance(w http.ResponseWriter, r *http.Request) {
+	// A read a screen polls. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupRead) {
+		return
+	}
 	if s.maintenance == nil {
 		httpx.Error(w, r, backupsNotWired())
 		return
@@ -694,6 +746,10 @@ func (s *Server) handlePlatformMaintenance(w http.ResponseWriter, r *http.Reques
 func (s *Server) handlePlatformSetMaintenance(
 	w http.ResponseWriter, r *http.Request,
 ) {
+	// Freezes or unfreezes writes for every business on this server. See platform_backup_limits.go.
+	if !s.limitBackup(w, r, rateBackupDestructive) {
+		return
+	}
 	if s.maintenance == nil {
 		httpx.Error(w, r, backupsNotWired())
 		return

@@ -6,10 +6,12 @@ is a `git clone` and a `docker compose build` away.
 
 So this document is about one file and what it takes to trust it.
 
-Its companions: **[RECOVERY.md](RECOVERY.md)** is what to do when something has
-gone wrong, **[MIGRATION.md](MIGRATION.md)** is moving to another server without
-losing a day's trading, and **[SECRETS.md](SECRETS.md)** is everything a dump
-does not contain — which is the other half of being able to rebuild this server.
+Its companions: **[PREPRODUCTION.md](PREPRODUCTION.md)** is what to prove on the
+real server before it carries a business, **[RECOVERY.md](RECOVERY.md)** is what
+to do when something has gone wrong, **[MIGRATION.md](MIGRATION.md)** is moving
+to another server without losing a day's trading, and
+**[SECRETS.md](SECRETS.md)** is everything a dump does not contain — which is
+the other half of being able to rebuild this server.
 
 ---
 
@@ -446,6 +448,48 @@ says nothing about who can read them. This product never calls one the other.
 
 ---
 
+## How often the website may ask
+
+Every backup route is `AccessSuperAdmin` and answers 404 to everybody else, so
+the limits below are not a defence against the internet. They are a defence
+against three things that do happen to authenticated surfaces: a screen stuck
+in a render loop, a script retrying a failure, and the blast radius of a stolen
+operator session.
+
+Counted **per operator**, not per address, so two operators in one office
+cannot throttle each other.
+
+| Class | Routes | Limit |
+|---|---|---|
+| Read | health, list, detail, tasks, maintenance | 600 a minute |
+| Heavy | create, verify, validate-restore | 12 an hour |
+| Transfer | download, upload | 12 an hour |
+| Destructive | prune, restore-production, set maintenance | 6 an hour |
+
+A refusal is `429` with `Retry-After`, because a client that is looping is
+exactly the client that should be told how long to wait rather than left to
+guess.
+
+Two things these limits deliberately are not:
+
+**They are not the concurrency guard.** That is a partial unique index in
+migration 0135, and it is the more important of the two: the database itself
+refuses a second heavy task while one is queued or running, so two dumps can
+never overlap however many requests arrive. The limits bound what is *asked
+for*; the index bounds what *runs*.
+
+**They are not a gate on anything dangerous.** They sit in front of the gates,
+never instead of them. The first production restore of the hour is inside every
+limit and is still refused unless the deployment enabled the capability, a
+verified safety backup of the live database exists, and the snapshot id was
+typed out. A test holds that, so the limits can never quietly become the thing
+deciding whether a restore is allowed.
+
+The cache backs the counters, and a cache that will not answer **allows** the
+request. A Redis outage must not be the reason a business cannot recover.
+
+---
+
 ## What is checked before a dump starts
 
 Three preconditions, all of them cheap, all of them asked while the answer is
@@ -633,8 +677,67 @@ Measured, not asserted. These are from the drill; run it and read your own.
 | | |
 |---|---|
 | **RPO** | Up to 24 hours, plus however long since 03:30. The daily dump is a point in time and everything after it is on this server only. |
-| **RTO, database** | Minutes for a small database. The drill reports it. |
+| **RTO, database** | Minutes for a small database. Measured below. |
 | **RTO, whole server** | Hours, dominated by provisioning and DNS, not by the restore. RECOVERY.md walks it. |
+
+### Measured, on a real drill
+
+Run 2026-09-11 against an isolated PostgreSQL 18 and an S3-compatible store, on
+a 27.4 MB database with 186 tables, 178 policies, two businesses and one
+company. The application was started against the restored database and driven
+through 29 checks.
+
+| Step | Time |
+|---|---|
+| Take a backup: dump, upload, manifest, marker | 5s |
+| Verify it: download, checksum, restore to scratch, compare, drop | 11s |
+| Restore into a database beside the live one | 8s |
+| `migrate` against the restored database | 0s, a no-op |
+| API accepting requests against it | under 1s |
+| New backup taken FROM the restored database, verified | 10s |
+
+**Database RTO on that hardware: about 20 seconds**, from deciding to restore
+to the application serving. That is a small database and the figure scales with
+size; take your own on the real server, which is what
+[PREPRODUCTION.md](PREPRODUCTION.md) step 5 is for.
+
+These numbers describe the software. They do not describe a real recovery,
+which is dominated by a person working out what happened, finding the secret
+store, and DNS. Hours, not seconds.
+
+### What the drill proved, beyond "the file restores"
+
+All 29 checks passed on the restored database:
+
+sign-in for two businesses and a platform operator · a wrong password still
+refused · the permission catalogue at 103 permissions and 13 roles · products,
+customers, suppliers, categories, stock on hand, orders, purchase orders, stock
+movements, journals and documents all readable · profit and loss, balance sheet
+and the dashboard all computing · **a second business unable to read the first
+one's data when it puts the first one's company id in the request** · signed
+out reading nothing · the company logo coming back · a write succeeding · the
+worker starting · a platform operator reaching backup health while a business
+owner still gets 404.
+
+Two findings worth keeping:
+
+**Files came back byte for byte.** Every file in this product is a column, so
+`company_logo.bytes` and `document.bytes` were compared by checksum before and
+after: identical. This is the concrete form of the claim that the database dump
+is the whole of the business data.
+
+**The restored database could protect itself immediately.** A new backup was
+taken from it and verified with no re-granting needed — `pg_dump` carries the
+grants as ACLs and `pg_restore` applies them, leaving 192 tables and sequences
+readable by the backup role. A business that recovers into being unable to back
+itself up has not recovered, so this is checked rather than assumed.
+
+One thing the drill got wrong first, which is why the step exists: restoring as
+an **administrator** rather than as the application's role produced an intact
+database the product could not read a row of, failing at `permission denied for
+table schema_migration`. `pg_restore` leaves objects owned by whoever connected.
+RECOVERY.md step 6 and PREPRODUCTION.md both say to restore as the application
+role, and now say why.
 
 A 24-hour RPO means a business that loses this server at 22:00 loses its
 trading day. That is the honest number for a daily logical dump and it is stated

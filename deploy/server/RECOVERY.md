@@ -161,6 +161,12 @@ $C --profile backup run --rm backup list
 $C --profile backup run --rm backup verify -snapshot 20260910T033000Z-1
 
 # 6. Create the database the application will use, and restore into it.
+#
+#    AS THE APPLICATION'S ROLE, never as postgres. pg_restore leaves every
+#    object owned by whoever connected, so restoring as an administrator
+#    produces an intact database the product cannot read a row of — it fails
+#    at the first query with `permission denied for table schema_migration`.
+#    Found by doing exactly that in a drill.
 $C exec db psql -U postgres -c 'CREATE DATABASE rawsyst OWNER rawsyst'
 $C --profile backup run --rm backup restore -snapshot 20260910T033000Z-1 \
   -into 'postgres://rawsyst:…@db:5432/rawsyst?sslmode=disable'

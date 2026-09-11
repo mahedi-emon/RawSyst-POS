@@ -201,6 +201,12 @@ type Server struct {
 	// recovery_handlers.go for why it is in memory and what that costs.
 	recoveryLimit *recoveryLimiter
 
+	// backupLimit caps the backup routes per OPERATOR, by class of operation.
+	// Not a defence against the internet — those routes are super-admin only —
+	// but against a looping screen, a retrying script and a stolen session.
+	// See platform_backup_limits.go.
+	backupLimit *backupLimiter
+
 	// onboarding is optional: an installation with no data encryption key
 	// cannot hold a ZATCA credential, and the routes report that rather than
 	// failing to start.
@@ -275,6 +281,7 @@ func (s *Server) WithSecureCookies(secure bool) *Server {
 func (s *Server) WithCache(c cache.Cache) *Server {
 	s.cache = c
 	s.recoveryLimit = newRecoveryLimiter(c, 10, 15*time.Minute)
+	s.backupLimit = newBackupLimiter(c)
 	return s
 }
 
@@ -420,6 +427,12 @@ func NewServer(
 		// on recoveryLimiter for why that distinction matters the moment a
 		// deployment has two replicas.
 		recoveryLimit: newRecoveryLimiter(nil, 10, 15*time.Minute),
+
+		// The backup routes' own limits, by class of operation. In memory
+		// until WithCache supplies a shared one, for the same reason and with
+		// the same caveat as the line above. See platform_backup_limits.go for
+		// why a surface that is already super-admin-only wants these at all.
+		backupLimit: newBackupLimiter(nil),
 	}
 }
 
