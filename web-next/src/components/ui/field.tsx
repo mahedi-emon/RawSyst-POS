@@ -39,10 +39,29 @@ interface FieldContextValue {
 
 const FieldContext = createContext<FieldContextValue | null>(null);
 
-function useField(): FieldContextValue {
+/** The attributes that let a control stand outside a `<Field>`. */
+interface OwnName {
+  id?: string;
+  'aria-label'?: string;
+  'aria-labelledby'?: string;
+}
+
+// What the context enforces is that every control has a name a screen reader
+// can read, not that every control sits in a form. A filter above a list --
+// "Market", "Status" -- has no label of its own and is named by `aria-label`,
+// and that is a name. A control with neither is the mistake this guards, and
+// it still throws: silently rendering an unnamed box is the outcome the rule
+// exists to prevent.
+function useField(own: OwnName): FieldContextValue {
   const ctx = useContext(FieldContext);
-  if (!ctx) throw new Error('Form controls must be used inside <Field>.');
-  return ctx;
+  const generated = useId();
+  if (ctx) return ctx;
+  if (own['aria-label'] || own['aria-labelledby']) {
+    return { id: own.id ?? generated, describedBy: undefined, invalid: false };
+  }
+  throw new Error(
+    'Form controls must be used inside <Field>, or carry an aria-label of their own.',
+  );
 }
 
 export interface FieldProps {
@@ -157,7 +176,7 @@ export function Input({
    */
   ref?: Ref<HTMLInputElement>;
 }) {
-  const { id, describedBy, invalid } = useField();
+  const { id, describedBy, invalid } = useField(props);
   return (
     <input
       ref={ref}
@@ -186,7 +205,7 @@ export function Textarea({
   className,
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  const { id, describedBy, invalid } = useField();
+  const { id, describedBy, invalid } = useField(props);
   return (
     <textarea
       id={id}
@@ -203,7 +222,7 @@ export function Select({
   children,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
-  const { id, describedBy, invalid } = useField();
+  const { id, describedBy, invalid } = useField(props);
   return (
     <select
       id={id}

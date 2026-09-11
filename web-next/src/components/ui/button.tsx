@@ -16,7 +16,7 @@
 // width, so the layout does not jump and a person does not press it twice. That
 // is the whole reason `busy` exists separately from `disabled`.
 
-import { Slot } from '@radix-ui/react-slot';
+import { Slot, Slottable } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { Loader2 } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
@@ -127,11 +127,20 @@ export function Button({
           <span className="sr-only">{busyLabel ?? t('nx.btn.working')}</span>
         </>
       )}
-      <span
-        className={cn('inline-flex items-center gap-2', busy && 'invisible')}
-      >
-        {children}
-      </span>
+      {asChild ? (
+        // `Slot` clones exactly one element child and refuses anything else,
+        // and `{busy && ...}` above is a sibling even when it is `false`.
+        // `Slottable` names which child is the one to become the button, so
+        // the link gets the classes and the spinner sits inside it. The base
+        // class already lays the label out; the wrapper below is not needed.
+        <Slottable>{children}</Slottable>
+      ) : (
+        <span
+          className={cn('inline-flex items-center gap-2', busy && 'invisible')}
+        >
+          {children}
+        </span>
+      )}
     </Component>
   );
 }
