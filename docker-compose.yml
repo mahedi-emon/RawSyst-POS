@@ -639,6 +639,23 @@ services:
     environment:
       NODE_ENV: production
       TZ: ${TZ:-Asia/Riyadh}
+
+      # The hostname the platform control plane answers on, if it has one of
+      # its own.
+      #
+      # Passed at RUNTIME rather than baked, unlike the API origin above: the
+      # middleware that reads it runs on the Node runtime, so one image serves
+      # any hostname and a deployment changing its console address does not
+      # need a rebuild.
+      #
+      # Empty — the default — means both halves stay on one origin exactly as
+      # before. Setting it makes `/platform` answer ONLY on that hostname and
+      # 404 everywhere else, and makes every other page 404 on it. See
+      # web-next/src/middleware.ts and docs/SUPERADMIN-SEPARATION-PLAN.md.
+      #
+      # Deliberately not NEXT_PUBLIC_: this value must never reach a shop's
+      # browser bundle, because not publishing the address is half the point.
+      RAWSYST_CONSOLE_HOST: ${RAWSYST_CONSOLE_HOST:-}
     depends_on:
       api:
         condition: service_healthy

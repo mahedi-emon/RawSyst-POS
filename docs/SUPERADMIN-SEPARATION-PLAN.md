@@ -1,6 +1,10 @@
-# Separating the Super Admin panel — Phase 1 report
+# Separating the Super Admin panel
 
-Inspection only. No code has been changed and nothing has been deployed.
+**Phase 1 (inspection) and Phase 2 (origin separation) are done. Nothing has
+been deployed.** Section 8 records what Phase 2 built and what it proved; the
+rest is the Phase 1 report it was built from, unchanged.
+
+Phase 1 was inspection only.
 
 The question this answers: what exists today, what can be reused, and how a
 separate Super Admin application is introduced **without breaking the business
@@ -198,3 +202,115 @@ everything — are **live today** and are unaffected by this reordering. Phase 5
 is the right place to fix them properly, and that is your call to make. But
 until then the commercial controls do not work, and moving the panel to a new
 URL does not change that.
+
+---
+
+## 8. Phase 2 — what was built, and what it proved
+
+**Implemented and verified locally. Not deployed, and inactive by default.**
+
+### The choice, and why it differs from what Phase 1 proposed
+
+Phase 1 recommended a second Next application. **Phase 2 did not build one**, and
+the brief is why: *choose the smallest safe solution that provides real
+origin-level separation*.
+
+A second application would have meant extracting the shared UI primitives, a
+second build and deploy, and reworking the reachability script — a large change
+whose only advantage over what was built is separating the JavaScript bundle.
+
+What was built instead: **one application, two origins, decided at the edge.**
+The container serves the control plane on one hostname and the business
+application on every other, by reading the `Host` header.
+
+That still delivers the property the brief actually wants. **Session separation
+comes from the cookie, not from the bundle.** The refresh cookie is host-only,
+so an operator signing in at the console holds a session structurally unable to
+reach the business hostname.
+
+### What it does not do, stated plainly
+
+It does not separate the JavaScript bundle. Both origins are built from one
+application, so the platform route chunks exist in the deployment either way.
+They are interface code; every byte of data behind them is guarded by the API's
+404. If bundle separation is later judged necessary, the second application from
+section 4 is still the answer and nothing here blocks it.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `web-next/src/lib/origin.ts` | **New.** The rule, as a pure function |
+| `web-next/src/lib/origin.test.ts` | **New.** 11 tests |
+| `web-next/src/proxy.ts` | **New.** Applies the rule per request |
+| `web-next/src/app/page.tsx` | Comment only, on the platform redirect |
+| `deploy/nginx/nginx.conf` | Console server block, **commented out** |
+| `docker-compose.yml` | `RAWSYST_CONSOLE_HOST` passed at runtime |
+| `.env.example` | The variable, with what setting it commits you to |
+
+**No Go file changed.** The authorization model was already correct and was
+reused exactly as Phase 1 said it should be.
+
+### How it behaves
+
+`RAWSYST_CONSOLE_HOST` unset — the default, and every existing deployment —
+changes nothing. Both halves stay on one origin.
+
+Set, verified against the running container:
+
+| Path | business origin | console origin |
+|---|---|---|
+| `/` | 200 | **404** |
+| `/dashboard` | 200 | **404** |
+| `/platform` | **404** | 200 |
+| `/platform/backups` | **404** | 200 |
+| `/login` | 200 | 200 |
+| `/api/v1/*` | 200 | 200 |
+
+`/login` and `/api/v1/*` are served on both **deliberately**. The console signs
+in through the same endpoint and must reach it on its own origin, or the
+`SameSite=Strict` refresh cookie is never sent. That is what keeps the strict
+cookie and avoids needing CORS — the trade Phase 1 warned against making.
+
+### What the container test caught that the unit tests could not
+
+The first cut read `request.nextUrl.hostname`. Inside a container that reports
+the server's own origin regardless of how the request was addressed, so every
+request looked like the business origin and the console 404'd its own pages.
+
+The unit tests passed throughout — they are handed a hostname and cannot know
+where a real one comes from. Only running it against the built image showed it.
+It now reads the `Host` header, and the file says why.
+
+A caller can therefore claim any hostname. That is acceptable and is not a hole:
+a spoofed `Host` reveals the control plane's **interface** and nothing behind it,
+because every `/api/v1/platform/*` call answers 404 without a platform token.
+This decides which interface a hostname shows, never what anybody may do.
+
+### nginx: prepared, not active
+
+The console server block is written and **commented out**, per the instruction
+not to activate a production restriction without approval. Turning it on needs a
+DNS record, a certificate covering the name, and a decision about the optional
+IP allow-list — which is the strongest cheap control available and also the one
+that locks an operator out of their own platform from a hotel.
+
+### Tests
+
+11 new tests in `origin.test.ts`, covering both directions, the shared paths,
+case and port handling, a hostname that merely contains the console name, and
+the unset default. Against the running stack: the table above.
+
+The brief's items 1–6 and 10–13 — business user or employee calling
+`/api/v1/platform/*`, a contradictory token, rate limiting, audit logging — were
+**already covered** by `backend/internal/api/access_test.go` and
+`platform_backup_test.go`, which pass. They were verified, not rewritten.
+
+### Still outstanding from the brief's Super Admin UI list
+
+The panel has tenants, subscriptions, limits, features, invoices, dunning,
+operators, support, audit and platform health. It still has **no single
+dashboard landing view**, and **no activate/suspend/disable control** — the
+latter because the underlying enforcement does not work yet, and a button that
+appears to suspend a business while the business keeps trading would be worse
+than no button. Both belong to Phase 3 and Phase 5.
