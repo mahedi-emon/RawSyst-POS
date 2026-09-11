@@ -116,10 +116,20 @@ interface Stationery {
 function ReceiptScreen({ invoiceID }: { invoiceID: string }) {
   const t = useT();
   const { company } = useCompany();
-  const scope = company ? `?company_id=${company.id}` : '';
+  // The `?` is written out rather than carried in `scope`, and that is not
+  // cosmetic. `make reach` decides which routes a screen can reach by reading
+  // these paths, and it splits the query off at a literal `?`; with the query
+  // hidden inside a variable the last segment reads as an interpolation, the
+  // call matches `/pos/ANYTHING`, and the audit reported this screen as
+  // reaching `/pos/stock` — a route no screen touches at all.
+  const scope = company ? `company_id=${company.id}` : '';
 
-  const sale = useApi<Sale>(`/pos/sales/${invoiceID}${scope}`);
-  const paper = useApi<Stationery>(company ? `/pos/stationery${scope}` : null);
+  // Neither call means anything without a company: the API resolves one from a
+  // registered device or from this parameter, and a browser is not a device.
+  const sale = useApi<Sale>(
+    company ? `/pos/sales/${invoiceID}?${scope}` : null,
+  );
+  const paper = useApi<Stationery>(company ? `/pos/stationery?${scope}` : null);
 
   // A second copy of a tax invoice in circulation is something an inspector
   // asks about, so printing again is recorded. The FIRST render is not a

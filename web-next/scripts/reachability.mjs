@@ -318,8 +318,10 @@ const SCREENLESS = {
     'B — the till scans against its own offline snapshot; see lib/pos/cart.ts, which records why a round trip per scan is the wrong trade at a counter',
   'GET /api/v1/pos/stock':
     'B — the on-hand figures for the till, resolved from the device rather than from a company it names',
-  'GET /api/v1/pos/stationery':
-    'B — the letterhead a receipt prints, device-resolved so a till cannot print another company stationery',
+  // `/pos/stationery` was exempted alongside this one until the back office
+  // grew a receipt screen, which reads the same letterhead to print an HTML
+  // copy. It is no longer screenless, so it is no longer listed — the route
+  // serves a till AND a browser, and tells them apart by `actor.IsDevice`.
   'PUT /api/v1/pos/sales/{invoiceID}/signed-document':
     'B — the terminal returning what it signed; the signing key never leaves the machine',
   'POST /api/v1/sync/push':
