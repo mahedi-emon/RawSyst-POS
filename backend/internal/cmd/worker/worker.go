@@ -144,9 +144,31 @@ func run() error {
 	// `docker compose logs`. Anywhere else the job FAILS, retries, escalates
 	// and shows up in the failed-jobs view — which is an operator discovering
 	// that recovery does not work before a locked-out shopkeeper does.
+	// A provider, where one is configured. Resend is the decision that comment
+	// was waiting for; everything else about the seam is unchanged.
+	//
+	// The order matters. A configured provider wins everywhere including
+	// development, because a developer who has set a key has set it in order
+	// to send something. With no key the behaviour is exactly what it was:
+	// logged in development, refused anywhere else, never silently discarded.
 	var mailer jobs.Mailer = jobs.RefusingMailer{}
-	if cfg.Env == config.EnvDevelopment {
+	switch {
+	case cfg.Mail.Configured():
+		mailer = jobs.ResendMailer{
+			APIKey: cfg.Mail.ResendAPIKey, From: cfg.Mail.From,
+		}
+		// The sender, never the key.
+		log.Info("mail will be sent through Resend",
+			slog.String("from", cfg.Mail.From))
+	case cfg.Env == config.EnvDevelopment:
 		mailer = jobs.LogMailer{Log: log}
+	default:
+		// Named, so an operator reading a startup log knows why a password
+		// reset is about to fail rather than discovering it from a shopkeeper.
+		log.Warn("no mail provider is configured, so every message will be "+
+			"refused and appear in failed jobs; set RAWSYST_RESEND_API_KEY "+
+			"and RAWSYST_MAIL_FROM",
+			slog.String("guide", "docs/DEPLOYMENT-SPLIT-DOMAINS.md"))
 	}
 	// And the SMS side, on exactly the same terms: a portal sign-in code goes
 	// to a phone, and a deployment with no provider must FAIL those jobs

@@ -74,6 +74,13 @@ type Config struct {
 	// the modest benefit of not linking to it anywhere.
 	ConsoleURL string
 
+	// Mail is how this deployment sends a message to a person.
+	//
+	// Optional, and empty is a supported state rather than a broken one: the
+	// worker then logs in development and refuses anywhere else, which is what
+	// it has always done. What it never does is pretend.
+	Mail Mail
+
 	// Redis, object storage and observability are all OPTIONAL, and every
 	// one of them is a deliberate decision rather than an oversight.
 
@@ -261,6 +268,10 @@ func Load() (Config, error) {
 		// simply not working.
 		ConsoleHost: hostOnly(getString("RAWSYST_CONSOLE_HOST", "")),
 		ConsoleURL:  strings.TrimRight(strings.TrimSpace(getString("RAWSYST_CONSOLE_URL", "")), "/"),
+		Mail: Mail{
+			ResendAPIKey: strings.TrimSpace(getString("RAWSYST_RESEND_API_KEY", "")),
+			From:         strings.TrimSpace(getString("RAWSYST_MAIL_FROM", "")),
+		},
 		ZATCAEnvironment: strings.ToLower(
 			getString("RAWSYST_ZATCA_ENVIRONMENT", "sandbox")),
 		HTTP: HTTP{
@@ -465,6 +476,34 @@ func Load() (Config, error) {
 //
 // The port is kept if it was given: a development console on :3001 is a real
 // case, and the comparison strips ports on both sides rather than here.
+// Mail names the provider and the sender.
+//
+// # Why the sender is configuration and not a constant
+//
+// Resend, like every provider worth using, will only send from a domain
+// somebody has verified with SPF and DKIM. That domain belongs to whoever runs
+// the deployment, so the address cannot be written into the product.
+type Mail struct {
+	// ResendAPIKey is the credential. NEVER logged, never put in an error, and
+	// never sent anywhere but Resend. `Configured` is the only thing anything
+	// else is told about it.
+	ResendAPIKey string
+
+	// From is the sender, and it must be on a domain verified in Resend.
+	// Resend refuses anything else, permanently, which is correct: an
+	// unverified domain does not become verified by retrying.
+	From string
+}
+
+// Configured reports whether mail can actually be sent.
+//
+// Both halves, because either one missing means every message is refused —
+// and a deployment that set the key and forgot the sender would otherwise
+// believe it had mail working right up until the first password reset.
+func (m Mail) Configured() bool {
+	return m.ResendAPIKey != "" && m.From != ""
+}
+
 func hostOnly(raw string) string {
 	v := strings.ToLower(strings.TrimSpace(raw))
 	if i := strings.Index(v, "://"); i >= 0 {

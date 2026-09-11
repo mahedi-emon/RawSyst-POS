@@ -255,6 +255,13 @@ services:
       # decides which PAGES a hostname serves, the API which ROUTES it serves.
       RAWSYST_CONSOLE_HOST: ${RAWSYST_CONSOLE_HOST:-}
       RAWSYST_CONSOLE_URL: ${RAWSYST_CONSOLE_URL:-}
+      # Mail, through Resend. Both are needed or neither works: a key with no
+      # verified sender is refused on every message. Empty leaves the worker
+      # doing what it always did — logging in development, refusing anywhere
+      # else, never pretending. The key is a secret and belongs in the
+      # environment, never in this file.
+      RAWSYST_RESEND_API_KEY: ${RAWSYST_RESEND_API_KEY:-}
+      RAWSYST_MAIL_FROM: ${RAWSYST_MAIL_FROM:-}
       RAWSYST_DB_DSN: postgres://${POSTGRES_USER:-rawsyst}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rawsyst}?sslmode=disable
       RAWSYST_JWT_SECRET: ${RAWSYST_JWT_SECRET:?set RAWSYST_JWT_SECRET in .env}
       RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-rawsyst-pos}
@@ -607,7 +614,24 @@ services:
         limits:
           memory: 512M
     ports:
-      - "${API_PORT:-8080}:8080"
+      # The interface, not only the port.
+      #
+      # `0.0.0.0` is the default because a developer's machine and a single-box
+      # deployment both need it, and because changing it would silently cut off
+      # a deployment that is already running.
+      #
+      # A VPS behind a reverse proxy should set `API_BIND=127.0.0.1`. Published
+      # on every interface, this port answers on the origin's own IP address —
+      # over plain HTTP, with no proxy in front — so a shop's data is one
+      # `curl http://<origin-ip>:8080` away from whoever finds the address, and
+      # every certificate, rate limit and firewall rule the proxy enforces is
+      # simply walked around. Cloudflare in particular protects nothing it is
+      # not in the path of.
+      #
+      # The proxy still reaches the containers: Nginx Proxy Manager on the same
+      # host joins this network and uses `api:8080` and `web:3000`, which are
+      # the container addresses and do not go through a published port at all.
+      - "${API_BIND:-0.0.0.0}:${API_PORT:-8080}:8080"
 
   worker:
     logging: *logging
@@ -682,7 +706,9 @@ services:
         limits:
           memory: 384M
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      # See the note on the API's port above: `WEB_BIND=127.0.0.1` on a VPS
+      # that has a proxy in front of it.
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:3000"
 
 volumes:
   backup-staging:

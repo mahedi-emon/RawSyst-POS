@@ -196,8 +196,18 @@ func run() error {
 	// silently discarded -- so reading the same condition here is what lets
 	// the operator be told the truth on the screen where they take the client
 	// on, rather than finding out from the failed-jobs view a day later.
+	// What this deployment will actually DO with a queued message.
+	//
+	// The same three conditions the worker picks its mailer from, read here so
+	// the operator taking a client on is told the truth on the screen where
+	// they do it rather than finding out from the failed-jobs view a day
+	// later. The two must agree, which is why both read `Mail.Configured()`
+	// rather than each deciding for itself.
 	mailState := provisioning.MailQueuedNoProvider
-	if cfg.Env == config.EnvDevelopment {
+	switch {
+	case cfg.Mail.Configured():
+		mailState = provisioning.MailQueued
+	case cfg.Env == config.EnvDevelopment:
 		mailState = provisioning.MailQueuedForLogging
 	}
 	provSvc := provisioning.NewService(pool).
