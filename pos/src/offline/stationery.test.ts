@@ -68,6 +68,7 @@ describe('the till holding the shop stationery', () => {
       // printing the wrong code is worse than printing none.
       baseCurrency: '',
       addressLines: [],
+      phone: '',
       returnPolicy: '',
       closing: FALLBACK_CLOSING,
     });
@@ -128,11 +129,42 @@ describe('turning what is held into what is printed', () => {
     headerTextAr: 'فرع العليا',
     footerText: 'See you again soon.',
     footerTextAr: '',
+    storeAddress: '',
+    storePhone: '',
     returnPolicy: 'Return within 14 days.',
     returnPolicyAr: '',
     showTaxNumber: true,
     fetchedAt: '2026-08-22T09:00:00Z',
     ...over,
+  });
+
+  // The address and the telephone are the reason a customer can come back.
+  //
+  // Both were sent by the API and dropped here: a counter receipt carried the
+  // shop's header text and no way to find the shop again, while the same sale
+  // opened in the back office printed both. Nothing failed, which is why it
+  // needs a test — the field simply went missing between two functions.
+  it('prints the branch address above whatever the shop wrote', () => {
+    const out = receiptStationery(
+      held({ storeAddress: '12 King Fahd Road\nOlaya, Riyadh' }),
+    );
+    expect(out.addressLines).toEqual([
+      '12 King Fahd Road',
+      'Olaya, Riyadh',
+      'Olaya Branch',
+      'فرع العليا',
+    ]);
+  });
+
+  it('carries the branch telephone', () => {
+    expect(receiptStationery(held({ storePhone: '+966 11 200 3000' })).phone)
+      .toBe('+966 11 200 3000');
+  });
+
+  it('prints nothing for an address the shop has not filled in', () => {
+    const out = receiptStationery(held({ storeAddress: '', storePhone: '' }));
+    expect(out.addressLines).toEqual(['Olaya Branch', 'فرع العليا']);
+    expect(out.phone).toBe('');
   });
 
   it('prints both languages of the header, each on its own line', () => {
@@ -216,6 +248,8 @@ describe('printing it on 42 columns', () => {
         headerTextAr: '',
         footerText: 'See you soon.',
         footerTextAr: '',
+        storeAddress: '',
+        storePhone: '',
         returnPolicy: 'Return within 14 days.',
         returnPolicyAr: '',
         showTaxNumber: true,

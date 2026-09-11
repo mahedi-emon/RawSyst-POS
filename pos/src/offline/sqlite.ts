@@ -187,6 +187,14 @@ CREATE TABLE IF NOT EXISTS cached_stationery (
   return_policy   TEXT NOT NULL DEFAULT '',
   return_policy_ar TEXT NOT NULL DEFAULT '',
   show_tax_number INTEGER NOT NULL DEFAULT 1,
+  -- The BRANCH's address and telephone, as they print under the shop's name.
+  --
+  -- The branch's, not head office's: a customer coming back with a return is
+  -- standing outside the shop on the paper, and a chain's registered address
+  -- is no use to them. Empty when the shop has not filled them in, which
+  -- prints nothing rather than a blank line.
+  store_address   TEXT NOT NULL DEFAULT '',
+  store_phone     TEXT NOT NULL DEFAULT '',
   -- When it was last pulled. A till printing a month-old policy is doing the
   -- right thing; one that never pulled at all is a different situation, and
   -- the difference is worth being able to see.
@@ -265,6 +273,8 @@ interface Row {
  */
 export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE cached_stationery ADD COLUMN base_currency TEXT NOT NULL DEFAULT '';`,
+  `ALTER TABLE cached_stationery ADD COLUMN store_address TEXT NOT NULL DEFAULT '';`,
+  `ALTER TABLE cached_stationery ADD COLUMN store_phone TEXT NOT NULL DEFAULT '';`,
 ];
 
 export async function openLocalStore(): Promise<LocalStores> {
@@ -315,7 +325,8 @@ export class SqliteStationeryStore {
     const rows = await this.db.select<Array<Record<string, unknown>>>(
       `SELECT store_name, vat_number, base_currency, header_text,
               header_text_ar, footer_text, footer_text_ar, return_policy,
-              return_policy_ar, show_tax_number, fetched_at
+              return_policy_ar, show_tax_number, store_address, store_phone,
+              fetched_at
        FROM cached_stationery WHERE id = 1`,
     );
     const row = rows[0];
@@ -334,6 +345,8 @@ export class SqliteStationeryStore {
       returnPolicy: String(row.return_policy ?? ''),
       returnPolicyAr: String(row.return_policy_ar ?? ''),
       showTaxNumber: Number(row.show_tax_number ?? 1) !== 0,
+      storeAddress: String(row.store_address ?? ''),
+      storePhone: String(row.store_phone ?? ''),
       fetchedAt: String(row.fetched_at),
     };
   }
@@ -344,12 +357,12 @@ export class SqliteStationeryStore {
          store_name = $1, vat_number = $2, base_currency = $3, header_text = $4,
          header_text_ar = $5, footer_text = $6, footer_text_ar = $7,
          return_policy = $8, return_policy_ar = $9, show_tax_number = $10,
-         fetched_at = $11
+         store_address = $11, store_phone = $12, fetched_at = $13
        WHERE id = 1`,
       [
         s.storeName, s.vatNumber, s.baseCurrency, s.headerText, s.headerTextAr,
         s.footerText, s.footerTextAr, s.returnPolicy, s.returnPolicyAr,
-        s.showTaxNumber ? 1 : 0, s.fetchedAt,
+        s.showTaxNumber ? 1 : 0, s.storeAddress, s.storePhone, s.fetchedAt,
       ],
     );
   }
@@ -537,6 +550,13 @@ export interface CachedStationery {
   returnPolicy: string;
   returnPolicyAr: string;
   showTaxNumber: boolean;
+  /** Where the customer stood, and the number they would ring.
+   *
+   *  The BRANCH's, not the company's: somebody coming back with a return is
+   *  looking for the shop they bought it in. Cached for the same reason as the
+   *  currency — the paper carries it and the counter may be offline. */
+  storeAddress: string;
+  storePhone: string;
   fetchedAt: string;
 }
 

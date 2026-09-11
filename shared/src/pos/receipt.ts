@@ -47,6 +47,13 @@ export interface ReceiptHeader {
    *  till does not compose or validate it. */
   vatNumber: string;
   addressLines: string[];
+  /** The branch telephone.
+   *
+   *  Optional, and its own field rather than a further address line, because a
+   *  number has a direction: folded into a right-to-left Arabic address block
+   *  it would print with its digits in the wrong order, and a telephone number
+   *  a customer cannot dial is worse than none. */
+  phone?: string;
 
   /** What the shop wrote for its returns policy (I2). Blank when they have
    *  written none, which is the ordinary state and prints nothing. */
@@ -177,6 +184,9 @@ export function renderReceipt(
 
   out.push(centre(receipt.header.storeName.toUpperCase(), width));
   for (const line of receipt.header.addressLines) out.push(centre(line, width));
+  if (receipt.header.phone) {
+    out.push(centre(receipt.header.phone, width));
+  }
   if (receipt.header.vatNumber) {
     out.push(centre(`VAT ${receipt.header.vatNumber}`, width));
   }

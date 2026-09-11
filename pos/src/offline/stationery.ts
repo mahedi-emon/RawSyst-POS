@@ -35,6 +35,8 @@ interface StationeryPayload {
   return_policy: string;
   return_policy_ar: string;
   show_tax_number: boolean;
+  store_address?: string;
+  store_phone?: string;
 }
 
 /** Where the till reads and writes what it holds. */
@@ -95,6 +97,8 @@ export class Stationery {
       returnPolicy: payload.return_policy ?? '',
       returnPolicyAr: payload.return_policy_ar ?? '',
       showTaxNumber: payload.show_tax_number !== false,
+      storeAddress: payload.store_address ?? '',
+      storePhone: payload.store_phone ?? '',
       fetchedAt: new Date().toISOString(),
     };
 
@@ -115,6 +119,12 @@ export interface ReceiptStationery {
    *  an amount of something, and this product sells into three currencies. */
   baseCurrency: string;
   addressLines: string[];
+  /** The branch telephone, printed on its own line under the address.
+   *
+   *  Its own field rather than another address line so the renderer can set it
+   *  left-to-right: a number reads the same way in every language, and folded
+   *  into a right-to-left Arabic address block it would print backwards. */
+  phone: string;
   returnPolicy: string;
   closing: string;
 }
@@ -142,6 +152,7 @@ export function receiptStationery(
       // is worse than printing none.
       baseCurrency: '',
       addressLines: [],
+      phone: '',
       returnPolicy: '',
       closing: FALLBACK_CLOSING,
     };
@@ -154,7 +165,21 @@ export function receiptStationery(
     // have one: a business between registrations should not have its number
     // appear and disappear on its own.
     vatNumber: held.showTaxNumber ? held.vatNumber : '',
-    addressLines: bothLanguages(held.headerText, held.headerTextAr),
+    // The branch address first, then whatever the shop wrote.
+    //
+    // The API sent `store_address` and `store_phone` and the till dropped
+    // both: a counter receipt carried the shop's header text and no way to
+    // find the shop again, while the same sale opened in the back office
+    // printed both. The paper the customer actually walks out with is the one
+    // they bring back.
+    addressLines: [
+      ...held.storeAddress
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== ''),
+      ...bothLanguages(held.headerText, held.headerTextAr),
+    ],
+    phone: held.storePhone,
     returnPolicy: joinLanguages(held.returnPolicy, held.returnPolicyAr),
     // A shop that wrote a closing line gets theirs; one that did not keeps the
     // line the receipt has always ended with.
