@@ -43,11 +43,27 @@ export default function manifest(): MetadataRoute.Manifest {
     // still works.
     orientation: 'any',
 
+    // Every size an installing browser asks for, all of them the same drawing:
+    // the compact Biz1core mark, generated from the traced logo by
+    // `scripts/brand-assets.mjs`. A launcher picks the size closest to what it
+    // needs, and a set with gaps in it gets a rescaled, softened mark instead.
     icons: [
-      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      ...([72, 96, 128, 144, 152, 192, 256, 384, 512] as const).map((s) => ({
+        src: `/icons/icon-${s}.png`,
+        sizes: `${s}x${s}`,
+        type: 'image/png',
+        purpose: 'any' as const,
+      })),
       // Inset, so a launcher can crop to a circle or a squircle without
-      // clipping the mark.
+      // clipping the mark. Both sizes, because Android picks the maskable set
+      // independently of the `any` set and falls back to a cropped `any` icon
+      // when the one it wants is missing.
+      {
+        src: '/icons/icon-192-maskable.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
       {
         src: '/icons/icon-512-maskable.png',
         sizes: '512x512',

@@ -227,7 +227,7 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
             kind of thing a rename leaves behind and nobody notices, because
             it is one character. */}
         <span className="app__brand">
-          <Biz1coreLogo size={22} onDark />
+          <Biz1coreLogo height={24} onDark />
         </span>
 
         {/* Only rendered when there is a genuine choice. A single-destination

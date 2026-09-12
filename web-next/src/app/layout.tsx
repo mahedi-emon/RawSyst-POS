@@ -80,14 +80,25 @@ export const metadata: Metadata = {
   // The SVG is listed first and is what a current browser uses: one file, crisp
   // at every size, correct on a high-density display. The PNGs stay for Safari
   // and for anything that asks for a raster.
+  // Every one of these is the same drawing: the compact Biz1core mark, which
+  // is the B of the wordmark with its leaf and bars. They are generated from
+  // the one traced logo by `scripts/brand-assets.mjs`, so a browser tab, a
+  // home screen and an installer cannot end up showing three different marks.
+  //
+  // The SVG is listed first and is what a current browser takes: one file,
+  // crisp at any size and on any display. The rasters are for Safari, for
+  // Android's launcher and for anything that asks for a specific pixel size.
   icons: {
     icon: [
       { url: '/brand/app-icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     shortcut: '/favicon.ico',
-    apple: '/icons/icon-192.png',
+    // 180 is the size iOS actually wants; anything else is rescaled by the
+    // phone, which softens a mark that has to read at thumbnail size.
+    apple: [{ url: '/icons/icon-180.png', sizes: '180x180', type: 'image/png' }],
   },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: PRODUCT_NAME, statusBarStyle: 'default' },
@@ -96,20 +107,33 @@ export const metadata: Metadata = {
   // or a ticket. Without these it is a bare URL, which is how an internal tool
   // looks rather than a product.
   //
-  // No absolute image URL is named: this deployment does not know its own
-  // public address at build time (that is `BIZ1CORE_APP_URL`, read at run
-  // time), and a hard-coded domain here would be a broken preview on every
-  // deployment but one.
+  // The card image is named by a ROOT-RELATIVE path on purpose. This
+  // deployment does not know its own public address at build time -- that is
+  // `RAWSYST_APP_URL`, read at run time -- and a hard-coded domain here would
+  // be a broken preview on every deployment but one. Most scrapers resolve a
+  // relative path against the page they fetched, which is the right answer for
+  // a product that is installed rather than hosted at one address.
   openGraph: {
     type: 'website',
     siteName: PRODUCT_NAME,
     title: PRODUCT_TITLE,
     description: `${PRODUCT_TAGLINE} ${PRODUCT_DESCRIPTION}`,
+    images: [
+      {
+        url: '/brand/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`,
+      },
+    ],
   },
   twitter: {
-    card: 'summary',
+    // `summary_large_image` rather than `summary`: the card is the logo
+    // lockup, and the small card would crop it to a square and lose the word.
+    card: 'summary_large_image',
     title: PRODUCT_TITLE,
     description: PRODUCT_TAGLINE,
+    images: ['/brand/og-image.png'],
   },
 };
 

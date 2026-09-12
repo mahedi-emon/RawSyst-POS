@@ -8,7 +8,9 @@
     "web-next"
   ],
   "devDependencies": {
-    "playwright": "^1.62.1"
+    "opentype.js": "^2.0.0",
+    "playwright": "^1.62.1",
+    "sharp": "^0.35.4"
   },
   "scripts": {
     "e2e": "node e2e/audit.mjs"

@@ -100,7 +100,7 @@ export function LoginScreen() {
             {/* The full lockup, tagline included. This is the one screen
                 somebody may reach without already knowing what the product
                 is. */}
-            <Biz1coreLogo variant="lockup" size={27} />
+            <Biz1coreLogo variant="lockup" height={78} />
           </h1>
           <p className="login__subtitle">{t('login.chooseTenant')}</p>
           <p className="login__hint">{t('login.multiBusiness')}</p>
@@ -159,7 +159,7 @@ export function LoginScreen() {
             {/* The full lockup, tagline included. This is the one screen
                 somebody may reach without already knowing what the product
                 is. */}
-            <Biz1coreLogo variant="lockup" size={27} />
+            <Biz1coreLogo variant="lockup" height={78} />
           </h1>
         {/* The screen is shared by the till and the back office, so it does
             not claim to be either. "Sign in to open the till" was on the back

@@ -28,10 +28,15 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.ico"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/256x256.png",
+      "icons/512x512.png",
+      "icons/icon.ico",
+      "icons/icon.png"
     ],
-    "publisher": "Biz1core",
-    "copyright": "Copyright © 2026 Biz1core",
+    "publisher": "Mahedi Hasan Emon",
+    "copyright": "© 2026 Mahedi Hasan Emon",
     "category": "Business",
     "shortDescription": "Retail point of sale and back office",
     "longDescription": "Biz1core POS is an offline-first point of sale for retail shops, with stock, accounting and VAT built in rather than bolted on.",

@@ -250,31 +250,34 @@ function BrandMark({
   return (
     <Link
       href="/"
-      className="flex h-14 items-center gap-2.5 px-4 text-shell-fg-strong"
+      className="flex h-14 flex-col justify-center gap-0.5 px-4 text-shell-fg-strong"
       // The link goes home; the logo says which product. Both, because
       // "Biz1core" alone does not tell somebody on a screen reader that
       // activating it navigates.
       aria-label={`${workspaceName} — ${t('nx.shell.home')}`}
     >
       {isProduct ? (
-        // The rail is the darkest surface in the product in BOTH themes, so
-        // the logo is told it is on a dark one rather than left to read the
-        // page theme -- which in light mode would hand it the light accents.
-        <Biz1coreLogo size={23} onDark sub={contextName} />
+        // The full logo -- leaf, bars and the whole wordmark. The rail is
+        // 248px and the logo is 124px at this height, so the word fits without
+        // being reduced to the mark. The rail is also the darkest surface in
+        // the product in BOTH themes, so the logo is TOLD it is on a dark one
+        // rather than left to read the page theme, which in light mode would
+        // hand it the navy wordmark.
+        <Biz1coreLogo height={25} onDark />
       ) : (
-        <>
-          <Biz1coreMark size={23} onDark />
-          <span className="min-w-0">
-            <span className="block truncate text-lede font-semibold leading-tight">
-              {workspaceName}
-            </span>
-            {contextName && (
-              <span className="block truncate text-caption text-shell-fg">
-                {contextName}
-              </span>
-            )}
+        <span className="flex items-center gap-2">
+          <Biz1coreMark height={24} onDark />
+          <span className="min-w-0 truncate text-lede font-semibold leading-tight">
+            {workspaceName}
           </span>
-        </>
+        </span>
+      )}
+      {/* The business's own name under the product's. A shopkeeper's rail
+          should say whose shop this is; the operator's says "Console". */}
+      {contextName && (
+        <span className="truncate text-caption leading-tight text-shell-fg">
+          {contextName}
+        </span>
       )}
     </Link>
   );

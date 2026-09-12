@@ -1,251 +1,166 @@
-// The Biz1core logo.
+// The official Biz1core logo.
 //
-// # Why the wordmark is live text and not a picture
+// # One drawing, everywhere
 //
-// A logo that is an image has to be drawn at one weight, one size and one
-// colour, and then it is either blurry or heavy everywhere else. The name
-// "Biz1core" is set here in the typeface the application already loads, so it
-// is vector-crisp at 14px in a collapsed rail and at 40px on a sign-in page,
-// it inherits the text colour of whatever surface it sits on -- the light
-// page, the dark navigation rail, a printed page, a monochrome fax -- and it
-// costs no network request and produces no layout shift.
+// The paths below come from `logo-paths.ts`, which is traced from the supplied
+// artwork by `scripts/brand-assets.mjs`. That same generator writes every SVG,
+// PNG and ICO under `web-next/public/brand/`. So the navigation rail, the
+// sign-in page, the browser tab, the installed app and the Windows installer
+// are the SAME logo rather than four similar ones -- which is the thing that
+// cannot be achieved by pasting an icon into each place.
 //
-// That also removes the failure the brief warns about: the word cannot be
-// missing, distorted or misspelled, because it is the string `PRODUCT_NAME`
-// rendered as text.
+// # Why the wordmark is outlines and not text
 //
-// # The mark
+// It was live text in a first attempt, and live text is a different logo on a
+// machine without the typeface -- and cannot be a favicon or a Windows icon at
+// all. As outlines "Biz1core" is the same eight letterforms at 14px in a
+// collapsed rail and at 40px on a sign-in page, and the word cannot go missing
+// or be misspelled because it is not a string being rendered.
 //
-// Three ascending bars with a curve rising clear above them: the figures a
-// business keeps, and the direction it wants them to go. It is four shapes.
-// That is deliberate -- a favicon is 16 CSS pixels across, and anything with
-// more detail than this becomes a grey smudge at that size. There is no
-// gradient, no shadow and no bevel, for the same reason.
+// # The variants
 //
-// The bars and the curve carry the two brand accents; the word carries
-// `currentColor`. So the logo has colour where colour survives (a solid fill
-// at 16px) and no colour where it would fight the surface (text on a dark
-// rail).
+//	full      leaf + bars + "Biz1core"           headers, rails, sign-in, footers
+//	lockup    the above + the tagline            sign-in, About, a landing page
+//	wordmark  "Biz1core" with no mark            a tight bar, a print header
+//	mark      the B with its leaf and bars       collapsed rail, avatar slot, icons
 //
-// # Variants
+// `mark` is a crop of the official logo -- a letter of the wordmark with the
+// growth mark over it -- not a separate symbol. It is what every square icon is
+// generated from.
 //
-//	mark      the bars and the curve alone -- a collapsed rail, an avatar slot
-//	wordmark  mark + "Biz1core" -- headers, rails, sign-in, footers
-//	lockup    mark + "Biz1core" + the tagline -- sign-in, About, a landing page
-//
-// The tagline is a nine-word sentence. It is NOT offered in the `wordmark`
-// variant on purpose: at rail width it would wrap to three lines or truncate
-// to "One Solution for Comp...", and a tagline nobody can read is worse than
-// no tagline.
+// The tagline appears ONLY in `lockup`. It is a nine-word sentence: at rail
+// width it wraps to three lines or truncates to "One Solution for Comp...", and
+// a tagline nobody can read is worse than no tagline.
 
 import type { CSSProperties } from 'react';
 
 import { PRODUCT_NAME, PRODUCT_TAGLINE } from './brand';
+import {
+  BAR_RADIUS,
+  BARS,
+  LEAF,
+  LETTER_B,
+  METRICS,
+  TAGLINE_PATHS,
+  WORDMARK,
+} from './logo-paths';
 
-export type LogoVariant = 'mark' | 'wordmark' | 'lockup';
-
-/**
- * How much taller the mark is drawn than the word's em size.
- *
- * Not 1. The mark's ink runs on a diagonal and is mostly empty space, so a
- * mark matched to the cap height of eight bold letters reads as a scribble
- * beside them -- which is exactly how it looked at 1.0 on the sign-in page.
- * A little over a third more height balances the two. The same ratio is used
- * by the standalone SVG files, so the component and the files look like one
- * logo.
- */
-const MARK_TO_WORD = 1.375;
+export type LogoVariant = 'full' | 'lockup' | 'wordmark' | 'mark';
 
 export type LogoProps = {
   variant?: LogoVariant;
   /**
-   * The logo's nominal height in pixels. Every other dimension is derived from
-   * it, so one number scales the whole lockup and the optical relationship
-   * between the parts never changes.
+   * The drawn height in pixels -- the whole lockup for `lockup`, the wordmark's
+   * cap-to-descender box for the others, the square for `mark`.
    *
-   * For `variant="mark"` it is exactly the mark's height. For the two that
-   * carry the word it is the word's em size, and the mark is drawn a little
-   * larger than that -- see `MARK_TO_WORD`.
+   * One number scales everything, because the whole logo is one drawing in one
+   * coordinate space. Nothing can drift out of proportion.
    */
-  size?: number;
+  height?: number;
   /**
    * Set on a surface that is dark regardless of the page theme -- the
-   * navigation rail is the case. It lightens the two accents, which are picked
-   * for contrast against a white page and go muddy on a dark one.
+   * navigation rail is the case, in both themes. Navy on a dark rail is
+   * invisible.
    */
   onDark?: boolean;
+  /** Ignores both palettes and draws the whole logo in `currentColor`. */
+  mono?: boolean;
   className?: string;
   style?: CSSProperties;
-  /**
-   * Overrides the accessible name. Only useful where the logo is also the
-   * "home" control and the label should say so.
-   */
+  /** Overrides the accessible name, e.g. where the logo is also the link home. */
   label?: string;
-  /**
-   * A second line under the word -- the business's own name, at the top of its
-   * own navigation rail.
-   *
-   * It uses the same slot the tagline uses in the `lockup` variant, so the
-   * rail head is the logo with a caption rather than a second lockup built
-   * beside it. Set it OR use `variant="lockup"`; the tagline wins if both are
-   * given, because a lockup was asked for explicitly.
-   */
-  sub?: string | null;
 };
 
-/**
- * The mark alone.
- *
- * Exported separately because a collapsed rail, a mobile header and a print
- * corner all want the four shapes without the word, and reaching for
- * `<Biz1coreLogo variant="mark" />` in those places would wrap it in a flex
- * row that does nothing.
- */
-export function Biz1coreMark({
-  size = 24,
-  onDark = false,
-  className,
-  style,
-  label,
-}: Omit<LogoProps, 'variant'>) {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      width={size}
-      height={size}
-      className={className}
-      style={{ flex: '0 0 auto', ...style }}
-      data-biz1core-mark=""
-      data-on-dark={onDark ? 'true' : undefined}
-      // A mark with no word beside it carries the name; a mark beside the word
-      // would read it out twice, and the callers that pass no label are the
-      // ones rendering the word themselves.
-      role={label ? 'img' : undefined}
-      aria-label={label}
-      aria-hidden={label ? undefined : true}
-      fill="none"
-    >
-      {/* The figures. Rounded, because a square-cut bar at 16px aliases into a
-          different width on every other row of pixels. */}
-      <rect x="3.6" y="22" width="5.4" height="5.5" rx="1.6" fill="var(--biz1core-mark-bar)" />
-      <rect x="11.3" y="18" width="5.4" height="9.5" rx="1.6" fill="var(--biz1core-mark-bar)" />
-      <rect x="19" y="13.5" width="5.4" height="14" rx="1.6" fill="var(--biz1core-mark-bar)" />
-      {/* The direction. It clears every bar top by at least two units and runs
-          past the tallest one, which is what makes it read as growth rather
-          than as a line through a chart. */}
-      <path
-        d="M3.5 18C9 17 12.5 13 15.5 9.5S23 4 28.5 5"
-        stroke="var(--biz1core-mark-curve)"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+/** The ink each variant occupies, in the artwork's coordinate space. */
+function boxFor(variant: LogoVariant) {
+  switch (variant) {
+    case 'mark':
+      return METRICS.compactBox;
+    case 'wordmark':
+      return METRICS.wordBox;
+    case 'lockup':
+      return {
+        x1: Math.min(METRICS.logoBox.x1, METRICS.taglineBox.x1),
+        y1: METRICS.logoBox.y1,
+        x2: Math.max(METRICS.logoBox.x2, METRICS.taglineBox.x2),
+        y2: METRICS.taglineBox.y2,
+      };
+    default:
+      return METRICS.logoBox;
+  }
 }
 
 /**
- * The logo.
+ * The compact mark alone.
  *
- * Renders as an inline flex row, so it drops into a rail, a header, a sign-in
- * card or a footer without a wrapper. It sets no margin and no padding: the
- * surface it sits on owns its own spacing.
+ * Exported separately because a collapsed rail, a mobile header and a print
+ * corner want the square without the word, and going through `<Biz1coreLogo
+ * variant="mark">` there would be the same thing with more to read.
  */
+export function Biz1coreMark(props: Omit<LogoProps, 'variant'>) {
+  return <Biz1coreLogo {...props} variant="mark" />;
+}
+
 export function Biz1coreLogo({
-  variant = 'wordmark',
-  size = 24,
+  variant = 'full',
+  height = 28,
   onDark = false,
+  mono = false,
   className,
   style,
   label,
-  sub,
 }: LogoProps) {
-  if (variant === 'mark') {
-    return (
-      <Biz1coreMark
-        size={size}
-        onDark={onDark}
-        className={className}
-        style={style}
-        label={label ?? PRODUCT_NAME}
-      />
-    );
-  }
+  const box = boxFor(variant);
+  const w = box.x2 - box.x1;
+  const h = box.y2 - box.y1;
+  const width = Math.round((w / h) * height * 100) / 100;
 
-  const word = Math.round(size * 0.82);
-  const mark = Math.round(word * MARK_TO_WORD);
-  const tagline = Math.max(11, Math.round(size * 0.42));
+  // `currentColor` in mono; otherwise the three brand values, which
+  // `brand.css` swaps for the dark surface.
+  const word = mono ? 'currentColor' : 'var(--biz1core-word)';
+  const one = mono ? 'currentColor' : 'var(--biz1core-accent)';
+  const leaf = mono ? 'currentColor' : 'var(--biz1core-leaf)';
+  const bar = mono ? 'currentColor' : 'var(--biz1core-bar)';
+  const tag = mono ? 'currentColor' : 'var(--biz1core-tag)';
 
-  // The tagline if a lockup was asked for, otherwise whatever caption the
-  // caller supplied. Nothing, if neither.
-  const second = variant === 'lockup' ? PRODUCT_TAGLINE : (sub ?? null);
+  const name = label ?? (variant === 'lockup' ? `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}` : PRODUCT_NAME);
 
   return (
-    <span
+    <svg
+      viewBox={`${box.x1} ${box.y1} ${w} ${h}`}
+      width={width}
+      height={height}
       className={className}
+      style={{ flex: '0 0 auto', display: 'block', ...style }}
       data-biz1core-logo=""
       data-on-dark={onDark ? 'true' : undefined}
-      style={{
-        display: 'inline-flex',
-        // Centred on the whole block, including a caption or the tagline, so
-        // the mark reads as being beside the lockup rather than hung off the
-        // top of it. The standalone SVG files centre it the same way.
-        alignItems: 'center',
-        gap: `${Math.round(size * 0.32)}px`,
-        minWidth: 0,
-        color: 'inherit',
-        ...style,
-      }}
+      role="img"
+      aria-label={name}
     >
-      <Biz1coreMark size={mark} onDark={onDark} />
-      <span style={{ display: 'block', minWidth: 0 }}>
-        <span
-          style={{
-            display: 'block',
-            // Truncation rather than a wrap. The name is one word; a rail too
-            // narrow for it should clip it, not stack "Biz" over "1core".
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            fontSize: `${word}px`,
-            // 700 rather than 800: the name is eight characters and sits next
-            // to a chart mark, and a heavier weight makes the two compete.
-            fontWeight: 700,
-            // Grotesks set a touch loose at display sizes. Closing it up is
-            // what makes eight characters read as one word.
-            letterSpacing: '-0.018em',
-            lineHeight: 1.05,
-            whiteSpace: 'nowrap',
-            color: 'currentColor',
-          }}
-        >
-          Biz<span style={{ color: 'var(--biz1core-accent)' }}>1</span>core
-        </span>
-        {second && (
-          <span
-            style={{
-              display: 'block',
-              marginTop: `${Math.max(1, Math.round(size * 0.06))}px`,
-              fontSize: `${tagline}px`,
-              fontWeight: 500,
-              // Opened up, the opposite of the word above it. A small line set
-              // loose reads as a subtitle; set tight it reads as a caption
-              // somebody forgot to finish.
-              letterSpacing: '0.01em',
-              lineHeight: 1.35,
-              opacity: 0.72,
-              color: 'currentColor',
-              // A shop's registered name can be long. One line, clipped: the
-              // rail head is a fixed 56px and a second line would push the
-              // navigation down.
-              ...(variant === 'lockup'
-                ? null
-                : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
-            }}
-          >
-            {second}
-          </span>
-        )}
-      </span>
-    </span>
+      <title>{name}</title>
+
+      {/* The word, then the mark over it -- the order the artwork uses: the
+          leaf and the bars sit in front of the B. */}
+      {variant === 'mark' ? (
+        <path d={LETTER_B} fill={word} />
+      ) : (
+        WORDMARK.map((g, i) => (
+          <path key={i} d={g.d} fill={g.accent ? one : word} />
+        ))
+      )}
+
+      {variant !== 'wordmark' && (
+        <>
+          <path d={LEAF} fill={leaf} />
+          {BARS.map((b, i) => (
+            <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={BAR_RADIUS} fill={bar} />
+          ))}
+        </>
+      )}
+
+      {variant === 'lockup' &&
+        TAGLINE_PATHS.map((d, i) => <path key={i} d={d} fill={tag} />)}
+    </svg>
   );
 }
 

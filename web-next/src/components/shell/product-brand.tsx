@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils';
 export function AuthBrand({ className }: { className?: string }) {
   return (
     <div className={cn('mb-6 text-shell-fg-strong', className)}>
-      <Biz1coreLogo variant="lockup" size={30} onDark />
+      <Biz1coreLogo variant="lockup" height={82} onDark />
     </div>
   );
 }
@@ -49,7 +49,7 @@ export function AuthBrand({ className }: { className?: string }) {
 export function ErrorBrand({ className }: { className?: string }) {
   return (
     <div className={cn('flex justify-center text-fg', className)}>
-      <Biz1coreLogo size={26} />
+      <Biz1coreLogo height={30} />
     </div>
   );
 }
@@ -109,7 +109,7 @@ export function AboutBiz1core() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <div className="text-fg">
-        <Biz1coreLogo variant="lockup" size={34} />
+        <Biz1coreLogo variant="lockup" height={96} />
       </div>
 
       <p className="mt-6 text-lede text-fg">{t('nx.about.what')}</p>

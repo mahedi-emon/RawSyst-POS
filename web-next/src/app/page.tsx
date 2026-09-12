@@ -82,7 +82,7 @@ export default function Root() {
     // product that had failed to load rather than one that was opening.
     <div className="grid min-h-dvh place-items-center bg-ground" aria-busy="true">
       <div className="flex flex-col items-center gap-3 text-fg">
-        <Biz1coreLogo size={28} />
+        <Biz1coreLogo height={30} />
         <p className="text-caption text-subtle">{t('nx.root.opening')}</p>
       </div>
     </div>

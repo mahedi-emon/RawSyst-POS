@@ -91,7 +91,7 @@ export function ShopMark({
           {initial}
         </span>
       ) : (
-        <Biz1coreMark size={26} onDark />
+        <Biz1coreMark height={26} onDark />
       )}
       {/* The shop's name, falling back to the product's only when there is no
           business yet — during onboarding, before the first company exists. */}

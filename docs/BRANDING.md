@@ -38,70 +38,99 @@ name; Biz1core has none.
 
 ## 2. The logo
 
-Three ascending bars with a curve rising clear above them: the figures a
-business keeps, and the direction it wants them to go.
+The supplied Biz1core artwork is the source of truth: the **Biz1core** wordmark
+in a heavy geometric sans, the **1** in blue, and a **teal growth leaf sweeping
+over the B with three ascending bars at its foot**. The tagline sits beneath.
 
-It is four shapes, and that is the whole design. A favicon is sixteen CSS
-pixels across, and anything with more detail than this is a grey smudge at that
-size. There is no gradient, no shadow and no bevel for the same reason. The
-curve clears every bar top by at least two units — checked in the geometry, not
-eyeballed — so the four shapes stay four shapes.
+It arrived as a raster image. [`scripts/brand-assets.mjs`](../scripts/brand-assets.mjs)
+traces it into one scalable drawing and then writes every file the product needs
+from that one drawing — so the rail, the sign-in page, the browser tab, the home
+screen and the Windows installer are the *same* logo rather than a set of
+similar ones.
 
-### On screen: live text, not a picture
+### How the wordmark became paths
 
-[`shared/src/brand/Logo.tsx`](../shared/src/brand/Logo.tsx) draws the mark as
-inline SVG and sets the word **Biz1core** as *text*, in the typeface the
-application has already loaded. So the wordmark is vector-crisp at 14px in a
-collapsed rail and at 40px on a sign-in page, it inherits the text colour of
-whatever surface it sits on, it costs no network request, and it produces no
-layout shift.
+The artwork sets the name in a heavy geometric sans. **Poppins ExtraBold** is
+the closest open face to it — the circular `o`/`c`/`e`, the flat-cut `z`, the
+flagged `1` with no foot — and the generator converts it to **outlines**. The
+tagline is **IBM Plex Sans Medium**, which is both the neutral grotesk the
+artwork uses and the typeface the product already loads.
 
-It also removes one whole class of failure: the word cannot go missing,
-distorted or misspelled, because it is `PRODUCT_NAME` rendered as text.
+Both are SIL Open Font License. The two TTFs and their licences are vendored at
+[`shared/src/brand/fonts/`](../shared/src/brand/fonts/) so the logo is
+reproducible from a clean checkout.
+
+Outlines rather than live text, deliberately. A logo set as text is a *different
+logo* on a machine without the typeface, and it cannot be a favicon or a Windows
+icon at all. As paths it is the same eight letterforms at 14px in a rail and at
+96px on the About page — and the word cannot go missing or be misspelled,
+because it is not a string being rendered. A first attempt did use live text in
+the product's own face, and that is exactly what made it not the supplied logo.
+
+### The coordinate space
+
+The artwork's own: cap height 260, baseline at `y = 290`, the B starting at
+`x = 60`. Every constant in the generator was measured against it, and
+`shared/src/brand/logo-paths.ts` — generated, never hand-edited — carries the
+traced paths plus the metrics each variant crops to.
+
+### Variants
 
 ```tsx
-<Biz1coreLogo />                              // mark + wordmark
-<Biz1coreLogo variant="lockup" size={30} />   // mark + wordmark + tagline
-<Biz1coreLogo size={23} onDark sub={shop} />  // rail: logo with the shop under it
-<Biz1coreMark size={24} />                    // the four shapes alone
+<Biz1coreLogo height={25} onDark />              // leaf + bars + "Biz1core"
+<Biz1coreLogo variant="lockup" height={82} />    // the above + the tagline
+<Biz1coreLogo variant="wordmark" height={24} />  // "Biz1core" with no mark
+<Biz1coreMark height={24} onDark />              // the B with its leaf and bars
 ```
 
-- `onDark` is for a surface that is dark **whatever the page theme is** — the
-  navigation rail is the case. Without it the logo reads the page theme and, in
-  light mode, takes the light accents onto a dark rail.
+- `height` is the only size control. Every other dimension is derived, because
+  the whole logo is one drawing in one space — nothing can drift out of
+  proportion or be stretched.
+- `onDark` is for a surface that is dark **whatever the page theme is**. The
+  navigation rail is the case in both themes, and the navy wordmark is invisible
+  on it.
+- `mono` draws the whole logo in `currentColor`, for a print header or a
+  single-colour context.
+- `variant="mark"` is a **crop of the official logo** — the B of the wordmark
+  with the leaf and bars over it — not a separate symbol. Every square icon in
+  the product is generated from it.
 - `variant="lockup"` is the only variant that shows the tagline. Nine words do
   not fit a 248px rail: they wrap to three lines or truncate to "One Solution
-  for Comp…", and a tagline nobody can read is worse than no tagline. The
-  lockup belongs on the sign-in page and the About page.
+  for Comp…". The lockup belongs on the sign-in page and the About page, where
+  it renders at 82–96px and the tagline is actually readable.
 
 ### Colour
 
-Two accents, in [`shared/src/brand/brand.css`](../shared/src/brand/brand.css),
-used by the logo and by nothing else:
+Five values, read off the artwork, in
+[`shared/src/brand/brand.css`](../shared/src/brand/brand.css) — used by the logo
+and by nothing else:
 
 | Token | Light | Dark / on the rail |
 |---|---|---|
-| `--biz1core-accent` (the "1", and the curve) | `#1f6fe0` | `#7db0ff` |
-| `--biz1core-mark-bar` (the three figures) | `#12876a` | `#3fcfa9` |
+| `--biz1core-word` — "Biz" and "core" | `#16213e` | `#f2f5f9` |
+| `--biz1core-accent` — the "1" | `#1273e6` | `#5aa2ff` |
+| `--biz1core-leaf` — the growth curve | `#2bb89a` | `#3ed0ae` |
+| `--biz1core-bar` — the three bars | `#1fa483` | `#35c39c` |
+| `--biz1core-tag` — the tagline | `#3c4a63` | `#c3cddd` |
 
-The word itself is always `currentColor`.
+The dark row is not the light row darkened. Navy on a dark rail is invisible and
+the blue and teal go muddy, so each is lifted to the step that carries against
+the darkest surface in the product.
 
 These are deliberately **not** part of either design system's semantic scale.
-This repository holds two — the till and the shared screens on a navy-and-blue
-palette, the Next.js back office on green-and-brass — and a logo has to sit
-correctly on both, on a printed invoice and in a browser tab. An accent that
-starts appearing on buttons stops being a brand accent and becomes a third
-primary colour, so nothing but the mark may reach for these.
+This repository holds two — the till and the shared screens on navy and blue,
+the Next.js back office on green and brass — and the logo has to sit correctly
+on both, on a printed invoice and in a browser tab. So the logo carries its own
+colours, and nothing else may reach for them: an accent that starts appearing on
+buttons stops being a brand accent and becomes a third primary colour.
 
-Print turns both accents black: a logo printed in colour on a mono laser makes
-both an indistinct grey, and a letterhead wants solid black anyway. Forced
-colours turn them to `currentColor`.
+Print turns the whole logo black — colour on a mono laser makes the blue and the
+teal into the same indistinct grey, and a letterhead wants solid black anyway.
+Forced colours turn it to `currentColor`.
 
 ### Files
 
-Everything under [`web-next/public/brand/`](../web-next/public/brand/) is
-generated from one description of the geometry by
-[`scripts/brand-assets.mjs`](../scripts/brand-assets.mjs):
+Everything is generated. Re-run after any change to the constants:
 
 ```sh
 node scripts/brand-assets.mjs
@@ -109,31 +138,48 @@ node scripts/brand-assets.mjs
 
 | File | For |
 |---|---|
-| `biz1core-logo.svg` / `-dark.svg` | Horizontal lockup, light and dark surfaces |
-| `biz1core-logo-tagline.svg` / `-dark.svg` | The same with the tagline |
-| `biz1core-logo-mono.svg` | Monochrome, print-safe |
-| `mark.svg` / `mark-dark.svg` / `mark-mono.svg` | The compact mark |
-| `app-icon.svg` | The mark on its tile — the favicon, and the source for every raster |
-| `app-icon-maskable.svg` | The same inside a launcher's safe area |
-| `../icons/icon-192.png`, `icon-512.png`, `icon-512-maskable.png` | The PWA manifest |
-| `../favicon.ico` | `/favicon.ico`, which browsers ask for by name |
-| `../../pos/src-tauri/icons/icon.ico` | The till's installer, taskbar and window |
+| `shared/src/brand/logo-paths.ts` | What the React component renders |
+| `web-next/public/brand/biz1core-logo.svg` / `-dark` / `-mono` | Horizontal logo |
+| `…/biz1core-logo-tagline.svg` / `-dark` | With the tagline |
+| `…/biz1core-wordmark.svg` / `-dark` | Wordmark only, no mark |
+| `…/biz1core-mark.svg` / `-dark` / `-mono` | The compact mark, transparent |
+| `…/app-icon.svg`, `app-icon-maskable.svg` | The mark on its tile — the source for every raster |
+| `…/og-image.svg`, `og-image.png` | The 1200×630 social card |
+| `web-next/public/icons/icon-{16…512}.png` | Fourteen sizes, plus 192 and 512 maskable |
+| `web-next/public/favicon.ico` | 16/32/48, which browsers ask for by name |
+| `pos/src-tauri/icons/icon.ico` | 16–256, for the Windows installer and taskbar |
+| `pos/src-tauri/icons/{32,128,256,512}.png`, `icon.png` | The Tauri bundle |
+| `pos/public/favicon.ico`, `pos/public/brand/` | The till in a browser during development |
+| `web/public/icons/`, `web/public/favicon.ico` | The dead previous back office, kept in step so no stale mark survives anywhere |
 
-Do not edit those by hand. Change `MARK` in the generator and re-run it, or the
-eleven files stop agreeing with each other.
+Do not edit any of them by hand. Change the constants at the top of the
+generator and re-run it, or the files stop agreeing with each other and with the
+component — which is the one failure a single source of truth exists to prevent.
 
 ## 3. Where the logo appears
 
-| Surface | Variant |
-|---|---|
-| Navigation rail (desktop) and drawer (mobile) | `wordmark`, `onDark`, shop name beneath |
-| Operator console rail | `wordmark`, `onDark`, "Console" beneath |
-| Sign-in, forgot password | `lockup` |
-| Till top bar | `wordmark`, `onDark` |
-| Shared sign-in (till and legacy back office) | `lockup` |
-| Opening screen, error boundary, 404 | `wordmark` |
-| About page | `lockup` |
-| Browser tab, installed app, Windows installer | `app-icon` |
+| Surface | Variant | Drawn at |
+|---|---|---|
+| Navigation rail, desktop | `full`, `onDark`, shop name beneath | 25px |
+| Navigation drawer, mobile | the same component | 25px |
+| Operator console rail and drawer | `full`, `onDark`, "Console" beneath | 25px |
+| Sign-in page | `lockup`, `onDark` | 82px |
+| Forgot password | `lockup`, `onDark` | 82px |
+| Change password | reached from sign-in; the card carries no second lockup | — |
+| Shared sign-in (the till, and the previous back office) | `lockup` | 78px |
+| Till top bar | `full`, `onDark` | 24px |
+| Opening screen | `full` | 30px |
+| Error boundary, 404 | `full` | 30px |
+| About page | `lockup` | 96px |
+| A business with no logo of its own, during onboarding | `mark`, `onDark` | 26px |
+| Browser tab, home screen, installed app, Windows installer | `app-icon` | 16–512px |
+| A pasted link (Open Graph, Twitter card) | `og-image` | 1200×630 |
+
+There is no public landing page and no registration page: the root redirects
+to the workspace the session belongs in, and accounts are provisioned by an
+operator rather than self-registered. Two-factor is a step inside the sign-in
+form, not a page of its own, so it sits under the sign-in lockup. If any of
+those three is built later it takes `lockup`.
 
 ### Where it deliberately does **not** appear
 
