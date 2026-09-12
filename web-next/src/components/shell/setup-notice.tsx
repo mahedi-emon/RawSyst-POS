@@ -55,7 +55,10 @@ export function SetupNotice() {
   return (
     <div
       role="status"
-      className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-caution/25 bg-caution-subtle px-4 py-3"
+      // Not on paper. These sit above every business screen, including the
+      // receipt, so without this a customer was handed a slip with the
+      // shop's unfinished setup printed across the top of it.
+      className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-caution/25 bg-caution-subtle px-4 py-3 print:hidden"
     >
       <p className="text-body text-caution-fg">
         {t('nx.setup.noticeBody', {

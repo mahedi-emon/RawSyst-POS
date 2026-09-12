@@ -249,18 +249,23 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 	passwordHash := chosen.passwordHash
 	status := chosen.status
 	mustChange := chosen.mustChange
-	var lockedUntil *time.Time
-	if lockedUntil != nil && lockedUntil.After(time.Now()) {
-		return Session{}, errs.Newf(errs.CodeUnauthenticated,
-			"This account is temporarily locked after too many failed sign-in "+
-				"attempts. Try again in %d minutes, or ask your owner to reset it.",
-			int(time.Until(*lockedUntil).Minutes())+1)
-	}
 
-	// The password was already verified against this candidate above, which is
-	// what selected it. Re-checking here would double the cost of the slowest
-	// operation in the request for no additional assurance.
-	_ = lockedUntil
+	// A second lockout check stood here and was dead code, not a second guard.
+	//
+	// It declared its own `var lockedUntil *time.Time`, which is nil, and then
+	// asked whether that nil was non-nil -- so the branch could never be taken.
+	// `go vet`'s nilness pass reports it as "impossible condition: nil != nil".
+	//
+	// The lockout itself is enforced, twenty lines above, on
+	// `chosen.lockedUntil`, which is the value actually read from the row. This
+	// was a copy left behind when the single-account lookup became the
+	// multi-candidate one, and it kept a `_ = lockedUntil` alive to silence the
+	// unused-variable error it would otherwise have caused.
+	//
+	// Deleted rather than repaired: repairing it would run the same comparison
+	// twice, and leaving it invited exactly the misreading it caused -- a
+	// reviewer seeing a lockout check that cannot fire and concluding the
+	// product has no lockout.
 
 	// The BUSINESS, before the person.
 	//

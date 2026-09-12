@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
@@ -154,30 +155,102 @@ func TestPruneKeepsRecentlyFinishedWork(t *testing.T) {
 // after. A retention window on it is the deletion of evidence — so this asserts
 // the pruner does not touch it, which is a guarantee somebody could plausibly
 // break while trying to make the database smaller.
+// TestPruneNeverTouchesTheAuditLog proves the pruner deletes no audit row.
+//
+// # Why it names rows instead of counting them
+//
+// It used to take `count(*) FROM audit_log` before and after and require the
+// two to be equal. That is an assertion about a NUMBER, and the number belongs
+// to the whole database rather than to this test.
+//
+// `make test-backend` runs the packages in parallel against ONE test database,
+// and this test reads through `TxAsPlatform`, which sees every tenant's rows
+// rather than one tenant's. So any other package that wrote a single audit row
+// between the two counts made `after != before`, and the failure blamed the
+// pruner for a row somebody else had INSERTED. Observed once in three full
+// runs; green 3/3 when the package ran alone, which is the signature of a race
+// rather than a defect.
+//
+// Naming the rows removes the race instead of hiding it. The claim being made
+// is "every audit row that existed before the prune still exists after it",
+// and that is what is now checked: the set of ids is captured, the pruner runs,
+// and the database is asked which of those ids have gone. Rows inserted
+// concurrently are simply not in the set, whenever they commit -- which a
+// count, or a `max(id)` watermark, cannot say, because a concurrent
+// transaction can hold an id below the watermark and commit after the snapshot.
+//
+// It is also STRONGER than the count it replaces: a pruner that deleted one row
+// and inserted another kept the count equal and would have passed.
 func TestPruneNeverTouchesTheAuditLog(t *testing.T) {
 	q := newTestQueue(t)
 	ctx := context.Background()
 
-	var before, after int
-	count := func(into *int) {
-		if err := q.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `SELECT count(*)::int FROM audit_log`).Scan(into)
-		}); err != nil {
-			t.Fatalf("counting the audit log: %v", err)
-		}
+	// A row this test owns, so the assertion means something on an empty
+	// database too. Without it a fresh installation proves only that zero rows
+	// survived, which is true of any pruner at all.
+	marker := uuid.New()
+	if err := q.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx, `
+			INSERT INTO audit_log (action, entity_type, entity_id, occurred_at)
+			VALUES ('test.prune.marker', 'test', $1, now() - interval '400 days')`,
+			marker)
+		return e
+	}); err != nil {
+		t.Fatalf("seeding a marker audit row: %v", err)
 	}
 
-	count(&before)
-	if _, _, err := q.Prune(ctx, 0, 0); err != nil {
-		t.Fatalf("prune: %v", err)
+	var ids []int64
+	if err := q.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `SELECT id FROM audit_log`)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if e := rows.Scan(&id); e != nil {
+				return e
+			}
+			ids = append(ids, id)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatalf("reading the audit log: %v", err)
 	}
-	count(&after)
 
 	// Deliberately run with a zero retention, so every row in the database is
 	// "old". If the pruner were ever going to reach the audit log, this is the
 	// call that would do it.
-	if after != before {
-		t.Errorf("the audit log went from %d rows to %d. It is evidence, not "+
-			"churn, and A4 calls it permanent.", before, after)
+	if _, _, err := q.Prune(ctx, 0, 0); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+
+	var gone int
+	var markerGone bool
+	if err := q.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx, `
+			SELECT count(*)::int
+			FROM unnest($1::bigint[]) AS captured(id)
+			WHERE NOT EXISTS (
+				SELECT 1 FROM audit_log a WHERE a.id = captured.id
+			)`, ids).Scan(&gone); e != nil {
+			return e
+		}
+		return tx.QueryRow(ctx, `
+			SELECT NOT EXISTS (
+				SELECT 1 FROM audit_log WHERE entity_id = $1
+			)`, marker).Scan(&markerGone)
+	}); err != nil {
+		t.Fatalf("checking the audit log: %v", err)
+	}
+
+	if gone != 0 {
+		t.Errorf("the pruner deleted %d of the %d audit rows that existed "+
+			"before it ran. The audit log is evidence, not churn, and A4 calls "+
+			"it permanent.", gone, len(ids))
+	}
+	if markerGone {
+		t.Error("the pruner deleted a 400-day-old audit row. Age is not a " +
+			"reason to delete evidence.")
 	}
 }

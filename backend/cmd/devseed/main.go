@@ -874,9 +874,21 @@ func seedPeople(
 	}
 
 	staff := people.NewService(pool, registry.New(pool, false))
+	// The scope the OWNER would carry, which is what this seed is acting as.
+	//
+	// `MayActForOthers` was missing, and it is `hr.manage` -- which an owner
+	// holds. Without it `RequestLeave` refused, correctly, with "you can ask
+	// for your own time off": the seed was filing leave for a cashier while
+	// claiming only the authority to file its own. That aborted `devseed`
+	// partway through seeding people, so `make fresh-dev` left a database with
+	// no staff, no leave, no advances and no sales -- and every screen behind
+	// them unreachable on a developer's machine.
+	//
+	// The guard is right and is untouched. What was wrong is this scope
+	// understating the caller it stands for.
 	scope := people.Scope{
 		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
-		MaySeePay: true,
+		MaySeePay: true, MayActForOthers: true,
 	}
 
 	now := time.Now().UTC()

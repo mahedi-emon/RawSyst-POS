@@ -40,7 +40,11 @@ export function SubscriptionBanner() {
       // ambient information, it is the reason the next thing they try will
       // fail.
       role={stopped ? 'alert' : 'status'}
+      // Not on paper. These sit above every business screen, including the
+      // receipt, so without this a customer was handed a slip with the
+      // shop's unfinished setup printed across the top of it.
       className={cn(
+        'print:hidden',
         'flex flex-wrap items-start gap-3 border-b px-4 py-3 text-body sm:px-6',
         stopped
           ? 'border-critical/30 bg-critical-subtle text-critical-fg'

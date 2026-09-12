@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/mahedi-emon/Biz1core/backend/internal/aftersales"
 	"github.com/mahedi-emon/Biz1core/backend/internal/build"
@@ -208,12 +207,24 @@ func run() error {
 		return err
 	}
 
-	// A short grace period so a job claimed just before the signal can finish
-	// rather than being reaped and run twice.
-	shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
-	<-shutdown.Done()
-
+	// There used to be an unconditional ten-second wait here, to "let a job
+	// claimed just before the signal finish rather than being reaped and run
+	// twice". It waited for nothing and it cost every deployment.
+	//
+	// `worker.Run` is synchronous: it calls `step` in its own loop and checks
+	// the context BETWEEN steps, so by the time it has returned the job it was
+	// running is already finished. There was nothing left in flight to wait for.
+	//
+	// What the wait did do was block for exactly as long as Docker is willing
+	// to wait. `stop_grace_period` defaults to ten seconds, so the timer and
+	// the reaper expired together and the worker was SIGKILLed every single
+	// time -- exit 137 on every restart, upgrade and deploy, with the
+	// "shutdown complete" line below never reached. Verified against the
+	// production compose stack before this change, and exit 0 after it.
+	//
+	// The scheduler goroutine takes the same context and returns on the same
+	// cancellation; anything it had open is inside a transaction, which the
+	// closing pool rolls back.
 	log.Info("worker shutdown complete")
 	return nil
 }

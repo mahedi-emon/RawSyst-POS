@@ -113,6 +113,12 @@ export function AppShell({
         className={cn(
           'fixed inset-y-0 start-0 z-30 hidden w-[248px] lg:flex lg:flex-col',
           'bg-shell text-shell-fg',
+          // Not on paper. A receipt printed from this product used to come out
+          // with the navigation rail down the side of it -- the vendor's logo
+          // and a shop's whole menu on a document a CUSTOMER is handed. The
+          // receipt screen's own note says "everything that is not the receipt
+          // is hidden at print time"; nothing was doing it.
+          'print:hidden',
         )}
       >
         <BrandMark workspaceName={workspaceName} contextName={contextName} />
@@ -161,10 +167,12 @@ export function AppShell({
       )}
 
       {/* ---- content column ---- */}
-      <div className="lg:ms-[248px]">
+      <div className="lg:ms-[248px] print:ms-0">
         <header
           className={cn(
             'sticky top-0 z-20 flex h-14 items-center gap-2 px-3 lg:px-6',
+            // See the rail: chrome does not print.
+            'print:hidden',
             // Not transparent with a blur. A translucent bar over a table of
             // figures makes the top row of the table hard to read, which is
             // the row most likely to matter.
@@ -211,7 +219,7 @@ export function AppShell({
           <UserMenu />
         </header>
 
-        <main id="main" className="px-3 py-5 lg:px-6 lg:py-6">
+        <main id="main" className="px-3 py-5 lg:px-6 lg:py-6 print:p-0">
           {children}
         </main>
       </div>

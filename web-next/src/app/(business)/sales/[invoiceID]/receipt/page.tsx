@@ -136,6 +136,72 @@ function ReceiptScreen({ invoiceID }: { invoiceID: string }) {
   // reprint — somebody arriving here from the till has not printed yet.
   const [printedOnce, setPrintedOnce] = useState(false);
 
+  // The shop's own logo, from the route that actually serves the bytes.
+  //
+  // This was `<img src="/api/v1/companies/{id}/logo">`, and it was wrong twice.
+  //
+  // `GET .../logo` is the METADATA — the router's own note says "what is set,
+  // without the bytes" — so the image element was handed a JSON document and
+  // rendered a broken-image box. `GET .../logo/image` is the file, and its note
+  // says it is "destined for every receipt it prints". The bytes route is also
+  // merely AUTHENTICATED while the metadata route needs `identity.view`, which
+  // a Cashier does not hold: printing a receipt from the till would have been
+  // refused outright even once the URL was right. `shared/api/branding.ts`
+  // already has `logoImagePath` for this, and the Business settings screen
+  // already used it; only this screen did not.
+  //
+  // And it is fetched rather than pointed at, because the API reads the bearer
+  // header and nothing else, and a browser puts no Authorization header on an
+  // image request. `api.download` is the call that exists for exactly that, and
+  // its own note describes the failure.
+  //
+  // The object URL is a live reference into the document's memory and has to be
+  // revoked, or printing a run of receipts leaks a blob each time.
+  const [logoURL, setLogoURL] = useState<string | null>(null);
+  const showLogo = paper.data?.show_logo ?? false;
+  const logoCompany = paper.data?.company_id;
+  useEffect(() => {
+    if (!showLogo || !logoCompany) {
+      setLogoURL(null);
+      return;
+    }
+    let made: string | null = null;
+    let cancelled = false;
+    void api
+      // The `?` is written out for the reason `scope` is: `make reach` splits
+      // a path at a literal question mark, and a query hidden in a variable
+      // makes this read as `/companies/ANYTHING`.
+      .download(`/companies/${logoCompany}/logo/image?company_id=${logoCompany}`)
+      .then(({ blob }) => {
+        // A company whose stationery says "print the logo" but which has never
+        // uploaded one answers with no bytes rather than an error. Handing
+        // those to an <img> renders a browser's broken-image box on the
+        // receipt, which is worse than the nothing it is standing in for.
+        if (blob.size === 0 || !blob.type.startsWith('image/')) {
+          if (!cancelled) setLogoURL(null);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        made = url;
+        setLogoURL(url);
+      })
+      .catch(() => {
+        // A logo that will not load is cosmetic; a receipt that will not print
+        // is not. The shop's NAME is directly beneath it and is what identifies
+        // the document, so this falls back to no picture rather than to an
+        // error.
+        if (!cancelled) setLogoURL(null);
+      });
+    return () => {
+      cancelled = true;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [showLogo, logoCompany]);
+
   const s = sale.data;
   const p = paper.data;
 
@@ -214,11 +280,11 @@ function ReceiptScreen({ invoiceID }: { invoiceID: string }) {
         aria-label={t('nx.slip.title')}
       >
         <header className="text-center">
-          {p.show_logo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- an
-            // authenticated API route, which next/image cannot fetch.
+          {logoURL ? (
+            // eslint-disable-next-line @next/next/no-img-element -- these are
+            // bytes already in memory, which next/image cannot take.
             <img
-              src={`/api/v1/companies/${p.company_id}/logo`}
+              src={logoURL}
               alt=""
               className="mx-auto mb-2 max-h-16 w-auto"
             />
