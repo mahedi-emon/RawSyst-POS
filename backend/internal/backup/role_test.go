@@ -29,8 +29,8 @@ func TestRoleNameMustBeAnIdentifier(t *testing.T) {
 	// no parameters. Anything that is not a plain lower-case identifier is
 	// refused before it gets there rather than quoted and hoped for.
 	for _, bad := range []string{
-		"", "Rawsyst", "rawsyst backup", "rawsyst-backup", `rawsyst"backup`,
-		"9rawsyst", "rawsyst;DROP", "rawsyst'--", strings.Repeat("a", 64),
+		"", "Biz1core", "biz1core backup", "biz1core-backup", `biz1core"backup`,
+		"9biz1core", "biz1core;DROP", "biz1core'--", strings.Repeat("a", 64),
 	} {
 		if validRoleName(bad) {
 			t.Errorf("%q was accepted as a role name and must not be", bad)
@@ -63,7 +63,7 @@ func TestRefusesToTouchTheApplicationRole(t *testing.T) {
 
 func TestRefusesAnIllegalRoleName(t *testing.T) {
 	_, err := EnsureRole(context.Background(), RoleOptions{
-		AdminDSN: adminDSN, AppDSN: appDSN, Role: `x"; ALTER ROLE rawsyst BYPASSRLS; --`,
+		AdminDSN: adminDSN, AppDSN: appDSN, Role: `x"; ALTER ROLE biz1core BYPASSRLS; --`,
 		Password: "x", DryRun: true,
 	})
 	if err == nil {
@@ -94,7 +94,7 @@ func TestDatabaseAndOwnerAreReadFromTheDSN(t *testing.T) {
 		t.Errorf("database: got %q, want rawsyst_prod", got)
 	}
 	if got := userOf(appDSN); got != "rawsyst" {
-		t.Errorf("owner: got %q, want rawsyst", got)
+		t.Errorf("owner: got %q, want biz1core", got)
 	}
 	if got := databaseOf("not a url at all %%%"); got != "" {
 		t.Errorf("an unparseable DSN named a database: %q", got)

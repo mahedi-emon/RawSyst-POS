@@ -55,7 +55,7 @@ describe('the shared package', () => {
     // app happened to be next to it on disk.
     const offenders = files.filter((f) => {
       const src = readFileSync(f, 'utf8');
-      return /from '\.\.\/\.\.\//.test(src) || src.includes("from '@rawsyst/web");
+      return /from '\.\.\/\.\.\//.test(src) || src.includes("from '@biz1core/web");
     });
     expect(offenders).toEqual([]);
   });

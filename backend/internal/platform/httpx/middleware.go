@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/logging"
 )
 
 // RequestID attaches a correlation id to every request.

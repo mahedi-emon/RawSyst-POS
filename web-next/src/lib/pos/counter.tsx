@@ -53,8 +53,8 @@ import {
 
 import { api } from '../api/client';
 
-const COUNTER_KEY = 'rawsyst.counter';
-const WAREHOUSE_KEY = 'rawsyst.counter.warehouse';
+const COUNTER_KEY = 'biz1core.counter';
+const WAREHOUSE_KEY = 'biz1core.counter.warehouse';
 
 export interface Counter {
   id: string;

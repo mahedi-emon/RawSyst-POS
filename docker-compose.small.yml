@@ -23,7 +23,7 @@
 # Nothing about correctness. No fsync=off, no synchronous_commit=off, no
 # full_page_writes=off — every one of those trades a crash-consistent database
 # for a faster one, and a development database that corrupts on a power cut
-# teaches a developer that RawSyst corrupts on a power cut. The settings below
+# teaches a developer that Biz1core corrupts on a power cut. The settings below
 # are all about how much memory is reserved, not about what survives.
 
 services:
@@ -68,7 +68,7 @@ services:
       - -c
       - archive_mode=${POSTGRES_ARCHIVE_MODE:-off}
       - -c
-      - archive_command=/rawsyst backup wal archive %p %f
+      - archive_command=/biz1core backup wal archive %p %f
       - -c
       - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT:-300}
       - -c

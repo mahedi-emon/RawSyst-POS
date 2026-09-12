@@ -43,7 +43,7 @@
 set -e
 
 ROLE="${RAWSYST_BACKUP_ROLE:-rawsyst_backup}"
-MARKER="# rawsyst: replication for the backup role"
+MARKER="# biz1core: replication for the backup role"
 HBA="${PGDATA:-/var/lib/postgresql/data}/pg_hba.conf"
 
 # A cluster that has not been created yet has no pg_hba.conf. That case is
@@ -56,7 +56,7 @@ if [ -f "$HBA" ] && ! grep -qF "$MARKER" "$HBA"; then
 		echo "# which the ordinary 'host all all' line does not cover."
 		echo "host    replication    $ROLE    all    scram-sha-256"
 	} >>"$HBA"
-	echo "rawsyst: added a replication line to pg_hba.conf for $ROLE" >&2
+	echo "biz1core: added a replication line to pg_hba.conf for $ROLE" >&2
 fi
 
 exec docker-entrypoint.sh "$@"

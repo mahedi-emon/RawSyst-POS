@@ -15,7 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
+	"github.com/mahedi-emon/Biz1core/backend/internal/reports"
 )
 
 func day(d int) time.Time {

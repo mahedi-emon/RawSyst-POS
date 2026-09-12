@@ -30,8 +30,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/maintenance"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/maintenance"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // frozen refuses a route while the product is in maintenance.

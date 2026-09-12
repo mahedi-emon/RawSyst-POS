@@ -47,7 +47,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
 )
 
 // Cache is what the rest of the product depends on.

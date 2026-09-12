@@ -53,14 +53,24 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The wire format. Fixed for ever once a backup has been written with it: a
 // snapshot outlives the build that made it, and a restore three years from now
 // has only these bytes and the key.
 const (
-	cryptMagic     = "RAWSYSTB" // 8 bytes, so the file says what it is
+	// 8 bytes, so the file says what it is.
+	//
+	// Still the old product name, and it must stay that way: this is the magic
+	// number at the head of every encrypted backup ever taken. `Open` refuses
+	// a file that does not begin with it, so renaming it would make every
+	// existing backup unreadable by the tool that wrote it -- the worst
+	// possible outcome of a cosmetic change. It is also exactly eight bytes,
+	// which "BIZ1COREB" is not.
+	//
+	// See docs/BRANDING.md, "Old identifiers deliberately kept".
+	cryptMagic     = "RAWSYSTB"
 	cryptFormat    = 1
 	cryptChunk     = 4 << 20 // 4 MiB of plaintext per sealed chunk
 	cryptPrefixLen = 16
@@ -125,6 +135,15 @@ func (k Key) Set() bool { return len(k.material) == cryptKeyLen }
 // Domain-separated so it cannot collide with any other use of the same key
 // material, and truncated to 16 hex characters because it is an identifier for
 // a human to compare, not a signature.
+//
+// The separator is still the old product name and must stay that way. It is
+// mixed into the hash, so changing the string changes the fingerprint derived
+// from the SAME key -- and the fingerprint is what an operator compares
+// against the one recorded beside a stored backup to decide whether they hold
+// the right key. Renaming it would report the correct key as the wrong one for
+// every backup already taken.
+//
+// See docs/BRANDING.md, "Old identifiers deliberately kept".
 func fingerprint(material []byte) string {
 	sum := sha256.Sum256(append([]byte("rawsyst-backup-key\x00"), material...))
 	second := sha256.Sum256(sum[:])
@@ -245,16 +264,16 @@ func (k Key) Open(w io.Writer, r io.Reader) (int64, error) {
 	// plain dump would get that message rather than the useful one.
 	if n >= 5 && string(head[:5]) == "PGDMP" {
 		return 0, errs.New(errs.CodeInvalidInput,
-			"This file is a plain PostgreSQL dump, not an encrypted RawSyst "+
+			"This file is a plain PostgreSQL dump, not an encrypted Biz1core "+
 				"backup. Restore it without a key.")
 	}
 	if readErr != nil {
 		return 0, errs.New(errs.CodeInvalidInput,
-			"This file is too short to be an encrypted RawSyst backup.")
+			"This file is too short to be an encrypted Biz1core backup.")
 	}
 	if string(head[:8]) != cryptMagic {
 		return 0, errs.New(errs.CodeInvalidInput,
-			"This file does not begin like an encrypted RawSyst backup, and "+
+			"This file does not begin like an encrypted Biz1core backup, and "+
 				"it does not begin like a PostgreSQL dump either. Whatever it "+
 				"is, it is not something this product wrote.")
 	}

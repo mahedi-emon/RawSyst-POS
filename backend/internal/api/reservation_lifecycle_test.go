@@ -19,8 +19,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/aftersales"
+	"github.com/mahedi-emon/Biz1core/backend/internal/jobs"
 )
 
 // hold puts stock aside for an order, optionally with a deadline in minutes.

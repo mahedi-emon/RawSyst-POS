@@ -31,8 +31,8 @@ describe('the QR encoder', () => {
 
     // An otpauth URI of the length this product actually produces.
     const uri =
-      'otpauth://totp/RawSyst:owner@example.com?algorithm=SHA1&digits=6' +
-      '&issuer=RawSyst&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+      'otpauth://totp/Biz1core:owner@example.com?algorithm=SHA1&digits=6' +
+      '&issuer=Biz1core&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
     const real = encodeQR(uri);
     expect(side(real)).toBeGreaterThanOrEqual(21);
     expect(side(real) % 4).toBe(1);
@@ -97,7 +97,7 @@ describe('the QR encoder', () => {
     // Mask selection scores eight candidates and takes the lowest. A tie
     // broken by map iteration order would give two different pictures for one
     // secret, and the second scan would fail.
-    const uri = 'otpauth://totp/RawSyst:a@b.test?secret=ABCDEFGHIJKLMNOP';
+    const uri = 'otpauth://totp/Biz1core:a@b.test?secret=ABCDEFGHIJKLMNOP';
     expect(encodeQR(uri)).toEqual(encodeQR(uri));
   });
 
@@ -112,8 +112,8 @@ describe('the QR encoder', () => {
     // Two different secrets must produce two different pictures. The failure
     // this guards against is an encoder that draws a valid, scannable, and
     // completely wrong code.
-    const a = encodeQR('otpauth://totp/RawSyst:a@b.test?secret=AAAAAAAAAAAAAAAA');
-    const b = encodeQR('otpauth://totp/RawSyst:a@b.test?secret=BBBBBBBBBBBBBBBB');
+    const a = encodeQR('otpauth://totp/Biz1core:a@b.test?secret=AAAAAAAAAAAAAAAA');
+    const b = encodeQR('otpauth://totp/Biz1core:a@b.test?secret=BBBBBBBBBBBBBBBB');
     expect(a).not.toEqual(b);
   });
 });

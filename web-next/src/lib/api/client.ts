@@ -108,7 +108,7 @@ function readCookie(name: string): string | null {
   return null;
 }
 
-class RawsystClient {
+class Biz1coreClient {
   /** In memory, never in storage. See the header note. */
   private accessToken: string | null = null;
 
@@ -454,4 +454,4 @@ export type LoginOutcome =
  * outside React -- a WebSocket reconnect, a service worker message. React reads
  * it through `useSession`.
  */
-export const api = new RawsystClient();
+export const api = new Biz1coreClient();

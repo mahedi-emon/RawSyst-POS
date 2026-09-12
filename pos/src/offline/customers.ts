@@ -22,7 +22,7 @@
 // instant. So the picker asks the server when it can and falls back to this
 // when it cannot, which is the opposite of the scan path and deliberately so.
 
-import type { Client } from '@rawsyst/shared/api/client';
+import type { Client } from '@biz1core/shared/api/client';
 
 /** One customer a till can sell to. Money stays a string. */
 export interface CachedCustomer {

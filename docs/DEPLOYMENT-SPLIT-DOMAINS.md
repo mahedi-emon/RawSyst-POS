@@ -236,10 +236,10 @@ Set both hostnames and point the web tier at the API:
 
 ```bash
 # the API
-RAWSYST_CONSOLE_HOST=console.rawsyst.local RAWSYST_CONSOLE_URL=http://console.rawsyst.local:3001 RAWSYST_APP_URL=http://app.rawsyst.local:3001 RAWSYST_HTTP_ADDR=:8099 go run ./cmd/api
+RAWSYST_CONSOLE_HOST=console.biz1core.local RAWSYST_CONSOLE_URL=http://console.biz1core.local:3001 RAWSYST_APP_URL=http://app.biz1core.local:3001 RAWSYST_HTTP_ADDR=:8099 go run ./cmd/api
 
 # the web tier
-RAWSYST_API_ORIGIN=http://127.0.0.1:8099 RAWSYST_CONSOLE_HOST=console.rawsyst.local RAWSYST_APP_HOST=app.rawsyst.local npx next dev -p 3001
+RAWSYST_API_ORIGIN=http://127.0.0.1:8099 RAWSYST_CONSOLE_HOST=console.biz1core.local RAWSYST_APP_HOST=app.biz1core.local npx next dev -p 3001
 ```
 
 `RAWSYST_APP_HOST` is needed **only** for local development. `next dev` refuses
@@ -258,18 +258,18 @@ and the variable is not needed in Portainer.
 `curl --resolve`:
 
 ```bash
-curl --resolve console.rawsyst.local:3001:127.0.0.1      http://console.rawsyst.local:3001/platform
+curl --resolve console.biz1core.local:3001:127.0.0.1      http://console.biz1core.local:3001/platform
 ```
 
 For a browser, launch Chromium with `--host-resolver-rules="MAP
-console.rawsyst.local 127.0.0.1, MAP app.rawsyst.local 127.0.0.1"`. Both
+console.biz1core.local 127.0.0.1, MAP app.biz1core.local 127.0.0.1"`. Both
 approaches are per-process and leave the machine unchanged.
 
 If you would rather use the hosts file, the entries are:
 
 ```text
-127.0.0.1 app.rawsyst.local
-127.0.0.1 console.rawsyst.local
+127.0.0.1 app.biz1core.local
+127.0.0.1 console.biz1core.local
 ```
 
 `*.localhost` also works and needs no entry at all in modern browsers, though

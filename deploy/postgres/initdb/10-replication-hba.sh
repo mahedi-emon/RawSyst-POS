@@ -10,7 +10,7 @@
 set -e
 
 ROLE="${RAWSYST_BACKUP_ROLE:-rawsyst_backup}"
-MARKER="# rawsyst: replication for the backup role"
+MARKER="# biz1core: replication for the backup role"
 HBA="${PGDATA:-/var/lib/postgresql/data}/pg_hba.conf"
 
 if [ -f "$HBA" ] && ! grep -qF "$MARKER" "$HBA"; then

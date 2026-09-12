@@ -21,6 +21,8 @@
 // behind the data rather than competing with it, and gives the one place a
 // person looks for "where am I" a shape they can find without reading.
 
+import { PRODUCT_NAME } from '@biz1core/shared/brand/brand';
+import { Biz1coreLogo, Biz1coreMark } from '@biz1core/shared/brand/Logo';
 import { ChevronLeft, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -38,7 +40,7 @@ import { UserMenu } from './user-menu';
 
 export function AppShell({
   sections,
-  /** "RawSyst" for a business; "RawSyst Platform" for the operator. */
+  /** "Biz1core" for a business; "Biz1core Platform" for the operator. */
   workspaceName,
   /** The business name, or the operator's own label. Shown under the mark. */
   contextName,
@@ -217,6 +219,24 @@ export function AppShell({
   );
 }
 
+/**
+ * The logo at the top of the rail, and the link home.
+ *
+ * # Two names, and which one is the logo
+ *
+ * `workspaceName` is the product in a business workspace and the product plus
+ * "Console" in the operator's. Where it is exactly the product name, the
+ * Biz1core logo is drawn -- the mark and the wordmark, set in the typeface the
+ * rail already uses. Where it is a longer label the logo becomes the compact
+ * mark with the label beside it, because "Biz1core Console" set at wordmark
+ * weight overflows 248px and truncates to "Biz1core Conso...".
+ *
+ * # Why the tagline is not here
+ *
+ * It is nine words. At rail width it wraps to three lines and pushes the first
+ * navigation group below the fold on a laptop. It belongs on the sign-in page
+ * and in About, where there is room to read it.
+ */
 function BrandMark({
   workspaceName,
   contextName,
@@ -224,43 +244,38 @@ function BrandMark({
   workspaceName: string;
   contextName?: string;
 }) {
+  const t = useT();
+  const isProduct = workspaceName === PRODUCT_NAME;
+
   return (
     <Link
       href="/"
       className="flex h-14 items-center gap-2.5 px-4 text-shell-fg-strong"
+      // The link goes home; the logo says which product. Both, because
+      // "Biz1core" alone does not tell somebody on a screen reader that
+      // activating it navigates.
+      aria-label={`${workspaceName} — ${t('nx.shell.home')}`}
     >
-      {/* The mark: a ledger rule turning a corner. Drawn rather than imported,
-          because it is four lines and a file request is four lines too many at
-          the top of every page. */}
-      <svg
-        viewBox="0 0 24 24"
-        className="size-6 shrink-0"
-        aria-hidden="true"
-        fill="none"
-      >
-        <path
-          d="M4 5h16M4 12h10M4 19h16"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M17 12h3"
-          stroke="var(--color-brass-500)"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="min-w-0">
-        <span className="block truncate text-lede font-semibold leading-tight">
-          {workspaceName}
-        </span>
-        {contextName && (
-          <span className="block truncate text-caption text-shell-fg">
-            {contextName}
+      {isProduct ? (
+        // The rail is the darkest surface in the product in BOTH themes, so
+        // the logo is told it is on a dark one rather than left to read the
+        // page theme -- which in light mode would hand it the light accents.
+        <Biz1coreLogo size={23} onDark sub={contextName} />
+      ) : (
+        <>
+          <Biz1coreMark size={23} onDark />
+          <span className="min-w-0">
+            <span className="block truncate text-lede font-semibold leading-tight">
+              {workspaceName}
+            </span>
+            {contextName && (
+              <span className="block truncate text-caption text-shell-fg">
+                {contextName}
+              </span>
+            )}
           </span>
-        )}
-      </span>
+        </>
+      )}
     </Link>
   );
 }

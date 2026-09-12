@@ -12,7 +12,7 @@
 // # Why the production restore is a rename and not a drop
 //
 // The obvious implementation is `DROP DATABASE rawsyst; CREATE DATABASE
-// rawsyst; pg_restore`. It is also the implementation where a failure halfway
+// biz1core; pg_restore`. It is also the implementation where a failure halfway
 // through leaves a business with neither the database it had nor the one it
 // asked for. There is no undo for a dropped database.
 //
@@ -47,7 +47,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // ValidateReport is what a restore rehearsal found.
@@ -554,7 +554,7 @@ func obtain(
 	return manifest, dump, func() { os.Remove(dump) }, nil
 }
 
-// LooksEmpty reports whether a database holds no RawSyst tables at all.
+// LooksEmpty reports whether a database holds no Biz1core tables at all.
 //
 // Used to decide whether a production restore needs a safety backup of what is
 // there now. On a server that has been trading, it always does. On a server

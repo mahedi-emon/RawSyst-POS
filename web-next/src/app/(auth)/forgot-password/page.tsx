@@ -30,6 +30,8 @@ import { useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
+import { AuthBrand, BuiltBy } from '@/components/shell/product-brand';
+
 import { FormError } from '@/components/ui/form-error';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
@@ -207,28 +209,24 @@ export default function ForgotPasswordPage() {
   return (
     <main className="grid min-h-dvh place-items-center bg-shell px-4 py-10">
       <div className="w-full max-w-[26rem]">
-        <div className="mb-6 flex items-center gap-2.5 text-shell-fg-strong">
-          <svg viewBox="0 0 24 24" className="size-7" aria-hidden="true" fill="none">
-            <path
-              d="M4 5h16M4 12h10M4 19h16"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <path
-              d="M17 12h3"
-              stroke="var(--color-brass-500)"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span className="text-section font-semibold">RawSyst</span>
-        </div>
+        <AuthBrand />
 
         <div className="rounded-lg border border-line bg-surface p-6 shadow-overlay">
           <h1 className="text-page font-semibold text-fg">{t('nx.fp.title')}</h1>
           <p className="mt-1 mb-5 text-body text-muted">{t('nx.fp.subtitle')}</p>
           <ForgotForm />
+        </div>
+        {/* One line, under the card. The brief allows the developer's name on
+            the sign-in page where it fits the design, and this is where it
+            fits: a sign-in page has nothing else below the fold, and a shop
+            owner signing in for the first time is the one person who has a
+            reason to know who stands behind the product.
+
+            It appears nowhere inside the workspace. A shopkeeper working in
+            their own software all day does not need the vendor's name under
+            every screen. */}
+        <div className="mt-6 text-center">
+          <BuiltBy className="text-shell-fg" />
         </div>
       </div>
     </main>

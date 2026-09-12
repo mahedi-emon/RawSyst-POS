@@ -22,12 +22,12 @@
 // and, importantly, that the sales it has already queued are safe.
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Translate } from '@rawsyst/shared/i18n/strings';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import type { Translate } from '@biz1core/shared/i18n/strings';
+import { useT } from '@biz1core/shared/i18n/locale';
 
-import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
-import { useAuth } from '@rawsyst/shared/auth/session';
-import { listCompanies } from '@rawsyst/shared/api/companies';
+import { Offline, RequestFailed } from '@biz1core/shared/api/client';
+import { useAuth } from '@biz1core/shared/auth/session';
+import { listCompanies } from '@biz1core/shared/api/companies';
 import {
   closeShift,
   currentShift,
@@ -38,9 +38,9 @@ import {
   type CashMovementReason,
   type ShiftReport,
   type ShiftSession,
-} from '@rawsyst/shared/api/shift';
-import { money } from '@rawsyst/shared/ui/format';
-import { Field, FormError, TextInput } from '@rawsyst/shared/ui/Form';
+} from '@biz1core/shared/api/shift';
+import { money } from '@biz1core/shared/ui/format';
+import { Field, FormError, TextInput } from '@biz1core/shared/ui/Form';
 import {
   denominationsFor,
   expectedIsWithheld,

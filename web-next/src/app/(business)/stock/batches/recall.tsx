@@ -9,7 +9,7 @@
 // people to telephone. `POST /stock/batches/{id}/recall` has been live since
 // batch tracking landed and nothing has ever called it, so a shop that learned
 // its supplier had a contamination problem had no way to act on it inside
-// RawSyst at all.
+// Biz1core at all.
 //
 // # The trace is the point, not the confirmation
 //

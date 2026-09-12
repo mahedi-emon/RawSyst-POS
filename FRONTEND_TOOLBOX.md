@@ -1,4 +1,4 @@
-# RawSyst — Frontend/UI Toolbox
+# Biz1core — Frontend/UI Toolbox
 
 | | |
 |---|---|
@@ -10,7 +10,7 @@
 
 ## 1. What this is, and why it is shaped this way
 
-RawSyst has a hand-built design system. `shared/src/design-system.css` is 2,290
+Biz1core has a hand-built design system. `shared/src/design-system.css` is 2,290
 lines of plain CSS custom properties with no Tailwind, no CSS-in-JS and no
 component library underneath it; `web/app/back-office.css` is another 4,287
 lines on top of it, and `pos/src/styles.css` a further 1,119. Both front ends
@@ -23,7 +23,7 @@ toolbox replaces it. The toolbox exists so that an agent doing UI work in this
 repository can *reach* the wider ecosystem — read how Magic UI implements a
 number ticker, check a layout against Vercel's Web Interface Guidelines, ask
 GSAP how to sequence a timeline properly — and then write the result in
-RawSyst's own idiom.
+Biz1core's own idiom.
 
 The two consequences worth stating up front:
 
@@ -45,7 +45,7 @@ repo on another machine.
 |---|---|---|---|
 | **Claude Code plugins** | `.claude/settings.json` (`enabledPlugins`, `extraKnownMarketplaces`); content cached under `~/.claude/plugins/` | yes (the declaration) | clone + restart Claude Code |
 | **Agent Skills** (`skills.sh` format) | `.claude/skills/<name>/`. The eight installed by `npx skills` are pinned in `skills-lock.json`; the seven `21st-*` ones were installed by the 21st CLI and are pinned in `.21st/skills.lock`, which is gitignored | yes (the files, all fifteen) | already present; `npx skills experimental_install` restores the eight |
-| **This repository's own skill** | `.claude/skills/rawsyst-design-system/` | yes | Nothing to restore — it is written here, not fetched. It is the only skill in the tree with no upstream, and the only one you should edit |
+| **This repository's own skill** | `.claude/skills/biz1core-design-system/` | yes | Nothing to restore — it is written here, not fetched. It is the only skill in the tree with no upstream, and the only one you should edit |
 | **MCP servers** | `.mcp.json` | yes | clone + restart Claude Code |
 | **Slash commands** | `.claude/commands/ds/` | yes (the files) | already present |
 
@@ -81,7 +81,7 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 | 21 | Vercel Optimize | ✅ installed | skill `vercel-optimize` | project | Loaded and listed this session |
 | 22 | Emil design engineering / visual polish | ✅ installed | skill `emil-design-eng` from `emilkowalski/skills`. The prompt did not name a repository; this is the maintained one (★34.6k, pushed 2026-08-21) | project | Installed, `skills-lock.json` pinned |
 | 23 | Vercel Design Systems → Agent Skills | ✅ installed | Not a runtime skill — a 6-stage **generator pipeline**. Installed as slash commands: `/ds:interview`, `/ds:extract`, `/ds:usage-analysis`, `/ds:prd`, `/ds:generate`, `/ds:assets`, `/ds:port`, plus `scripts/verify-skills.sh` | project | Files present under `.claude/commands/ds/` |
-| — | **RawSyst's own design system, as a skill** | ✅ generated | `rawsyst-design-system` — 11 files under `.claude/skills/`, produced by running the §23 pipeline against this repository. See §9 | project | `verify.mjs` passes: 0 undefined classes, 0 undefined tokens, 0 missing paths |
+| — | **Biz1core's own design system, as a skill** | ✅ generated | `biz1core-design-system` — 11 files under `.claude/skills/`, produced by running the §23 pipeline against this repository. See §9 | project | `verify.mjs` passes: 0 undefined classes, 0 undefined tokens, 0 missing paths |
 
 ### 3.2 shadcn/ui
 
@@ -124,14 +124,14 @@ Legend: **✅ installed** · **✅ available** (reachable, no install needed) ·
 > **What changed:** `web-next/` uses Tailwind 4 and a `components.json`, and
 > takes `@radix-ui/react-slot` plus the CVA variant pattern from shadcn. It
 > still does **not** run `shadcn add`: every primitive in
-> `web-next/src/components/ui/` is written for RawSyst against RawSyst tokens
+> `web-next/src/components/ui/` is written for Biz1core against Biz1core tokens
 > in `web-next/src/styles/globals.css`. The point of §4.2 — that this product
 > must not look like a default shadcn application — is unchanged, and is why
 > the palette, the type scale and the table conventions are its own.
 >
 > **What did not change:** `web/`, `pos/` and `shared/src/design-system.css`
 > have no Tailwind and are not to acquire any. §4.1 below is still true of
-> them, and the `rawsyst-design-system` skill (§9) remains the authority for
+> them, and the `biz1core-design-system` skill (§9) remains the authority for
 > work in those trees. See `IMPLEMENTATION_PROGRESS.md` §0.2, decision F6.
 
 ### 4.1 What was found
@@ -148,7 +148,7 @@ that is the whole styling stack.
 
 Running it would install Tailwind and its PostCSS chain, rewrite the global
 stylesheet, create a `components/ui` tree written in utility classes, and add a
-`cn()` helper. RawSyst would then have two design systems: 2,290 lines of
+`cn()` helper. Biz1core would then have two design systems: 2,290 lines of
 documented custom properties, and a second one expressed in Tailwind tokens that
 agrees with none of it. Every future component would have to pick a side. The
 prompt that commissioned this toolbox asked for exactly the opposite — "do not
@@ -184,12 +184,12 @@ all seven verified live over stdio.
 
 `@jpisnice/shadcn-ui-mcp-server` (v2.0.0, last pushed 2026-05-16) retains one
 capability the official server does not have: fetching component source for
-**Svelte, Vue and React Native**, and for the Radix-vs-Base-UI split. RawSyst's
+**Svelte, Vue and React Native**, and for the Radix-vs-Base-UI split. Biz1core's
 front ends are both React, so that capability has no consumer here, and the
 server wants a `GITHUB_PERSONAL_ACCESS_TOKEN` to avoid GitHub rate limits.
 
 Installing it would have added a second MCP server answering the same questions
-as the first, with a credential attached. If RawSyst ever grows a Svelte or Vue
+as the first, with a credential attached. If Biz1core ever grows a Svelte or Vue
 surface, the command is:
 
 ```bash
@@ -379,17 +379,17 @@ What is expected instead, for any UI task:
 
 1. Understand what the shop, the cashier or the accountant actually needs.
 2. Read the existing implementation with Serena before writing anything.
-3. Read the design system. The `rawsyst-design-system` skill is the fast path —
+3. Read the design system. The `biz1core-design-system` skill is the fast path —
    it is this product's own system, extracted from the source, and it is almost
    always the *only* thing a UI task needs. `shared/src/design-system.css` and
    `docs/ui-ux/00-design-system.md` remain the authority behind it.
-4. Reuse a RawSyst component if one exists. This is usually the answer.
+4. Reuse a Biz1core component if one exists. This is usually the answer.
 5. Reach outside only when something out there is materially better than what
-   can be written directly, and adapt it into RawSyst's idiom rather than
+   can be written directly, and adapt it into Biz1core's idiom rather than
    importing its idiom.
 6. Prefer the smallest effective combination. Most tasks need none of this.
 
-A note specific to this product: RawSyst is an ERP and POS. Its screens are read
+A note specific to this product: Biz1core is an ERP and POS. Its screens are read
 in columns of currency, under fluorescent light, by someone with a queue. Speed,
 density, keyboard flow, correct Arabic RTL and honest states beat visual
 novelty every time. Several tools in this box are built for marketing sites and
@@ -432,7 +432,7 @@ yours to make, not theirs.
 | Stitch's auth method is an API key, per its own docs | `google-labs-code/stitch-skills` README points at https://stitch.withgoogle.com/docs/mcp/setup/; `upload-to-stitch/SKILL.md` reads the key "from the `X-Goog-Api-Key` header" |
 | No secret in any committed file | Both hosted servers read their key from the environment (`${STITCH_API_KEY}`, `${API_KEY_21ST:-}`). `~/.config/21st/auth.json` is user scope, outside the repo |
 | 16 project skills, every frontmatter `name` matching its directory | Checked across `.claude/skills/*/SKILL.md` |
-| The RawSyst design-system skill describes code that exists | `node .claude/skills/rawsyst-design-system/verify.mjs` → 0 undefined classes, 0 undefined custom properties, 0 missing paths, against 820 classes and 70 properties |
+| The Biz1core design-system skill describes code that exists | `node .claude/skills/biz1core-design-system/verify.mjs` → 0 undefined classes, 0 undefined custom properties, 0 missing paths, against 820 classes and 70 properties |
 | No dependency added to the product | `git diff` on `package.json` is the `registries` key alone; `package-lock.json` unchanged |
 
 One thing to know about that last row: `npx shadcn mcp init` added `shadcn` to
@@ -441,16 +441,16 @@ reverted — the MCP runs through `npx` and does not need the local package.
 
 ---
 
-## 9. RawSyst's own design system, as a skill
+## 9. Biz1core's own design system, as a skill
 
 The §23 pipeline exists to turn a design system into something an agent can read
-without guessing. RawSyst has a real one — 2,290 lines of custom properties and
+without guessing. Biz1core has a real one — 2,290 lines of custom properties and
 class primitives in `shared/src/design-system.css`, plus 1,243 more of screen
 furniture in `dashboard.css` — and nothing in the toolbox knew about it. That was
 the largest remaining gap: every other tool here teaches an agent about somebody
 *else's* system.
 
-`.claude/skills/rawsyst-design-system/` is the result. Eleven files:
+`.claude/skills/biz1core-design-system/` is the result. Eleven files:
 
 ```
 SKILL.md                              pre-flight, the hard rules, a routing matrix
@@ -471,10 +471,10 @@ references/patterns/states.md
 
 The `/ds:*` pipeline is written for a packaged React component library — an npm
 package with per-component TypeScript interfaces and an export map to validate
-imports against. RawSyst is not that: it is a CSS class system with a handful of
+imports against. Biz1core is not that: it is a CSS class system with a handful of
 React helpers. So the pipeline's *discipline* was followed — scope decided
 first, facts extracted mechanically from source, a closed structure, then
-generation, then verification — while the artefacts were shaped to what RawSyst
+generation, then verification — while the artefacts were shaped to what Biz1core
 actually is. Its literal Stage 2 (per-component `api.md` from a TS interface)
 has no subject here.
 
@@ -483,7 +483,7 @@ the source could answer every question the interview asks:
 
 | Decision | Answer | Why |
 |---|---|---|
-| Short name | `rawsyst-design-system` | |
+| Short name | `biz1core-design-system` | |
 | Output | `.claude/skills/`, not `skills/` | It has to be discoverable by Claude Code, which is the point |
 | Scope | All four stylesheets, `shared/src/ui/`, `shared/src/i18n/`, `dashboard/DetailScreen.tsx` | These are what a UI change actually touches |
 | Categories | Tokens · layout/type · catalogue · five patterns · i18n · rules | Follows how the CSS is already sectioned, not an imported taxonomy |
@@ -504,7 +504,7 @@ legitimate no-rule naming hooks out of `stylesheetCoverage.test.ts` rather than
 keeping a second list that could disagree with the first.
 
 ```bash
-node .claude/skills/rawsyst-design-system/verify.mjs
+node .claude/skills/biz1core-design-system/verify.mjs
 ```
 
 Run it after changing the design system, and after changing the skill.
@@ -513,7 +513,7 @@ Run it after changing the design system, and after changing the skill.
 
 It documents the system as it is. It does not propose a new one, it does not
 introduce Tailwind or shadcn components, and it does not describe any visual
-language other than RawSyst's. Where the CSS explains *why* a rule exists — and
+language other than Biz1core's. Where the CSS explains *why* a rule exists — and
 roughly half of `design-system.css` is that explanation — the skill carries the
 reason, because the reason is what stops the next agent 'simplifying' a rule
 that exists because a specific screen broke.

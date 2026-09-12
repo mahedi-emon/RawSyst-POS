@@ -4,7 +4,7 @@ This directory is mounted read-only into the `regulatory` container as
 `/sources`. Put the filled-in source file here.
 
 A source file is one person's written statement of what the official documents
-say, and the figures they read. RawSyst supplies everything else — which
+say, and the figures they read. Biz1core supplies everything else — which
 document, which articles, what each field means, what unit it is in and what
 shape the answer takes. It does not supply the figures, and deliberately does
 not: there is no machine-readable authoritative source for them, so a number

@@ -6,7 +6,7 @@
 //
 // This distinction is the whole screen, and getting it backwards would be a
 // lie about the law. `handleActivateRates` says it plainly: the two-person
-// review is RawSyst's own internal governance, it is not a CDTFA requirement,
+// review is Biz1core's own internal governance, it is not a CDTFA requirement,
 // and requiring it left five hundred and forty-one lawfully published
 // Californian rates unusable. Activation checks what software can honestly
 // check — provenance, an authority chain that reaches a country, and the

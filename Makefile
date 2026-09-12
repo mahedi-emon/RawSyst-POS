@@ -1,4 +1,4 @@
-# RawSyst, from the top.
+# Biz1core, from the top.
 #
 # The backend has its own Makefile with the Go targets; this one is for the
 # things that span the whole repository — the front ends, the verification
@@ -146,15 +146,15 @@ verify: ## Everything that does not need a running server, in memory order
 
 .PHONY: images
 images: ## Build every production image and report their sizes
-	@docker build -f backend/Dockerfile --target runtime -t rawsyst/backend:local ./backend
-	@docker build -f backend/Dockerfile --target backup -t rawsyst/backup:local ./backend
+	@docker build -f backend/Dockerfile --target runtime -t biz1core/backend:local ./backend
+	@docker build -f backend/Dockerfile --target backup -t biz1core/backup:local ./backend
 	@# PostgreSQL plus the write-ahead log archiver. The database image is built
 	@# from this repository rather than pulled because `archive_command` is a
 	@# command run inside that container; deploy/postgres/Dockerfile says why it
 	@# is this product's own binary rather than a shell script.
-	@docker build -f deploy/postgres/Dockerfile -t rawsyst/postgres:local .
-	@docker build -f web-next/Dockerfile -t rawsyst/web:local .
-	@docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' | grep '^rawsyst/'
+	@docker build -f deploy/postgres/Dockerfile -t biz1core/postgres:local .
+	@docker build -f web-next/Dockerfile -t biz1core/web:local .
+	@docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' | grep '^biz1core/'
 
 .PHONY: pitr-drill
 pitr-drill: ## Archive, damage and recover a cluster through the real images

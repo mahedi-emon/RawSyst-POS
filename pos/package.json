@@ -1,5 +1,5 @@
 {
-  "name": "rawsyst-pos",
+  "name": "biz1core-pos",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "release:build": "node scripts/release-check.mjs && tauri build"
   },
   "dependencies": {
-    "@rawsyst/shared": "*",
+    "@biz1core/shared": "*",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-sql": "^2.4.0",
     "decimal.js": "^10.4.3",

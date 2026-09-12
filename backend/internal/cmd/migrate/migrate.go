@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
+	"github.com/mahedi-emon/Biz1core/backend/internal/build"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/logging"
 )
 
 func Main() {
@@ -35,7 +35,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	log := logging.New(string(cfg.Env), "rawsyst-migrate", build.Version)
+	log := logging.New(string(cfg.Env), "biz1core-migrate", build.Version)
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()

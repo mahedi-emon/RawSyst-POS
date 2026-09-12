@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // WALVerifyReport is what a check of the archive found.
@@ -297,7 +297,7 @@ func deepCheck(
 		add(whole[len(whole)-1-i])
 	}
 
-	dir, err := os.MkdirTemp(stagingRoot(opts.TempDir), "rawsyst-walcheck-*")
+	dir, err := os.MkdirTemp(stagingRoot(opts.TempDir), "biz1core-walcheck-*")
 	if err != nil {
 		return errs.Wrap(err, errs.CodeInternal,
 			"A directory to check segments in could not be created.")

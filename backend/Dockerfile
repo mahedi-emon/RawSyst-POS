@@ -53,19 +53,19 @@ COPY . .
 # produces a usable stack — Go's traceback does not read either.
 #
 # One `go build`, not six. The six commands are one binary now (see
-# cmd/rawsyst), and the linker keeps one copy of everything they share.
-ARG MODULE=github.com/mahedi-emon/rawsyst-pos/backend
+# cmd/biz1core), and the linker keeps one copy of everything they share.
+ARG MODULE=github.com/mahedi-emon/Biz1core/backend
 ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags="-s -w -X ${MODULE}/internal/build.Version=${VERSION}" \
-      -o /out/rawsyst ./cmd/rawsyst
+      -o /out/biz1core ./cmd/biz1core
 
 # A non-root user, built here because scratch has no adduser.
-RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
-    echo 'rawsyst:x:10001:' > /out/group
+RUN echo 'biz1core:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
+    echo 'biz1core:x:10001:' > /out/group
 
 # --- run --------------------------------------------------------------------
 
@@ -74,7 +74,7 @@ RUN echo 'rawsyst:x:10001:10001::/nonexistent:/sbin/nologin' > /out/passwd && \
 # Docker builds the LAST stage in a file when no target is given, and the last
 # stage here is `backup` — which is `postgres:17-alpine` and fourteen times the
 # size. So a `docker build ./backend` with no `--target` quietly produces the
-# heavy image and tags it `rawsyst/backend`, and everything still WORKS, because
+# heavy image and tags it `biz1core/backend`, and everything still WORKS, because
 # compose overrides the entrypoint anyway. What is lost is the whole reason this
 # stage is `scratch`: no shell for a command-injection bug to reach, and nothing
 # to patch on a CVE Tuesday.
@@ -89,16 +89,16 @@ COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=build /out/passwd /etc/passwd
 COPY --from=build /out/group /etc/group
 
-# One binary, seven commands: `rawsyst api`, `rawsyst worker`, `rawsyst
-# migrate`, `rawsyst bootstrap`, `rawsyst regulatory`, `rawsyst ingest` and
-# `rawsyst backup`.
+# One binary, seven commands: `biz1core api`, `biz1core worker`, `biz1core
+# migrate`, `biz1core bootstrap`, `biz1core regulatory`, `biz1core ingest` and
+# `biz1core backup`.
 #
 # It was six binaries, and they shared a module, a config loader, a database
 # layer and a registry — so the image carried six copies of nearly the same
 # thing: 22 + 12 + 11 + 10 + 10 + 11 MB against 21.5 MB for all of them
-# together. `cmd/rawsyst` says what each command is and why they still exist
+# together. `cmd/biz1core` says what each command is and why they still exist
 # separately under `cmd/`.
-COPY --from=build /out/rawsyst /rawsyst
+COPY --from=build /out/biz1core /biz1core
 
 # Never uid 0. A container that is rooted is a host that is one kernel bug away
 # from being rooted.
@@ -110,7 +110,7 @@ EXPOSE 8080
 # No shell, so this is the exec form and there is no other option — which is the
 # right form anyway: it makes the binary PID 1 and lets SIGTERM reach it, so the
 # graceful shutdown in cmd/api actually runs.
-ENTRYPOINT ["/rawsyst", "api"]
+ENTRYPOINT ["/biz1core", "api"]
 
 # --- backup -----------------------------------------------------------------
 
@@ -133,7 +133,7 @@ ENTRYPOINT ["/rawsyst", "api"]
 # built once and both images take the same bytes.
 FROM postgres:17-alpine AS backup
 
-COPY --from=build /out/rawsyst /rawsyst
+COPY --from=build /out/biz1core /biz1core
 
 # Where a dump is staged, owned by the user that will write it.
 #
@@ -148,5 +148,5 @@ RUN mkdir -p /staging && chown 70:70 /staging
 # the application's.
 USER 70:70
 
-ENTRYPOINT ["/rawsyst", "backup"]
+ENTRYPOINT ["/biz1core", "backup"]
 CMD ["run"]

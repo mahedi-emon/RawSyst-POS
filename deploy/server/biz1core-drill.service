@@ -20,7 +20,7 @@
 #
 # It creates a temporary database, restores into that, and drops it. The live
 # database is never opened for writing. That is a property of the command and
-# not of this unit — see `rawsyst backup rehearse`.
+# not of this unit — see `biz1core backup rehearse`.
 #
 # # Weekly, not nightly
 #
@@ -28,14 +28,14 @@
 # dump. On two cores that is worth paying once a week and not once a night, and
 # the failures it catches are configuration failures, which do not appear
 # overnight.
-Description=RawSyst disaster recovery drill
-Documentation=file:/opt/rawsyst/deploy/server/RECOVERY.md
+Description=Biz1core disaster recovery drill
+Documentation=file:/opt/biz1core/deploy/server/RECOVERY.md
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/rawsyst
+WorkingDirectory=/opt/biz1core
 
 # Longer than the backup unit: this one takes a backup, downloads it again and
 # restores it. Still bounded — a drill that hangs is a drill nobody hears about.
@@ -47,7 +47,7 @@ IOSchedulingClass=idle
 
 Environment=COMPOSE=-f docker-compose.yml -f docker-compose.server.yml --profile backup
 
-# The report goes to the journal. `journalctl -u rawsyst-drill -n 50` is what
+# The report goes to the journal. `journalctl -u biz1core-drill -n 50` is what
 # an operator reads the morning after, and what they should be able to show
 # somebody who asks whether this business could be brought back.
 ExecStart=/usr/bin/docker compose $COMPOSE run --rm backup rehearse

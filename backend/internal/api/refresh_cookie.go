@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Where a browser's refresh token lives.

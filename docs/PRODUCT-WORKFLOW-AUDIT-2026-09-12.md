@@ -1,4 +1,4 @@
-# RawSyst product workflow audit — 12 September 2026
+# Biz1core product workflow audit — 12 September 2026
 
 Does the product do what the business model says it does?
 
@@ -184,6 +184,6 @@ refuses people.
 
 ## 15. Verdict
 
-**RawSyst is complete for this business model as software.** What remains is a
+**Biz1core is complete for this business model as software.** What remains is a
 domain, a mail provider, and an afternoon on the production server — three
 decisions and one maintenance window, none of which is development work.

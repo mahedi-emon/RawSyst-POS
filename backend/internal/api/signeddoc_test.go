@@ -24,7 +24,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
+	"github.com/mahedi-emon/Biz1core/backend/internal/zatca"
 )
 
 // Stand-ins for what a terminal produces. The document is deliberately not

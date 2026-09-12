@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // The desktop till has to be able to call this API, and nothing in a build or a

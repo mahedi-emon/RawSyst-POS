@@ -11,7 +11,7 @@
 // sale, the stock and the books are all recorded correctly.
 
 import type { Capabilities } from './terminal';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { useT } from '@biz1core/shared/i18n/locale';
 
 export function TerminalBanner({ caps }: { caps: Capabilities | null }) {
   const t = useT();

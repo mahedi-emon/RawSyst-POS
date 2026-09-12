@@ -1,4 +1,4 @@
-import { plainEnglish, plain } from '@rawsyst/shared/i18n/strings';
+import { plainEnglish, plain } from '@biz1core/shared/i18n/strings';
 import { describe, expect, it } from 'vitest';
 
 import {

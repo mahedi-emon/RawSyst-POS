@@ -7,7 +7,7 @@
 //
 // # A cache, and a fallback that is never wrong
 //
-// A till that has never been online prints on the RawSyst default. A till that
+// A till that has never been online prints on the Biz1core default. A till that
 // has been online prints what the shop last said. Neither state is an error and
 // neither blocks a sale: a receipt is not a legal document here — it says so on
 // its own face — so stale wording is a cosmetic staleness, not an accounting
@@ -20,7 +20,7 @@
 // right. Text cannot hold an image, so the logo is not fetched, not cached and
 // not silently dropped somewhere the reader would have to go looking for it.
 
-import type { Client } from '@rawsyst/shared/api/client';
+import type { Client } from '@biz1core/shared/api/client';
 import type { CachedStationery } from './sqlite';
 
 /** What the till's own stationery route returns. */
@@ -45,11 +45,11 @@ export interface StationeryStore {
   write(s: CachedStationery): Promise<void>;
 }
 
-/** The RawSyst fallback: what a receipt says before a client has said anything.
+/** The Biz1core fallback: what a receipt says before a client has said anything.
  *
  *  Deliberately not blank. A receipt with no seller on it is not a document,
  *  and the name is the one thing that must always be there. */
-export const FALLBACK_STORE_NAME = 'RawSyst';
+export const FALLBACK_STORE_NAME = 'Biz1core';
 
 /** The closing line a receipt has always ended with. Kept as the default so a
  *  shop that writes nothing gets what they had before this existed. */

@@ -6,7 +6,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
+	"github.com/mahedi-emon/Biz1core/backend/internal/catalog"
 )
 
 // standardOnly is the rate table for a sale whose taxable lines are all

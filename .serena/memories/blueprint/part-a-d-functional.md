@@ -1,6 +1,6 @@
 # Blueprint Parts A–D — Functional Spec (distilled)
 
-Source: `RawSyst-POS-Blueprint-v2.4-FINAL.md` lines 80–733. Read this instead of the doc.
+Source: `Biz1core-Blueprint-v2.4-FINAL.md` lines 80–733. Read this instead of the doc.
 
 ## A2 — Ten non-negotiable principles
 1. ERP not POS — every module auto-posts to Accounting + Inventory, no manual double entry.

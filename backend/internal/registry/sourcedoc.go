@@ -48,9 +48,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/audit"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // SourceDocument is a retrieved artefact and what was read out of it.
@@ -284,7 +284,7 @@ func fetchOnce(
 	// Named honestly. A regulator reading their logs should be able to tell
 	// what this is, and a product that disguises itself as a browser to fetch
 	// a public document has started the wrong kind of relationship.
-	req.Header.Set("User-Agent", "RawSyst-Regulatory/1.0 (+regulatory source retrieval)")
+	req.Header.Set("User-Agent", "Biz1core-Regulatory/1.0 (+regulatory source retrieval)")
 	req.Header.Set("Accept", "application/pdf,text/html,text/plain;q=0.9,*/*;q=0.5")
 
 	// Returned bare, not wrapped. `fetchDocument` decides whether a transport

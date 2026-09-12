@@ -1,4 +1,4 @@
-# RawSyst — Implementation Progress
+# Biz1core — Implementation Progress
 
 Session-continuity file. **Long-form history lives in
 [`docs/PROJECT-STATUS.md`](docs/PROJECT-STATUS.md)** — this file is the short
@@ -179,7 +179,7 @@ written. `POST /stock/adjustments` now returns 201.
 | F4 | **The counter is exchanged for a token, and re-exchanged after reload** | POS routes read the till from the signed `did` claim. An ordinary refresh returns a token without it, so the counter id is kept in session storage. |
 | F5 | **Money never becomes a `number`** | `formatMoney` walks the decimal string; the cart uses `decimal.js`. |
 | F6 | **Tailwind + shadcn primitives adopted** — reopening `FRONTEND_TOOLBOX.md` §4 | Mandated by the rebuild brief. **Scope: `web-next/` only.** |
-| F7 | **`shared/` is reused for data, never for UI** | `@rawsyst/shared/i18n/strings` is imported; no component, panel or stylesheet is. |
+| F7 | **`shared/` is reused for data, never for UI** | `@biz1core/shared/i18n/strings` is imported; no component, panel or stylesheet is. |
 | F8 | **The till scans locally from the catalogue snapshot** | Forced by M2, and it is what the snapshot endpoint exists for. One network call per shift instead of one per beep. |
 
 ### 0.4 Design language
@@ -2407,7 +2407,7 @@ What Gate 1 actually needed, so the next person does not rediscover it.
 ```bash
 # 1. A throwaway Postgres. Published on 5433 so it cannot collide with a
 #    native one already holding 5432.
-docker run -d --name rawsyst-dev-db -p 5433:5432 \
+docker run -d --name biz1core-dev-db -p 5433:5432 \
   -e POSTGRES_DB=rawsyst -e POSTGRES_USER=rawsyst -e POSTGRES_PASSWORD=rawsystdev \
   postgres:17-alpine
 
@@ -2420,7 +2420,7 @@ docker run -d --name rawsyst-dev-db -p 5433:5432 \
 #    TestConnectionCannotBypassRowLevelSecurity exists to catch exactly this,
 #    and its comment records that CI ran for days against a superuser once.
 psql -h localhost -p 5433 -U rawsyst -d rawsyst <<'SQL'
-CREATE ROLE rawsyst_app LOGIN PASSWORD 'rawsystapp' NOSUPERUSER NOBYPASSRLS;
+CREATE ROLE rawsyst_app LOGIN PASSWORD 'biz1coreapp' NOSUPERUSER NOBYPASSRLS;
 -- Extensions need the superuser, so they are created before handing over.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
@@ -2499,15 +2499,15 @@ that has one.
 | **`web-design-guidelines`** | Interface quality review | Design tokens + every screen | Fetched the live rules and applied seven: `touch-action: manipulation` globally (a 300ms double-tap delay on a till is the difference between immediate and broken), an intentional tap-highlight colour, `text-wrap: balance`/`pretty`, `overscroll-behavior: contain` on every dialog and drawer, `content-visibility` on table rows, and `spellCheck={false}`/`autoCorrect="off"` on the barcode and code fields — autocorrect on a barcode field changes a scan into something not in the catalogue |
 | **`ui-ux-pro-max`** | UX patterns for forms and tables | `form-error.tsx`, table audit, purchasing | Four `--domain ux` searches across two sessions, per its own query contract (a design system already exists; regenerating one would have produced a second visual language). Forms returned a genuine gap: a **focusable error summary** — a keyboard or screen-reader user pressed Save, the form refused, and nothing told them. `FormError` now takes focus on the transition into an error and is used by sign-in and the till. The table search returned four rules the product already satisfied, which is a result worth recording rather than a change. **Purchasing, third session:** the first query ("editable line items table keyboard entry") came back matching *line* typographically -- line height, line length, line balance -- which is a miss, and the skill’s own contract says retry once, narrower. The retry ("inline validation destructive confirmation data entry") returned four applicable rules: **Confirmation Dialogs** shaped the one confirm step in purchasing, on issuing an order, which is the only irreversible act in the module; **Redundant Entry** ("auto-populate prior values") is why a receiving line carries the ordered quantity into "everything arrived" rather than asking for it again; **Error Placement** and **Focusable Error Summary** the product already satisfied through `Field` and `FormError`, verified rather than changed |
 | **21st.dev MCP** | Interaction research | Cash-drawer count | Searched for a denomination counter. Everything on offer is a generic number pad or an animated currency ticker — nothing for "how many 500 notes, how many 100s", and a rolling animated figure on a number somebody is reconciling would be actively wrong. **Looked, found nothing suitable, built it by hand.** That is the honest outcome of design research, and it is why nothing was installed |
-| **Stitch MCP** | Existing design exploration | Audit only | `list_projects` found "Modern POS Interface" (2026-08-14) carrying a full RawSyst design system: blue primary, Inter, JetBrains Mono for data labels, ALL-CAPS `label-caps`. That is the **superseded** direction — the current brief bans monospace data labels and caps eyebrows, and the identity is now the green family. Recorded so nobody re-imports it. Not used for generation |
-| **shadcn** | Accessible primitives | `button.tsx`, all variants | `@radix-ui/react-slot` for `asChild`, and the CVA variant pattern. `shadcn add` was never run: every primitive in `components/ui/` is written against RawSyst tokens |
+| **Stitch MCP** | Existing design exploration | Audit only | `list_projects` found "Modern POS Interface" (2026-08-14) carrying a full Biz1core design system: blue primary, Inter, JetBrains Mono for data labels, ALL-CAPS `label-caps`. That is the **superseded** direction — the current brief bans monospace data labels and caps eyebrows, and the identity is now the green family. Recorded so nobody re-imports it. Not used for generation |
+| **shadcn** | Accessible primitives | `button.tsx`, all variants | `@radix-ui/react-slot` for `asChild`, and the CVA variant pattern. `shadcn add` was never run: every primitive in `components/ui/` is written against Biz1core tokens |
 | **Docker · Go toolchain · psql · curl** | Gate 1, and every gate since | §0.2, §0.85, §0.86-0.89 | A throwaway Postgres, `cmd/migrate`, `cmd/devseed`, `cmd/api`, `go test -tags integration`, and the contract sweep that became `npm run verify:api` |
 
 #### Inspected and deliberately not used
 
 | Tool / skill | Why not |
 |---|---|
-| **`design-taste-frontend` / `taste-skill`** | Its bundled skills are editorial and marketing-site directions — brutalist grids, cinematic brand boards, hero image generation. RawSyst is a ledger read under fluorescent light by somebody with a queue; adopting any of them would replace a working identity with a louder one |
+| **`design-taste-frontend` / `taste-skill`** | Its bundled skills are editorial and marketing-site directions — brutalist grids, cinematic brand boards, hero image generation. Biz1core is a ledger read under fluorescent light by somebody with a queue; adopting any of them would replace a working identity with a louder one |
 | **`gsap-master`, `motion-framer`** | The product has one motion rule: a 120ms colour transition, a spinner, and nothing else, with `prefers-reduced-motion` honoured globally. An animation library would be a dependency in service of nothing. Kept as knowledge, not installed — which is also what `FRONTEND_TOOLBOX.md` §7 already says |
 | **`convex`** | The Go service is the backend and the security boundary. Adding a second one is not a design decision, it is a rewrite |
 | **`vercel-react-native-skills`** | There is no native surface. The brief itself says not to force React Native patterns into the web app |
@@ -3082,7 +3082,7 @@ has to look up and write down. An authority nobody has loaded yet gets a
 refusal that names it. 0110 records the one such statement the product ships:
 the United States levies no federal sales or use tax.
 
-### Data architecture: RawSyst maintains the datasets. This was NOT a business decision to escalate.
+### Data architecture: Biz1core maintains the datasets. This was NOT a business decision to escalate.
 
 The Blueprint settles it in two places, so no provider choice needed isolating:
 
@@ -4261,7 +4261,7 @@ TOTP, API key hash, refresh cookie — and the API-key lookup is by hash, so an
 unknown key and a wrong key take the same query and the same time.
 
 **Webhooks (12).** Genuinely implemented: HMAC-SHA256 signing in an
-`X-RawSyst-Signature` header, a delivery id so a receiver can recognise a retry
+`X-Biz1core-Signature` header, a delivery id so a receiver can recognise a retry
 of something it has already handled, and a capped backoff schedule.
 
 ## Backup is a boundary, not a gap
@@ -5653,8 +5653,8 @@ At the start of this recovery session the dev Postgres and Docker were both down
 after the shutdown, so nothing backend could be checked. Docker Desktop turned
 out to be installed under `C:\Users\USER\AppData\Local\Programs\DockerDesktop\`,
 not the default `C:\Program Files\Docker\` — worth remembering, because the
-obvious path is wrong on this machine. The database is the `rawsyst-dev-db`
-container mapping 5433 to 5432; `docker start rawsyst-dev-db` brings it back.
+obvious path is wrong on this machine. The database is the `biz1core-dev-db`
+container mapping 5433 to 5432; `docker start biz1core-dev-db` brings it back.
 
 With it up, **everything was re-run and is green**:
 
@@ -6095,7 +6095,7 @@ The suite went from **entirely blocked** to **entirely green**, and from
 ~2,500s to ~300s for `internal/api` — the old figure was mostly the accumulated
 weight of the development database, not the tests.
 
-**Correction to the standing note:** there is no `rawsyst-dev-db` Docker
+**Correction to the standing note:** there is no `biz1core-dev-db` Docker
 container on this machine and Docker is not needed for backend work. Both
 databases are in the native `postgresql-x64-18` service on port 5432, which is
 what `backend/.env` has always said.
@@ -6465,7 +6465,7 @@ file's 2.2GB.
 
 It changes **no durability setting**. No `fsync=off`, no
 `synchronous_commit=off`: a development database that corrupts on a power cut
-teaches a developer that RawSyst corrupts on a power cut.
+teaches a developer that Biz1core corrupts on a power cut.
 
 ## Audited and found already sound
 
@@ -6490,7 +6490,7 @@ Reported because "we looked" is the useful outcome, not only "we changed":
 
 ## A note the next session will need
 
-**The `rawsyst-design-system` skill describes `web/`, not `web-next`.** It says
+**The `biz1core-design-system` skill describes `web/`, not `web-next`.** It says
 "plain CSS custom properties and class primitives — no Tailwind, no CSS-in-JS,
 no component library. Do not add one." That is true of the front end that no
 longer ships. `web-next` is Tailwind v4 with its own `components/ui`
@@ -6646,7 +6646,7 @@ used.
 
 ## EOSB — what is implemented and what is not
 
-Everything RawSyst owns is done and was verified this session:
+Everything Biz1core owns is done and was verified this session:
 
 | | |
 |---|---|
@@ -6662,7 +6662,7 @@ Everything RawSyst owns is done and was verified this session:
 
 **Neither gate was weakened.** What changed is that the screen now says what to
 do: it names each blocking rule, lists which payload fields still hold
-`__VERIFY__`, links the published document, says why RawSyst cannot supply the
+`__VERIFY__`, links the published document, says why Biz1core cannot supply the
 figure, and states what happens once it is recorded. The record button seeds the
 form from the rule being replaced so the operator types the **figure** rather
 than re-entering the key, country, authority and document already on record.
@@ -6684,8 +6684,8 @@ Database connections inside the stack: **8 of 20**.
 
 | Image | Size |
 |---|---|
-| `rawsyst/backend` | **76.2 MB** (`scratch`, four static binaries, non-root) |
-| `rawsyst/web` | **329 MB** (distroless, no shell, non-root) |
+| `biz1core/backend` | **76.2 MB** (`scratch`, four static binaries, non-root) |
+| `biz1core/web` | **329 MB** (distroless, no shell, non-root) |
 | `postgres:17-alpine` | 424 MB |
 
 The backend grew 62.8 → 76.2 MB when `bootstrap` was added, which is the price
@@ -6785,7 +6785,7 @@ came from searching `web-next/src`, `shared/src` and `pos/src` together for each
 route's path.
 
 **`web-next` imports nothing from `shared/src/api`.** It uses `shared` for the
-i18n strings and for nothing else — three files, all `@rawsyst/shared/i18n`.
+i18n strings and for nothing else — three files, all `@biz1core/shared/i18n`.
 `shared/src/api/*` is the *frozen* front end's client layer and the till's. So
 every route that had a client function in `shared/src/api` counted as reached
 while no screen in the deployed back office could call it.
@@ -6891,7 +6891,7 @@ market refuses to start.
 * **Development database** — already this address. `cmd/devseed` moves the
   existing operator rather than adding a second, and reads
   `RAWSYST_PLATFORM_EMAIL` from `backend/.env`.
-* **Compose deployment** — was `owner@rawsyst.test`. Recovered, then moved
+* **Compose deployment** — was `owner@biz1core.test`. Recovered, then moved
   through the product's own `PUT /platform/operators/{id}/email`, so the trail
   carries `platform_operator_email_changed` rather than a hand-written UPDATE.
   One operator, `must_change_password` true.
@@ -7034,8 +7034,8 @@ resource limit, force-recreate the service rather than trusting `up`.
 
 | Image | Size |
 |---|---|
-| `rawsyst/backend` | **89.7 MB** (`scratch`, five static binaries, non-root) |
-| `rawsyst/web` | **329 MB** (distroless, no shell, non-root) |
+| `biz1core/backend` | **89.7 MB** (`scratch`, five static binaries, non-root) |
+| `biz1core/web` | **329 MB** (distroless, no shell, non-root) |
 | `postgres:17-alpine` | 424 MB |
 
 The backend grew 76.2 to 89.7 MB when `regulatory` was added, which is the price
@@ -7149,7 +7149,7 @@ memory:
 
 * **`web-next/src` only.** `shared/src/api/*` is the frozen `web/` front end's
   client layer and the Tauri till's; `web-next` imports from `shared` in
-  exactly three files, all `@rawsyst/shared/i18n/strings`. Counting the three
+  exactly three files, all `@biz1core/shared/i18n/strings`. Counting the three
   trees together reported 6 unreachable routes where counting the deployed one
   reports 52.
 * **`contract.generated.ts` excluded**, because it lists every route pattern in
@@ -7682,11 +7682,11 @@ the ceiling must be checked afterwards rather than assumed.
 
 | Image | Size |
 |---|---|
-| `rawsyst/backend:dev` | **89.8 MB** (`scratch`, five static binaries, non-root) |
-| `rawsyst/web:dev` | **330 MB** (distroless, no shell, non-root) |
+| `biz1core/backend:dev` | **89.8 MB** (`scratch`, five static binaries, non-root) |
+| `biz1core/web:dev` | **330 MB** (distroless, no shell, non-root) |
 | `postgres:17-alpine` | 424 MB |
 
-Two stale tags, `rawsyst/backend:local` and `rawsyst/web:local`, were left by an
+Two stale tags, `biz1core/backend:local` and `biz1core/web:local`, were left by an
 earlier build and referenced by no compose file and no container. Removed —
 419 MB, and one less pair of images somebody could deploy by accident.
 
@@ -7873,7 +7873,7 @@ file's ceiling. Verified rather than assumed: `shared_buffers` is 8192 pages and
 | `db` | 29.0 MiB | 384 MiB |
 | `worker` | 3.3 MiB | 128 MiB |
 
-Images: `rawsyst/web:dev` 330 MB, `rawsyst/backend:dev` 89.9 MB,
+Images: `biz1core/web:dev` 330 MB, `biz1core/backend:dev` 89.9 MB,
 `postgres:17-alpine` 424 MB.
 
 Database connections in use: 10 of a ceiling of 20. No durability setting was
@@ -8141,7 +8141,7 @@ beside it. No safety was weakened: the placeholder refusal, the production gate,
 the source-pack validation and the point-of-use checks are all unchanged, and
 the fraction validator got stricter rather than looser.
 
-RawSyst does not claim any legal certification. Recording a figure here is one
+Biz1core does not claim any legal certification. Recording a figure here is one
 person's assertion that they read a document, which is what the registry has
 always meant by "verified" and still means.
 
@@ -8156,7 +8156,7 @@ What was checked instead is the articles themselves, which is the authoritative
 text the calculator implements. `eosb_official_figures_test.go` works every
 expected amount out from the article in the comment above it, so a reader can
 check the assertion against the law rather than against this product. No
-difference between RawSyst's reading and the published articles was found.
+difference between Biz1core's reading and the published articles was found.
 
 ## The calculations, end to end
 
@@ -8240,8 +8240,8 @@ putting it there is a short download rather than a long one.
 
 | | before | after | |
 |---|---|---|---|
-| `rawsyst/backend` | 107 MB | **32.9 MB** | −69% |
-| `rawsyst/web` | 331 MB | **263 MB** | −21% |
+| `biz1core/backend` | 107 MB | **32.9 MB** | −69% |
+| `biz1core/web` | 331 MB | **263 MB** | −21% |
 | both together | 438 MB | **296 MB** | −32% |
 
 `postgres:17-alpine` is 424 MB and stays. A slimmer base exists; changing the
@@ -8258,11 +8258,11 @@ layer and a registry, so the image paid for that six times.
 Compiled together they are **21.5 MB**: one binary about the size of the
 largest, because the linker keeps one copy of what they have in common.
 
-The six now live in `internal/cmd/<name>` with a `Main()` each, `cmd/rawsyst`
+The six now live in `internal/cmd/<name>` with a `Main()` each, `cmd/biz1core`
 dispatches on the first argument, and `cmd/<name>/main.go` is a four-line
 wrapper so that `go run ./cmd/api` still works — which is what the Makefile,
 the tests and every runbook here say to type. Compose entrypoints became
-`["/rawsyst", "api"]` and so on.
+`["/biz1core", "api"]` and so on.
 
 Two things this broke, both caught by things that exist to catch them:
 
@@ -8353,7 +8353,7 @@ deciding it prints the command and a person runs it. A script that fixes a
 server it has not been allowed to look at first is how a working box becomes a
 broken one.
 
-`deploy/server/rawsyst-check.sh` is the same idea afterwards, against
+`deploy/server/biz1core-check.sh` is the same idea afterwards, against
 thresholds chosen for this machine: memory, swap use, disk, inodes, load per
 core, every container's health and memory, Docker's reclaimable space, log size,
 database connections as a percentage of `max_connections`, and database size.
@@ -8370,7 +8370,7 @@ leaves the machine and gets restored.
 
 Three things it deliberately does not do, each with the reason in the file: no
 monitoring stack, because Prometheus and Grafana together are larger than
-everything RawSyst runs; no automatic cleanup, because `docker system prune` is
+everything Biz1core runs; no automatic cleanup, because `docker system prune` is
 one flag away from the volume the database lives in; and no tuning that trades
 durability.
 
@@ -8421,7 +8421,7 @@ twice, on the same network, minutes apart.
 
 # A BACKUP IS A RESTORE (2026-09-10, fifth pass)
 
-Before RawSyst goes on a server it is going to be moved off again, and the thing
+Before Biz1core goes on a server it is going to be moved off again, and the thing
 that has to survive that move is the only thing on the machine that cannot be
 rebuilt from this repository: the database.
 
@@ -8441,7 +8441,7 @@ server does not have one.
 ## What a snapshot is
 
 ```
-rawsyst/20260910T130723Z-1/
+biz1core/20260910T130723Z-1/
     database.dump      pg_dump custom format, compressed
     manifest.json      what it is, how big, what it hashes to
     COMPLETED          written last, and only if everything before it worked
@@ -8525,7 +8525,7 @@ local disk is not a reason to delete a remote backup.
 
 ## Where it runs
 
-A `backup` target on `postgres:17-alpine` with the RawSyst binary added: 21 MB
+A `backup` target on `postgres:17-alpine` with the Biz1core binary added: 21 MB
 on top of an image the host already has. `pg_dump` and `pg_restore` are the
 right tools and this product is not going to reimplement them; taking them from
 the same image as the database is what makes the version match impossible to get
@@ -8534,7 +8534,7 @@ wrong. The API image stays `scratch` at 33 MB.
 A systemd timer at 03:30 takes a backup, verifies it, then prunes — in that
 order, and prune only runs if verify passed. `Persistent=true`, so a machine
 that was off backs up when it returns. A failed unit shows in `systemctl
---failed`, and `rawsyst-check.sh` now reports the age of the last VERIFIED
+--failed`, and `biz1core-check.sh` now reports the age of the last VERIFIED
 backup hourly and flags the last failure reason.
 
 ## Documentation
@@ -8553,7 +8553,7 @@ backup hourly and flags the last failure reason.
 
 ## Not done, and I cannot do it
 
-**RawSyst has not been deployed to 40.160.14.32.** I have no access to that
+**Biz1core has not been deployed to 40.160.14.32.** I have no access to that
 machine — no credentials, no SSH, no way to run `preflight.sh` on it. Everything
 above is code and configuration in this repository, verified here against a real
 Postgres, a real S3-compatible store and the real images.
@@ -8601,10 +8601,10 @@ which are stated as limitations rather than closed.
 
 **The application's role cannot take a backup, and must not be able to.**
 
-RawSyst forces row-level security on every tenant table, which applies to the
+Biz1core forces row-level security on every tenant table, which applies to the
 owner too. `pg_dump` turns row security off to dump every row, and PostgreSQL
 refuses that to any role without `BYPASSRLS`. Proved on this machine: as
-`rawsyst`, `SELECT count(*) FROM app_user` on a seeded database returns 0, and
+`biz1core`, `SELECT count(*) FROM app_user` on a seeded database returns 0, and
 `pg_dump` fails partway with a message about a policy on `account`.
 
 It fails loudly rather than producing an empty dump, which is the one mercy
@@ -8831,6 +8831,6 @@ day.
 has never done this can bring the business back under pressure. `RECOVERY.md`
 says to walk it on a spare machine once, with a stopwatch.
 
-**Still not deployed.** RawSyst is not on 40.160.14.32 and I have no access to
+**Still not deployed.** Biz1core is not on 40.160.14.32 and I have no access to
 that machine. Everything above is code, configuration and documentation in this
 repository, verified here.

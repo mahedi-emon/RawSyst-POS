@@ -1,4 +1,4 @@
-# RawSyst POS, as it runs.
+# Biz1core POS, as it runs.
 #
 # Four services: a database, the API, the worker, and the back office. The till
 # is a desktop application and is not here -- it is installed on the counter and
@@ -68,7 +68,7 @@ services:
       dockerfile: deploy/postgres/Dockerfile
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/postgres:${VERSION:-dev}
+    image: biz1core/postgres:${VERSION:-dev}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-rawsyst}
@@ -84,7 +84,7 @@ services:
       # restarting. An archiver that stops when another container stops is an
       # archiver that fills this disk during a deploy.
       #
-      # Nothing here is ever printed. `rawsyst backup wal archive` says nothing
+      # Nothing here is ever printed. `biz1core backup wal archive` says nothing
       # at all on success and prints this product's own sentence on failure;
       # the object store layer never puts a signed URL in an error.
       RAWSYST_S3_ENDPOINT: ${RAWSYST_S3_ENDPOINT:-}
@@ -145,7 +145,7 @@ services:
       # With no object store configured, `wal archive` refuses immediately and
       # every segment is retained. So a deployment that turns this on without
       # RAWSYST_S3_BUCKET fills its disk: .env.example says so beside both
-      # variables, and `rawsyst backup wal preflight` says it in one command.
+      # variables, and `biz1core backup wal preflight` says it in one command.
       #
       # # Why the default here is OFF and .env.example says on
       #
@@ -162,7 +162,7 @@ services:
       - -c
       - archive_mode=${POSTGRES_ARCHIVE_MODE:-off}
       - -c
-      - archive_command=/rawsyst backup wal archive %p %f
+      - archive_command=/biz1core backup wal archive %p %f
       #
       # How long PostgreSQL waits before closing a partly-filled segment and
       # archiving it. This is the RPO on an idle server, directly: at 60s the
@@ -231,9 +231,9 @@ services:
       target: runtime
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backend:${VERSION:-dev}
+    image: biz1core/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/rawsyst", "migrate"]
+    entrypoint: ["/biz1core", "migrate"]
     environment: &backend-env
       RAWSYST_ENV: ${RAWSYST_ENV:-production}
       RAWSYST_DATA_REGION: ${RAWSYST_DATA_REGION:-sa}
@@ -264,7 +264,7 @@ services:
       RAWSYST_MAIL_FROM: ${RAWSYST_MAIL_FROM:-}
       RAWSYST_DB_DSN: postgres://${POSTGRES_USER:-rawsyst}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rawsyst}?sslmode=disable
       RAWSYST_JWT_SECRET: ${RAWSYST_JWT_SECRET:?set RAWSYST_JWT_SECRET in .env}
-      RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-rawsyst-pos}
+      RAWSYST_JWT_ISSUER: ${RAWSYST_JWT_ISSUER:-biz1core-pos}
       RAWSYST_DATA_ENCRYPTION_KEYS: ${RAWSYST_DATA_ENCRYPTION_KEYS:?set RAWSYST_DATA_ENCRYPTION_KEYS in .env}
       RAWSYST_CORS_ORIGINS: ${RAWSYST_CORS_ORIGINS:-}
       # Who administers this deployment. Read by `/bootstrap`, which creates
@@ -324,9 +324,9 @@ services:
       target: runtime
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backend:${VERSION:-dev}
+    image: biz1core/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/rawsyst", "bootstrap"]
+    entrypoint: ["/biz1core", "bootstrap"]
     environment:
       <<: *backend-env
     depends_on:
@@ -364,9 +364,9 @@ services:
       target: runtime
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backend:${VERSION:-dev}
+    image: biz1core/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/rawsyst", "regulatory"]
+    entrypoint: ["/biz1core", "regulatory"]
     environment:
       <<: *backend-env
       RAWSYST_REGULATORY_SOURCE: ${RAWSYST_REGULATORY_SOURCE:-}
@@ -397,9 +397,9 @@ services:
       target: runtime
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backend:${VERSION:-dev}
+    image: biz1core/backend:${VERSION:-dev}
     restart: "no"
-    entrypoint: ["/rawsyst", "ingest"]
+    entrypoint: ["/biz1core", "ingest"]
     environment:
       <<: *backend-env
     volumes:
@@ -431,7 +431,7 @@ services:
       target: backup
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backup:${VERSION:-dev}
+    image: biz1core/backup:${VERSION:-dev}
     restart: "no"
     # Anchored here and reused by `backup-agent` below, the same way
     # `&backend-env` is anchored on `migrate`. Two services need all of this and
@@ -534,9 +534,9 @@ services:
       target: backup
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backup:${VERSION:-dev}
+    image: biz1core/backup:${VERSION:-dev}
     restart: unless-stopped
-    entrypoint: ["/rawsyst", "backup", "agent"]
+    entrypoint: ["/biz1core", "backup", "agent"]
     environment: *backup-env
     volumes:
       - backup-staging:/staging
@@ -571,9 +571,9 @@ services:
       target: runtime
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backend:${VERSION:-dev}
+    image: biz1core/backend:${VERSION:-dev}
     restart: unless-stopped
-    entrypoint: ["/rawsyst", "api"]
+    entrypoint: ["/biz1core", "api"]
     environment:
       <<: *backend-env
       RAWSYST_HTTP_ADDR: ":8080"
@@ -604,7 +604,7 @@ services:
       # itself. `/readyz` and not `/healthz`: the first says the database
       # answers, the second only says the process is alive — and a process that
       # is alive with no database is exactly what must not receive traffic.
-      test: ["CMD", "/rawsyst", "api", "-healthcheck"]
+      test: ["CMD", "/biz1core", "api", "-healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -643,9 +643,9 @@ services:
       target: runtime
       args:
         VERSION: ${VERSION:-dev}
-    image: rawsyst/backend:${VERSION:-dev}
+    image: biz1core/backend:${VERSION:-dev}
     restart: unless-stopped
-    entrypoint: ["/rawsyst", "worker"]
+    entrypoint: ["/biz1core", "worker"]
     environment: *backend-env
     depends_on:
       db:
@@ -676,7 +676,7 @@ services:
         # Baked, not passed at runtime: Next freezes its rewrites into the
         # build. See the note in web-next/Dockerfile.
         RAWSYST_API_ORIGIN: ${RAWSYST_API_ORIGIN:-http://api:8080}
-    image: rawsyst/web:${VERSION:-dev}
+    image: biz1core/web:${VERSION:-dev}
     restart: unless-stopped
     environment:
       NODE_ENV: production

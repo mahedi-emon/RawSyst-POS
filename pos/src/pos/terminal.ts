@@ -5,7 +5,7 @@
 // is in this file, and the list of things the interface may ask for is short
 // and readable.
 
-import type { Translate } from '@rawsyst/shared/i18n/strings';
+import type { Translate } from '@biz1core/shared/i18n/strings';
 
 import { invoke } from '@tauri-apps/api/core';
 

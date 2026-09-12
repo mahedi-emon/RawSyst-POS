@@ -20,10 +20,10 @@
 
 import { useState } from 'react';
 
-import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
-import { useAuth } from '@rawsyst/shared/auth/session';
-import type { Translate } from '@rawsyst/shared/i18n/strings';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { Offline, RequestFailed } from '@biz1core/shared/api/client';
+import { useAuth } from '@biz1core/shared/auth/session';
+import type { Translate } from '@biz1core/shared/i18n/strings';
+import { useT } from '@biz1core/shared/i18n/locale';
 import {
   fetchReturnable,
   lookUpSale,
@@ -33,7 +33,7 @@ import {
   type InvoiceMatch,
   type ReturnableLine,
   type ReturnSelection,
-} from '@rawsyst/shared/pos/returns';
+} from '@biz1core/shared/pos/returns';
 import {
   previewDifference,
   readyToExchange,

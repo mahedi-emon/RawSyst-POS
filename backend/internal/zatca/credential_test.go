@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/secrets"
 )
 
 // The credential store is tested against the real database because the things

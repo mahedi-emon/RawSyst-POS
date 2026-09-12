@@ -8,16 +8,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 func testTokens(t *testing.T) *TokenService {
 	t.Helper()
 	return NewTokenService(config.Auth{
 		JWTSecret:       []byte("test-secret-that-is-at-least-32-bytes-long"),
-		Issuer:          "rawsyst-test",
+		Issuer:          "biz1core-test",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 720 * time.Hour,
 	})
@@ -84,7 +84,7 @@ func TestVerifyRejectsAlgNone(t *testing.T) {
 
 	unsigned := jwt.NewWithClaims(jwt.SigningMethodNone, Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "rawsyst-test",
+			Issuer:    "biz1core-test",
 			Subject:   uuid.NewString(),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
@@ -112,7 +112,7 @@ func TestVerifyRejectsWrongSecret(t *testing.T) {
 
 	other := NewTokenService(config.Auth{
 		JWTSecret:      []byte("a-completely-different-secret-32-bytes!!"),
-		Issuer:         "rawsyst-test",
+		Issuer:         "biz1core-test",
 		AccessTokenTTL: 15 * time.Minute,
 	})
 	if _, err := other.Verify(tok); err == nil {
@@ -123,7 +123,7 @@ func TestVerifyRejectsWrongSecret(t *testing.T) {
 func TestVerifyRejectsExpiredToken(t *testing.T) {
 	svc := NewTokenService(config.Auth{
 		JWTSecret:      []byte("test-secret-that-is-at-least-32-bytes-long"),
-		Issuer:         "rawsyst-test",
+		Issuer:         "biz1core-test",
 		AccessTokenTTL: -time.Minute, // already expired
 	})
 	tok, _, err := svc.IssueAccess(actor.Actor{

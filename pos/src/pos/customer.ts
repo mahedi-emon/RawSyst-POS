@@ -17,9 +17,9 @@
 // halala would eventually refuse a sale that exactly reaches the limit — the
 // commonest case in a shop that sets round limits.
 
-import type { Translate } from '@rawsyst/shared/i18n/strings';
+import type { Translate } from '@biz1core/shared/i18n/strings';
 
-import { minor, major } from '@rawsyst/shared/receivables/receivables';
+import { minor, major } from '@biz1core/shared/receivables/receivables';
 import type { CachedCustomer } from '../offline/customers';
 
 /** A customer as the till holds them, from either the server or the cache. */

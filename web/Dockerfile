@@ -16,12 +16,12 @@
 # Next's standalone build traces which files the server actually reaches and
 # emits only those, plus a minimal `node_modules`. The alternative — copying the
 # whole workspace — ships every dev dependency, every test file and the entire
-# `@rawsyst/shared` source into a production image, which is roughly 400MB
+# `@biz1core/shared` source into a production image, which is roughly 400MB
 # against about 180MB and a lot of it is code that must never run in production.
 #
 # # Why the build stage needs the workspace and the runtime does not
 #
-# `@rawsyst/shared` is consumed FROM SOURCE by both front ends — that is
+# `@biz1core/shared` is consumed FROM SOURCE by both front ends — that is
 # deliberate, so the till and the browser cannot drift onto different versions of
 # the same component. It therefore has to be present to compile, and must not be
 # present afterwards.

@@ -37,7 +37,7 @@ import {
 // front end it serves is frozen. `catalogues.ts` says what importing it costs.
 import { catalogues } from './catalogues';
 
-const STORAGE_KEY = 'rawsyst.locale';
+const STORAGE_KEY = 'biz1core.locale';
 
 interface LocaleValue {
   locale: Locale;

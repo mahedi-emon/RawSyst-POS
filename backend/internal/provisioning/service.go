@@ -19,13 +19,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/Biz1core/backend/internal/billing"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/audit"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/registry"
 )
 
 // Service provisions tenants.
@@ -561,7 +561,7 @@ func (r *NewTenant) validate() error {
 			"Choose the market this business is being sold into.")
 		bad = true
 	} else if _, ok := supportedCountries[r.Market]; !ok {
-		v.WithField("market", "RawSyst serves "+offered(supportedCountries)+
+		v.WithField("market", "Biz1core serves "+offered(supportedCountries)+
 			" so far. Tax rules come from the regulatory register for the "+
 			"market you choose, and there are none on file for that one.")
 		bad = true

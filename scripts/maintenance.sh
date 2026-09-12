@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Disk and cache maintenance for a RawSyst working copy.
+# Disk and cache maintenance for a Biz1core working copy.
 #
 # # Why this exists
 #
@@ -230,7 +230,7 @@ db_connections() {
 docker_images() {
   docker_ok || return 0
   docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>/dev/null |
-    grep -E '^(rawsyst/|postgres:)' || true
+    grep -E '^(biz1core/|postgres:)' || true
 }
 
 measure() {
@@ -247,7 +247,7 @@ measure() {
 report() {
   measure
   echo
-  echo "RawSyst maintenance — $(date '+%Y-%m-%d %H:%M')"
+  echo "Biz1core maintenance — $(date '+%Y-%m-%d %H:%M')"
   echo
   echo "Disposable, and what each is worth:"
   row "Go build cache"    "$GOCACHE_MB" "$(verdict "$GOCACHE_MB" "$GOCACHE_MAX_MB")"

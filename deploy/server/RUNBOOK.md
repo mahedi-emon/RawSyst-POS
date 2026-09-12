@@ -1,4 +1,4 @@
-# Putting RawSyst on a two-core, 3.7 GiB server
+# Putting Biz1core on a two-core, 3.7 GiB server
 
 Written for the machine it was written on: Ubuntu 24.04, 2 vCPU, 3.7 GiB RAM,
 48 GB disk, one public address, nothing else running. Every number below comes
@@ -45,8 +45,8 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-echo 'vm.swappiness=10'          | sudo tee  /etc/sysctl.d/99-rawsyst.conf
-echo 'vm.overcommit_memory=0'    | sudo tee -a /etc/sysctl.d/99-rawsyst.conf
+echo 'vm.swappiness=10'          | sudo tee  /etc/sysctl.d/99-biz1core.conf
+echo 'vm.overcommit_memory=0'    | sudo tee -a /etc/sysctl.d/99-biz1core.conf
 sudo sysctl --system
 ```
 
@@ -67,7 +67,7 @@ sudo systemctl restart systemd-journald
 
 ## 2. Firewall
 
-Only three ports belong on the public interface. RawSyst's own 8080 and 3000
+Only three ports belong on the public interface. Biz1core's own 8080 and 3000
 are **not** among them: they go behind a reverse proxy, on loopback.
 
 ```bash
@@ -210,7 +210,7 @@ sudo apt-get install -y caddy
 
 ```caddyfile
 # /etc/caddy/Caddyfile
-rawsyst.example.com {
+biz1core.example.com {
     encode zstd gzip
 
     # The API, addressed directly.
@@ -252,7 +252,7 @@ Reload with `sudo systemctl reload caddy`.
 ## 7. Watching it
 
 ```bash
-bash deploy/server/rawsyst-check.sh
+bash deploy/server/biz1core-check.sh
 ```
 
 Memory, swap, disk, inodes, load, every container's health and memory, Docker's
@@ -262,20 +262,20 @@ against a threshold chosen for this machine. It changes nothing.
 As a timer:
 
 ```ini
-# /etc/systemd/system/rawsyst-check.service
+# /etc/systemd/system/biz1core-check.service
 [Unit]
-Description=RawSyst resource check
+Description=Biz1core resource check
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/rawsyst
-ExecStart=/usr/bin/env bash deploy/server/rawsyst-check.sh --strict
+WorkingDirectory=/opt/biz1core
+ExecStart=/usr/bin/env bash deploy/server/biz1core-check.sh --strict
 ```
 
 ```ini
-# /etc/systemd/system/rawsyst-check.timer
+# /etc/systemd/system/biz1core-check.timer
 [Unit]
-Description=RawSyst resource check, hourly
+Description=Biz1core resource check, hourly
 
 [Timer]
 OnCalendar=hourly
@@ -286,8 +286,8 @@ WantedBy=timers.target
 ```
 
 ```bash
-sudo systemctl enable --now rawsyst-check.timer
-journalctl -u rawsyst-check.service --since today
+sudo systemctl enable --now biz1core-check.timer
+journalctl -u biz1core-check.service --since today
 ```
 
 `--strict` exits non-zero when something is over, so the unit fails and the
@@ -304,7 +304,7 @@ it goes, how it is proved, what is kept and what happens to secrets. The short
 version:
 
 ```bash
-cd /opt/rawsyst
+cd /opt/biz1core
 C="docker compose -f docker-compose.yml -f docker-compose.server.yml --profile backup"
 
 $C run --rm backup run       # take one
@@ -316,7 +316,7 @@ It refuses to run without an object store configured, because a backup on the
 same disk as the database is not a backup. Set `RAWSYST_S3_ENDPOINT`,
 `RAWSYST_S3_BUCKET` and the credentials in `.env` before the first run.
 
-**And a role that can actually read the database.** RawSyst forces row-level
+**And a role that can actually read the database.** Biz1core forces row-level
 security on every tenant table, which applies to the table's owner too, so the
 application's role cannot dump and must not be given the attribute that would
 let it. `BACKUP.md` has the six statements that create `rawsyst_backup`; set
@@ -328,12 +328,12 @@ takes a PHYSICAL copy of the cluster weekly and proves it recovers; the third
 rehearses a whole recovery once a week, against disposable resources:
 
 ```bash
-sudo cp deploy/server/rawsyst-backup.{service,timer}     /etc/systemd/system/
-sudo cp deploy/server/rawsyst-basebackup.{service,timer} /etc/systemd/system/
-sudo cp deploy/server/rawsyst-drill.{service,timer}      /etc/systemd/system/
+sudo cp deploy/server/biz1core-backup.{service,timer}     /etc/systemd/system/
+sudo cp deploy/server/biz1core-basebackup.{service,timer} /etc/systemd/system/
+sudo cp deploy/server/biz1core-drill.{service,timer}      /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now   rawsyst-backup.timer rawsyst-basebackup.timer rawsyst-drill.timer
-systemctl list-timers 'rawsyst-*'
+sudo systemctl enable --now   biz1core-backup.timer biz1core-basebackup.timer biz1core-drill.timer
+systemctl list-timers 'biz1core-*'
 ```
 
 Turning archiving on for a server that is **already trading** is
@@ -432,7 +432,7 @@ an afternoon.
 ## What is deliberately not here
 
 **No monitoring stack.** Prometheus, Grafana and a log shipper are together
-larger than everything RawSyst runs, on a machine with 3.7 GiB. The API exposes
+larger than everything Biz1core runs, on a machine with 3.7 GiB. The API exposes
 `/metrics` for the day there is somewhere to send it; until then an hourly
 threshold check and `docker stats` are the right size.
 

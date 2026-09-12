@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 const testPassword = "a reasonably long passphrase"
@@ -40,7 +40,7 @@ func testService(t *testing.T) (*Service, *db.Pool) {
 
 	tokens := NewTokenService(config.Auth{
 		JWTSecret:       []byte("integration-test-secret-at-least-32-bytes"),
-		Issuer:          "rawsyst-test",
+		Issuer:          "biz1core-test",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 720 * time.Hour,
 	})

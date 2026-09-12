@@ -621,11 +621,11 @@ function TaxStep({
           {/* Blueprint E1.0: the software must never assume or assert a
               taxpayer's wave. It comes from ZATCA to the taxpayer directly, and
               the copy has to make that unmistakable — a shop that believed
-              RawSyst knew their deadline would plan around a date nobody
+              Biz1core knew their deadline would plan around a date nobody
               official gave them. */}
           <p className="setupw__notice" role="note">
             {t('setup.theseComeFrom')} <strong>your own ZATCA notification</strong>.
-            RawSyst does not know your wave or your date and never assumes one.
+            Biz1core does not know your wave or your date and never assumes one.
             Leave them blank if you have not been notified yet.
           </p>
 

@@ -1,7 +1,7 @@
 ---
-name: rawsyst-design-system
+name: biz1core-design-system
 description: >
-  RawSyst's own design system — the CSS custom properties, class primitives,
+  Biz1core's own design system — the CSS custom properties, class primitives,
   React helpers and layout rules that shared/, web/ and pos/ are actually built
   from. Use whenever writing or changing UI in this repository: picking a token,
   building a panel, table, form, dialog or navigation, choosing a colour or a
@@ -9,9 +9,9 @@ description: >
   and Bangla. Every fact here was read out of the source, not assumed.
 ---
 
-# RawSyst design system
+# Biz1core design system
 
-RawSyst is an ERP and POS. Its screens are read in columns of currency, under
+Biz1core is an ERP and POS. Its screens are read in columns of currency, under
 fluorescent light, by someone with a queue behind them. The design system is
 plain CSS custom properties and class primitives — **no Tailwind, no CSS-in-JS,
 no component library.** Do not add one.
@@ -87,7 +87,7 @@ property and repository path stated in backticks anywhere in this skill is
 checked against the actual stylesheets and the actual tree by:
 
 ```bash
-node .claude/skills/rawsyst-design-system/verify.mjs
+node .claude/skills/biz1core-design-system/verify.mjs
 ```
 
 Run it after changing the design system, and after changing this skill. It reads

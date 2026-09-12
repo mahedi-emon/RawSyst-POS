@@ -39,7 +39,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The three words, and nothing in between.

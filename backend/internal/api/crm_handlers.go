@@ -8,12 +8,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
+	"github.com/mahedi-emon/Biz1core/backend/internal/loyalty"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/receivables"
+	"github.com/mahedi-emon/Biz1core/backend/internal/wallet"
 )
 
 // Loyalty, store credit, gift cards and fitting history (blueprint B16).

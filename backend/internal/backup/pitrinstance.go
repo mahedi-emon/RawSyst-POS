@@ -49,7 +49,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // instance is one recovered cluster.
@@ -144,7 +144,7 @@ func (i *instance) writeHBA() error {
 	// password to read a recovery of production, which is a worse arrangement
 	// and not a safer one.
 	lines := []string{
-		"# Written by RawSyst for one point-in-time recovery. Not production's.",
+		"# Written by Biz1core for one point-in-time recovery. Not production's.",
 		"local   all   all                 trust",
 	}
 	if i.port != 0 {
@@ -186,7 +186,7 @@ func (i *instance) writeRecoveryConfig(
 	}
 
 	lines := []string{
-		"# Written by RawSyst for one point-in-time recovery.",
+		"# Written by Biz1core for one point-in-time recovery.",
 		"# The file this replaced is beside it as postgresql.auto.conf.from-backup.",
 		"",
 		"# Containment. This cluster must not touch the archive it is reading,",
@@ -485,7 +485,7 @@ func (i *instance) startAndRecover(
 		"start",
 	}
 	cmd := exec.CommandContext(ctx, toolPath(i.binDir, "pg_ctl"), args...)
-	cmd.Env = append(os.Environ(), "PGAPPNAME=rawsyst-pitr")
+	cmd.Env = append(os.Environ(), "PGAPPNAME=biz1core-pitr")
 
 	out, err := runDetaching(cmd, filepath.Join(i.dir, "pg_ctl-start.out"))
 	if err != nil {
@@ -747,7 +747,7 @@ func (i *instance) recoveryEnded(opts PITROptions) error {
 			"Replay reached the end of the archive without arriving at %s. "+
 				"The segments needed to go further are not in the archive — "+
 				"either they were never written, or they have been removed by "+
-				"retention, or there is a gap. `rawsyst backup wal gaps` says "+
+				"retention, or there is a gap. `biz1core backup wal gaps` says "+
 				"which. Nothing has been recovered.",
 			opts.Target.Describe())
 	}
@@ -821,8 +821,8 @@ func inspectRecovered(
 		// For the drill it is expected. The drill builds a cluster from
 		// `initdb` to prove that archiving, replay and timing work, and it has
 		// no business containing this product's tables. A recovery engine that
-		// could only recover RawSyst would be one nobody could test without a
-		// RawSyst.
+		// could only recover Biz1core would be one nobody could test without a
+		// Biz1core.
 		if opts.ExpectProduct {
 			report.finding(
 				"The recovered database could not be counted: %s. It replayed "+
@@ -831,7 +831,7 @@ func inspectRecovered(
 			return nil
 		}
 		report.checked(
-			"the recovered cluster is not a RawSyst database, so its contents " +
+			"the recovered cluster is not a Biz1core database, so its contents " +
 				"were not counted; the recovery itself completed")
 		return nil
 	}

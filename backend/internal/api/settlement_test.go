@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/Biz1core/backend/internal/provisioning"
 )
 
 // settlingShop is a shop that can sell by card and reconcile a bank statement.

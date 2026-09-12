@@ -1,5 +1,5 @@
 {
-  "name": "rawsyst",
+  "name": "biz1core",
   "private": true,
   "workspaces": [
     "shared",

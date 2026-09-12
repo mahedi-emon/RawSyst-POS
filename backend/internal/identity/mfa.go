@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The second factor (blueprint H1).
@@ -130,7 +130,7 @@ func (s *Service) BeginMFA(
 
 	return MFAEnrolment{
 		Secret: secret,
-		URI:    TOTPURI(secret, "RawSyst", email),
+		URI:    TOTPURI(secret, "Biz1core", email),
 	}, nil
 }
 

@@ -35,8 +35,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The limits, mirrored from 0054's constraints so a client gets a sentence
@@ -197,7 +197,7 @@ func (s *Service) Image(ctx context.Context, scope Scope) (Image, error) {
 	return out, nil
 }
 
-// Remove clears a company's logo, returning it to the default RawSyst mark.
+// Remove clears a company's logo, returning it to the default Biz1core mark.
 //
 // Removing one that is not there succeeds. A client pressing Remove twice, or
 // on a company that never had one, has got the outcome they asked for, and

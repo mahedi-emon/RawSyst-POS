@@ -16,12 +16,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/audit"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
-// keyPrefix marks a RawSyst key wherever it turns up.
+// keyPrefix marks a Biz1core key wherever it turns up.
 //
 // Worth the seven characters: a key pasted into a support ticket, a log or a
 // public repository is recognisable as a credential belonging to this product,

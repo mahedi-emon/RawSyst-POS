@@ -9,11 +9,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/audit"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/secrets"
 )
 
 // Lockout policy. Blueprint A4 lists "lockout thresholds" as configurable
@@ -274,7 +274,7 @@ func (s *Service) Login(ctx context.Context, c Credentials) (Session, error) {
 	// does not tell an attacker which addresses belong to a real business.
 	if chosen.tenantStatus == "deactivated" {
 		return Session{}, errs.New(errs.CodeForbidden,
-			"This business is no longer active. Contact RawSyst.")
+			"This business is no longer active. Contact Biz1core.")
 	}
 
 	// A correct password on a disabled account still fails, but only after the
@@ -500,7 +500,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (Session, er
 	default:
 		return Session{}, errs.New(errs.CodeUnauthenticated,
 			"This account has been disabled. Please sign in again, or ask "+
-				"whoever looks after your RawSyst account.")
+				"whoever looks after your Biz1core account.")
 	}
 
 	a := actor.Actor{UserID: userID, SessionID: sessionID}

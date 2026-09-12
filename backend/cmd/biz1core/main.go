@@ -26,8 +26,8 @@
 //
 // # Dispatch
 //
-// `rawsyst <command> [flags]`. The command is consumed and the rest is handed
-// on untouched, so `rawsyst api -healthcheck` reaches the API exactly as
+// `biz1core <command> [flags]`. The command is consumed and the rest is handed
+// on untouched, so `biz1core api -healthcheck` reaches the API exactly as
 // `api -healthcheck` did — `os.Args` is rewritten before the command runs so
 // that the `flag` package, which reads it directly, sees what it expects.
 package main
@@ -38,17 +38,17 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/api"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/backup"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/bootstrap"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/ingest"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/migrate"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/regulatory"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/cmd/worker"
+	"github.com/mahedi-emon/Biz1core/backend/internal/build"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/api"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/backup"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/bootstrap"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/ingest"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/migrate"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/regulatory"
+	"github.com/mahedi-emon/Biz1core/backend/internal/cmd/worker"
 )
 
-// commands are what this binary can be. The description is what `rawsyst` with
+// commands are what this binary can be. The description is what `biz1core` with
 // no argument prints, so it has to say what the thing does rather than repeat
 // its name.
 var commands = map[string]struct {
@@ -89,14 +89,14 @@ func main() {
 
 	cmd, known := commands[name]
 	if !known {
-		fmt.Fprintf(os.Stderr, "rawsyst: no command %q\n\n", name)
+		fmt.Fprintf(os.Stderr, "biz1core: no command %q\n\n", name)
 		usage()
 		os.Exit(2)
 	}
 
 	// The command reads os.Args itself, through the flag package and in one
 	// case by scanning for `-healthcheck` before any configuration is loaded.
-	// Rewriting it here is what makes `rawsyst api -healthcheck` and
+	// Rewriting it here is what makes `biz1core api -healthcheck` and
 	// `api -healthcheck` the same thing.
 	os.Args = append([]string{os.Args[0] + " " + name}, os.Args[2:]...)
 	cmd.run()
@@ -110,12 +110,12 @@ func usage() {
 	sort.Strings(names)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "rawsyst %s\n\nusage: rawsyst <command> [flags]\n\n",
+	fmt.Fprintf(&b, "biz1core %s\n\nusage: biz1core <command> [flags]\n\n",
 		build.Version)
 	for _, name := range names {
 		fmt.Fprintf(&b, "  %-11s %s\n", name, commands[name].what)
 	}
-	fmt.Fprintf(&b, "\nEach command takes its own flags; `rawsyst <command> -h`"+
+	fmt.Fprintf(&b, "\nEach command takes its own flags; `biz1core <command> -h`"+
 		" lists them.\n")
 	fmt.Fprint(os.Stderr, b.String())
 }

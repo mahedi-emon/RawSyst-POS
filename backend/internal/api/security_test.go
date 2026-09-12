@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
 )
 
 // The three properties the second factor and the role builder exist for.

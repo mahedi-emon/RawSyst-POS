@@ -41,11 +41,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/portal"
+	"github.com/mahedi-emon/Biz1core/backend/internal/provisioning"
+	"github.com/mahedi-emon/Biz1core/backend/internal/reports"
 )
 
 // Mailer delivers one message.
@@ -183,7 +183,7 @@ func (h NotifyHandler) sendScheduledReport(ctx context.Context, j Job) error {
 	// the figures are visible in the source rather than spelled out.
 	body = subject + "\n\n" + body + `
 
-Sent by RawSyst on a schedule you set.
+Sent by Biz1core on a schedule you set.
 `
 	return h.Mailer.Send(ctx, p.Email, subject, body)
 }
@@ -199,14 +199,14 @@ Sent by RawSyst on a schedule you set.
 // mailing. Storing a preferred language on `app_user` is the fix and it is a
 // schema change this does not need to make first.
 func passwordResetMessage(p identity.NotifyPayload) (subject, body string) {
-	subject = "Your RawSyst password reset code"
+	subject = "Your Biz1core password reset code"
 	body = fmt.Sprintf(
 		"Hello %s,\n\n"+
 			"Your password reset code is:\n\n    %s\n\n"+
 			"It expires in %d minutes and can be used once.\n\n"+
 			"If you did not ask for this, you can ignore this message — your "+
 			"password has not changed. If it keeps happening, tell whoever "+
-			"looks after your RawSyst account.\n",
+			"looks after your Biz1core account.\n",
 		p.FullName, p.Code, p.ExpiresInMinutes)
 	return subject, body
 }
@@ -230,7 +230,7 @@ func passwordResetMessage(p identity.NotifyPayload) (subject, body string) {
 // no locale for a person it is mailing, and storing one on `app_user` is the
 // fix. Same known gap, same shape.
 func ownerInvitationMessage(p identity.NotifyPayload) (subject, body string) {
-	subject = "Your RawSyst account for " + p.BusinessName
+	subject = "Your Biz1core account for " + p.BusinessName
 
 	where := "Ask whoever set your account up for the address to sign in at."
 	if p.LoginURL != "" {

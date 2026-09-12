@@ -23,53 +23,53 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
-import { useAuth } from '@rawsyst/shared/auth/session';
-import { listCompanies, type Company } from '@rawsyst/shared/api/companies';
-import { Dashboard, type DrillTarget } from '@rawsyst/shared/dashboard/Dashboard';
-import { SalesDetailScreen } from '@rawsyst/shared/dashboard/SalesDetailScreen';
-import { ExpensesDetailScreen } from '@rawsyst/shared/dashboard/ExpensesDetailScreen';
-import { ComplianceScreen } from '@rawsyst/shared/dashboard/ComplianceScreen';
-import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
-import { InvoiceDetailScreen } from '@rawsyst/shared/invoices/InvoiceDetailScreen';
-import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
-import { CustomersScreen } from '@rawsyst/shared/receivables/CustomersScreen';
-import { DevicesScreen } from '@rawsyst/shared/devices/DevicesScreen';
-import { PeopleScreen } from '@rawsyst/shared/people/PeopleScreen';
-import { ShopMark } from '@rawsyst/shared/settings/ShopMark';
-import { EgsUnitsScreen } from '@rawsyst/shared/einvoicing/EgsUnitsScreen';
-import { OnboardingWizard } from '@rawsyst/shared/onboarding/OnboardingWizard';
-import { ExpensesScreen } from '@rawsyst/shared/expenses/ExpensesScreen';
-import { SettlementScreen } from '@rawsyst/shared/settlement/SettlementScreen';
-import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
-import { useT } from '@rawsyst/shared/i18n/locale';
-import { BrandingScreen } from '@rawsyst/shared/settings/BrandingScreen';
-import { ProductsArea } from '@rawsyst/shared/catalog/ProductsArea';
-import { StockArea } from '@rawsyst/shared/stock/StockArea';
-import { AccountingArea } from '@rawsyst/shared/accounting/AccountingArea';
-import { AssetsArea } from '@rawsyst/shared/assets/AssetsArea';
-import { OrdersArea } from '@rawsyst/shared/orders/OrdersArea';
-import { CRMArea } from '@rawsyst/shared/crm/CRMArea';
-import { HRArea } from '@rawsyst/shared/hr/HRArea';
-import { AftersalesArea } from '@rawsyst/shared/aftersales/AftersalesArea';
-import { ApprovalsArea } from '@rawsyst/shared/workflow/ApprovalsArea';
-import { AnalyticsArea } from '@rawsyst/shared/analytics/AnalyticsArea';
-import { LabelStudioArea } from '@rawsyst/shared/studio/LabelStudioArea';
-import { AdminArea } from '@rawsyst/shared/admin/AdminArea';
-import { PlatformArea } from '@rawsyst/shared/admin/PlatformArea';
-import { GovernanceArea } from '@rawsyst/shared/governance/GovernanceArea';
-import { GroupsArea } from '@rawsyst/shared/groups/GroupsArea';
-import { PortalsArea } from '@rawsyst/shared/portals/PortalsArea';
-import { PaymentsArea } from '@rawsyst/shared/payments/PaymentsArea';
-import { SecurityArea } from '@rawsyst/shared/security/SecurityArea';
-import { SubscriptionPanel } from '@rawsyst/shared/billing/SubscriptionPanel';
-import { NotificationBell } from '@rawsyst/shared/workflow/NotificationBell';
+import { LoginScreen } from '@biz1core/shared/auth/LoginScreen';
+import { useAuth } from '@biz1core/shared/auth/session';
+import { listCompanies, type Company } from '@biz1core/shared/api/companies';
+import { Dashboard, type DrillTarget } from '@biz1core/shared/dashboard/Dashboard';
+import { SalesDetailScreen } from '@biz1core/shared/dashboard/SalesDetailScreen';
+import { ExpensesDetailScreen } from '@biz1core/shared/dashboard/ExpensesDetailScreen';
+import { ComplianceScreen } from '@biz1core/shared/dashboard/ComplianceScreen';
+import { StockScreen } from '@biz1core/shared/dashboard/StockScreen';
+import { InvoiceDetailScreen } from '@biz1core/shared/invoices/InvoiceDetailScreen';
+import { PurchasingScreen } from '@biz1core/shared/purchasing/PurchasingScreen';
+import { CustomersScreen } from '@biz1core/shared/receivables/CustomersScreen';
+import { DevicesScreen } from '@biz1core/shared/devices/DevicesScreen';
+import { PeopleScreen } from '@biz1core/shared/people/PeopleScreen';
+import { ShopMark } from '@biz1core/shared/settings/ShopMark';
+import { EgsUnitsScreen } from '@biz1core/shared/einvoicing/EgsUnitsScreen';
+import { OnboardingWizard } from '@biz1core/shared/onboarding/OnboardingWizard';
+import { ExpensesScreen } from '@biz1core/shared/expenses/ExpensesScreen';
+import { SettlementScreen } from '@biz1core/shared/settlement/SettlementScreen';
+import { LanguageSwitch } from '@biz1core/shared/i18n/LanguageSwitch';
+import { useT } from '@biz1core/shared/i18n/locale';
+import { BrandingScreen } from '@biz1core/shared/settings/BrandingScreen';
+import { ProductsArea } from '@biz1core/shared/catalog/ProductsArea';
+import { StockArea } from '@biz1core/shared/stock/StockArea';
+import { AccountingArea } from '@biz1core/shared/accounting/AccountingArea';
+import { AssetsArea } from '@biz1core/shared/assets/AssetsArea';
+import { OrdersArea } from '@biz1core/shared/orders/OrdersArea';
+import { CRMArea } from '@biz1core/shared/crm/CRMArea';
+import { HRArea } from '@biz1core/shared/hr/HRArea';
+import { AftersalesArea } from '@biz1core/shared/aftersales/AftersalesArea';
+import { ApprovalsArea } from '@biz1core/shared/workflow/ApprovalsArea';
+import { AnalyticsArea } from '@biz1core/shared/analytics/AnalyticsArea';
+import { LabelStudioArea } from '@biz1core/shared/studio/LabelStudioArea';
+import { AdminArea } from '@biz1core/shared/admin/AdminArea';
+import { PlatformArea } from '@biz1core/shared/admin/PlatformArea';
+import { GovernanceArea } from '@biz1core/shared/governance/GovernanceArea';
+import { GroupsArea } from '@biz1core/shared/groups/GroupsArea';
+import { PortalsArea } from '@biz1core/shared/portals/PortalsArea';
+import { PaymentsArea } from '@biz1core/shared/payments/PaymentsArea';
+import { SecurityArea } from '@biz1core/shared/security/SecurityArea';
+import { SubscriptionPanel } from '@biz1core/shared/billing/SubscriptionPanel';
+import { NotificationBell } from '@biz1core/shared/workflow/NotificationBell';
 import {
   CommandPalette,
   type Command,
-} from '@rawsyst/shared/studio/CommandPalette';
-import { Icon, type IconName } from '@rawsyst/shared/ui/Icon';
-import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
+} from '@biz1core/shared/studio/CommandPalette';
+import { Icon, type IconName } from '@biz1core/shared/ui/Icon';
+import { ThemeSwitch } from '@biz1core/shared/ui/ThemeSwitch';
 
 type Section =
   | 'dashboard'
@@ -129,7 +129,7 @@ export function BackOffice() {
   // different tree than it rendered.
   useEffect(() => {
     try {
-      setRailOpen(localStorage.getItem('rawsyst.rail') === 'open');
+      setRailOpen(localStorage.getItem('biz1core.rail') === 'open');
     } catch {
       /* A browser refusing storage is not a reason to fail to render. */
     }
@@ -165,7 +165,7 @@ export function BackOffice() {
     setRailOpen((open) => {
       const next = !open;
       try {
-        localStorage.setItem('rawsyst.rail', next ? 'open' : 'icons');
+        localStorage.setItem('biz1core.rail', next ? 'open' : 'icons');
       } catch {
         /* As above. */
       }
@@ -666,7 +666,7 @@ export function BackOffice() {
       >
         {/* The SHOP's name and logo, not the vendor's.
             A shopkeeper looking at their own till software has no reason to be
-            reminded whose product it is on every screen. `RawSyst` remains the
+            reminded whose product it is on every screen. `Biz1core` remains the
             fallback for a tenant that has no company yet, which is the state
             during onboarding. */}
         <div className="bo__railhead">
@@ -764,7 +764,7 @@ export function BackOffice() {
                 <Icon name="chevron" size={14} />
               </span>
             )}
-            <h1 className="bo__title">{current?.label ?? 'RawSyst'}</h1>
+            <h1 className="bo__title">{current?.label ?? 'Biz1core'}</h1>
           </nav>
 
           <div className="bo__baractions">

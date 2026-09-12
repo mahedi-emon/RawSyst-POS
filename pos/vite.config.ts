@@ -8,7 +8,7 @@ export default defineConfig({
     // The shared package is consumed from source, not from a build step. One
     // less artefact to keep in step, and the POS and the back-office cannot
     // drift onto different versions of the same component.
-    alias: { '@rawsyst/shared': fileURLToPath(new URL('../shared/src', import.meta.url)) },
+    alias: { '@biz1core/shared': fileURLToPath(new URL('../shared/src', import.meta.url)) },
   },
   plugins: [react()],
   base: './',

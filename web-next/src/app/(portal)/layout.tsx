@@ -42,7 +42,7 @@ import {
   type Shop,
 } from '@/lib/portal/session';
 
-const SHOP_KEY = 'rawsyst.portal.shop';
+const SHOP_KEY = 'biz1core.portal.shop';
 
 function readRememberedShop(): Shop | null {
   try {

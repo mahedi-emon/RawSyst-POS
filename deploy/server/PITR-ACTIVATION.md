@@ -127,7 +127,7 @@ this server and does not change at all.
 
 ### 1. Storage settings, with archiving still off
 
-Add to `/opt/rawsyst/.env`. `.env.example` documents each one at length.
+Add to `/opt/biz1core/.env`. `.env.example` documents each one at length.
 
 ```bash
 RAWSYST_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
@@ -167,7 +167,7 @@ afterwards.
 # Maintenance mode on: Platform > Backup & Recovery, or
 #   PUT /api/v1/platform/maintenance  {"active": true}
 
-cd /opt/rawsyst && git pull
+cd /opt/biz1core && git pull
 $C build db
 $C up -d db
 
@@ -177,10 +177,10 @@ $C logs db | tail -20
 ```
 
 - [ ] `$C ps db` says healthy.
-- [ ] The log contains `rawsyst: added a replication line to pg_hba.conf`, or
+- [ ] The log contains `biz1core: added a replication line to pg_hba.conf`, or
       the line is already there from a previous start:
       ```bash
-      $C exec db grep -A2 'rawsyst: replication' /var/lib/postgresql/data/pg_hba.conf
+      $C exec db grep -A2 'biz1core: replication' /var/lib/postgresql/data/pg_hba.conf
       ```
 - [ ] Archiving is still off, which is correct at this point:
       ```bash
@@ -192,7 +192,7 @@ $C logs db | tail -20
 - [ ] Turn maintenance mode **off** and confirm a till can sell.
 
 Rebuild the rest at the same time if the deploy is a normal one; nothing else
-changed behaviourally. If `rawsyst/backend` comes out at around 450 MB rather
+changed behaviourally. If `biz1core/backend` comes out at around 450 MB rather
 than 34 MB, the build took the wrong stage — pull again, because that fix is in
 this change.
 
@@ -265,7 +265,7 @@ the database plus a week of log. Nobody knows what a week of log is on this
 server yet — see *Not yet measured* — so the check is on the local disk rather
 than on the bucket.
 
-- [ ] `bash deploy/server/rawsyst-check.sh` reports disk within threshold
+- [ ] `bash deploy/server/biz1core-check.sh` reports disk within threshold
       (at least 8 GiB free and under 85% used).
 - [ ] The bucket has no lifecycle rule that deletes objects. Retention here
       deletes only what nothing can still need; a provider-side rule deleting on
@@ -275,7 +275,7 @@ than on the bucket.
 ### 6. Turn archiving on
 
 ```bash
-# In /opt/rawsyst/.env
+# In /opt/biz1core/.env
 POSTGRES_ARCHIVE_MODE=on
 ```
 
@@ -289,7 +289,7 @@ $C exec db psql -U rawsyst -d rawsyst -c \
 ```
 
 - [ ] `archive_mode` is `on` and `archive_command` is
-      `/rawsyst backup wal archive %p %f`.
+      `/biz1core backup wal archive %p %f`.
 - [ ] `archive_timeout` is 60.
 
 ### 7. Prove segments are actually arriving
@@ -353,17 +353,17 @@ time $C run --rm backup pitr -target immediate
 ### 9. The timers
 
 ```bash
-sudo cp deploy/server/rawsyst-basebackup.{service,timer} /etc/systemd/system/
+sudo cp deploy/server/biz1core-basebackup.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now rawsyst-basebackup.timer
-systemctl list-timers 'rawsyst-*'
+sudo systemctl enable --now biz1core-basebackup.timer
+systemctl list-timers 'biz1core-*'
 ```
 
-- [ ] `rawsyst-basebackup.timer` is listed, next run Sunday 02:00.
+- [ ] `biz1core-basebackup.timer` is listed, next run Sunday 02:00.
 - [ ] Run it once by hand rather than waiting a week:
       ```bash
-      sudo systemctl start rawsyst-basebackup.service
-      journalctl -u rawsyst-basebackup.service -f
+      sudo systemctl start biz1core-basebackup.service
+      journalctl -u biz1core-basebackup.service -f
       ```
       It takes a base backup, recovers it to `immediate`, then prunes. All three
       must succeed; `ExecStartPost` stops at the first failure, so nothing is
@@ -424,7 +424,7 @@ time $C run --rm backup pitr -target before_time -at 2026-09-11T14:32:00Z -keep
       screen says the reading is stale, the agent is not running:
       `$C ps backup-agent`.
 - [ ] **The machine's own check knows about it.** `bash
-      deploy/server/rawsyst-check.sh` now reports a `wal archive` line and flags
+      deploy/server/biz1core-check.sh` now reports a `wal archive` line and flags
       a `local pg_wal` over 2 GiB. Confirm the line appears and is green.
 - [ ] **A week in.** `$C run --rm backup wal prune` reports a horizon and would
       remove something. If it says `REFUSED`, read the reason: it refuses rather
@@ -451,7 +451,7 @@ In order of preference:
 
 2. **If the disk is the emergency**, turn archiving off and restart:
    ```bash
-   # In /opt/rawsyst/.env
+   # In /opt/biz1core/.env
    POSTGRES_ARCHIVE_MODE=off
 
    $C up -d db

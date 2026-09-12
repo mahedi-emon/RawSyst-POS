@@ -44,9 +44,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // writableWhenLapsed are the write routes that keep working when a
@@ -71,7 +71,7 @@ var writableWhenLapsed = map[string]bool{
 	"/api/v1/auth/mfa/disable":        true,
 	"/api/v1/auth/mfa/recovery-codes": true,
 
-	// Reaching RawSyst. The one channel through which a suspension gets
+	// Reaching Biz1core. The one channel through which a suspension gets
 	// explained or lifted, and closing it would leave the client with nothing
 	// but the telephone.
 	"/api/v1/support/tickets": true,

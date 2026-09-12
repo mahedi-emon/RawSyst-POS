@@ -62,7 +62,7 @@ RAWSYST_ALLOW_PRODUCTION_RESTORE=true
 ```
 
 ```bash
-cd /opt/rawsyst
+cd /opt/biz1core
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d backup-agent
 ```
 
@@ -94,8 +94,8 @@ put the backup role's grants back      ← or the next nightly backup fails
 close writes                           ← maintenance mode
 refuse new connections to the live database
 terminate what is connected
-rename  rawsyst          →  rawsyst_pre_restore_<timestamp>
-rename  rawsyst_restore_… →  rawsyst
+rename  biz1core          →  rawsyst_pre_restore_<timestamp>
+rename  rawsyst_restore_… →  biz1core
 allow connections to the old one again
 open writes
 ```
@@ -148,8 +148,8 @@ and the encryption key if backups are sealed.
 ```bash
 # 1. A new machine. Follow deploy/server/RUNBOOK.md up to the first
 #    `docker compose up`, then stop.
-git clone https://github.com/mahedi-emon/RawSyst-POS.git /opt/rawsyst
-cd /opt/rawsyst
+git clone https://github.com/mahedi-emon/Biz1core.git /opt/biz1core
+cd /opt/biz1core
 
 # 2. .env, from wherever you keep it. Not from the backup: it is not in one.
 vi .env && chmod 600 .env
@@ -236,7 +236,7 @@ composed from the snapshot id inside the manifest, so nothing from the request
 becomes a path. The bytes are streamed to disk and hashed on the way. The
 manifest has to parse, be a version this build reads, and describe the file
 beside it exactly. The file has to **begin** like a dump or like a sealed
-RawSyst backup. And after all of that the record says **UPLOADED**, not
+Biz1core backup. And after all of that the record says **UPLOADED**, not
 verified: nothing has been proved about whether it restores.
 
 Backups larger than 8 GiB do not go through a browser. Use `scp` and the command
@@ -246,8 +246,8 @@ server.
 ### 3. Bring the new server up around it
 
 ```bash
-git clone https://github.com/mahedi-emon/RawSyst-POS.git /opt/rawsyst
-cd /opt/rawsyst
+git clone https://github.com/mahedi-emon/Biz1core.git /opt/biz1core
+cd /opt/biz1core
 vi .env && chmod 600 .env       # from your password manager
 
 C="docker compose -f docker-compose.yml -f docker-compose.server.yml"
@@ -309,7 +309,7 @@ on the server.
 C="docker compose -f docker-compose.yml -f docker-compose.server.yml --profile backup"
 
 # Which one? The restore's report names it; so does the database list.
-docker compose … exec db psql -U postgres -c '\l' | grep rawsyst
+docker compose … exec db psql -U postgres -c '\l' | grep biz1core
 
 $C run --rm backup rollback -from rawsyst_pre_restore_20260910t150521
 docker compose -f docker-compose.yml -f docker-compose.server.yml restart api worker
@@ -334,11 +334,11 @@ Take, upload, download to files, check those files against nothing but their own
 checksums, restore into a temporary database, compare every table, every
 business, every sequence and every policy, drop it. Production is never opened.
 
-It runs weekly on its own (`rawsyst-drill.timer`), and the report is in the
+It runs weekly on its own (`biz1core-drill.timer`), and the report is in the
 journal:
 
 ```bash
-journalctl -u rawsyst-drill -n 60
+journalctl -u biz1core-drill -n 60
 ```
 
 It reports the backup's size, how long each stage took, the total, the table

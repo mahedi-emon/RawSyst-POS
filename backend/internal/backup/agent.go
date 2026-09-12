@@ -33,8 +33,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/maintenance"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/maintenance"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Agent runs queued backup work.
@@ -161,7 +161,7 @@ func (a *Agent) worker() string {
 }
 
 // Step claims and runs at most one task. Exported so a test can drive it
-// without a loop, and so `rawsyst backup agent -once` can drain one.
+// without a loop, and so `biz1core backup agent -once` can drain one.
 func (a *Agent) Step(ctx context.Context) (bool, error) {
 	task, found, err := a.Tasks.Claim(ctx, a.worker())
 	if err != nil || !found {

@@ -34,9 +34,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/blob"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/blob"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 type fakeStore struct {
@@ -64,7 +64,7 @@ func newFakeStore(t *testing.T) *fakeStore {
 	f := &fakeStore{
 		objects: map[string][]byte{},
 		written: map[string]time.Time{},
-		bucket:  "rawsyst-test",
+		bucket:  "biz1core-test",
 	}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)

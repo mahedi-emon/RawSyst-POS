@@ -1,0 +1,73 @@
+/* ==========================================================================
+   Biz1core brand tokens.
+
+   Two colours, used by the logo and by nothing else.
+
+   This repository holds two design systems -- the till and the shared screens
+   run on a navy-and-blue palette (`design-system.css`), the Next.js back
+   office on a green-and-brass one (`web-next/src/styles/globals.css`). A logo
+   has to sit correctly on both, and on a printed invoice, and in a 16px
+   browser tab. So the word itself takes `currentColor` and only the two
+   accents are fixed here.
+
+   These are deliberately NOT part of either design system's semantic scale.
+   Nothing but the mark may reach for them: an accent that starts appearing on
+   buttons stops being a brand accent and becomes a third primary colour.
+
+   --biz1core-accent      the "1" in the wordmark
+   --biz1core-mark-bar    the three figures
+   --biz1core-mark-curve  the curve above them
+
+   The dark values are lighter, not darker. #1f6fe0 on white is a clear blue
+   and on the dark navigation rail it is nearly invisible, so the rail and the
+   dark theme get a step that carries against them instead.
+   ========================================================================== */
+
+:root {
+  --biz1core-accent: #1f6fe0;
+  --biz1core-mark-bar: #12876a;
+  --biz1core-mark-curve: #1f6fe0;
+}
+
+/* The till and the shared screens branch on `data-theme`; the Next.js back
+   office on a `.dark` class. Both are listed, because the logo is one
+   component rendered inside both. */
+:root[data-theme='dark'],
+.dark {
+  --biz1core-accent: #7db0ff;
+  --biz1core-mark-bar: #3fcfa9;
+  --biz1core-mark-curve: #7db0ff;
+}
+
+/* A surface that is dark whatever the page theme is. The navigation rail is
+   the case: it is the darkest surface in the product in BOTH themes, so the
+   light theme's accents have to be overridden on it specifically rather than
+   inherited. Set by `onDark` on the component. */
+[data-biz1core-logo][data-on-dark='true'],
+[data-biz1core-mark][data-on-dark='true'] {
+  --biz1core-accent: #7db0ff;
+  --biz1core-mark-bar: #3fcfa9;
+  --biz1core-mark-curve: #7db0ff;
+}
+
+/* Print. A logo printed in colour on a mono laser turns both accents into the
+   same indistinct grey, so on paper the mark goes solid black and the word
+   with it -- which is what a letterhead wants anyway. */
+@media print {
+  :root {
+    --biz1core-accent: #000000;
+    --biz1core-mark-bar: #000000;
+    --biz1core-mark-curve: #000000;
+  }
+}
+
+/* Somebody who has asked for fewer colours gets the monochrome mark. The
+   accents are the only decorative colour in the logo; the word is unaffected
+   because it was never coloured. */
+@media (forced-colors: active) {
+  :root {
+    --biz1core-accent: currentColor;
+    --biz1core-mark-bar: currentColor;
+    --biz1core-mark-curve: currentColor;
+  }
+}

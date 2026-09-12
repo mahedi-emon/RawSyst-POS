@@ -1,4 +1,4 @@
-// Command worker runs RawSyst POS background jobs.
+// Command worker runs Biz1core POS background jobs.
 //
 // A separate binary from the API, deliberately. The API answers a cashier
 // waiting at a till and must stay responsive; the worker does slow, retrying
@@ -16,19 +16,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/logging"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
+	"github.com/mahedi-emon/Biz1core/backend/internal/aftersales"
+	"github.com/mahedi-emon/Biz1core/backend/internal/build"
+	"github.com/mahedi-emon/Biz1core/backend/internal/integration"
+	"github.com/mahedi-emon/Biz1core/backend/internal/jobs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/notify"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/logging"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/Biz1core/backend/internal/registry"
+	"github.com/mahedi-emon/Biz1core/backend/internal/reports"
+	"github.com/mahedi-emon/Biz1core/backend/internal/wallet"
+	"github.com/mahedi-emon/Biz1core/backend/internal/zatca"
 )
 
 func Main() {

@@ -1,4 +1,4 @@
-# RawSyst POS — the operating guide
+# Biz1core POS — the operating guide
 
 Who does what, at which address, and in what order.
 
@@ -12,7 +12,7 @@ that separation is enforced by the server rather than by hidden buttons.
 
 ## 1. The two addresses
 
-RawSyst is one deployment serving two audiences from two hostnames.
+Biz1core is one deployment serving two audiences from two hostnames.
 
 | | Who signs in | What they get |
 |---|---|---|

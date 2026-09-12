@@ -13,9 +13,9 @@
 // service is the security boundary, not this app, and every route it exposes is
 // authenticated and permission-gated server-side.
 
-import { AuthProvider } from '@rawsyst/shared/auth/session';
-import { LocaleProvider } from '@rawsyst/shared/i18n/locale';
-import { CardTableLabels } from '@rawsyst/shared/ui/CardTableLabels';
+import { AuthProvider } from '@biz1core/shared/auth/session';
+import { LocaleProvider } from '@biz1core/shared/i18n/locale';
+import { CardTableLabels } from '@biz1core/shared/ui/CardTableLabels';
 
 import { BackOffice } from './BackOffice';
 import { ServiceWorker } from './ServiceWorker';

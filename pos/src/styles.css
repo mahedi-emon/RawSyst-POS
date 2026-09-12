@@ -13,7 +13,7 @@
  * would expect: the till was dark and green while the back office was light and
  * blue, on the same product, for the same shop, on the same afternoon.
  *
- * Every token below now comes from `@rawsyst/shared/design-system.css`, and by
+ * Every token below now comes from `@biz1core/shared/design-system.css`, and by
  * its real name. There was an intermediate step where the system carried
  * `--ink`, `--line`, `--accent`, `--radius` and `--tap` as aliases so this file
  * could migrate a screen at a time; that migration is finished and the aliases
@@ -70,19 +70,10 @@ body {
   font-size: 1rem;
 }
 
-/* The same mark the back office wears, so the two halves of one product are
- * recognisably one product. */
-.app__mark {
-  inline-size: 26px;
-  block-size: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--brand);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.82rem;
-}
+/* `.app__mark` used to be here: a 26px rounded square holding the letter of
+ * the product's previous name. The mark is now the Biz1core logo, drawn by
+ * `shared/brand/Logo.tsx`, and the till and the back office wear the same one
+ * -- which is what this rule was trying to achieve with a letter in a box. */
 
 .app__spacer { flex: 1; }
 
@@ -736,7 +727,7 @@ body {
 /* --- Setting this machine up as a till -----------------------------------
  *
  * The first screen on a new terminal, and possibly the first anybody sees of
- * RawSyst. It says one thing, asks for one thing, and uses none of the words a
+ * Biz1core. It says one thing, asks for one thing, and uses none of the words a
  * shop owner has no reason to know.
  *
  * Shares the login card's proportions on purpose: the two are the same moment

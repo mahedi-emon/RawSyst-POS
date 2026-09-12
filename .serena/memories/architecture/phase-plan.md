@@ -1,4 +1,4 @@
-# RawSyst POS — Phase Plan & Build Order
+# Biz1core POS — Phase Plan & Build Order
 
 Approved 2026-08-14. Full design written up front; **build proceeds in phases**. Solo developer.
 

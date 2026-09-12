@@ -8,8 +8,8 @@ import {
   type StationeryStore,
 } from './stationery';
 import type { CachedStationery } from './sqlite';
-import { buildReceipt, renderReceipt, wrap } from '@rawsyst/shared/pos/receipt';
-import type { CartLine, CartTender, CartTotals } from '@rawsyst/shared/pos/cart';
+import { buildReceipt, renderReceipt, wrap } from '@biz1core/shared/pos/receipt';
+import type { CartLine, CartTender, CartTotals } from '@biz1core/shared/pos/cart';
 
 /** A terminal's local store, in memory. */
 class MemoryStore implements StationeryStore {
@@ -52,7 +52,7 @@ function stubClient(answer: unknown) {
 }
 
 describe('the till holding the shop stationery', () => {
-  it('starts with nothing and reads the RawSyst default', async () => {
+  it('starts with nothing and reads the Biz1core default', async () => {
     // A terminal that has never been online. Not an error: it prints on the
     // default, which is what it should do.
     const store = new MemoryStore();
@@ -238,7 +238,7 @@ describe('printing it on 42 columns', () => {
     );
   }
 
-  it('heads the receipt with the shop, not with RawSyst', () => {
+  it('heads the receipt with the shop, not with Biz1core', () => {
     const out = print(
       receiptStationery({
         storeName: 'Olaya Trading',
@@ -276,9 +276,9 @@ describe('printing it on 42 columns', () => {
     expect(out).toContain('This is not a tax invoice.');
   });
 
-  it('prints the RawSyst default on a till that has never been online', () => {
+  it('prints the Biz1core default on a till that has never been online', () => {
     const out = print(receiptStationery(null));
-    expect(out).toContain('RAWSYST');
+    expect(out).toContain('BIZ1CORE');
     expect(out).toContain('Thank you');
     // No VAT REGISTRATION line invented for a shop the till knows nothing
     // about. The totals block is labelled "VAT" too, so this looks for the

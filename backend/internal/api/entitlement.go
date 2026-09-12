@@ -28,9 +28,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // requireFeature refuses a request whose tenant's plan excludes the module.
@@ -55,7 +55,7 @@ func (s *Server) requireFeature(feature string) func(http.Handler) http.Handler 
 			if !allowed {
 				httpx.Error(w, r, errs.Newf(errs.CodeFeatureNotInPlan,
 					"Your plan does not include %s. An owner can change the "+
-						"subscription, or ask RawSyst to enable it.",
+						"subscription, or ask Biz1core to enable it.",
 					featureLabel(feature)))
 				return
 			}

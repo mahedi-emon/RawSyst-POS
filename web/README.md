@@ -51,7 +51,7 @@ web/      this app: shell only
 
 ```
 npm install            # at the repo root; workspaces link the three together
-npm run dev -w @rawsyst/web
+npm run dev -w @biz1core/web
 ```
 
 `NEXT_PUBLIC_API_BASE_URL` points at the Go service, defaulting to

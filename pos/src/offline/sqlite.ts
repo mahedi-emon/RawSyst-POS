@@ -18,7 +18,7 @@ import type {
   QueuedSale,
   SettledState,
 } from './queue';
-import type { HeldCart, HeldCartStore } from '@rawsyst/shared/pos/held';
+import type { HeldCart, HeldCartStore } from '@biz1core/shared/pos/held';
 import type {
   CachedVariant,
   CatalogueCursor,
@@ -278,7 +278,7 @@ export const MIGRATIONS: readonly string[] = [
 ];
 
 export async function openLocalStore(): Promise<LocalStores> {
-  const db = await Database.load('sqlite:rawsyst-pos.db');
+  const db = await Database.load('sqlite:biz1core-pos.db');
   for (const statement of SCHEMA) {
     const sql = statement.trim();
     if (sql) await db.execute(sql);
@@ -331,7 +331,7 @@ export class SqliteStationeryStore {
     );
     const row = rows[0];
     // Never fetched. Not an error: a till that has never been online prints on
-    // the RawSyst default, which is what it should do.
+    // the Biz1core default, which is what it should do.
     if (!row || !row.fetched_at) return null;
 
     return {

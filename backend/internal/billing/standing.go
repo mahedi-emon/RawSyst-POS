@@ -183,11 +183,11 @@ func (s Standing) Warns() string {
 func (s Standing) Blocks() string {
 	switch s.State {
 	case StandingDeactivated:
-		return "This business has been switched off. Contact RawSyst."
+		return "This business has been switched off. Contact Biz1core."
 	case StandingSuspended:
 		return "This business is suspended, so it cannot be changed. You can " +
 			"still read your records and export them. Settle the account or " +
-			"contact RawSyst to lift it."
+			"contact Biz1core to lift it."
 	case StandingCancelled:
 		return "This subscription has been cancelled, so the business cannot " +
 			"be changed. You can still read your records and export them."

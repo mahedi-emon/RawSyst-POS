@@ -11,8 +11,8 @@
 // LocaleProvider is shared, because a customer reads Arabic or Bangla for
 // exactly the same reasons a cashier does.
 
-import { LocaleProvider, useT } from '@rawsyst/shared/i18n/locale';
-import { PortalApp } from '@rawsyst/shared/portals/PortalApp';
+import { LocaleProvider, useT } from '@biz1core/shared/i18n/locale';
+import { PortalApp } from '@biz1core/shared/portals/PortalApp';
 import { useSearchParams } from 'next/navigation';
 
 export function PortalPage() {

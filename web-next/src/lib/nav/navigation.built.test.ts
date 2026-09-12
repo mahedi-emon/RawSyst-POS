@@ -154,6 +154,10 @@ describe('the sidebar offers only what exists', () => {
       // with none cannot render for somebody holding nothing.
       '/settings/security', // the user menu
       '/notifications', // the user menu
+      // Who built the product. In the user menu for the same reason as the two
+      // above -- there is no permission that opens it -- and in BOTH
+      // workspaces, since an operator has no tenant and this page needs none.
+      '/about',
       '/search', // the search box in the header
       '/products/[productId]', // a row on /products
       // Both buttons on /products used to be dead. `POST /catalog/products`

@@ -1,6 +1,6 @@
 [Unit]
-Description=RawSyst physical base backup, weekly
-Documentation=file:/opt/rawsyst/deploy/server/PITR.md
+Description=Biz1core physical base backup, weekly
+Documentation=file:/opt/biz1core/deploy/server/PITR.md
 
 [Timer]
 # Sunday at 02:00, ninety minutes before the nightly dump so the two never

@@ -1,4 +1,4 @@
-# Moving RawSyst to another server
+# Moving Biz1core to another server
 
 The whole of the business lives in one Postgres database, and this is how it
 gets from one machine to another without losing any of it.
@@ -52,7 +52,7 @@ database, not the length of this document.
 ## 1. Take and verify a backup, on the old server
 
 ```bash
-cd /opt/rawsyst
+cd /opt/biz1core
 C="docker compose -f docker-compose.yml -f docker-compose.server.yml --profile backup"
 $C run --rm backup run
 $C run --rm backup verify
@@ -72,9 +72,9 @@ Follow `RUNBOOK.md` steps 1 to 4: updates, swap, journal cap, firewall, SSH,
 Docker, `daemon.json`. Then:
 
 ```bash
-sudo mkdir -p /opt/rawsyst && sudo chown "$USER" /opt/rawsyst
-git clone https://github.com/mahedi-emon/RawSyst-POS.git /opt/rawsyst
-cd /opt/rawsyst
+sudo mkdir -p /opt/biz1core && sudo chown "$USER" /opt/biz1core
+git clone https://github.com/mahedi-emon/Biz1core.git /opt/biz1core
+cd /opt/biz1core
 git checkout <the commit the old server is running>
 ```
 
@@ -150,7 +150,7 @@ In `.env`, set the database name to `rawsyst_restored` — or rename:
 docker compose -f docker-compose.yml -f docker-compose.server.yml stop api worker web
 docker compose -f docker-compose.yml -f docker-compose.server.yml exec db psql -U rawsyst -d postgres \
   -c 'ALTER DATABASE rawsyst RENAME TO rawsyst_empty' \
-  -c 'ALTER DATABASE rawsyst_restored RENAME TO rawsyst'
+  -c 'ALTER DATABASE rawsyst_restored RENAME TO biz1core'
 ```
 
 `rawsyst_empty` is kept, not dropped. It costs nothing and it is the thing to
@@ -185,7 +185,7 @@ Nothing has switched yet. The new server is answering on its own address.
 curl -s http://localhost:8080/readyz
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/
 docker compose -f docker-compose.yml -f docker-compose.server.yml ps
-bash deploy/server/rawsyst-check.sh
+bash deploy/server/biz1core-check.sh
 ```
 
 Then, in a browser against the new server's address, by hand:
@@ -224,7 +224,7 @@ made after the final backup is **not to accept them**.
 **Platform Admin → Backup & Recovery → Overview → Write freeze.** Type what
 people should be told, and close writes:
 
-> RawSyst is closed for about ten minutes while its data is moved.
+> Biz1core is closed for about ten minutes while its data is moved.
 
 Every business route that writes answers 503 with that sentence. **Reads stay
 open** — a cashier looking at yesterday's totals writes nothing and loses
@@ -309,7 +309,7 @@ $C run --rm backup restore -snapshot <FINAL ID> \
   -into 'postgres://rawsyst:'"$POSTGRES_PASSWORD"'@db:5432/rawsyst_final?sslmode=disable'
 
 docker compose -f docker-compose.yml -f docker-compose.server.yml exec db psql -U rawsyst -d postgres \
-  -c 'ALTER DATABASE rawsyst_final RENAME TO rawsyst'
+  -c 'ALTER DATABASE rawsyst_final RENAME TO biz1core'
 
 docker compose -f docker-compose.yml -f docker-compose.server.yml run --rm migrate
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
@@ -329,7 +329,7 @@ some customers reaching a server in maintenance mode.
 Then point the record at the new address and watch:
 
 ```bash
-watch -n5 'curl -s -o /dev/null -w "%{http_code}\n" https://rawsyst.example.com/'
+watch -n5 'curl -s -o /dev/null -w "%{http_code}\n" https://biz1core.example.com/'
 ```
 
 Certificates: if a reverse proxy is issuing them, it needs the DNS to have moved
@@ -369,7 +369,7 @@ Not before all of these:
 - [ ] backups on the new server have run and **verified** for seven consecutive nights
 - [ ] a restore from a new-server backup has been tested onto a scratch machine
 - [ ] the old server's final snapshot is still in the object store and still verifies
-- [ ] `rawsyst-check.sh` has been clean on the new server for a week
+- [ ] `biz1core-check.sh` has been clean on the new server for a week
 
 Then take one last backup of the old server, verify it, keep it outside the
 retention policy, and only then destroy the machine.
@@ -401,7 +401,7 @@ Nothing here touches production. All of it can be done a week ahead.
 
 - [ ] Backups have run **and verified** for seven consecutive nights
 - [ ] `backup health` on the old server is GREEN
-- [ ] The weekly drill has passed at least once: `journalctl -u rawsyst-drill`
+- [ ] The weekly drill has passed at least once: `journalctl -u biz1core-drill`
 - [ ] I have `.env` from the password manager, and it is complete
 - [ ] I have `RAWSYST_DATA_ENCRYPTION_KEYS`
 - [ ] I have the backup encryption key, if backups are sealed, and I have
@@ -440,8 +440,8 @@ the whole reason the order is this way round.
 - [ ] The full [What to check](RECOVERY.md#what-to-check) list, on the new server
 - [ ] A fresh backup on the new server, verified
 - [ ] `backup health` on the new server is GREEN
-- [ ] `rawsyst-backup.timer` and `rawsyst-drill.timer` are enabled and listed
-- [ ] The hourly check is clean: `journalctl -u rawsyst-check`
+- [ ] `biz1core-backup.timer` and `biz1core-drill.timer` are enabled and listed
+- [ ] The hourly check is clean: `journalctl -u biz1core-check`
 - [ ] The final snapshot is in the object store, and on a laptop
 - [ ] The old server is off, intact, and will stay that way
 - [ ] Written down: both snapshot ids, both server addresses, the times, and

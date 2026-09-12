@@ -21,12 +21,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { Offline } from '@rawsyst/shared/api/client';
-import { useAuth } from '@rawsyst/shared/auth/session';
-import { listCustomers } from '@rawsyst/shared/api/receivables';
+import { Offline } from '@biz1core/shared/api/client';
+import { useAuth } from '@biz1core/shared/auth/session';
+import { listCustomers } from '@biz1core/shared/api/receivables';
 import type { Customers } from '../offline/customers';
 import { fromCache, type CounterCustomer } from './customer';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { useT } from '@biz1core/shared/i18n/locale';
 
 export function CustomerPicker({
   customers,

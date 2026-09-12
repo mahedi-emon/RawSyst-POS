@@ -10,7 +10,7 @@
 //
 // So this is a web app, and the SCREENS are shared rather than rewritten. The
 // dashboard, the drill-throughs and the buying module all live in
-// @rawsyst/shared and are imported by both. Nothing in this directory contains
+// @biz1core/shared and are imported by both. Nothing in this directory contains
 // business logic, and nothing in it may.
 //
 // # Direction and language are set on the document
@@ -21,12 +21,12 @@
 
 import type { Metadata, Viewport } from 'next';
 
-import '@rawsyst/shared/design-system.css';
-import '@rawsyst/shared/dashboard/dashboard.css';
+import '@biz1core/shared/design-system.css';
+import '@biz1core/shared/dashboard/dashboard.css';
 import './back-office.css';
 
 export const metadata: Metadata = {
-  title: 'RawSyst',
+  title: 'Biz1core',
   description: 'Retail operations',
 };
 

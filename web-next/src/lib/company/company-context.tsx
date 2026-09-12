@@ -4,7 +4,7 @@
 //
 // # Why this exists at all
 //
-// A RawSyst business is `Group -> Company -> Store -> Terminal`. One owner can
+// A Biz1core business is `Group -> Company -> Store -> Terminal`. One owner can
 // hold several legal companies, and each keeps SEPARATE books, a separate tax
 // registration and its own invoice sequence. So "revenue this month" is not a
 // question the product can answer until it knows which company is being asked
@@ -20,7 +20,7 @@
 // Each company has its own `base_currency`, so switching company switches the
 // currency every amount is shown in. Nothing in this product formats money
 // without asking this context first; a hardcoded currency symbol would be wrong
-// in two of the three markets RawSyst sells into.
+// in two of the three markets Biz1core sells into.
 
 import {
   createContext,
@@ -35,7 +35,7 @@ import {
 import { useCompanies, type CompanyRecord } from '../api/hooks';
 import { marketOf, type MarketCode } from '../format/money';
 
-const STORAGE_KEY = 'rawsyst.company';
+const STORAGE_KEY = 'biz1core.company';
 
 interface CompanyValue {
   /** Null while the list is loading, or if this person can reach none. */

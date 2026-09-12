@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 
+import { ErrorBrand } from '@/components/shell/product-brand';
 import { useT } from '@/lib/i18n/locale';
 
 // A URL that is not a screen.
@@ -19,6 +20,9 @@ export default function NotFound() {
   return (
     <main className="grid min-h-dvh place-items-center bg-ground px-4">
       <div className="max-w-md text-center">
+        {/* Same reason as the error boundary: an address that is not a screen
+            should still be recognisably this product. */}
+        <ErrorBrand className="mb-6" />
         <p className="text-label font-semibold text-muted">
           {t('nx.notfound.eyebrow')}
         </p>

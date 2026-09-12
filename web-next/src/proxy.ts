@@ -2,7 +2,7 @@
 //
 // # What this is for
 //
-// RawSyst has two completely different audiences. A shop uses the business
+// Biz1core has two completely different audiences. A shop uses the business
 // application; the software owner uses the platform control plane. They are one
 // Next application today, and this is what makes them two ORIGINS without
 // making them two builds.

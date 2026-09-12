@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/crypto/argon2"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Password hashing uses argon2id.
@@ -150,10 +150,17 @@ func ValidatePasswordStrength(plain string) error {
 // commonPasswords is a starter deny-list. In production this is backed by a
 // breach-corpus check; the point of keeping a small inline list is that the
 // obvious cases are refused even if that service is unavailable.
+// The product's own name is on the list because a person choosing a password
+// for a product types the product. Both spellings and the previous name are
+// all refused: the previous one is still what somebody who set the account up
+// years ago would reach for, so dropping it at the rename would have quietly
+// re-allowed a password this list already refused.
 var commonPasswords = map[string]struct{}{
 	"password": {}, "password123": {}, "123456789012": {},
 	"qwertyuiop": {}, "administrator": {}, "letmein12345": {},
-	"welcome12345": {}, "changeme1234": {}, "rawsystpos": {},
+	"welcome12345": {}, "changeme1234": {},
+	"biz1core": {}, "biz1corepos": {}, "biz1core123": {},
+	"rawsystpos": {}, "rawsyst123": {},
 }
 
 func isCommonPassword(p string) bool {

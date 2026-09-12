@@ -14,6 +14,7 @@
 import { useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { ErrorBrand } from '@/components/shell/product-brand';
 import { useT } from '@/lib/i18n/locale';
 
 export default function AppError({
@@ -29,12 +30,15 @@ export default function AppError({
     // Kept in the console so a developer or a support engineer looking over
     // somebody's shoulder can see what happened. Deliberately not translated:
     // a console line is for whoever reads stack traces, not for the shop.
-    console.error('RawSyst screen failed to render', error);
+    console.error('Biz1core screen failed to render', error);
   }, [error]);
 
   return (
     <main className="grid min-h-dvh place-items-center bg-ground px-4">
       <div className="max-w-md text-center">
+        {/* The mark, so a screen that has failed to render still looks like
+            part of the product rather than like the browser broke. */}
+        <ErrorBrand className="mb-6" />
         <h1 className="text-page font-semibold text-fg">{t('nx.apperr.title')}</h1>
         <p className="mt-2 text-body text-muted">{t('nx.apperr.body')}</p>
         <div className="mt-5 flex items-center justify-center gap-2">

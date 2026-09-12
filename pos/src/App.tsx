@@ -16,19 +16,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { LoginScreen } from '@rawsyst/shared/auth/LoginScreen';
-import { LanguageSwitch } from '@rawsyst/shared/i18n/LanguageSwitch';
-import { ThemeSwitch } from '@rawsyst/shared/ui/ThemeSwitch';
-import { useT } from '@rawsyst/shared/i18n/locale';
-import { useAuth } from '@rawsyst/shared/auth/session';
-import { listCompanies, type Company } from '@rawsyst/shared/api/companies';
-import { Dashboard, type DrillTarget } from '@rawsyst/shared/dashboard/Dashboard';
-import { SalesDetailScreen } from '@rawsyst/shared/dashboard/SalesDetailScreen';
-import { ExpensesDetailScreen } from '@rawsyst/shared/dashboard/ExpensesDetailScreen';
-import { ComplianceScreen } from '@rawsyst/shared/dashboard/ComplianceScreen';
-import { StockScreen } from '@rawsyst/shared/dashboard/StockScreen';
-import { InvoiceDetailScreen } from '@rawsyst/shared/invoices/InvoiceDetailScreen';
-import { PurchasingScreen } from '@rawsyst/shared/purchasing/PurchasingScreen';
+import { Biz1coreLogo } from '@biz1core/shared/brand/Logo';
+import { LoginScreen } from '@biz1core/shared/auth/LoginScreen';
+import { LanguageSwitch } from '@biz1core/shared/i18n/LanguageSwitch';
+import { ThemeSwitch } from '@biz1core/shared/ui/ThemeSwitch';
+import { useT } from '@biz1core/shared/i18n/locale';
+import { useAuth } from '@biz1core/shared/auth/session';
+import { listCompanies, type Company } from '@biz1core/shared/api/companies';
+import { Dashboard, type DrillTarget } from '@biz1core/shared/dashboard/Dashboard';
+import { SalesDetailScreen } from '@biz1core/shared/dashboard/SalesDetailScreen';
+import { ExpensesDetailScreen } from '@biz1core/shared/dashboard/ExpensesDetailScreen';
+import { ComplianceScreen } from '@biz1core/shared/dashboard/ComplianceScreen';
+import { StockScreen } from '@biz1core/shared/dashboard/StockScreen';
+import { InvoiceDetailScreen } from '@biz1core/shared/invoices/InvoiceDetailScreen';
+import { PurchasingScreen } from '@biz1core/shared/purchasing/PurchasingScreen';
 import { PosCounter } from './pos/PosCounter';
 import { ReturnsScreen } from './pos/ReturnsScreen';
 import { ShiftScreen } from './pos/ShiftScreen';
@@ -221,11 +222,12 @@ export function App({ apiBaseUrl }: { apiBaseUrl: string }) {
   return (
     <div className="app">
       <header className="app__bar">
+        {/* The logo, drawn rather than a letter in a box. The box held an
+            "R" -- the initial of the product's previous name -- which is the
+            kind of thing a rename leaves behind and nobody notices, because
+            it is one character. */}
         <span className="app__brand">
-          <span className="app__mark" aria-hidden="true">
-            R
-          </span>
-          RawSyst
+          <Biz1coreLogo size={22} onDark />
         </span>
 
         {/* Only rendered when there is a genuine choice. A single-destination

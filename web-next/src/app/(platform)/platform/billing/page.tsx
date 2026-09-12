@@ -4,7 +4,7 @@
 //
 // # This is the platform's ledger, never the client's
 //
-// A subscription invoice is RawSyst billing a shop for the software. It is not
+// A subscription invoice is Biz1core billing a shop for the software. It is not
 // the shop's own sales ledger, it does not touch their books, and it never
 // appears in their accounts. Two things called "invoice" in one product is a
 // real hazard, so this screen says whose invoice it is in its own heading and

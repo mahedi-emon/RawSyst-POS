@@ -92,7 +92,7 @@ func (o *ArchiveObserver) Run(ctx context.Context) {
 // Observe takes one reading and returns it, without writing anything.
 //
 // Exported because the command line wants the same numbers without a database
-// to cache them in — `rawsyst backup wal status` runs on a machine where the
+// to cache them in — `biz1core backup wal status` runs on a machine where the
 // agent may not be running at all, and on the day it matters may be running
 // beside a database that will not start.
 func (o *ArchiveObserver) Observe(ctx context.Context) (ArchiveStatus, error) {

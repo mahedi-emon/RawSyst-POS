@@ -240,7 +240,7 @@ export function EgsUnitForm({
               id="csr-serial"
               value={csr.egs_serial_number}
               onChange={set('egs_serial_number')}
-              placeholder="1-RawSyst|2-POS|3-000001"
+              placeholder="1-Biz1core|2-POS|3-000001"
               error={fields['csr.egs_serial_number']}
             />
           </Field>

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // A fixed-window limiter for enrolment guesses, keyed by caller.

@@ -36,7 +36,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // ExportQuery is what the screen was showing when the reader asked for it.
@@ -75,7 +75,7 @@ func FilenameFor(kind string, q ExportQuery) string {
 	if on.IsZero() {
 		on = time.Now().UTC()
 	}
-	return fmt.Sprintf("rawsyst-%s-%s.csv", kind, on.Format("2006-01-02"))
+	return fmt.Sprintf("biz1core-%s-%s.csv", kind, on.Format("2006-01-02"))
 }
 
 // ExportCSV writes one report to w.

@@ -1,4 +1,4 @@
-# RawSyst POS — the terminal
+# Biz1core POS — the terminal
 
 A Tauri shell around a React interface. The shell exists for the three things a
 browser cannot do and a till must: hold the CSID private key in the OS secure

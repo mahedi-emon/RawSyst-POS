@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
+	"github.com/mahedi-emon/Biz1core/backend/internal/jobs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/notify"
 )
 
 func batchIDOf(t *testing.T, h *harness, f *shopFixture, batchNo string) uuid.UUID {

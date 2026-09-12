@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 /// supported arrangement — each till is its own device with its own ZATCA chain
 /// (E1.3 RULE 5), and sharing a machine between two would give one chain two
 /// writers.
-const SERVICE: &str = "com.rawsyst.pos";
+const SERVICE: &str = "com.biz1core.pos";
 const ACCOUNT: &str = "terminal-device-secret";
 
 /// The header a paired terminal identifies itself with.

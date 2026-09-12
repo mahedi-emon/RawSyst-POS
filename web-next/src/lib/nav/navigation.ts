@@ -23,7 +23,7 @@
 // do not have permission" -- because the remedy is different: one is a call to
 // the owner, the other a call to sales.
 
-import type { Key } from '@rawsyst/shared/i18n/strings';
+import type { Key } from '@biz1core/shared/i18n/strings';
 
 import type { Permission } from '../auth/permissions';
 import type { Grants } from '../auth/permissions';

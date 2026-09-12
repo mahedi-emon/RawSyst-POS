@@ -209,7 +209,7 @@ role you already have permission to assign" is a subtler case and is untested.
 - Per-module isolation tests: catalogue, batches, dashboards, devices,
   commission, documents, FX, purchasing, drill-downs.
 - The backup role has `BYPASSRLS` and the application role explicitly must not;
-  `rawsyst backup role` refuses to continue if the application role has it.
+  `biz1core backup role` refuses to continue if the application role has it.
 
 The one caveat is structural rather than a finding: isolation depends on every
 query going through `TxAsTenant`. A future handler using `pool.Raw()` would
@@ -465,7 +465,7 @@ and disabled-user sessions surviving — all correctly refused and tested.
 
 ## 17. Final verdict
 
-**RawSyst is not complete against the stated business workflow.**
+**Biz1core is not complete against the stated business workflow.**
 
 What is complete and genuinely well built: multi-tenant isolation, role and
 permission enforcement, the accounting and invoice-chain pillars, the business

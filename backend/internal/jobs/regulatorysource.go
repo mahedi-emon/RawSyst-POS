@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
+	"github.com/mahedi-emon/Biz1core/backend/internal/registry"
 )
 
 // Checking whether the law has changed under a figure this product computes

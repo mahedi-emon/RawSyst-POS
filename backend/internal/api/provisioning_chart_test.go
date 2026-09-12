@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/Biz1core/backend/internal/provisioning"
 )
 
 // A newly created company must be able to trade on its first day.

@@ -50,7 +50,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // VerifyReport is what a verification found.
@@ -522,7 +522,7 @@ func fetch(
 	}
 	defer body.Close()
 
-	f, err := os.CreateTemp(opts.TempDir, "rawsyst-fetch-*.bin")
+	f, err := os.CreateTemp(opts.TempDir, "biz1core-fetch-*.bin")
 	if err != nil {
 		return "", 0, errs.Wrap(err, errs.CodeInternal,
 			"A temporary file for the download could not be created.")
@@ -580,7 +580,7 @@ func Unseal(opts Options, sealed string, m Manifest) (string, int64, error) {
 	}
 	defer in.Close()
 
-	out, err := os.CreateTemp(opts.TempDir, "rawsyst-plain-*.pgdump")
+	out, err := os.CreateTemp(opts.TempDir, "biz1core-plain-*.pgdump")
 	if err != nil {
 		return "", 0, errs.Wrap(err, errs.CodeInternal,
 			"A temporary file for the decrypted dump could not be created.")
@@ -619,7 +619,7 @@ func Unseal(opts Options, sealed string, m Manifest) (string, int64, error) {
 // Restore puts a snapshot into a database that already exists.
 //
 // Deliberately not "into production". The caller names the target, the target
-// has to be empty of RawSyst tables, and the guard below refuses one that is
+// has to be empty of Biz1core tables, and the guard below refuses one that is
 // not — because the one thing worse than no backup is a restore that half
 // overwrites a working database.
 //
@@ -760,7 +760,7 @@ func createDatabase(ctx context.Context, adminDSN, name, owner string) error {
 // pointed at the database being restored into.
 //
 // Falls back to the administrative connection when no application DSN is
-// configured, which keeps a bare `rawsyst backup verify` working on a machine
+// configured, which keeps a bare `biz1core backup verify` working on a machine
 // where only the admin connection is set.
 func restoreDSN(opts Options, adminDSN, database string) string {
 	if strings.TrimSpace(opts.AppDSN) != "" {

@@ -17,8 +17,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
+	"github.com/mahedi-emon/Biz1core/backend/internal/registry"
+	"github.com/mahedi-emon/Biz1core/backend/internal/vat"
 )
 
 func (h *harness) vatService() *vat.Service {

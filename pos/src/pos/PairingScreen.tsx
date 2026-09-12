@@ -1,7 +1,7 @@
 // Setting this machine up as a till.
 //
 // The first thing anybody sees on a new terminal, and quite possibly the first
-// thing they see of RawSyst at all. So it explains itself in one sentence,
+// thing they see of Biz1core at all. So it explains itself in one sentence,
 // asks for one thing, and does not mention devices, credentials, enrolment or
 // any other word a shop owner has no reason to know.
 //
@@ -22,7 +22,7 @@
 // owner.
 
 import { useEffect, useState } from 'react';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { useT } from '@biz1core/shared/i18n/locale';
 
 import {
   available as keystoreAvailable,
@@ -119,7 +119,7 @@ export function PairingScreen({
   return (
     <main className="setup">
       <form className="setup__card" onSubmit={(e) => void submit(e)} noValidate>
-        <h1 className="setup__title">RawSyst</h1>
+        <h1 className="setup__title">Biz1core</h1>
         <p className="setup__lede">
           {t('pair.setUpLede', { section: t('dev.terminals') })}
         </p>

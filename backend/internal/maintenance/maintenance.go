@@ -43,8 +43,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // State is what the product is currently accepting.
@@ -162,7 +162,7 @@ func (s *Service) Begin(
 		return State{}, errs.New(errs.CodeUnavailable, "No database connection.")
 	}
 	if reason == "" {
-		reason = "RawSyst is briefly closed for maintenance."
+		reason = "Biz1core is briefly closed for maintenance."
 	}
 	err := s.pool.TxAsPlatform(ctx, func(tx pgx.Tx) error {
 		_, e := tx.Exec(ctx, `
@@ -212,7 +212,7 @@ func (s *Service) invalidate() {
 func Refused(st State) error {
 	reason := st.Reason
 	if reason == "" {
-		reason = "RawSyst is briefly closed while its data is moved."
+		reason = "Biz1core is briefly closed while its data is moved."
 	}
 	return errs.New(errs.CodeUnavailable, reason+
 		" Nothing you have already saved is affected. Anything entered now "+

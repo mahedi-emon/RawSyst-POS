@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/live"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/live"
 )
 
 // The socket through the REAL stack: the route table, the authentication

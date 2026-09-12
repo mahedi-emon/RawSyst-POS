@@ -11,8 +11,8 @@
 # implementation of that is a second thing to get wrong in the one place where
 # being wrong is silent.
 #
-# So the same `/rawsyst` binary the backup agent runs is here too, and
-# `archive_command` is `/rawsyst backup wal archive %p %f`. It is about twenty
+# So the same `/biz1core` binary the backup agent runs is here too, and
+# `archive_command` is `/biz1core backup wal archive %p %f`. It is about twenty
 # megabytes on top of an image that was already being pulled.
 #
 # # Why the build stage is repeated from backend/Dockerfile
@@ -42,14 +42,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY backend/ ./
 
-ARG MODULE=github.com/mahedi-emon/rawsyst-pos/backend
+ARG MODULE=github.com/mahedi-emon/Biz1core/backend
 ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags="-s -w -X ${MODULE}/internal/build.Version=${VERSION}" \
-      -o /out/rawsyst ./cmd/rawsyst
+      -o /out/biz1core ./cmd/biz1core
 
 # --- run --------------------------------------------------------------------
 
@@ -59,13 +59,13 @@ FROM postgres:17-alpine
 # the user that executes it: `archive_command` runs as the database user, and a
 # binary that user could replace would be a way to turn a compromised database
 # into arbitrary code with the object store's credentials.
-COPY --from=build --chown=root:root --chmod=0755 /out/rawsyst /rawsyst
+COPY --from=build --chown=root:root --chmod=0755 /out/biz1core /biz1core
 
 # One line of pg_hba.conf, added on every start, because pg_basebackup needs a
 # `replication` entry that the image's own `host all all` line does not cover.
 # See the script for the whole argument.
 COPY --chown=root:root --chmod=0755 deploy/postgres/entrypoint.sh \
-     /usr/local/bin/rawsyst-postgres-entrypoint.sh
+     /usr/local/bin/biz1core-postgres-entrypoint.sh
 COPY --chown=root:root --chmod=0755 deploy/postgres/initdb/ \
      /docker-entrypoint-initdb.d/
 
@@ -74,5 +74,5 @@ COPY --chown=root:root --chmod=0755 deploy/postgres/initdb/ \
 # it is what preserves initdb, the POSTGRES_* variables, the ownership fixing
 # and the `gosu` drop to the postgres user, all of which this product has no
 # business reimplementing.
-ENTRYPOINT ["rawsyst-postgres-entrypoint.sh"]
+ENTRYPOINT ["biz1core-postgres-entrypoint.sh"]
 CMD ["postgres"]

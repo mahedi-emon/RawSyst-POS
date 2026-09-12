@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The markets this product serves, and what each keeps its books in.
@@ -275,7 +275,7 @@ func (s *Service) validateStep(ctx context.Context, step string, all json.RawMes
 			// Named rather than "invalid". An owner who picked a country this
 			// release does not serve needs to know which ones it does, and
 			// the honest answer is short.
-			e.WithField("country", "RawSyst serves "+offered(supportedCountries)+
+			e.WithField("country", "Biz1core serves "+offered(supportedCountries)+
 				" so far. Tax rules are applied from the regulatory register for "+
 				"the country you choose, and there are none on file for that one.")
 			bad = true
@@ -290,7 +290,7 @@ func (s *Service) validateStep(ctx context.Context, step string, all json.RawMes
 			// query did not answer would be the wizard failing closed on
 			// something the owner cannot fix.
 			e.WithField("country", "This account is set up for "+
-				supportedCountries[market]+". Ask your RawSyst contact to "+
+				supportedCountries[market]+". Ask your Biz1core contact to "+
 				"change the market if that is wrong — the tax rules every sale "+
 				"is calculated with follow it.")
 			bad = true
@@ -502,7 +502,7 @@ func (s *Service) CommitBusinessInfo(ctx context.Context) (uuid.UUID, error) {
 		}
 		if country := strings.ToLower(strings.TrimSpace(v.Country)); country != market {
 			return errs.Newf(errs.CodeInvalidInput,
-				"This account is set up for %s. Ask your RawSyst contact to "+
+				"This account is set up for %s. Ask your Biz1core contact to "+
 					"change the market if that is wrong — the tax rules every "+
 					"sale is calculated with follow it.",
 				supportedCountries[market])

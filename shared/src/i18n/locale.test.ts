@@ -48,10 +48,21 @@ const SAME_IN_BOTH = new Set<string>([
   'nx.plat.rsHash',
   // The product's own name, standing alone as the author of a support reply.
   // PROPER_NOUNS already strips it out of a sentence; a key whose WHOLE value
-  // is the brand is left identical in English and Bangla, which is the other
-  // arm of the same check. Arabic writes راوسيست, which is the scheme Mada
-  // follows -- a name that does have an Arabic form gets it.
-  'nx.sup.rawsyst',
+  // is the brand is left identical in all three languages, which is the other
+  // arm of the same check.
+  //
+  // The Arabic catalogue writes the wordmark in Latin rather than
+  // transliterating it, and that is a decision about THIS mark rather than a
+  // gap. Mada becomes مدى because مدى is the scheme's own Arabic name; the
+  // Biz1core wordmark contains a digit, has no Arabic form, and inventing one
+  // would print a name on a subscription invoice that the vendor does not use.
+  'nx.sup.biz1core',
+  // Two company names with no Arabic or Bangla form. A link labelled لينكدإن
+  // would be a transliteration of a wordmark that the site itself never uses,
+  // and somebody scanning the About page for the LinkedIn profile is looking
+  // for the word LinkedIn. Same in Bangla.
+  'nx.about.linkedin',
+  'nx.about.github',
 ]);
 
 /**
@@ -70,7 +81,7 @@ const SAME_IN_BOTH = new Set<string>([
  * word for the authority.
  */
 const PROPER_NOUNS =
-  /RawSyst|ZATCA|Fatoora|JPEG|JPG|PNG|SVG|YYYY|MM|DD|Wave|Manufacturer|Model|Serial|Acme|Textiles|ACME|Noor|NOOR|Trading|LLC/g;
+  /Biz1core|ZATCA|Fatoora|JPEG|JPG|PNG|SVG|YYYY|MM|DD|Wave|Manufacturer|Model|Serial|Acme|Textiles|ACME|Noor|NOOR|Trading|LLC/g;
 
 /**
  * Technical names that are written in Latin letters in every language.
@@ -151,11 +162,11 @@ describe('the string catalogue', () => {
     // interpolation placeholders like `{time}`, which are key names rather than
     // text anybody reads, and the product's own name. A brand is written as it
     // is written — Mada becomes مدى because that is its Arabic name, and
-    // RawSyst has none.
+    // Biz1core has none.
     const strip = (text: string) =>
       text
         .replace(/\{\w+\}/g, '')
-        .replace(/RawSyst/g, '')
+        .replace(/Biz1core/g, '')
         // See TECHNICAL_NAMES: a symbology, a protocol and a keyboard key are
         // written in Latin in Arabic too, and the alternative to stripping the
         // WORD is allow-listing the whole SENTENCE, which is where a real

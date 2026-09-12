@@ -1,6 +1,6 @@
 'use client';
 
-// What this business pays RawSyst, and what its plan lets it do.
+// What this business pays Biz1core, and what its plan lets it do.
 //
 // # Read-only, and that is the feature
 //

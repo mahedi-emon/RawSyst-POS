@@ -1,18 +1,18 @@
 // The backup command: take one, prove it restores, carry it somewhere else,
 // put it back, and remove the ones outside the retention policy.
 //
-//	rawsyst backup run
-//	rawsyst backup list
-//	rawsyst backup verify   [-snapshot ID]
-//	rawsyst backup download [-snapshot ID] [-to DIR]
-//	rawsyst backup check     -dump FILE [-manifest FILE]
-//	rawsyst backup verify-file -dump FILE [-manifest FILE]
-//	rawsyst backup restore  -snapshot ID -into DSN
-//	rawsyst backup restore-file -dump FILE -into DSN
-//	rawsyst backup prune    [-dry-run]
-//	rawsyst backup rehearse
-//	rawsyst backup agent    [-once]
-//	rawsyst backup health
+//	biz1core backup run
+//	biz1core backup list
+//	biz1core backup verify   [-snapshot ID]
+//	biz1core backup download [-snapshot ID] [-to DIR]
+//	biz1core backup check     -dump FILE [-manifest FILE]
+//	biz1core backup verify-file -dump FILE [-manifest FILE]
+//	biz1core backup restore  -snapshot ID -into DSN
+//	biz1core backup restore-file -dump FILE -into DSN
+//	biz1core backup prune    [-dry-run]
+//	biz1core backup rehearse
+//	biz1core backup agent    [-once]
+//	biz1core backup health
 //
 // # Why the nightly backup is a timer and not a loop
 //
@@ -50,12 +50,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/maintenance"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/blob"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/backup"
+	"github.com/mahedi-emon/Biz1core/backend/internal/build"
+	"github.com/mahedi-emon/Biz1core/backend/internal/maintenance"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/blob"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
 )
 
 // Main dispatches the backup subcommands.
@@ -287,7 +287,7 @@ func doRun(
 			"this dump; see deploy/server/BACKUP.md\n")
 	}
 	fmt.Printf("\nTaken, uploaded and marked complete. NOT yet verified — " +
-		"run `rawsyst backup verify` to find out whether it restores, which " +
+		"run `biz1core backup verify` to find out whether it restores, which " +
 		"is the only thing that makes it a backup.\n")
 	return nil
 }
@@ -561,7 +561,7 @@ func doRestoreFile(
 }
 
 func afterRestore() string {
-	return "Now run `rawsyst migrate` against it: the snapshot carries the " +
+	return "Now run `biz1core migrate` against it: the snapshot carries the " +
 		"schema it was taken at, and the migrator applies anything this build " +
 		"added since. Then check it before pointing anything at it — " +
 		"deploy/server/RECOVERY.md lists what to check.\n"
@@ -639,7 +639,7 @@ func doRehearse(
 	note("backup taken and uploaded", t, map[string]any{
 		"snapshot": res.SnapshotID, "bytes": res.Bytes})
 
-	dir, err := os.MkdirTemp(opts.TempDir, "rawsyst-rehearsal-*")
+	dir, err := os.MkdirTemp(opts.TempDir, "biz1core-rehearsal-*")
 	if err != nil {
 		return err
 	}
@@ -961,7 +961,7 @@ func databaseNameOf(dsn string) (string, error) {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage: rawsyst backup <action> [flags]
+	fmt.Fprint(os.Stderr, `usage: biz1core backup <action> [flags]
 
   run           take a backup: dump, upload, manifest, completion marker
   list          what is in the store, newest first
@@ -1003,7 +1003,7 @@ Environment:
                                  correctly-configured server cannot
   RAWSYST_S3_ENDPOINT/BUCKET     where snapshots go
   RAWSYST_S3_ACCESS_KEY_ID       and its secret
-  RAWSYST_BACKUP_PREFIX          namespace inside the bucket (rawsyst)
+  RAWSYST_BACKUP_PREFIX          namespace inside the bucket (biz1core)
   RAWSYST_BACKUP_ADMIN_DSN       a connection for creating the scratch
                                  database a verification restores into, and
                                  the one "role" creates the role with

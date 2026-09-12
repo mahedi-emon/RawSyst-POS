@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/branding"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // Document templates, blueprint I2 / P35.
@@ -90,7 +90,7 @@ func (s *Server) handleSaveTemplate(w http.ResponseWriter, r *http.Request) {
 
 // --- DELETE /api/v1/companies/{companyID}/templates/{docType} -----------
 
-// Resetting returns the type to the RawSyst default. Resetting one that was
+// Resetting returns the type to the Biz1core default. Resetting one that was
 // never customised succeeds: the client asked for the default and has it.
 func (s *Server) handleResetTemplate(w http.ResponseWriter, r *http.Request) {
 	scope, err := s.logoScope(r)

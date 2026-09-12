@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# What this machine looks like, before RawSyst is put on it.
+# What this machine looks like, before Biz1core is put on it.
 #
 #   sudo bash deploy/server/preflight.sh
 #
@@ -47,7 +47,7 @@ fix()   { printf '        \033[2m%s\033[0m\n' "$*"; }
 
 have()  { command -v "$1" >/dev/null 2>&1; }
 
-printf '\033[1mRawSyst server preflight\033[0m — %s\n' "$(date -u '+%Y-%m-%d %H:%M UTC')"
+printf '\033[1mBiz1core server preflight\033[0m — %s\n' "$(date -u '+%Y-%m-%d %H:%M UTC')"
 printf 'host %s · %s\n' "$(hostname)" "$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}")"
 
 # --- the machine ------------------------------------------------------------
@@ -88,13 +88,13 @@ if [ "$swap_mib" -ge 1024 ]; then
   swappiness=$(cat /proc/sys/vm/swappiness 2>/dev/null || echo "?")
   if [ "$swappiness" != "?" ] && [ "$swappiness" -gt 20 ]; then
     warn "vm.swappiness is $swappiness; 10 keeps the database in RAM and swap for emergencies"
-    fix "echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-rawsyst.conf && sudo sysctl --system"
+    fix "echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-biz1core.conf && sudo sysctl --system"
   fi
 else
   bad "no swap: a memory spike is answered by killing a container, usually the database"
   fix "sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile"
   fix "sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
-  fix "echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-rawsyst.conf && sudo sysctl --system"
+  fix "echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-biz1core.conf && sudo sysctl --system"
 fi
 
 # --- storage ----------------------------------------------------------------
@@ -219,7 +219,7 @@ if have ss; then
   done
 fi
 
-# RawSyst publishes 8080 and 3000 in the compose file. On a server they belong
+# Biz1core publishes 8080 and 3000 in the compose file. On a server they belong
 # behind a reverse proxy on 443, not on the open internet.
 if have ss && ss -tlnH 2>/dev/null | grep -qE '0\.0\.0\.0:(8080|3000)'; then
   warn "8080 or 3000 is published on all interfaces"

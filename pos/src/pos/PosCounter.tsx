@@ -22,12 +22,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { scan } from '../api/pos';
-import { handleCounterKey } from '@rawsyst/shared/pos/keys';
-import { Offline, RequestFailed } from '@rawsyst/shared/api/client';
-import { useAuth } from '@rawsyst/shared/auth/session';
-import { money, shortDate } from '@rawsyst/shared/ui/format';
-import { useLocale, useT } from '@rawsyst/shared/i18n/locale';
-import { currentShift, type ShiftSession } from '@rawsyst/shared/api/shift';
+import { handleCounterKey } from '@biz1core/shared/pos/keys';
+import { Offline, RequestFailed } from '@biz1core/shared/api/client';
+import { useAuth } from '@biz1core/shared/auth/session';
+import { money, shortDate } from '@biz1core/shared/ui/format';
+import { useLocale, useT } from '@biz1core/shared/i18n/locale';
+import { currentShift, type ShiftSession } from '@biz1core/shared/api/shift';
 import { openedAtTime } from './shift';
 import { useTerminal } from '../offline/useTerminal';
 import { describeVariant, type CachedVariant } from '../offline/catalogue';
@@ -39,9 +39,9 @@ import {
   totalCart,
   type CartLine,
   type CartTender,
-} from '@rawsyst/shared/pos/cart';
+} from '@biz1core/shared/pos/cart';
 import type { OfflineSalePayload } from '../offline/queue';
-import type { HeldCart } from '@rawsyst/shared/pos/held';
+import type { HeldCart } from '@biz1core/shared/pos/held';
 import { CustomerPicker } from './CustomerPicker';
 import {
   accountTender,
@@ -49,8 +49,8 @@ import {
   mayOfferAccount,
   type CounterCustomer,
 } from './customer';
-import { major, minor } from '@rawsyst/shared/receivables/receivables';
-import { buildReceipt, renderReceipt, type Receipt } from '@rawsyst/shared/pos/receipt';
+import { major, minor } from '@biz1core/shared/receivables/receivables';
+import { buildReceipt, renderReceipt, type Receipt } from '@biz1core/shared/pos/receipt';
 
 /** The VAT rate shown while ringing up.
  *
@@ -325,7 +325,7 @@ export function PosCounter() {
         buildReceipt({
           // The shop's own stationery (I2), held on the terminal so it prints
           // with no network. A till that has never been online falls back to
-          // the RawSyst default rather than to nothing.
+          // the Biz1core default rather than to nothing.
           //
           // Knowing the seller's name and VAT number does not make this a
           // simplified tax invoice — that waits on the P1 signing gate — and

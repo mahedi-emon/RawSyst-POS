@@ -45,7 +45,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 // on Windows — comes back as the unhelpful "Failed to create Microsoft Edge
 // process".
 const APP = resolve(
-  process.env.RS_POS_EXE ?? 'pos/src-tauri/target/release/rawsyst-pos.exe',
+  process.env.RS_POS_EXE ?? 'pos/src-tauri/target/release/biz1core-pos.exe',
 );
 const DRIVER_PORT = Number(process.env.RS_DRIVER_PORT ?? 4444);
 const NATIVE_DRIVER = process.env.RS_EDGEDRIVER ?? '';
@@ -728,8 +728,8 @@ async function theShopIsReadyToInvoice() {
       label: unit.label || 'till-1',
       store_id: unit.store_id ?? undefined,
       csr: {
-        common_name: 'TST-RawSyst-Till-1',
-        egs_serial_number: '1-RawSyst|2-POS|3-000000000001',
+        common_name: 'TST-Biz1core-Till-1',
+        egs_serial_number: '1-Biz1core|2-POS|3-000000000001',
         // Fifteen digits beginning and ending with 3, which is what the
         // validator checks. The 11th digit is 0, so this taxpayer is not a VAT
         // group and the organization unit may be a branch name — a 1 there would

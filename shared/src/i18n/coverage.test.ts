@@ -137,7 +137,24 @@ const BRANDS = new Set([
   // The product's own name, on the navigation rail's wordmark. A brand is
   // written as it is written; the Arabic catalogue check strips it for the
   // same reason.
-  'RawSyst',
+  'Biz1core',
+
+  // The rest of the brand, which lives in `brand/brand.ts` and is spelled once
+  // for the whole repository.
+  //
+  // A tagline is not a sentence to be translated -- it is the mark's own
+  // words, registered and printed as they are, the way "Just do it" is not
+  // rewritten per market. The founder's name and his title are a person's
+  // name and a person's title. Translating any of the four would put words on
+  // a logo that the brand does not use.
+  //
+  // What IS translated is every sentence ABOUT them: the About page's prose,
+  // its four link labels and the "Built by" line all read from the catalogue
+  // in all three languages. See the `nx.about.*` keys.
+  'One Solution for Complete Business Management.',
+  'Complete Business Management',
+  'Mahedi Hasan Emon',
+  'Founder, Owner & Lead Developer',
 ]);
 
 /**
@@ -264,7 +281,7 @@ function untranslatedIn(file: string, known: Set<string>): string[] {
     // `className` above, and exempted the same way.
     if (/\bicon:\s*$/.test(before)) continue;
 
-    // A developer log. `console.error('RawSyst screen failed to render', e)` is
+    // A developer log. `console.error('Biz1core screen failed to render', e)` is
     // read by whoever reads stack traces, never by a shop, and the brief is
     // explicit that developer-only logs are not translated.
     if (/console\.(error|warn|info|log|debug)\(\s*$/.test(before)) continue;

@@ -9,5 +9,5 @@ package build
 
 // Version is set at build time via -ldflags:
 //
-//	-X github.com/mahedi-emon/rawsyst-pos/backend/internal/build.Version=1.2.3
+//	-X github.com/mahedi-emon/Biz1core/backend/internal/build.Version=1.2.3
 var Version = "dev"

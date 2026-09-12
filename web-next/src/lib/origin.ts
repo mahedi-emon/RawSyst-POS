@@ -28,6 +28,17 @@ const SHARED_PREFIXES = [
   '/forgot-password',
   '/reset-password',
   '/change-password',
+  // Who built the product. Reachable from the account menu in both
+  // workspaces, so both origins have to serve it.
+  '/about',
+  // The brand's own files: the logo variants, and the icons the manifest
+  // names. `public/` is served from the application root and therefore passes
+  // through this rule, which is why `/favicon.ico` and
+  // `/manifest.webmanifest` are already listed below -- the icons the manifest
+  // POINTS AT were not, so an operator on the console hostname got a manifest
+  // whose every icon 404'd and an install prompt with no picture.
+  '/brand/',
+  '/icons/',
 ];
 
 /** Files a browser asks for by name rather than by route. */

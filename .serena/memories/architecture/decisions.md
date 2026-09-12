@@ -1,4 +1,4 @@
-# RawSyst POS — Binding Architecture Decisions
+# Biz1core POS — Binding Architecture Decisions
 
 Decided 2026-08-14, approved by the owner. These are settled; do not re-litigate without a stated reason.
 

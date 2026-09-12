@@ -6,7 +6,7 @@
 // about an account -- sessions, second factor, password -- lives on the account
 // screen, because a menu that holds fifteen things is a menu nobody reads.
 
-import { Bell, Check, Globe, LogOut, ShieldCheck, User } from 'lucide-react';
+import { Bell, Check, Globe, Info, LogOut, ShieldCheck, User } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
@@ -149,6 +149,26 @@ export function UserMenu() {
               )}
             </button>
           ))}
+
+          <div className="my-1 h-px bg-line" role="separator" />
+
+          {/* Who built the product. In the account menu rather than the
+              sidebar, because every item in the sidebar has to name a
+              permission that opens it and this one has none -- it is about the
+              product, not about the business. Shown in BOTH workspaces: an
+              operator has no tenant, and this page needs none. */}
+          <Link
+            href="/about"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-sm px-2.5',
+              'min-h-9 text-body hover:bg-surface-hover',
+            )}
+          >
+            <Info className="size-4" aria-hidden="true" />
+            {t('nx.about.menu')}
+          </Link>
 
           <div className="my-1 h-px bg-line" role="separator" />
 

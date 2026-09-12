@@ -21,7 +21,7 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@rawsyst/shared/*": [
+      "@biz1core/shared/*": [
         "../shared/src/*"
       ],
       "@/*": [

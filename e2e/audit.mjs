@@ -125,7 +125,7 @@ const probe = (tapMin) => {
   // product's own furniture.
   const LATIN = /[A-Za-z]{4,}/;
   const ALLOWED =
-    /^(RawSyst|SAR|BDT|USD|VAT|ZATCA|IBAN|QR|PDF|CSV|CSID|OTP|English|BR-KSA[-0-9]*|[A-Z]{2,5}-?\d*)$/;
+    /^(Biz1core|SAR|BDT|USD|VAT|ZATCA|IBAN|QR|PDF|CSV|CSID|OTP|English|BR-KSA[-0-9]*|[A-Z]{2,5}-?\d*)$/;
   for (const el of document.querySelectorAll(
     'button, a, h1, h2, h3, th, label > span, .ds-badge, .app__navlink',
   )) {

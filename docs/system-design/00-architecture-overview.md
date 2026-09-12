@@ -1,12 +1,12 @@
 # 00 — Architecture Overview
 
-**RawSyst POS** — Complete Retail ERP & POS for Saudi Arabia and international markets
-Built by RawSyst IT · Founder: Mahedi Hasan Emon · rawsyst.com
+**Biz1core POS** — Complete Retail ERP & POS for Saudi Arabia and international markets
+Built by Biz1core IT · Founder: Mahedi Hasan Emon · biz1core.com
 
 | | |
 |---|---|
 | **Status** | System Design — Phase 1 detailed, Phases 2–5 outlined |
-| **Source of truth for features** | `RawSyst-POS-Blueprint-v2.4-FINAL.md` (frozen) |
+| **Source of truth for features** | `Biz1core-Blueprint-v2.4-FINAL.md` (frozen) |
 | **This document** | Architecture anchor. Read first. |
 | **Last updated** | 2026-08-14 |
 

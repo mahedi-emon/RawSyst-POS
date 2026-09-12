@@ -1,4 +1,4 @@
-module github.com/mahedi-emon/rawsyst-pos/backend
+module github.com/mahedi-emon/Biz1core/backend
 
 go 1.26
 

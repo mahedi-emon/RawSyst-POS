@@ -95,7 +95,7 @@ export class ApiError extends Error {
 /** The API could not be reached at all, as distinct from refusing. */
 export class NetworkError extends Error {
   constructor(cause?: unknown) {
-    super('RawSyst cannot reach the server.');
+    super('Biz1core cannot reach the server.');
     this.name = 'NetworkError';
     this.cause = cause;
   }
@@ -135,7 +135,7 @@ export function messageFor(
   if (isNetworkError(e)) {
     return (
       translate?.('nx.err.networkPlain') ??
-      'RawSyst cannot reach the server. Check the connection and try again.'
+      'Biz1core cannot reach the server. Check the connection and try again.'
     );
   }
   return (

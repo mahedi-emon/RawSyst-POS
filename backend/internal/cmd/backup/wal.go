@@ -46,9 +46,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/backup"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Exit codes for the two commands PostgreSQL runs.
@@ -76,7 +76,7 @@ func runHook(args []string) (bool, error) {
 func doWALArchive(args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf(
-			"usage: rawsyst backup wal archive <path> <name>  " +
+			"usage: biz1core backup wal archive <path> <name>  " +
 				"(PostgreSQL supplies %%p and %%f)")
 	}
 	path, name := args[0], args[1]
@@ -91,7 +91,7 @@ func doWALArchive(args []string) error {
 		// message is this product's own sentence; nothing from the object
 		// store's URL reaches here, because `blob` never puts a signed URL in
 		// an error.
-		fmt.Fprintf(os.Stderr, "rawsyst wal archive: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "biz1core wal archive: %s\n", err.Error())
 		os.Exit(exitArchiveFailed)
 	}
 
@@ -107,14 +107,14 @@ func doWALArchive(args []string) error {
 func doWALRestore(args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf(
-			"usage: rawsyst backup wal restore <name> <path>  " +
+			"usage: biz1core backup wal restore <name> <path>  " +
 				"(PostgreSQL supplies %%f and %%p)")
 	}
 	name, path := args[0], args[1]
 
 	opts, err := backup.WALOptionsFromEnv()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "rawsyst wal restore: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "biz1core wal restore: %s\n", err.Error())
 		os.Exit(exitArchiveFailed)
 	}
 	if _, err := backup.FetchFile(context.Background(), opts, name, path); err != nil {
@@ -125,7 +125,7 @@ func doWALRestore(args []string) error {
 			fmt.Fprintf(os.Stderr, "%s is not in the archive\n", name)
 			os.Exit(exitArchiveMissing)
 		}
-		fmt.Fprintf(os.Stderr, "rawsyst wal restore: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "biz1core wal restore: %s\n", err.Error())
 		os.Exit(exitArchiveFailed)
 	}
 	return nil
@@ -512,7 +512,7 @@ func doBaseBackup(
 	fmt.Printf("  %s in %ds, encrypted %v\n",
 		human(manifest.TotalBytes()), manifest.TookSeconds,
 		manifest.Encryption != nil)
-	fmt.Println("\n  Stored. NOT yet verified — `rawsyst backup pitr " +
+	fmt.Println("\n  Stored. NOT yet verified — `biz1core backup pitr " +
 		"-target immediate -base " + manifest.ID + "` proves it recovers.")
 	return nil
 }
@@ -783,7 +783,7 @@ func doPITR(
 
 func walUsage() {
 	fmt.Fprint(os.Stderr, `
-  rawsyst backup wal <command>
+  biz1core backup wal <command>
 
     status      whether the archive is working, and the recovery window
     verify      check the archive; -deep N also downloads N segments

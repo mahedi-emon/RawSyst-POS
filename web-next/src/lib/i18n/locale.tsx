@@ -4,7 +4,7 @@
 //
 // # The catalogue is reused, not rewritten
 //
-// `@rawsyst/shared/i18n/strings` holds around 3,800 keys with a complete
+// `@biz1core/shared/i18n/strings` holds around 3,800 keys with a complete
 // English and Arabic catalogue and a partial Bangla one. That is real
 // translated work; throwing it away to start a new catalogue would have thrown
 // away the Arabic. What is NOT reused is the old provider, which settled the
@@ -32,7 +32,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { en, type Key, type Locale } from '@rawsyst/shared/i18n/strings';
+import { en, type Key, type Locale } from '@biz1core/shared/i18n/strings';
 
 export type { Key, Locale };
 
@@ -111,7 +111,7 @@ export function LocaleProvider({
   // every till's first load would be most of a megabyte of text nobody reads.
   //
   // Each locale is named as its OWN module, and that is the whole mechanism.
-  // This used to say `import('@rawsyst/shared/i18n/strings')` -- the same
+  // This used to say `import('@biz1core/shared/i18n/strings')` -- the same
   // specifier the static import above uses for `en` -- which loads on demand
   // in the source and not at all in the build: a bundler splits by module, so
   // naming a module already in the main chunk resolves against that chunk and
@@ -126,8 +126,8 @@ export function LocaleProvider({
     }
     const wanted =
       locale === 'ar'
-        ? import('@rawsyst/shared/i18n/strings.ar').then((m) => m.ar)
-        : import('@rawsyst/shared/i18n/strings.bn').then((m) => m.bn);
+        ? import('@biz1core/shared/i18n/strings.ar').then((m) => m.ar)
+        : import('@biz1core/shared/i18n/strings.bn').then((m) => m.bn);
     void wanted.then((table) => {
       if (cancelled) return;
       setCatalogue(table);

@@ -25,8 +25,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // DocTypes are the templates a client may configure.
@@ -207,7 +207,7 @@ func (s *Service) SaveTemplate(
 	return s.Template(ctx, scope, in.DocType)
 }
 
-// ResetTemplate returns one type to the RawSyst default.
+// ResetTemplate returns one type to the Biz1core default.
 //
 // A delete rather than a blanking update. "Never configured" and "configured
 // back to empty" produce the same document, and keeping a row to record the

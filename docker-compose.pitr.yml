@@ -14,9 +14,9 @@
 # in it touches the development stack, the development database or the real
 # bucket — different project name, different volumes, its own credentials.
 #
-#     docker compose -f docker-compose.pitr.yml -p rawsyst-pitr up -d
+#     docker compose -f docker-compose.pitr.yml -p biz1core-pitr up -d
 #     bash deploy/server/pitr-drill.sh
-#     docker compose -f docker-compose.pitr.yml -p rawsyst-pitr down -v
+#     docker compose -f docker-compose.pitr.yml -p biz1core-pitr down -v
 #
 # # Why the credentials here are hard-coded and that is fine
 #
@@ -25,7 +25,7 @@
 # nothing in it but a table of numbers this file creates. A `.env` for it would
 # be one more file that looks like it holds a secret and does not.
 
-name: rawsyst-pitr
+name: biz1core-pitr
 
 services:
   # The object store. MinIO because it is the S3-compatible server that runs in
@@ -58,7 +58,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       mc alias set drill http://store:9000 drilluser drillpassword &&
-      mc mb --ignore-existing drill/rawsyst-drill &&
+      mc mb --ignore-existing drill/biz1core-drill &&
       echo 'bucket ready'
       "
 
@@ -71,7 +71,7 @@ services:
       dockerfile: deploy/postgres/Dockerfile
       args:
         VERSION: ${VERSION:-drill}
-    image: rawsyst/postgres:${VERSION:-drill}
+    image: biz1core/postgres:${VERSION:-drill}
     depends_on:
       store-init:
         condition: service_completed_successfully
@@ -86,7 +86,7 @@ services:
       # passes, which is what makes this a test of the deployment rather than of
       # a special case.
       RAWSYST_S3_ENDPOINT: http://store:9000
-      RAWSYST_S3_BUCKET: rawsyst-drill
+      RAWSYST_S3_BUCKET: biz1core-drill
       RAWSYST_S3_REGION: us-east-1
       RAWSYST_S3_ACCESS_KEY_ID: drilluser
       RAWSYST_S3_SECRET_ACCESS_KEY: drillpassword
@@ -103,7 +103,7 @@ services:
       - -c
       - archive_mode=on
       - -c
-      - archive_command=/rawsyst backup wal archive %p %f
+      - archive_command=/biz1core backup wal archive %p %f
       # Two seconds, so a drill produces several segments in under a minute.
       # A real server uses sixty; see .env.example for what that number costs.
       - -c
@@ -133,7 +133,7 @@ services:
       target: backup
       args:
         VERSION: ${VERSION:-drill}
-    image: rawsyst/backup:${VERSION:-drill}
+    image: biz1core/backup:${VERSION:-drill}
     restart: "no"
     depends_on:
       db:
@@ -150,7 +150,7 @@ services:
       RAWSYST_DATA_ENCRYPTION_KEYS: "1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
       RAWSYST_S3_ENDPOINT: http://store:9000
-      RAWSYST_S3_BUCKET: rawsyst-drill
+      RAWSYST_S3_BUCKET: biz1core-drill
       RAWSYST_S3_REGION: us-east-1
       RAWSYST_S3_ACCESS_KEY_ID: drilluser
       RAWSYST_S3_SECRET_ACCESS_KEY: drillpassword

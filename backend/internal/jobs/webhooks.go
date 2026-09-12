@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
+	"github.com/mahedi-emon/Biz1core/backend/internal/integration"
 )
 
 // KindWebhookDispatch sends one tenant's due deliveries.

@@ -30,7 +30,7 @@ Its companions: [RUNBOOK.md](RUNBOOK.md) builds the machine,
 Throughout:
 
 ```bash
-cd /opt/rawsyst
+cd /opt/biz1core
 C="docker compose -f docker-compose.yml -f docker-compose.server.yml"
 B="$C --profile backup run --rm backup"
 ```
@@ -46,7 +46,7 @@ it.
 
 ```bash
 $C exec db psql -U postgres -tAc \
-  "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_setting('rawsyst.appuser', true) OR rolname = 'rawsyst';"
+  "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_setting('biz1core.appuser', true) OR rolname = 'rawsyst';"
 ```
 
 - [ ] The application's role prints `f | f`.
@@ -56,7 +56,7 @@ If it prints `t` for either, **stop**. On the compose stack the container's
 development and wrong for a deployment. Fix it before going further:
 
 ```sql
-ALTER ROLE rawsyst NOSUPERUSER NOBYPASSRLS;
+ALTER ROLE biz1core NOSUPERUSER NOBYPASSRLS;
 ```
 
 `backup role` in the next step refuses to run at all while this is true, and
@@ -122,7 +122,7 @@ And from outside the product, so that a bug in it cannot be what says yes —
 use whatever client the provider gives, or `mc`:
 
 ```bash
-mc ls --recursive <alias>/<bucket>/rawsyst/<snapshot-id>/
+mc ls --recursive <alias>/<bucket>/biz1core/<snapshot-id>/
 ```
 
 - [ ] Three objects: `database.dump`, `manifest.json`, `COMPLETED`.
@@ -183,11 +183,11 @@ Sign in as the platform operator.
 ## 8. The timers
 
 ```bash
-sudo cp deploy/server/rawsyst-backup.{service,timer} /etc/systemd/system/
-sudo cp deploy/server/rawsyst-drill.{service,timer}  /etc/systemd/system/
+sudo cp deploy/server/biz1core-backup.{service,timer} /etc/systemd/system/
+sudo cp deploy/server/biz1core-drill.{service,timer}  /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now rawsyst-backup.timer rawsyst-drill.timer
-systemctl list-timers 'rawsyst-*'
+sudo systemctl enable --now biz1core-backup.timer biz1core-drill.timer
+systemctl list-timers 'biz1core-*'
 ```
 
 - [ ] Both timers are listed with a next elapse.
@@ -197,8 +197,8 @@ systemctl list-timers 'rawsyst-*'
 Then force one, rather than waiting for 03:30:
 
 ```bash
-sudo systemctl start rawsyst-backup.service
-journalctl -u rawsyst-backup.service -n 50 --no-pager
+sudo systemctl start biz1core-backup.service
+journalctl -u biz1core-backup.service -n 50 --no-pager
 ```
 
 - [ ] It ran, verified and pruned, in that order.

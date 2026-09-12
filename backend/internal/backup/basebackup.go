@@ -65,7 +65,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The files inside one base backup. Fixed for ever once one has been written:
@@ -492,7 +492,7 @@ func runPGBaseBackup(ctx context.Context, opts BaseBackupOptions, dir string) er
 		"--dbname=" + opts.DSN,
 	}
 	cmd := exec.CommandContext(ctx, "pg_basebackup", args...)
-	cmd.Env = append(os.Environ(), "PGAPPNAME=rawsyst-basebackup")
+	cmd.Env = append(os.Environ(), "PGAPPNAME=biz1core-basebackup")
 
 	var errOut strings.Builder
 	cmd.Stdout = io.Discard
@@ -640,7 +640,7 @@ func CheckBaseBackupReady(
 			"The role %q cannot take a physical base backup: it does not have "+
 				"the REPLICATION attribute. pg_basebackup copies the cluster "+
 				"over a replication connection, which is a different thing "+
-				"from reading the tables. Run `rawsyst backup role` to grant "+
+				"from reading the tables. Run `biz1core backup role` to grant "+
 				"it, and add a `host replication %s all scram-sha-256` line to "+
 				"pg_hba.conf — the ordinary `host all all` line does NOT cover "+
 				"replication. deploy/server/PITR.md has both.",

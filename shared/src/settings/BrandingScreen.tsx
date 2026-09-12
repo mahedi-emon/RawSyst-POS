@@ -1,7 +1,7 @@
 // A client's own logo, blueprint I2 / UI spec Part I.
 //
 // The point of this screen is the product requirement behind it: a client buys
-// RawSyst and puts their own mark on it, and nobody edits source to do it for
+// Biz1core and puts their own mark on it, and nobody edits source to do it for
 // them.
 //
 // # Where it appears, stated exactly

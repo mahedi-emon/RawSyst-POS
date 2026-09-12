@@ -10,17 +10,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/loyalty"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
+	"github.com/mahedi-emon/Biz1core/backend/internal/accounting"
+	"github.com/mahedi-emon/Biz1core/backend/internal/inventory"
+	"github.com/mahedi-emon/Biz1core/backend/internal/jobs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/loyalty"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/promotions"
+	"github.com/mahedi-emon/Biz1core/backend/internal/receivables"
+	"github.com/mahedi-emon/Biz1core/backend/internal/registry"
+	"github.com/mahedi-emon/Biz1core/backend/internal/wallet"
+	"github.com/mahedi-emon/Biz1core/backend/internal/zatca"
 )
 
 // Finalising a sale is where all three pillars meet.

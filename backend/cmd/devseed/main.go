@@ -32,42 +32,42 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/aftersales"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/assets"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/docs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/expenses"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/fx"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/integration"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/ops"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/orders"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/payments"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/people"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portability"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/privacy"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/promotions"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/receivables"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/registry"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/sales"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/shift"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/stockops"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/treasury"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/wallet"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/zatca"
+	"github.com/mahedi-emon/Biz1core/backend/internal/aftersales"
+	"github.com/mahedi-emon/Biz1core/backend/internal/assets"
+	"github.com/mahedi-emon/Biz1core/backend/internal/catalog"
+	"github.com/mahedi-emon/Biz1core/backend/internal/docs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/expenses"
+	"github.com/mahedi-emon/Biz1core/backend/internal/fx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/integration"
+	"github.com/mahedi-emon/Biz1core/backend/internal/inventory"
+	"github.com/mahedi-emon/Biz1core/backend/internal/labels"
+	"github.com/mahedi-emon/Biz1core/backend/internal/notify"
+	"github.com/mahedi-emon/Biz1core/backend/internal/ops"
+	"github.com/mahedi-emon/Biz1core/backend/internal/orders"
+	"github.com/mahedi-emon/Biz1core/backend/internal/payments"
+	"github.com/mahedi-emon/Biz1core/backend/internal/people"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/Biz1core/backend/internal/portability"
+	"github.com/mahedi-emon/Biz1core/backend/internal/portal"
+	"github.com/mahedi-emon/Biz1core/backend/internal/privacy"
+	"github.com/mahedi-emon/Biz1core/backend/internal/promotions"
+	"github.com/mahedi-emon/Biz1core/backend/internal/provisioning"
+	"github.com/mahedi-emon/Biz1core/backend/internal/purchasing"
+	"github.com/mahedi-emon/Biz1core/backend/internal/receivables"
+	"github.com/mahedi-emon/Biz1core/backend/internal/registry"
+	"github.com/mahedi-emon/Biz1core/backend/internal/reports"
+	"github.com/mahedi-emon/Biz1core/backend/internal/sales"
+	"github.com/mahedi-emon/Biz1core/backend/internal/shift"
+	"github.com/mahedi-emon/Biz1core/backend/internal/stockops"
+	"github.com/mahedi-emon/Biz1core/backend/internal/treasury"
+	"github.com/mahedi-emon/Biz1core/backend/internal/wallet"
+	"github.com/mahedi-emon/Biz1core/backend/internal/workflow"
+	"github.com/mahedi-emon/Biz1core/backend/internal/zatca"
 )
 
 func main() {
@@ -1454,7 +1454,7 @@ func seedOperations(
 		return fmt.Errorf("file a document: %w", err)
 	}
 
-	// --- What talks to RawSyst ---------------------------------------------
+	// --- What talks to Biz1core ---------------------------------------------
 
 	// The same keyring cmd/api builds. Without one the webhook signing secret
 	// cannot be stored, and the service refuses rather than writing it in the
@@ -1473,7 +1473,7 @@ func seedOperations(
 		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
 	}
 	if _, err := keys.SaveEndpoint(ctx, intScope, "Warehouse robot",
-		"https://example.test/rawsyst/hooks",
+		"https://example.test/biz1core/hooks",
 		[]string{"sale.completed"}); err != nil {
 		return fmt.Errorf("register a callback: %w", err)
 	}
@@ -1484,7 +1484,7 @@ func seedOperations(
 		TenantID: tenantID, CompanyID: companyID, UserID: ownerID,
 	}, notify.Fact{
 		Kind: "system", Severity: "info",
-		Title: "Welcome to RawSyst",
+		Title: "Welcome to Biz1core",
 		Body:  "This business was created by the development seeder.",
 	}); err != nil {
 		return fmt.Errorf("raise a notice: %w", err)
@@ -1496,7 +1496,7 @@ func seedOperations(
 	}
 	if _, err := support.Raise(ctx, opsScope,
 		"How do I add a second branch?",
-		"We are opening a second shop next month and want it in RawSyst.",
+		"We are opening a second shop next month and want it in Biz1core.",
 		"question", "normal"); err != nil {
 		return fmt.Errorf("raise a support ticket: %w", err)
 	}
@@ -1585,7 +1585,7 @@ func seedTheRest(
 		return fmt.Errorf("open the till: %w", err)
 	}
 
-	// --- Something that talks to RawSyst ------------------------------------
+	// --- Something that talks to Biz1core ------------------------------------
 
 	keys := integration.NewService(pool, cipher)
 	intScope := integration.Scope{
@@ -1647,7 +1647,7 @@ func seedTheRest(
 		DataCategories:    "Name, mobile number, purchase history",
 		SubjectCategories: "Customers",
 		RetentionNote:     "Kept while the membership is live, then two years.",
-		SystemName:        "RawSyst",
+		SystemName:        "Biz1core",
 	}); err != nil {
 		return fmt.Errorf("record a processing activity: %w", err)
 	}

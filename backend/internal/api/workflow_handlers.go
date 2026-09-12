@@ -8,11 +8,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/notify"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/workflow"
+	"github.com/mahedi-emon/Biz1core/backend/internal/notify"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/workflow"
 )
 
 // The Approval Centre (D5, F1) and the notification centre (D3).

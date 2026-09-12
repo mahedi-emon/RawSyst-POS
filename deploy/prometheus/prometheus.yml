@@ -18,7 +18,7 @@ global:
     deployment: ${DEPLOYMENT_NAME}
 
 scrape_configs:
-  - job_name: rawsyst-api
+  - job_name: biz1core-api
     metrics_path: /metrics
     authorization:
       type: Bearer

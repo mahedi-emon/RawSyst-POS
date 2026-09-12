@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/secrets"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/secrets"
 )
 
 // Config is the fully resolved runtime configuration.
@@ -258,7 +258,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		Env:         env,
-		ServiceName: getString("RAWSYST_SERVICE_NAME", "rawsyst-api"),
+		ServiceName: getString("RAWSYST_SERVICE_NAME", "biz1core-api"),
 		DataRegion:  strings.ToLower(getString("RAWSYST_DATA_REGION", "sa")),
 		AppURL:      strings.TrimRight(strings.TrimSpace(getString("RAWSYST_APP_URL", "")), "/"),
 		// Lower-cased and stripped of any scheme somebody pasted in, because a
@@ -292,7 +292,7 @@ func Load() (Config, error) {
 			JWTSecret:       []byte(os.Getenv("RAWSYST_JWT_SECRET")),
 			AccessTokenTTL:  getDuration("RAWSYST_ACCESS_TOKEN_TTL", 15*time.Minute),
 			RefreshTokenTTL: getDuration("RAWSYST_REFRESH_TOKEN_TTL", 720*time.Hour),
-			Issuer:          getString("RAWSYST_JWT_ISSUER", "rawsyst-pos"),
+			Issuer:          getString("RAWSYST_JWT_ISSUER", "biz1core-pos"),
 		},
 		Redis: Redis{
 			Addr:     strings.TrimSpace(os.Getenv("RAWSYST_REDIS_ADDR")),

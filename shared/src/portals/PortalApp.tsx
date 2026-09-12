@@ -42,7 +42,7 @@ interface Held {
   side: Side;
 }
 
-const keyFor = (shop: PortalShop) => `rawsyst.portal.${shop.companyId}`;
+const keyFor = (shop: PortalShop) => `biz1core.portal.${shop.companyId}`;
 
 function remember(shop: PortalShop, held: Held | null) {
   try {

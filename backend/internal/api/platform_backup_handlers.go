@@ -44,18 +44,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/audit"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/backup"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/audit"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // MaxUploadBytes bounds an uploaded artifact.
 //
 // Eight gibibytes. The number is a disk decision on a 48 GB server, not a
 // judgement about how big a backup may be: an upload larger than this needs
-// the operator to put the file on the server and use `rawsyst backup
+// the operator to put the file on the server and use `biz1core backup
 // restore-file`, which `deploy/server/RECOVERY.md` documents and which has no
 // limit at all because it does not go through a web server.
 const MaxUploadBytes = 8 << 30
@@ -430,7 +430,7 @@ func (s *Server) handlePlatformDownloadBackup(
 	// The checksum, in a header, so whoever is downloading can check the file
 	// without opening the manifest.
 	if record.Checksum != "" && object == backup.DatabaseObject() {
-		w.Header().Set("X-RawSyst-SHA256", record.Checksum)
+		w.Header().Set("X-Biz1core-SHA256", record.Checksum)
 	}
 	w.WriteHeader(http.StatusOK)
 
@@ -461,7 +461,7 @@ func (s *Server) handlePlatformDownloadBackup(
 //   - the manifest has to parse, be a version this build reads, and name the
 //     same snapshot the dump hashes to;
 //   - the checksum has to match;
-//   - the file has to BEGIN like a dump or like a sealed RawSyst backup;
+//   - the file has to BEGIN like a dump or like a sealed Biz1core backup;
 //   - and after all of that the record says UPLOADED, not verified. Nothing
 //     has been proved about it until it has been restored, which is a separate
 //     act on a separate button.
@@ -679,7 +679,7 @@ func streamToFile(
 	if n > max {
 		return 0, "", errs.Newf(errs.CodeInvalidInput,
 			"That backup is larger than this route accepts (%d bytes). Put "+
-				"the file on the server and use `rawsyst backup restore-file`; "+
+				"the file on the server and use `biz1core backup restore-file`; "+
 				"deploy/server/RECOVERY.md has the sequence.", max)
 	}
 	return n, hex.EncodeToString(hash.Sum(nil)), nil
@@ -712,7 +712,7 @@ func looksLikeADump(path string, expectSealed bool) error {
 	case !sealed && !plain:
 		return errs.New(errs.CodeInvalidInput,
 			"That file does not begin like a PostgreSQL custom-format dump or "+
-				"an encrypted RawSyst backup. Whatever it is, it is not "+
+				"an encrypted Biz1core backup. Whatever it is, it is not "+
 				"something this product wrote.")
 	}
 	return nil

@@ -28,11 +28,11 @@ package api
 import (
 	"net/http"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/devices"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/devices"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // handleListCounters answers "which counter am I about to stand at?"

@@ -46,11 +46,11 @@ the dump. Keep both.
 ```
    ┌──────────────────── the server ────────────────────┐
    │                                                    │
-   │  db (rawsyst/postgres)          backup-agent       │
+   │  db (biz1core/postgres)          backup-agent       │
    │  ├─ postgres 17                 ├─ takes base      │
    │  ├─ archive_mode = on           │  backups         │
    │  └─ archive_command ────────┐   ├─ observes the    │
-   │       /rawsyst backup wal   │   │  archive, once   │
+   │       /biz1core backup wal   │   │  archive, once   │
    │       archive %p %f         │   │  a minute        │
    │                             │   └─ recovers into   │
    │                             │      a PostgreSQL    │
@@ -77,7 +77,7 @@ or a third-party tool added with `apk`; both are worse for the same reason. The
 archiver has to encrypt with the same key and write the same sidecar as
 everything else that reads this archive, and a second implementation of that is
 a second thing to get wrong in the one place where being wrong is silent. So
-`deploy/postgres/Dockerfile` is `postgres:17-alpine` plus `/rawsyst`, and the
+`deploy/postgres/Dockerfile` is `postgres:17-alpine` plus `/biz1core`, and the
 database image is built from this repository.
 
 **The archive has its own prefix, never mixed in with the dumps.** A snapshot
@@ -98,7 +98,7 @@ Per segment, once:
 
 ```
   PostgreSQL fills a 16 MiB segment (or archive_timeout closes a partial one)
-    → archive_command: /rawsyst backup wal archive %p %f
+    → archive_command: /biz1core backup wal archive %p %f
         → validate the name: 24 upper-case hex characters, nothing else
         → gzip
         → AES-256-GCM, if RAWSYST_BACKUP_ENCRYPTION_KEY is set
@@ -654,7 +654,7 @@ little.
 
 `PITR-ACTIVATION.md` steps 8 and 10 are where these stop being unknown. The
 drill also runs nightly against disposable resources
-(`rawsyst-drill.timer`), so once activated the duration becomes a number that is
+(`biz1core-drill.timer`), so once activated the duration becomes a number that is
 tracked rather than guessed at.
 
 ---
@@ -694,7 +694,7 @@ not come back the instant the store does.** Wait for a checkpoint, or force one.
 
 | Reading | Where it shows | What it means |
 |---|---|---|
-| `pg_wal` over 2 GiB | amber on the Recovery screen; flagged by `rawsyst-check.sh` | Archiving has probably been failing for a while. Look now. |
+| `pg_wal` over 2 GiB | amber on the Recovery screen; flagged by `biz1core-check.sh` | Archiving has probably been failing for a while. Look now. |
 | `pg_wal` over 4 GiB | red | Hours rather than days. Fix the store or turn archiving off. |
 | Last attempt failed, nothing succeeded since | red, with the segment named | The archive stopped at that segment. |
 | Nothing archived for 30 minutes | amber | Ordinary on a closed shop; not during trading. |

@@ -69,7 +69,7 @@ func TestEveryDocumentTypeIsOfferedWhetherOrNotItIsSet(t *testing.T) {
 		if item["configured"] != false {
 			t.Errorf("%s reports configured before anybody set it", docType)
 		}
-		// The RawSyst fallback: mark and tax numbers on, blocks empty. Empty
+		// The Biz1core fallback: mark and tax numbers on, blocks empty. Empty
 		// rather than seeded with suggested wording — a footer nobody wrote is
 		// a footer nobody meant.
 		if item["show_logo"] != true || item["show_tax_number"] != true {

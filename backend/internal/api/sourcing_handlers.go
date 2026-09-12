@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/purchasing"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/purchasing"
 )
 
 // The sourcing surface: requisitions, RFQs, quotes and the award (B5, B5.1).

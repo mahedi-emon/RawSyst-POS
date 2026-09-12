@@ -15,7 +15,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // The adapters, one per acquirer (blueprint E3.3).
@@ -475,7 +475,7 @@ func (p paytabs) Check(
 	_, status, err := call(ctx, c, http.MethodPost,
 		p.base(cfg)+"/payment/query", p.auth(cfg), map[string]any{
 			"profile_id": cfg.settings["profile_id"],
-			"tran_ref":   "rawsyst-connection-check",
+			"tran_ref":   "biz1core-connection-check",
 		})
 	if err != nil {
 		return err

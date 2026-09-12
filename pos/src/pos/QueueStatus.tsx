@@ -12,7 +12,7 @@
 // that came back.
 
 import type { TerminalState } from '../offline/useTerminal';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { useT } from '@biz1core/shared/i18n/locale';
 
 export function QueueStatus({ terminal }: { terminal: TerminalState }) {
   const t = useT();

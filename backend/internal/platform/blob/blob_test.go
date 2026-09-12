@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
 )
 
 // Signature Version 4, against the values AWS publishes.

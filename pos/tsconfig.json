@@ -16,7 +16,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": { "@rawsyst/shared/*": ["../shared/src/*"] }
+    "paths": { "@biz1core/shared/*": ["../shared/src/*"] }
   },
   "include": ["src"]
 }

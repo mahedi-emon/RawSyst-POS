@@ -9,10 +9,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/portal"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/portal"
+	"github.com/mahedi-emon/Biz1core/backend/internal/reports"
 )
 
 // The two notification kinds that are not a password reset: a customer's portal

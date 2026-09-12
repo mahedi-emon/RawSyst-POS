@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Certificates: reading the real one, and making a fake one for development.
@@ -230,7 +230,7 @@ func SelfSignedDevelopmentCertificate(signer *SoftwareSigner, validFor time.Dura
 
 	name := derWrap(derSequence, concat(
 		rdn(oidCountry, derPrintableString, "SA"),
-		rdn(oidOrganization, derUTF8String, "RawSyst development"),
+		rdn(oidOrganization, derUTF8String, "Biz1core development"),
 		rdn(oidCommonName, derUTF8String, "NOT A ZATCA CSID — development only"),
 	))
 

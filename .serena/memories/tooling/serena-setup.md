@@ -62,7 +62,7 @@ Both clients are supported; only the launch line differs.
 | Client | Launch |
 |---|---|
 | Claude Code | `serena start-mcp-server --context claude-code --project-from-cwd` |
-| Cursor | `~/.cursor/mcp.json`, `--context ide-assistant --project "D:\RawSyst POS"` |
+| Cursor | `~/.cursor/mcp.json`, `--context ide-assistant --project "D:\Biz1core POS"` |
 
 Three things learned wiring up Cursor on 2026-08-19:
 

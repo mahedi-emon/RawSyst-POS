@@ -132,7 +132,7 @@ trades a real CSRF defence for a URL change. That would be a net loss.
    or `admin-next` imports them via a path alias.
 4. **A Super Admin dashboard** — the platform screens exist individually; there
    is no single landing view.
-5. Optionally, an `X-RawSyst-Plane` style check so the API can refuse a
+5. Optionally, an `X-Biz1core-Plane` style check so the API can refuse a
    super-admin token presented to the business origin and vice versa. Belt and
    braces on top of cookie scoping.
 

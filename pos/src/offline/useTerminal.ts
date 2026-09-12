@@ -23,13 +23,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useAuth } from '@rawsyst/shared/auth/session';
-import { useT } from '@rawsyst/shared/i18n/locale';
+import { useAuth } from '@biz1core/shared/auth/session';
+import { useT } from '@biz1core/shared/i18n/locale';
 import { pushBatch } from '../api/pos';
 import { SaleQueue, type OfflineSalePayload, type QueueCounts } from './queue';
 import { Catalogue } from './catalogue';
 import { Customers } from './customers';
-import { HeldCarts } from '@rawsyst/shared/pos/held';
+import { HeldCarts } from '@biz1core/shared/pos/held';
 import {
   ConnectivityMonitor,
   DEFAULT_CONNECTIVITY,
@@ -39,7 +39,7 @@ import {
 } from './connectivity';
 import { openLocalStore } from './sqlite';
 import { StockCache } from './stock';
-import { useLive, type LiveMessage } from '@rawsyst/shared/live/useLive';
+import { useLive, type LiveMessage } from '@biz1core/shared/live/useLive';
 import { Stationery, receiptStationery, type ReceiptStationery } from './stationery';
 
 /** The backstop flush. The connectivity monitor triggers a drain the moment
@@ -72,7 +72,7 @@ export interface TerminalState {
 
   /** The shop's own words for a receipt (I2), as the till currently holds
    *  them. Always usable: a terminal that has never been online gets the
-   *  RawSyst default rather than nothing. */
+   *  Biz1core default rather than nothing. */
   stationery: ReceiptStationery;
   /** The customer book, so a sale can be attached to somebody offline. */
   customers: Customers | null;

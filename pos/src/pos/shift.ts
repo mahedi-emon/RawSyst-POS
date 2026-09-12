@@ -12,10 +12,10 @@
 // is 95, exactly, every time. The total leaves as a decimal string because that
 // is what crosses the API boundary; it is never a number in between.
 
-import type { Key, Translate } from '@rawsyst/shared/i18n/strings';
+import type { Key, Translate } from '@biz1core/shared/i18n/strings';
 
-import { major, minor } from '@rawsyst/shared/receivables/receivables';
-import type { ShiftReport } from '@rawsyst/shared/api/shift';
+import { major, minor } from '@biz1core/shared/receivables/receivables';
+import type { ShiftReport } from '@biz1core/shared/api/shift';
 
 // --- denominations --------------------------------------------------------
 

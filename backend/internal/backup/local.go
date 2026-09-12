@@ -39,7 +39,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // ArtifactNames are the three filenames a snapshot travels as.
@@ -103,7 +103,7 @@ type LocalCheck struct {
 //
 // `manifestPath` and `checksumPath` may be empty, in which case they are looked
 // for beside the dump under the names `NamesFor` produces. That is what makes
-// `rawsyst backup check -dump RawSyst_Backup_X.dump` do the obvious thing.
+// `biz1core backup check -dump RawSyst_Backup_X.dump` do the obvious thing.
 func CheckLocal(dumpPath, manifestPath, checksumPath string) (LocalCheck, error) {
 	out := LocalCheck{Dump: dumpPath}
 
@@ -200,7 +200,7 @@ func CheckLocal(dumpPath, manifestPath, checksumPath string) (LocalCheck, error)
 		default:
 			out.Findings = append(out.Findings,
 				"this file does not begin like a PostgreSQL custom-format "+
-					"dump or an encrypted RawSyst backup")
+					"dump or an encrypted Biz1core backup")
 		}
 	}
 

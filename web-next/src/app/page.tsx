@@ -8,6 +8,7 @@
 // type the same address and arrive somewhere different, which is the whole
 // point of the single sign-in.
 
+import { Biz1coreLogo } from '@biz1core/shared/brand/Logo';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -75,8 +76,15 @@ export default function Root() {
   }, [status, identity, router]);
 
   return (
+    // The one screen every session starts on, for as long as it takes to
+    // resolve who this person is. It was blank -- a bare page with a
+    // screen-reader-only sentence on it -- so a slow `/auth/me` looked like a
+    // product that had failed to load rather than one that was opening.
     <div className="grid min-h-dvh place-items-center bg-ground" aria-busy="true">
-      <p className="sr-only">{t('nx.root.opening')}</p>
+      <div className="flex flex-col items-center gap-3 text-fg">
+        <Biz1coreLogo size={28} />
+        <p className="text-caption text-subtle">{t('nx.root.opening')}</p>
+      </div>
     </div>
   );
 }

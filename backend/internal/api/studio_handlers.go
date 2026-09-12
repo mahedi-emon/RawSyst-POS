@@ -9,13 +9,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/insight"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/labels"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platformops"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/insight"
+	"github.com/mahedi-emon/Biz1core/backend/internal/labels"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platformops"
 )
 
 // The label studio (B3), global search (D7), analytics (D2) and the Super
@@ -572,7 +572,7 @@ func (s *Server) platformAuthorLabel(r *http.Request, userID uuid.UUID) string {
 	if label := strings.TrimSpace(r.Header.Get("X-Support-Agent")); label != "" {
 		return label
 	}
-	return "RawSyst Support"
+	return "Biz1core Support"
 }
 
 func parseUUIDs(raw []string, field string) ([]uuid.UUID, error) {

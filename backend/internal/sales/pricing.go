@@ -22,8 +22,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/catalog"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/catalog"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // moneyScale is the number of decimals a monetary amount may carry.

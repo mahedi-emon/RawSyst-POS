@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // What an Owner can do to a terminal after it exists.
@@ -215,7 +215,7 @@ func (s *Service) Openable(
 			// one somebody chose for it.
 			return errs.Newf(errs.CodeForbidden,
 				"%q is paired to one machine, so it opens in that machine's "+
-					"RawSyst app rather than in a browser.", t.Label)
+					"Biz1core app rather than in a browser.", t.Label)
 		}
 		if t.Status != "active" {
 			return errs.Newf(errs.CodeForbidden,

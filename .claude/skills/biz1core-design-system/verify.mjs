@@ -9,7 +9,7 @@
 //
 // Run from the repository root:
 //
-//   node .claude/skills/rawsyst-design-system/verify.mjs
+//   node .claude/skills/biz1core-design-system/verify.mjs
 //
 // Exits non-zero when the skill has drifted. Fix the skill, or fix the code —
 // but do not leave them disagreeing.

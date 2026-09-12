@@ -10,6 +10,7 @@ import { useState, type FormEvent } from 'react';
 import { Offline, RequestFailed } from '../api/client';
 import { useAuth } from './session';
 import { useT } from '../i18n/locale';
+import { Biz1coreLogo } from '../brand/Logo';
 import { LanguageSwitch } from '../i18n/LanguageSwitch';
 import { ForgotPassword } from './ForgotPassword';
 
@@ -95,7 +96,12 @@ export function LoginScreen() {
       </div>
 
         <div className="login__card">
-          <h1 className="login__title">RawSyst</h1>
+          <h1 className="login__title">
+            {/* The full lockup, tagline included. This is the one screen
+                somebody may reach without already knowing what the product
+                is. */}
+            <Biz1coreLogo variant="lockup" size={27} />
+          </h1>
           <p className="login__subtitle">{t('login.chooseTenant')}</p>
           <p className="login__hint">{t('login.multiBusiness')}</p>
 
@@ -149,7 +155,12 @@ export function LoginScreen() {
       </div>
 
       <form className="login__card" onSubmit={submit}>
-        <h1 className="login__title">RawSyst</h1>
+        <h1 className="login__title">
+            {/* The full lockup, tagline included. This is the one screen
+                somebody may reach without already knowing what the product
+                is. */}
+            <Biz1coreLogo variant="lockup" size={27} />
+          </h1>
         {/* The screen is shared by the till and the back office, so it does
             not claim to be either. "Sign in to open the till" was on the back
             office until a browser check read it out loud — a buyer signing in

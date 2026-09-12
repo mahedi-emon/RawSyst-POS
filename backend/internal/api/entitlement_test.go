@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/billing"
+	"github.com/mahedi-emon/Biz1core/backend/internal/billing"
 )
 
 // allows asks the entitlement resolver directly.

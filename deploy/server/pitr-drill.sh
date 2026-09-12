@@ -43,7 +43,7 @@
 # role, which is what makes the pg_hba line part of what is being tested.
 set -euo pipefail
 
-COMPOSE=(docker compose -f docker-compose.pitr.yml -p rawsyst-pitr)
+COMPOSE=(docker compose -f docker-compose.pitr.yml -p biz1core-pitr)
 
 # The application's own connection: an ordinary role with no superuser and no
 # BYPASSRLS, which is what writes the rows and owns them.
@@ -78,7 +78,7 @@ cleanup() {
 	if [ "${KEEP:-0}" = "1" ]; then
 		echo
 		echo "Left running. Remove it with:"
-		echo "  docker compose -f docker-compose.pitr.yml -p rawsyst-pitr down -v"
+		echo "  docker compose -f docker-compose.pitr.yml -p biz1core-pitr down -v"
 		return
 	fi
 	step "Cleaning up"
@@ -127,11 +127,11 @@ step "Applying the real migrations"
 # about the product. This is what makes the inspection at the end of each
 # recovery the same inspection a real one gets.
 #
-# MSYS_NO_PATHCONV stops Git Bash rewriting `/rawsyst` into a Windows path
+# MSYS_NO_PATHCONV stops Git Bash rewriting `/biz1core` into a Windows path
 # before Docker sees it. It means nothing on Linux and is harmless there.
 MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" run --rm -T \
 	-e RAWSYST_DB_DSN="$APP_DSN" \
-	--entrypoint /rawsyst \
+	--entrypoint /biz1core \
 	backup migrate || fail "the migrations did not apply"
 
 step "Creating the backup role"
@@ -229,9 +229,9 @@ step "Retention"
 backup wal prune || fail "retention refused"
 
 step "The agent starts and claims work"
-# Through the image's own entrypoint rather than with `--entrypoint /rawsyst`,
+# Through the image's own entrypoint rather than with `--entrypoint /biz1core`,
 # which Git Bash rewrites into a Windows path before Docker ever sees it. The
-# entrypoint is already `/rawsyst backup`, so this reaches the same binary and
+# entrypoint is already `/biz1core backup`, so this reaches the same binary and
 # runs on every platform.
 #
 # `-once` drains at most one queued task and exits. There is nothing queued

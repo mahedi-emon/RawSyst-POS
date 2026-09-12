@@ -7,10 +7,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/branding"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/branding"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // A client's own logo, blueprint I2.
@@ -131,7 +131,7 @@ func (s *Server) handlePutLogo(w http.ResponseWriter, r *http.Request) {
 
 // --- DELETE /api/v1/companies/{companyID}/logo --------------------------
 
-// Removing returns the company to the default RawSyst mark. Removing one that
+// Removing returns the company to the default Biz1core mark. Removing one that
 // is not there succeeds: the client asked for no logo and there is no logo.
 func (s *Server) handleDeleteLogo(w http.ResponseWriter, r *http.Request) {
 	scope, err := s.logoScope(r)

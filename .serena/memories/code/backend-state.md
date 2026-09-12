@@ -6,7 +6,7 @@ Last verified 2026-08-15. **fmt · vet · build · 29 tests · wording lint — 
 - **Go 1.26.5** at `C:\Program Files\Go` · **gopls 0.23.0** at `%USERPROFILE%\go\bin` · both on persistent user PATH
 - **PostgreSQL 18.3** was already installed. Its `postgres` password was unknown, so it was reset via a temporary `trust` entry in `pg_hba.conf` (backed up to `pg_hba.conf.rawsyst-backup`, restored immediately after). **Write pg_hba with `[IO.File]::WriteAllText(..., UTF8Encoding($false))` — PowerShell 5.1's `Set-Content -Encoding utf8` adds a BOM that PostgreSQL cannot parse.**
 - `postgres` password: `RawSyst_Dev_2026!pg`
-- App role **`rawsyst`** — `NOSUPERUSER NOBYPASSRLS`, password `RawSyst_App_2026!dev`. **Must never be a superuser: superusers silently ignore RLS, which would disable tenant isolation with no error.**
+- App role **`rawsyst`** (unchanged by the Biz1core rename -- see docs/BRANDING.md) — `NOSUPERUSER NOBYPASSRLS`, password `RawSyst_App_2026!dev`. **Must never be a superuser: superusers silently ignore RLS, which would disable tenant isolation with no error.**
 - Databases `rawsyst_dev`, `rawsyst_test`
 - `backend/.env` exists and is gitignored
 

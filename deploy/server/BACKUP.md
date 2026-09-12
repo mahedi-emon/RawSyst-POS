@@ -97,7 +97,7 @@ why.
 
 This is the step most likely to be skipped and the one that stops everything.
 
-RawSyst forces row-level security on every tenant table. Forcing it means it
+Biz1core forces row-level security on every tenant table. Forcing it means it
 applies to the table's **owner** as well — that is the point, and it is what
 keeps one business out of another's books. `pg_dump` turns row security off so
 that it dumps every row, and PostgreSQL refuses that to any role which is not a
@@ -139,7 +139,7 @@ same dump as `rawsyst_backup` succeeds.
 ### Or by hand, if you would rather
 
 ```sql
--- As a superuser, connected to the RawSyst database.
+-- As a superuser, connected to the Biz1core database.
 CREATE ROLE rawsyst_backup LOGIN PASSWORD '…' BYPASSRLS
   NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 
@@ -176,7 +176,7 @@ unprotected is the shape of failure that finding this cost one cutover.
 
 **Not on this server.** A backup on the same disk as the database survives a
 mistake and does not survive a disk, a VM, or the day somebody rebuilds the
-host. `rawsyst backup run` refuses to start without an object store configured
+host. `biz1core backup run` refuses to start without an object store configured
 rather than quietly writing to local disk, because a file on the same machine is
 not a backup and calling it one is worse than having none.
 
@@ -185,12 +185,12 @@ a MinIO on a machine somewhere else. Configured entirely through environment:
 
 ```
 RAWSYST_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
-RAWSYST_S3_BUCKET=rawsyst-backups
+RAWSYST_S3_BUCKET=biz1core-backups
 RAWSYST_S3_REGION=auto                # R2 ignores it; keep it set
 RAWSYST_S3_ACCESS_KEY_ID=…
 RAWSYST_S3_SECRET_ACCESS_KEY=…
 RAWSYST_S3_PATH_STYLE=true            # R2, MinIO, most non-AWS stores
-RAWSYST_BACKUP_PREFIX=rawsyst         # namespace inside the bucket
+RAWSYST_BACKUP_PREFIX=biz1core         # namespace inside the bucket
 ```
 
 `https` is required outside development, and configuration refuses to start
@@ -220,7 +220,7 @@ the default here.
 ## What a snapshot looks like
 
 ```
-rawsyst/20260910T130047Z-1/
+biz1core/20260910T130047Z-1/
     database.dump      pg_dump custom format, compressed, optionally sealed
     manifest.json      what it is, how big, what it should contain
     COMPLETED          written last, and only if everything before it worked
@@ -276,7 +276,7 @@ All of them through compose, so they inherit the same configuration the
 application has:
 
 ```bash
-cd /opt/rawsyst
+cd /opt/biz1core
 C="docker compose -f docker-compose.yml -f docker-compose.server.yml --profile backup"
 
 $C run --rm backup run          # take one
@@ -296,7 +296,7 @@ $C run --rm backup rehearse     # the whole recovery, end to end, disposably
 `verify`, `download` and `restore` take `-snapshot ID`; without it they use the
 newest completed one. `prune` takes `-dry-run`. Most take `-json`.
 
-The backup image is `postgres:17-alpine` with the RawSyst binary added — about
+The backup image is `postgres:17-alpine` with the Biz1core binary added — about
 21 MB on top of an image the host already has, because `pg_dump` and
 `pg_restore` are the right tools and taking them from the same image as the
 database is what guarantees the versions match.
@@ -522,25 +522,25 @@ answer is a line in the log, not a refusal.
 Two timers. Copy both pairs of units to `/etc/systemd/system` and enable them:
 
 ```bash
-sudo cp deploy/server/rawsyst-backup.{service,timer} /etc/systemd/system/
-sudo cp deploy/server/rawsyst-drill.{service,timer}  /etc/systemd/system/
+sudo cp deploy/server/biz1core-backup.{service,timer} /etc/systemd/system/
+sudo cp deploy/server/biz1core-drill.{service,timer}  /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now rawsyst-backup.timer rawsyst-drill.timer
-sudo systemctl list-timers 'rawsyst-*'
+sudo systemctl enable --now biz1core-backup.timer biz1core-drill.timer
+sudo systemctl list-timers 'biz1core-*'
 ```
 
-**`rawsyst-backup`, nightly at 03:30** — takes a backup, verifies it, then
+**`biz1core-backup`, nightly at 03:30** — takes a backup, verifies it, then
 prunes. In that order, and prune only if verify succeeded, so nothing is ever
 deleted on a night when the new backup could not be proved.
 
-**`rawsyst-drill`, Sundays at 04:30** — the whole recovery, end to end, against
+**`biz1core-drill`, Sundays at 04:30** — the whole recovery, end to end, against
 disposable resources: take, upload, download to files, check those files against
 nothing but their own checksums, restore into a temporary database, compare
 everything, drop it. It catches what a verification cannot, because it never
 leaves the machine: credentials with write and no read, a bucket that lists but
 will not GET, a disk with no room for the downloaded copy.
 
-`rawsyst-check.sh` runs hourly and reports the age of the last **verified**
+`biz1core-check.sh` runs hourly and reports the age of the last **verified**
 backup, and names the last failure.
 
 Nothing about the schedule is in the application. The agent does what it is
@@ -629,7 +629,7 @@ RawSyst_Backup_<id>.sha256         one line, in the format sha256sum reads
 Or on the server:
 
 ```bash
-$C run --rm backup download -to /srv/rawsyst-out
+$C run --rm backup download -to /srv/biz1core-out
 ```
 
 Only a backup that has been **proved to restore** is offered. Handing somebody a
@@ -664,7 +664,7 @@ $C run --rm backup check -dump /srv/out/RawSyst_Backup_<id>.dump
 
 It reads the manifest, hashes the dump, compares both against the `.sha256`
 file, and confirms the file begins the way a PostgreSQL custom-format dump or a
-sealed RawSyst backup begins. It says whether the artifact is **intact**. It
+sealed Biz1core backup begins. It says whether the artifact is **intact**. It
 does not say whether it **restores** — `verify-file` does that, and it needs a
 PostgreSQL to restore into.
 

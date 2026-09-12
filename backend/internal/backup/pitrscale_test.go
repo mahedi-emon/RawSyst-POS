@@ -273,7 +273,7 @@ func TestMeasureDiskUnderArchiveFailure(t *testing.T) {
 	// closer to the floor.
 	//
 	// Eight gigabytes because that is DISK_FREE_MIN_GIB in
-	// deploy/server/rawsyst-check.sh: the point at which the machine check
+	// deploy/server/biz1core-check.sh: the point at which the machine check
 	// already flags the disk, so it is the headroom to assume rather than the
 	// whole volume.
 	const idlePerHour = float64(16<<20) * 60

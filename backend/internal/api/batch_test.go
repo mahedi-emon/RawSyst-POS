@@ -23,7 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/inventory"
+	"github.com/mahedi-emon/Biz1core/backend/internal/inventory"
 )
 
 // trackBatches turns B1's flag on for the fixture's variant.

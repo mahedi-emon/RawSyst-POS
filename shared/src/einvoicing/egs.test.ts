@@ -48,7 +48,7 @@ const till = (over: Partial<Terminal> = {}): Terminal => ({
 
 const fullCsr: Csr = {
   common_name: 'Till 2',
-  egs_serial_number: '1-RawSyst|2-POS|3-000001',
+  egs_serial_number: '1-Biz1core|2-POS|3-000001',
   organization_identifier: '300000000000003',
   organization_unit: 'Main Branch',
   organization_name: 'Test Trading Co',

@@ -13,13 +13,21 @@
 // `web-next` had neither — so the product a customer actually runs had no app
 // identity at all: a default globe in the browser tab and nothing to install.
 
+import {
+  PRODUCT_DESCRIPTION,
+  PRODUCT_NAME,
+  PRODUCT_TAGLINE_SHORT,
+} from '@biz1core/shared/brand/brand';
 import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'RawSyst',
-    short_name: 'RawSyst',
-    description: 'Run the whole business from one place: selling, stock, buying, money and people.',
+    // The long name is what an install prompt and a store listing show; the
+    // short name is what fits under an icon on a home screen, where anything
+    // past about twelve characters is replaced with an ellipsis.
+    name: `${PRODUCT_NAME} — ${PRODUCT_TAGLINE_SHORT}`,
+    short_name: PRODUCT_NAME,
+    description: PRODUCT_DESCRIPTION,
 
     start_url: '/',
     // Standalone rather than fullscreen: an owner checking figures still wants

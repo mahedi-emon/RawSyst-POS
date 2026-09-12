@@ -24,8 +24,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/jobs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/accounting"
+	"github.com/mahedi-emon/Biz1core/backend/internal/jobs"
 )
 
 // postUnbackedEntry moves a control account with no sub-ledger behind it.

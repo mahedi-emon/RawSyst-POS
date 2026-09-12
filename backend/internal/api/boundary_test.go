@@ -51,7 +51,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/identity"
+	"github.com/mahedi-emon/Biz1core/backend/internal/identity"
 )
 
 // --- 1. a mutation must not hide behind a reading permission --------------

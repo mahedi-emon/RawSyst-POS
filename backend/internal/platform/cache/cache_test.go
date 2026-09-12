@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
 )
 
 // The in-memory implementation is not a stub, and this is what says so.

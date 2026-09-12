@@ -17,8 +17,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'RawSyst',
-    short_name: 'RawSyst',
+    name: 'Biz1core',
+    short_name: 'Biz1core',
     description: 'Retail operations — sales, stock, accounting and VAT.',
 
     start_url: '/',

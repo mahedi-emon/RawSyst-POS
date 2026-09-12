@@ -20,8 +20,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/reports"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/vat"
+	"github.com/mahedi-emon/Biz1core/backend/internal/reports"
+	"github.com/mahedi-emon/Biz1core/backend/internal/vat"
 )
 
 // VATForExport adapts the tax service to what the report export asks for.

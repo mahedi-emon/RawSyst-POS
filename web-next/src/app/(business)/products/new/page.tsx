@@ -13,7 +13,7 @@
 //
 // `GET /catalog/tax-treatments` answers what the company's country allows and
 // which of those oblige an exemption reason. A form that offered every
-// treatment RawSyst has heard of would let somebody choose `zero_rated` in a
+// treatment Biz1core has heard of would let somebody choose `zero_rated` in a
 // US catalogue and be refused on save with a list it should have shown first.
 // The exemption-reason field appears exactly when the chosen treatment needs
 // one, which is the server's own rule read from the same answer.

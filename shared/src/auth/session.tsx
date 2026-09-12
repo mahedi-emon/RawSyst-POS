@@ -69,7 +69,7 @@ const AuthContext = createContext<AuthState | null>(null);
  * NOT stored here is anything ZATCA issues: the CSID secret never reaches the
  * browser at all, because no API response carries a field for it.
  */
-const SESSION_KEY = 'rawsyst.session';
+const SESSION_KEY = 'biz1core.session';
 
 function loadSession(): Session | null {
   try {

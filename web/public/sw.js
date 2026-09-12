@@ -24,8 +24,8 @@
 // document means the shell is only ever stale when there is genuinely no
 // network, and the hashed assets it names are the ones cached alongside it.
 
-const SHELL = 'rawsyst-shell-v1';
-const ASSETS = 'rawsyst-assets-v1';
+const SHELL = 'biz1core-shell-v1';
+const ASSETS = 'biz1core-assets-v1';
 const KEEP = new Set([SHELL, ASSETS]);
 
 self.addEventListener('install', (event) => {

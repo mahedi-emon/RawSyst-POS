@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
 /**
- * The RawSyst web application.
+ * The Biz1core web application.
  *
  * # Why the API is proxied rather than called cross-origin
  *
@@ -75,7 +75,7 @@ const nextConfig = {
   // the workspace, so Next compiles them rather than expecting a published
   // build. Only non-UI modules are imported; the old front end's components are
   // deliberately not carried over.
-  transpilePackages: ['@rawsyst/shared'],
+  transpilePackages: ['@biz1core/shared'],
 
 
   async rewrites() {
@@ -86,12 +86,12 @@ const nextConfig = {
 
   turbopack: {
     resolveAlias: {
-      '@rawsyst/shared': fileURLToPath(new URL('../shared/src', import.meta.url)),
+      '@biz1core/shared': fileURLToPath(new URL('../shared/src', import.meta.url)),
     },
   },
 
   webpack(config) {
-    config.resolve.alias['@rawsyst/shared'] = fileURLToPath(
+    config.resolve.alias['@biz1core/shared'] = fileURLToPath(
       new URL('../shared/src', import.meta.url),
     );
     return config;

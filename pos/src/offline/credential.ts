@@ -30,7 +30,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
-import type { Session } from '@rawsyst/shared/api/client';
+import type { Session } from '@biz1core/shared/api/client';
 
 /** What a paired terminal knows about itself. Never includes the secret. */
 export interface TerminalIdentity {
@@ -193,7 +193,7 @@ export function faultFrom(err: unknown): PairingFault {
       kind: 'no_keystore',
       message:
         'This build cannot store a terminal credential securely, so it cannot ' +
-        'be paired. Use the installed RawSyst application on the till.',
+        'be paired. Use the installed Biz1core application on the till.',
     };
   }
   // Everything else the SERVER said, in its own words.

@@ -62,7 +62,7 @@ const Ctx = createContext<PortalSession | null>(null);
 
 /** The storage key, scoped to the shop so two shops cannot read each other. */
 function keyFor(shop: Shop, kind: 'token' | 'name'): string {
-  return `rawsyst.portal.${shop.tenantId}.${shop.companyId}.${kind}`;
+  return `biz1core.portal.${shop.tenantId}.${shop.companyId}.${kind}`;
 }
 
 function read(key: string): string | null {

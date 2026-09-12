@@ -38,7 +38,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/google/uuid"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
 )
 
 // Reporter sends errors somewhere they will be looked at.

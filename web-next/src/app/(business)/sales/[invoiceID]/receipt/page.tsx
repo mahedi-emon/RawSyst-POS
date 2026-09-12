@@ -47,7 +47,7 @@ import { useApi } from '@/lib/api/hooks';
 import { useCompany } from '@/lib/company/company-context';
 import { useT } from '@/lib/i18n/locale';
 import { formatMoney } from '@/lib/format/money';
-import { QRCode } from '@rawsyst/shared/security/QRCode';
+import { QRCode } from '@biz1core/shared/security/QRCode';
 
 interface Line {
   line_no: number;

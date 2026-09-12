@@ -21,12 +21,23 @@
 // everything -- including a dialog portalled to `document.body`, which a
 // wrapper would sit outside of.
 
+import {
+  PRODUCT_DESCRIPTION,
+  PRODUCT_NAME,
+  PRODUCT_TAGLINE,
+  PRODUCT_TITLE,
+} from '@biz1core/shared/brand/brand';
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Sans, IBM_Plex_Sans_Arabic, Noto_Sans_Bengali } from 'next/font/google';
 import type { ReactNode } from 'react';
 
 import { Providers } from './providers';
 import '@/styles/globals.css';
+// The two accents the logo is drawn in. Loaded at the root rather than beside
+// the component, because the mark appears on the sign-in page, in the rail, in
+// the footer and on the error screens -- and a brand colour that arrives with
+// the third of those flashes on the first two.
+import '@biz1core/shared/brand/brand.css';
 
 const plexSans = IBM_Plex_Sans({
   subsets: ['latin', 'latin-ext'],
@@ -51,24 +62,55 @@ const notoBengali = Noto_Sans_Bengali({
 
 export const metadata: Metadata = {
   title: {
-    default: 'RawSyst',
-    template: '%s · RawSyst',
+    // The bare name on the landing page. A tab reading
+    // "Biz1core | Complete Business Management" next to nine other tabs is
+    // seven words of which one identifies it, so the qualifier is kept for
+    // the places that are read cold -- a search result, a shared link, a
+    // bookmark -- and left out of the tab.
+    default: PRODUCT_NAME,
+    template: `%s · ${PRODUCT_NAME}`,
   },
-  description:
-    'Run the whole business from one place: selling, stock, buying, money and people.',
+  description: PRODUCT_DESCRIPTION,
+  applicationName: PRODUCT_NAME,
 
   // The browser tab and the home screen. Without these the product a customer
   // runs showed a default globe in the tab and could not be installed at all,
   // while the front end it replaced had both.
+  //
+  // The SVG is listed first and is what a current browser uses: one file, crisp
+  // at every size, correct on a high-density display. The PNGs stay for Safari
+  // and for anything that asks for a raster.
   icons: {
     icon: [
+      { url: '/brand/app-icon.svg', type: 'image/svg+xml' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
+    shortcut: '/favicon.ico',
     apple: '/icons/icon-192.png',
   },
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, title: 'RawSyst', statusBarStyle: 'default' },
+  appleWebApp: { capable: true, title: PRODUCT_NAME, statusBarStyle: 'default' },
+
+  // What a link to this product looks like when somebody pastes it into a chat
+  // or a ticket. Without these it is a bare URL, which is how an internal tool
+  // looks rather than a product.
+  //
+  // No absolute image URL is named: this deployment does not know its own
+  // public address at build time (that is `BIZ1CORE_APP_URL`, read at run
+  // time), and a hard-coded domain here would be a broken preview on every
+  // deployment but one.
+  openGraph: {
+    type: 'website',
+    siteName: PRODUCT_NAME,
+    title: PRODUCT_TITLE,
+    description: `${PRODUCT_TAGLINE} ${PRODUCT_DESCRIPTION}`,
+  },
+  twitter: {
+    card: 'summary',
+    title: PRODUCT_TITLE,
+    description: PRODUCT_TAGLINE,
+  },
 };
 
 export const viewport: Viewport = {

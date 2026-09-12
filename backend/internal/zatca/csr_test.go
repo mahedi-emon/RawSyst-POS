@@ -66,7 +66,7 @@ func validSubject() CSRSubject {
 		OrganizationName:   "Jarir",
 		OrganizationalUnit: "Riyadh Branch",
 		CountryCode:        "SA",
-		EGSSerialNumber:    "1-RawSyst|2-POS|3-0000000001",
+		EGSSerialNumber:    "1-Biz1core|2-POS|3-0000000001",
 		OrganizationID:     "310122393500003",
 		InvoiceTypes:       "1100",
 		Location:           "Riyadh",
@@ -182,9 +182,9 @@ func TestTheRequestCarriesTheAlternativeNamesZATCAReadsTheTaxpayerFrom(t *testin
 	// them ZATCA has the device but not the taxpayer, the VAT number or which
 	// document types the unit may issue.
 	for _, want := range []string{
-		"serialNumber=1-RawSyst|2-POS|3-0000000001", // the EGS serial
-		"UID=310122393500003",                       // the VAT registration
-		"title=1100",                                // the TSCZ functionality map
+		"serialNumber=1-Biz1core|2-POS|3-0000000001", // the EGS serial
+		"UID=310122393500003",                        // the VAT registration
+		"title=1100",                                 // the TSCZ functionality map
 		"registeredAddress=Riyadh",
 		"businessCategory=Retail",
 	} {
@@ -232,8 +232,8 @@ func TestTheSubjectRefusesValuesZATCAWouldReject(t *testing.T) {
 		{"an invoice type using a digit other than 0 or 1", func(s *CSRSubject) { s.InvoiceTypes = "1102" }},
 		{"an invoice type of the wrong length", func(s *CSRSubject) { s.InvoiceTypes = "110" }},
 		{"a three-letter country code", func(s *CSRSubject) { s.CountryCode = "SAU" }},
-		{"a serial number missing a segment", func(s *CSRSubject) { s.EGSSerialNumber = "1-RawSyst|2-POS" }},
-		{"a serial number with segments out of order", func(s *CSRSubject) { s.EGSSerialNumber = "2-POS|1-RawSyst|3-1" }},
+		{"a serial number missing a segment", func(s *CSRSubject) { s.EGSSerialNumber = "1-Biz1core|2-POS" }},
+		{"a serial number with segments out of order", func(s *CSRSubject) { s.EGSSerialNumber = "2-POS|1-Biz1core|3-1" }},
 		{"no organization name", func(s *CSRSubject) { s.OrganizationName = "" }},
 		{"no branch location", func(s *CSRSubject) { s.Location = "" }},
 	}

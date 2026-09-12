@@ -66,7 +66,7 @@ describe('what the browser is allowed to keep', () => {
     expect(outcome.session.refreshToken).toBeUndefined();
 
     // And nothing reachable by script is holding one.
-    localStorage.setItem('rawsyst.session', JSON.stringify(outcome.session));
+    localStorage.setItem('biz1core.session', JSON.stringify(outcome.session));
     expect(storedRefreshToken()).toBeNull();
   });
 

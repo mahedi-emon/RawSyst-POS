@@ -30,7 +30,7 @@ import { Icon } from './Icon';
 
 type Theme = 'light' | 'dark';
 
-const STORAGE_KEY = 'rawsyst.theme';
+const STORAGE_KEY = 'biz1core.theme';
 
 /** Reads the stored preference. Light unless somebody has said otherwise. */
 function stored(): Theme {

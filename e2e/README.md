@@ -129,7 +129,7 @@ assertion below fails for a reason that has nothing to do with the product.
 
 | variable | default |
 |---|---|
-| `RS_POS_EXE` | `pos/src-tauri/target/release/rawsyst-pos.exe` |
+| `RS_POS_EXE` | `pos/src-tauri/target/release/biz1core-pos.exe` |
 | `RS_EDGEDRIVER` | whatever `tauri-driver` finds on `PATH` |
 | `RS_API` | `http://127.0.0.1:8080` |
 | `RS_SHOTS` | off; a directory writes a PNG of each screen as the run reaches it |

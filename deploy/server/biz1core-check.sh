@@ -2,8 +2,8 @@
 #
 # Is this server still healthy, and is anything about to fill up?
 #
-#   bash deploy/server/rawsyst-check.sh          # report, exit 0
-#   bash deploy/server/rawsyst-check.sh --strict # exit 1 when over a threshold
+#   bash deploy/server/biz1core-check.sh          # report, exit 0
+#   bash deploy/server/biz1core-check.sh --strict # exit 1 when over a threshold
 #
 # Meant for a timer. `--strict` makes it usable as one: a systemd
 # OnFailure= or a cron job that only writes to the log when something is
@@ -49,7 +49,7 @@ flag()  { printf '  %-34s \033[31m%s\033[0m\n' "$1" "$2"; over=$((over + 1)); }
 tip()   { printf '        \033[2m%s\033[0m\n' "$*"; }
 have()  { command -v "$1" >/dev/null 2>&1; }
 
-printf '\033[1mRawSyst server check\033[0m — %s\n\n' "$(date -u '+%Y-%m-%d %H:%M UTC')"
+printf '\033[1mBiz1core server check\033[0m — %s\n\n' "$(date -u '+%Y-%m-%d %H:%M UTC')"
 
 # --- memory -----------------------------------------------------------------
 
@@ -204,8 +204,8 @@ if have docker && docker info >/dev/null 2>&1; then
       line "verified backup" "${age%.*}h ago"
     else
       flag "verified backup" "${age%.*}h ago (max ${BACKUP_MAX_AGE_HOURS}h)"
-      tip "systemctl status rawsyst-backup.timer"
-      tip "journalctl -u rawsyst-backup.service --since '3 days ago'"
+      tip "systemctl status biz1core-backup.timer"
+      tip "journalctl -u biz1core-backup.service --since '3 days ago'"
     fi
 
     # And whether the last ATTEMPT failed, which is a different question. A

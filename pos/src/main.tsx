@@ -8,15 +8,16 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
-import { AuthProvider } from '@rawsyst/shared/auth/session';
-import { LocaleProvider } from '@rawsyst/shared/i18n/locale';
-import { CardTableLabels } from '@rawsyst/shared/ui/CardTableLabels';
+import { AuthProvider } from '@biz1core/shared/auth/session';
+import { LocaleProvider } from '@biz1core/shared/i18n/locale';
+import { CardTableLabels } from '@biz1core/shared/ui/CardTableLabels';
 // The design system first: it defines the tokens everything else consumes.
-import '@rawsyst/shared/design-system.css';
+import '@biz1core/shared/design-system.css';
+import '@biz1core/shared/brand/brand.css';
 import { signIn as signInOnTerminal } from './offline/credential';
 
 import './styles.css';
-import '@rawsyst/shared/dashboard/dashboard.css';
+import '@biz1core/shared/dashboard/dashboard.css';
 
 // 127.0.0.1, not localhost, and the difference is not cosmetic.
 //

@@ -1,4 +1,4 @@
-// RawSyst POS — the terminal.
+// Biz1core POS — the terminal.
 //
 // A Tauri shell around a React interface. The shell exists for the three things
 // a browser cannot do and a till must: hold the CSID private key in the OS
@@ -49,7 +49,7 @@ fn main() {
     //
     // Tauri v2 denies every plugin command unless a capability file grants it,
     // and this crate had none — the generated gen/schemas/capabilities.json was
-    // an empty object. So `Database.load('sqlite:rawsyst-pos.db')` was refused
+    // an empty object. So `Database.load('sqlite:biz1core-pos.db')` was refused
     // in the packaged application, the offline store never opened, and the till
     // said "This terminal has no local storage, so a sale cannot be recorded
     // safely" and refused to sell. An installed till could not ring up a single
@@ -79,5 +79,5 @@ fn main() {
             enrolment::terminal_forget,
         ])
         .run(tauri::generate_context!())
-        .expect("the RawSyst POS terminal failed to start");
+        .expect("the Biz1core POS terminal failed to start");
 }

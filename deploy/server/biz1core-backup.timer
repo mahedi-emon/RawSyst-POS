@@ -1,6 +1,6 @@
 [Unit]
-Description=RawSyst backup, daily
-Documentation=file:/opt/rawsyst/deploy/server/BACKUP.md
+Description=Biz1core backup, daily
+Documentation=file:/opt/biz1core/deploy/server/BACKUP.md
 
 [Timer]
 # 03:30, half an hour after the regulatory source re-check and an hour before

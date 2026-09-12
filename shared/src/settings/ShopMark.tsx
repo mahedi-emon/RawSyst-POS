@@ -1,7 +1,7 @@
 // The shop's own name and logo, at the top of its own software.
 //
 // A business that has uploaded a logo should see it. Until now the rail said
-// "RawSyst" to every tenant — which is the vendor's name, not the shop's, and
+// "Biz1core" to every tenant — which is the vendor's name, not the shop's, and
 // a shopkeeper looking at their own till software has no reason to be reminded
 // whose product it is on every screen.
 //
@@ -21,6 +21,7 @@
 // wordmark, which is why there is no error state.
 import { useEffect, useState } from 'react';
 
+import { Biz1coreMark } from '../brand/Logo';
 import { useAuth } from '../auth/session';
 import { logoObjectURL } from '../api/branding';
 
@@ -72,22 +73,29 @@ export function ShopMark({
     };
   }, [client, companyId, version]);
 
-  // The initial, for a business with no logo yet. Its own first letter rather
-  // than the vendor's R: a shop with no logo is still that shop.
-  const initial = (name ?? 'R').trim().charAt(0).toUpperCase() || 'R';
+  // The initial, for a business that has a name but no logo yet. Its own first
+  // letter, never the vendor's -- a shop with no logo is still that shop.
+  //
+  // Before a company exists at all there is no letter to show, and the
+  // fallback was the vendor's own initial. That is now the product's mark
+  // instead: during onboarding this rail belongs to nobody yet, and a mark is
+  // an honest answer where a borrowed letter was not.
+  const initial = (name ?? '').trim().charAt(0).toUpperCase();
 
   return (
     <>
       {logo ? (
         <img className="bo__logo" src={logo} alt="" />
-      ) : (
+      ) : initial ? (
         <span className="bo__mark" aria-hidden="true">
           {initial}
         </span>
+      ) : (
+        <Biz1coreMark size={26} onDark />
       )}
       {/* The shop's name, falling back to the product's only when there is no
           business yet — during onboarding, before the first company exists. */}
-      <span className="bo__wordmark">{name ?? 'RawSyst'}</span>
+      <span className="bo__wordmark">{name ?? 'Biz1core'}</span>
     </>
   );
 }

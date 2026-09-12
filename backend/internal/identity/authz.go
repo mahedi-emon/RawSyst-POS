@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/actor"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/actor"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Grants is everything a user is allowed to do, resolved for one request.
@@ -426,7 +426,7 @@ func (a *Authorizer) requireAccountIsUsable(
 	// leave them sitting on a screen full of buttons that all fail.
 	return errs.New(errs.CodeUnauthenticated,
 		"This account has been disabled. Please sign in again, or ask "+
-			"whoever looks after your RawSyst account.")
+			"whoever looks after your Biz1core account.")
 }
 
 // All is every permission held, sorted.

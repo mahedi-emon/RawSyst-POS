@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/build"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/config"
+	"github.com/mahedi-emon/Biz1core/backend/internal/build"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/config"
 )
 
 // storageFromEnv reads the object store settings, and nothing else.

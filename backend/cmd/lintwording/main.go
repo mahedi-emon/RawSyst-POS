@@ -71,7 +71,7 @@ var skipDirs = map[string]bool{
 }
 
 // The frozen source specification. Quoted verbatim, not ours to edit.
-const blueprintName = "RawSyst-POS-Blueprint-v2.4-FINAL.md"
+const blueprintName = "Biz1core-Blueprint-v2.4-FINAL.md"
 
 type finding struct {
 	path string

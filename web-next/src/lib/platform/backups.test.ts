@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { en } from '@rawsyst/shared/i18n/strings';
+import { en } from '@biz1core/shared/i18n/strings';
 
 import { PHASE_LABEL, PHASE_TONE, STAGE_LABEL } from './backups';
 

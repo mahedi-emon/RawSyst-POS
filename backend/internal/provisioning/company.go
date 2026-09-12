@@ -42,8 +42,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Business is the company record a settings screen shows.
@@ -110,7 +110,7 @@ func settledFields(
 	// invoices, its VAT and its regulatory obligations were all decided by the
 	// old one.
 	out["country"] = "The market is set when your account is created. Ask your " +
-		"RawSyst contact to change it — every sale is taxed by the rules that " +
+		"Biz1core contact to change it — every sale is taxed by the rules that " +
 		"follow from it."
 
 	var posted bool

@@ -30,7 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/db"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/db"
 )
 
 // maxAttempts is where a delivery is abandoned.
@@ -163,13 +163,13 @@ func send(
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "RawSyst-Webhook/1")
-	req.Header.Set("X-RawSyst-Event", event)
+	req.Header.Set("User-Agent", "Biz1core-Webhook/1")
+	req.Header.Set("X-Biz1core-Event", event)
 	// The delivery id, so a receiver can recognise a retry of something it has
 	// already processed. At-least-once is what this queue promises, and a
 	// receiver has no way to be idempotent without an id to be idempotent on.
-	req.Header.Set("X-RawSyst-Delivery", deliveryID.String())
-	req.Header.Set("X-RawSyst-Signature", "sha256="+Sign(secret, body))
+	req.Header.Set("X-Biz1core-Delivery", deliveryID.String())
+	req.Header.Set("X-Biz1core-Signature", "sha256="+Sign(secret, body))
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -28,7 +28,7 @@
       "@/*": [
         "./src/*"
       ],
-      "@rawsyst/shared/*": [
+      "@biz1core/shared/*": [
         "../shared/src/*"
       ],
       "react": [

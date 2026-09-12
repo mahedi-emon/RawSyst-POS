@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ShiftReport } from '@rawsyst/shared/api/shift';
+import type { ShiftReport } from '@biz1core/shared/api/shift';
 import {
   denominationsFor,
   expectedIsWithheld,

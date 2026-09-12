@@ -1,6 +1,6 @@
 # Blueprint Parts F–M — Architecture & Platform (distilled)
 
-Source: `RawSyst-POS-Blueprint-v2.4-FINAL.md` lines 1086–1513 + 1625–1668. Read this instead of the doc.
+Source: `Biz1core-Blueprint-v2.4-FINAL.md` lines 1086–1513 + 1625–1668. Read this instead of the doc.
 
 ## F1 — Workflow / Approval Engine
 Owner defines rules **visually, without a developer**. One codebase serves a 3-person shop and a 300-person chain.

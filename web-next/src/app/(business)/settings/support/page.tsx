@@ -1,6 +1,6 @@
 'use client';
 
-// Asking RawSyst for help, and reading what came back.
+// Asking Biz1core for help, and reading what came back.
 //
 // # Reading and raising are one permission, on purpose
 //
@@ -319,7 +319,7 @@ function SupportScreen() {
               >
                 <p className="text-caption text-muted">
                   {m.from_platform
-                    ? (m.author ?? t('nx.sup.rawsyst'))
+                    ? (m.author ?? t('nx.sup.biz1core'))
                     : (m.author ?? t('nx.sup.us'))}{' '}
                   · {m.created_at.slice(0, 10)}
                 </p>

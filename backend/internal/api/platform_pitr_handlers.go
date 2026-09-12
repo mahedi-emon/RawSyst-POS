@@ -42,9 +42,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/backup"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/httpx"
+	"github.com/mahedi-emon/Biz1core/backend/internal/backup"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/httpx"
 )
 
 // --- reading ----------------------------------------------------------------
@@ -319,11 +319,11 @@ func (s *Server) handleDownloadBaseBackup(w http.ResponseWriter, r *http.Request
 	// the file without opening the manifest — and, when it is sealed, the
 	// fingerprint of the key they will need. Neither is secret.
 	if c, ok := manifest.Component(object); ok && c.SHA256 != "" {
-		w.Header().Set("X-RawSyst-SHA256", c.SHA256)
+		w.Header().Set("X-Biz1core-SHA256", c.SHA256)
 	}
 	if sealed {
-		w.Header().Set("X-RawSyst-Encrypted", "aes-256-gcm")
-		w.Header().Set("X-RawSyst-Key-Fingerprint", fingerprint)
+		w.Header().Set("X-Biz1core-Encrypted", "aes-256-gcm")
+		w.Header().Set("X-Biz1core-Key-Fingerprint", fingerprint)
 	}
 	w.WriteHeader(http.StatusOK)
 

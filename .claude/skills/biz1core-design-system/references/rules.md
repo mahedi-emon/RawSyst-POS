@@ -90,7 +90,7 @@ cd web    && npx tsc --noEmit
 And this skill's own drift check:
 
 ```bash
-node .claude/skills/rawsyst-design-system/verify.mjs
+node .claude/skills/biz1core-design-system/verify.mjs
 ```
 
 ### The design-system lints in `e2e/`

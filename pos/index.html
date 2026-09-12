@@ -3,7 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RawSyst POS</title>
+    <title>Biz1core POS</title>
+    <!-- The till runs in a Tauri window, which has no tab -- but the same
+         bundle is served by `npm run dev` in a browser, and that did show a
+         default globe. -->
+    <link rel="icon" href="/brand/app-icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
   </head>
   <body>
     <div id="root"></div>

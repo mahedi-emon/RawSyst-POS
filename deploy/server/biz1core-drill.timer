@@ -1,6 +1,6 @@
 [Unit]
-Description=RawSyst disaster recovery drill, weekly
-Documentation=file:/opt/rawsyst/deploy/server/RECOVERY.md
+Description=Biz1core disaster recovery drill, weekly
+Documentation=file:/opt/biz1core/deploy/server/RECOVERY.md
 
 [Timer]
 # Sunday at 04:30, an hour after the nightly backup, so the two never overlap.

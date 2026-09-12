@@ -7,7 +7,7 @@
 // reported 6 unreachable routes; counting `web-next/src` alone reported 27. The
 // difference is not a rounding error — `shared/src/api/*` is the FROZEN `web/`
 // front end's client layer and the Tauri till's, and `web-next` imports from
-// `shared` in exactly three files, all of them `@rawsyst/shared/i18n/strings`.
+// `shared` in exactly three files, all of them `@biz1core/shared/i18n/strings`.
 // A route with a client function in `shared/src/api` and no screen in
 // `web-next` is unreachable in the product that ships.
 //
@@ -165,7 +165,7 @@ function withoutComments(text) {
 /**
  * The client's own calls, which name their method as an argument.
  *
- * Sign-in, sign-out and the silent refresh are made by `RawsystClient` itself
+ * Sign-in, sign-out and the silent refresh are made by `Biz1coreClient` itself
  * rather than by a screen, because the access token lives in memory inside it.
  * They are reached — by the login screen and by every page load — and a
  * scanner that only understood `api.post(...)` reported the front door as

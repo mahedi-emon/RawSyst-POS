@@ -3,7 +3,7 @@
 // Not the same question as `navigator.onLine`, which answers "does this
 // machine have a network interface that thinks it is up". A till on a shop
 // wifi whose uplink is dead, or behind a captive portal at a mall, or pointed
-// at a RawSyst deployment that is itself down, reports `true` throughout. Two
+// at a Biz1core deployment that is itself down, reports `true` throughout. Two
 // of those are ordinary Saturday-afternoon conditions in retail.
 //
 // So we ask the server directly, and we ask it the useful question. The probe

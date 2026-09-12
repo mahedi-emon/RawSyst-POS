@@ -1,6 +1,6 @@
 /* Back-office chrome.
  *
- * Everything else comes from @rawsyst/shared/design-system.css. This file adds
+ * Everything else comes from @biz1core/shared/design-system.css. This file adds
  * the application bar and nothing more — growing a second design system is
  * exactly the risk a separate app like this runs, so it is kept to the shell.
  */

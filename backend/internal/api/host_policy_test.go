@@ -106,7 +106,7 @@ func TestHealthChecksAnswerToAnything(t *testing.T) {
 // the platform assertion below is what proves.
 func TestAnUnknownHostGetsWhatAShopGets(t *testing.T) {
 	for _, host := range []string{
-		"172.18.0.4:8080", "rawsyst-api", "localhost", "some.other.domain",
+		"172.18.0.4:8080", "biz1core-api", "localhost", "some.other.domain",
 	} {
 		if !hostServesPath(consoleHost, host, "/api/v1/catalog/products") {
 			t.Errorf("%q was refused a business route", host)
@@ -161,14 +161,14 @@ func TestNoConsoleHostMeansTheAPIBehavesExactlyAsBefore(t *testing.T) {
 // Next's `/api/v1` rewrite replaces `Host` with the address it is proxying to
 // and puts the real hostname in `X-Forwarded-Host`. Measured, not assumed:
 //
-//	host: 127.0.0.1:8097   x-forwarded-host: console.rawsyst.local:3001
+//	host: 127.0.0.1:8097   x-forwarded-host: console.biz1core.local:3001
 //
 // So a rule that preferred `Host` saw the API's own address for every request
 // that arrived through the web tier and 404'd the console's own platform API.
 // These cases are that bug, written down.
 func TestTheForwardedHostIsPreferredWhenAProxyRewroteHost(t *testing.T) {
 	// Behind Next: `Host` is the upstream, the forwarded header is the truth.
-	if got := requestHost("127.0.0.1:8097", "console.rawsyst.local:3001"); got != "console.rawsyst.local" {
+	if got := requestHost("127.0.0.1:8097", "console.biz1core.local:3001"); got != "console.biz1core.local" {
 		t.Errorf("requestHost = %q, want the forwarded hostname — this is the "+
 			"case that broke the console behind the web tier", got)
 	}

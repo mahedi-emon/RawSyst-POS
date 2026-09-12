@@ -38,7 +38,7 @@ function BusinessShell({ children }: { children: ReactNode }) {
   return (
     <AppShell
       sections={sections}
-      workspaceName="RawSyst"
+      workspaceName="Biz1core"
       contextName={contextName}
       headerExtra={
         <>

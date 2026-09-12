@@ -68,8 +68,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/blob"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/blob"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // ManifestVersion is the shape of the manifest this build writes.
@@ -426,7 +426,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	// The dump, staged on disk and hashed on the way past.
-	dump, err := os.CreateTemp(opts.TempDir, "rawsyst-dump-*.pgdump")
+	dump, err := os.CreateTemp(opts.TempDir, "biz1core-dump-*.pgdump")
 	if err != nil {
 		return Result{}, errs.Wrap(err, errs.CodeInternal,
 			"A temporary file for the dump could not be created.")
@@ -651,7 +651,7 @@ func seal(opts Options, dump *os.File) (*os.File, int64, string, error) {
 		return nil, 0, "", errs.Wrap(err, errs.CodeInternal,
 			"The staged dump could not be rewound to seal it.")
 	}
-	sealed, err := os.CreateTemp(opts.TempDir, "rawsyst-sealed-*.enc")
+	sealed, err := os.CreateTemp(opts.TempDir, "biz1core-sealed-*.enc")
 	if err != nil {
 		return nil, 0, "", errs.Wrap(err, errs.CodeInternal,
 			"A temporary file for the sealed dump could not be created.")

@@ -6,8 +6,8 @@
 // once per segment. PostgreSQL hands it a path and a name and reads one thing
 // from it: the exit status.
 //
-//	archive_command  = '/rawsyst backup wal archive %p %f'
-//	restore_command  = '/rawsyst backup wal restore %f %p'
+//	archive_command  = '/biz1core backup wal archive %p %f'
+//	restore_command  = '/biz1core backup wal restore %f %p'
 //
 // That is the entire contract, and the whole of point-in-time recovery rests on
 // one half of it: **exit zero means the segment is safe somewhere else**. The
@@ -66,8 +66,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/blob"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/blob"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // WALOptions is what archiving and fetching need to know.
@@ -508,7 +508,7 @@ func writeFileAtomically(opts WALOptions, dest string, body []byte) error {
 	if dir == "" {
 		dir = filepath.Dir(dest)
 	}
-	tmp, err := os.CreateTemp(dir, ".rawsyst-wal-*")
+	tmp, err := os.CreateTemp(dir, ".biz1core-wal-*")
 	if err != nil {
 		return errs.Wrap(err, errs.CodeInternal,
 			"A temporary file for the restored segment could not be created.")

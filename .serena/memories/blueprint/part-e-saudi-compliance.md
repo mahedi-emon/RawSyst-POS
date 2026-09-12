@@ -1,6 +1,6 @@
 # Blueprint Part E + N — Saudi Compliance (distilled)
 
-Source: `RawSyst-POS-Blueprint-v2.4-FINAL.md` lines 734–1085 (Part E) + 1514–1560 (Part N). Read this instead of the doc. **Legally sensitive — accuracy matters.**
+Source: `Biz1core-Blueprint-v2.4-FINAL.md` lines 734–1085 (Part E) + 1514–1560 (Part N). Read this instead of the doc. **Legally sensitive — accuracy matters.**
 
 Part E must be built as a **dedicated compliance subsystem, not bolted onto POS logic at the end**.
 

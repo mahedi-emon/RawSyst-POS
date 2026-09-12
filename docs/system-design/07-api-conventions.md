@@ -9,7 +9,7 @@ not two products**, so there is one API and one set of rules.
 ## 1. Shape
 
 ```
-https://api.rawsyst.com/api/v1/<resource>
+https://api.biz1core.com/api/v1/<resource>
 ```
 
 Versioned in the path. A POS terminal in a showroom may run an older build for
@@ -273,7 +273,7 @@ enough to find the incident.
 Outbound events are signed:
 
 ```
-X-RawSyst-Signature: t=1755253200,v1=<hmac-sha256>
+X-Biz1core-Signature: t=1755253200,v1=<hmac-sha256>
 ```
 
 Timestamped and HMAC-signed so a receiver can reject replays. At-least-once

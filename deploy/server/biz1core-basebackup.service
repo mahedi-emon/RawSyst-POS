@@ -2,7 +2,7 @@
 # Take a PHYSICAL copy of the cluster, prove it recovers, then remove what
 # nothing can still need. In that order, weekly.
 #
-# # Why this is a separate unit from rawsyst-backup.service
+# # Why this is a separate unit from biz1core-backup.service
 #
 # Because it protects against a different thing and costs a different amount. A
 # `pg_dump` is a photograph, runs in minutes, and is taken nightly. A base
@@ -22,14 +22,14 @@
 # log in front of the OLDEST kept base backup; doing that after a failed base
 # backup would shorten the recovery window while nothing new had been added to
 # it.
-Description=RawSyst physical base backup, verified
-Documentation=file:/opt/rawsyst/deploy/server/PITR.md
+Description=Biz1core physical base backup, verified
+Documentation=file:/opt/biz1core/deploy/server/PITR.md
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/rawsyst
+WorkingDirectory=/opt/biz1core
 
 # Longer than the dump's forty-five minutes, because this copies every byte of
 # the cluster rather than a compressed logical export of it. Still bounded: a

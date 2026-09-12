@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/platform/errs"
+	"github.com/mahedi-emon/Biz1core/backend/internal/platform/errs"
 )
 
 // Canonical XML 1.1, and the transform chain ZATCA hashes through.

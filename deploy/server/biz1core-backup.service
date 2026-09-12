@@ -8,14 +8,14 @@
 # Prune runs last, and only if verify succeeded — `ExecStartPost` stops at the
 # first failure — so nothing is ever deleted on a night when the new backup
 # could not be proved.
-Description=RawSyst backup, verified
-Documentation=file:/opt/rawsyst/deploy/server/BACKUP.md
+Description=Biz1core backup, verified
+Documentation=file:/opt/biz1core/deploy/server/BACKUP.md
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/rawsyst
+WorkingDirectory=/opt/biz1core
 
 # Generous, and bounded. A backup that hangs holds a database connection and
 # tells nobody; forty-five minutes is far past what this database needs and far

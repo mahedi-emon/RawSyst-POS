@@ -154,7 +154,7 @@ services:
       - -c
       - archive_mode=${POSTGRES_ARCHIVE_MODE:-on}
       - -c
-      - archive_command=/rawsyst backup wal archive %p %f
+      - archive_command=/biz1core backup wal archive %p %f
       - -c
       - archive_timeout=${POSTGRES_ARCHIVE_TIMEOUT:-60}
       # Two are needed by `pg_basebackup --wal-method=stream`, which opens a

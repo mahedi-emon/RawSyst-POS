@@ -1,4 +1,4 @@
-# RawSyst POS — Master Feature Blueprint
+# Biz1core POS — Master Feature Blueprint
 
 ---
 
@@ -6,9 +6,9 @@
 
 | Field | Details |
 |---|---|
-| **Product Name** | RawSyst POS |
-| **Company** | RawSyst IT |
-| **Company Website** | https://rawsyst.com |
+| **Product Name** | Biz1core POS |
+| **Company** | Biz1core IT |
+| **Company Website** | https://biz1core.com |
 | **Founder & Owner** | Mahedi Hasan Emon |
 | **Founder Portfolio** | https://mahedihasanemon.site |
 | **Founder Role** | Founder, Owner & Lead Developer |
@@ -28,22 +28,22 @@
 
 ---
 
-> ✅ **Product name CONFIRMED: RawSyst POS — A RawSyst IT Product**
+> ✅ **Product name CONFIRMED: Biz1core POS — A Biz1core IT Product**
 >
 > **Branding must appear consistently in:**
-> - Login screen → *"RawSyst POS — by RawSyst IT"*
-> - Dashboard header → *"RawSyst POS"*
-> - Invoice / Receipt footer → *"Powered by RawSyst POS | rawsyst.com"*
-> - Email templates → *"RawSyst POS Team | RawSyst IT"*
-> - Super Admin panel → *"RawSyst POS — Platform Admin | RawSyst IT"*
-> - API response headers → `X-Powered-By: RawSyst-POS`
+> - Login screen → *"Biz1core POS — by Biz1core IT"*
+> - Dashboard header → *"Biz1core POS"*
+> - Invoice / Receipt footer → *"Powered by Biz1core POS | biz1core.com"*
+> - Email templates → *"Biz1core POS Team | Biz1core IT"*
+> - Super Admin panel → *"Biz1core POS — Platform Admin | Biz1core IT"*
+> - API response headers → `X-Powered-By: Biz1core`
 > - Error pages, documentation, support tickets
 >
 > Store ALL branding strings in a **single global config file** — product name, company name, website URL, support email — so any future update is a one-line change everywhere.
 
 **Version:** 2.4 — FINAL / FROZEN (pre-System-Design)
 **Supersedes:** v1.0, v2.0, v2.1, v2.2 and v2.3.
-**v2.4 change:** Full company and founder profile added — RawSyst IT, Founder Mahedi Hasan Emon, rawsyst.com. Backend confirmed as **Go**. Branding specification expanded with exact copy per surface.
+**v2.4 change:** Full company and founder profile added — Biz1core IT, Founder Mahedi Hasan Emon, biz1core.com. Backend confirmed as **Go**. Branding specification expanded with exact copy per surface.
 **v2.2 changes (corrections only, no new scope):** resolved the ZATCA feature-flag contradiction — legally-required compliance can no longer be switched off · narrowed the Phase 2 obligation wording to per-taxpayer/notification-driven · added **E8 Regulatory Rule Registry** so every legal rate, threshold, deadline and file format is versioned data with effective dates instead of hard-coded logic · made PDPL response SLAs explicit (30-day data-subject response, 72-hour breach notification) · drew a hard scope boundary between Light Production Cost Tracking and full Manufacturing ERP (out of scope for v1) · replaced "unlimited" claims with plan/infrastructure-dependent limits · added **Part O requirements traceability** mapping every original stated requirement to its specification · added product naming placeholder.
 **v2.1 changes:** corrected section numbering across Parts G–J · fixed all internal cross-references · **locked the offline/ZATCA B2B business rules (E1.3) that were previously left open** · restructured Part N into a binding Tier-1 / contextual Tier-2 source hierarchy with a 12-point pre-coding verification list · tightened compliance wording from guarantee-style to support-style throughout. **No new features added — scope is frozen.**
 **v2.0 added:** full double-entry accounting engine, fiscal period control, bank reconciliation, payment settlement, COGS engine, RFQ & three-way matching, configurable workflow engine, customer & supplier portals, multi-company consolidation, expanded Saudi tax module, complete Saudi payment method coverage, and data residency architecture.
@@ -81,7 +81,7 @@
 
 ## A1. Product Vision
 
-**RawSyst POS** — built by **RawSyst IT** (Founder: Mahedi Hasan Emon) — is a single cloud platform that any retail business — from a one-branch shop to a multi-branch Saudi RMG (fashion/garment) chain — can subscribe to and get:
+**Biz1core POS** — built by **Biz1core IT** (Founder: Mahedi Hasan Emon) — is a single cloud platform that any retail business — from a one-branch shop to a multi-branch Saudi RMG (fashion/garment) chain — can subscribe to and get:
 
 **Sell → Purchase → Stock → Warehouse → Customer → Supplier → Accounting → Employees → Payroll → Online Orders → Delivery → CRM → Analytics → Legal Compliance → Multi-Store — all in one place, on Web, Desktop, and Mobile.**
 
@@ -1624,9 +1624,9 @@ This was the **first requirement you gave**, and it is treated as a first-class 
 
 # FINAL PRODUCT POSITIONING
 
-**RawSyst POS — Complete Retail ERP & POS for Saudi Arabia and International Markets.**
+**Biz1core POS — Complete Retail ERP & POS for Saudi Arabia and International Markets.**
 
-*Built by RawSyst IT | Founder: Mahedi Hasan Emon | rawsyst.com*
+*Built by Biz1core IT | Founder: Mahedi Hasan Emon | biz1core.com*
 
 Not marketed as a billing app. The promise is:
 

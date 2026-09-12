@@ -21,8 +21,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/accounting"
-	"github.com/mahedi-emon/rawsyst-pos/backend/internal/provisioning"
+	"github.com/mahedi-emon/Biz1core/backend/internal/accounting"
+	"github.com/mahedi-emon/Biz1core/backend/internal/provisioning"
 )
 
 // provisionedCompany makes a company with the chart provisioning gives it.

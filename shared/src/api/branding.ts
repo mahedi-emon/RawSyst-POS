@@ -77,7 +77,7 @@ export function putLogo(
   return client.send<Logo>('PUT', `/api/v1/companies/${companyId}/logo`, { data });
 }
 
-/** Removes the logo, returning the business to the default RawSyst mark.
+/** Removes the logo, returning the business to the default Biz1core mark.
  *  Removing one that is not there succeeds. */
 export function deleteLogo(client: Client, companyId: string): Promise<void> {
   return client.send<void>('DELETE', `/api/v1/companies/${companyId}/logo`);
@@ -166,7 +166,7 @@ export function saveTemplate(
   );
 }
 
-/** Returns the type to the RawSyst default. Resetting one that was never
+/** Returns the type to the Biz1core default. Resetting one that was never
  *  customised succeeds: the client asked for the default and has it. */
 export function resetTemplate(
   client: Client,

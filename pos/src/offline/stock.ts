@@ -33,7 +33,7 @@
 // invented quantity is worse than an absent one, because a screen will show it
 // as confidently as a real one.
 
-import type { Client } from '@rawsyst/shared/api/client';
+import type { Client } from '@biz1core/shared/api/client';
 
 import type { CachedStock, SqliteStockStore } from './sqlite';
 
