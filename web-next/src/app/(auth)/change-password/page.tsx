@@ -72,11 +72,16 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={submit}>
+    // The card, on the (auth) layout's ground and under its logo. This screen
+    // used to render a bare form with no page chrome at all -- and it is the
+    // FIRST screen of a first session, reached straight after signing in with
+    // a one-time password.
+    <form
+      className="flex flex-col gap-5 rounded-lg border border-line bg-surface p-6 shadow-overlay"
+      onSubmit={submit}
+    >
       <div>
-        <h1 className="text-page-title font-semibold text-fg">
-          {t('nx.pw.title')}
-        </h1>
+        <h1 className="text-page font-semibold text-fg">{t('nx.pw.title')}</h1>
         <p className="mt-1 text-body text-muted">{t('nx.pw.body')}</p>
       </div>
 

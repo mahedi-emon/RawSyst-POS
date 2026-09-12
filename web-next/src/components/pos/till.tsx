@@ -59,6 +59,8 @@ import { ErrorState } from '@/components/ui/states';
 import { api } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
 import { useCompany } from '@/lib/company/company-context';
+import { Biz1coreMark } from '@biz1core/shared/brand/Logo';
+
 import { useT } from '@/lib/i18n/locale';
 import { formatMoney } from '@/lib/format/money';
 import {
@@ -908,6 +910,15 @@ function TillFrame({
         >
           {t('nx.shell.backOffice')}
         </a>
+        {/* The compact mark, at the far end and nothing more.
+
+            This header is deliberately 48px of chrome on a screen where every
+            pixel not showing the sale is a pixel wasted, so the till gets the
+            mark rather than the wordmark: one 22px square that says which
+            product a cashier is standing in front of, and no second line of
+            anything. It is the same drawing as the rail's logo and the browser
+            tab's icon. */}
+        <Biz1coreMark height={22} className="ms-1 shrink-0 opacity-80" />
       </header>
       {children}
     </div>

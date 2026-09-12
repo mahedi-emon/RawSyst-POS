@@ -181,10 +181,8 @@ func (h NotifyHandler) sendScheduledReport(ctx context.Context, j Job) error {
 		from.Format("2 January 2006") + " to " + to.Format("2 January 2006")
 	// A backtick string, so the two blank lines that separate the heading from
 	// the figures are visible in the source rather than spelled out.
-	body = subject + "\n\n" + body + `
-
-Sent by Biz1core on a schedule you set.
-`
+	body = subject + "\n\n" + body +
+		"\nSent by Biz1core on a schedule you set." + signOff
 	return h.Mailer.Send(ctx, p.Email, subject, body)
 }
 
@@ -198,6 +196,22 @@ Sent by Biz1core on a schedule you set.
 // is loaded in the browser, and the worker has no locale for a person it is
 // mailing. Storing a preferred language on `app_user` is the fix and it is a
 // schema change this does not need to make first.
+// signOff is the line every transactional message ends on.
+//
+// A mail that arrives with a code in it and names no sender is the shape a
+// phishing attempt has. Naming the product is what lets somebody decide
+// whether they were expecting it -- so it is on the mail carrying a reset
+// code and on the one handing somebody an account, not only on the scheduled
+// report that happened to have one already.
+//
+// Deliberately one line, and deliberately not the tagline. The brief is
+// explicit that a transactional mail must not grow, and marketing under a
+// password-reset code is marketing attached to a security message.
+//
+// "-- " on its own line is the signature delimiter RFC 3676 defines; a mail
+// client that quotes this message in a reply drops everything after it.
+const signOff = "\n-- \nSent by Biz1core.\n"
+
 func passwordResetMessage(p identity.NotifyPayload) (subject, body string) {
 	subject = "Your Biz1core password reset code"
 	body = fmt.Sprintf(
@@ -206,7 +220,8 @@ func passwordResetMessage(p identity.NotifyPayload) (subject, body string) {
 			"It expires in %d minutes and can be used once.\n\n"+
 			"If you did not ask for this, you can ignore this message — your "+
 			"password has not changed. If it keeps happening, tell whoever "+
-			"looks after your Biz1core account.\n",
+			"looks after your Biz1core account.\n"+
+			signOff,
 		p.FullName, p.Code, p.ExpiresInMinutes)
 	return subject, body
 }
@@ -255,7 +270,8 @@ func ownerInvitationMessage(p identity.NotifyPayload) (subject, body string) {
 			"your company details, your first store, and your tax "+
 			"registration. You can stop partway and come back to it.\n\n"+
 			"If you were not expecting this, tell whoever sent it to you "+
-			"before signing in.\n",
+			"before signing in.\n"+
+			signOff,
 		p.FullName, p.BusinessName, p.PlanTier, until, where, p.Email)
 	return subject, body
 }

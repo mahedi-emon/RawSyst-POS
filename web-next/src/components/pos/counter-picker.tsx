@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { useApiList } from '@/lib/api/hooks';
 import { useCompanyScope } from '@/lib/company/company-context';
+import { Biz1coreLogo } from '@biz1core/shared/brand/Logo';
+
 import { useT } from '@/lib/i18n/locale';
 import { useCounter, type Counter } from '@/lib/pos/counter';
 import { cn } from '@/lib/utils';
@@ -39,6 +41,10 @@ export function CounterPicker() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-4 py-10">
       <div>
+        {/* A full screen with no rail and no header, reached before a till is
+            open. Without this it was the one screen in the product carrying no
+            identity at all. */}
+        <Biz1coreLogo height={26} className="mb-5 text-fg" />
         <h1 className="text-page font-semibold text-fg">
           {t('nx.pos.openCounter')}
         </h1>

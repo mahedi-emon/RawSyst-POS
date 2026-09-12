@@ -31,8 +31,6 @@ import { Suspense, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
-import { AuthBrand, BuiltBy } from '@/components/shell/product-brand';
-
 import { FormError } from '@/components/ui/form-error';
 import { api, type BusinessChoice } from '@/lib/api/client';
 import { ApiError, messageFor } from '@/lib/api/errors';
@@ -271,37 +269,15 @@ function SignInForm() {
 export default function LoginPage() {
   const t = useT();
   return (
-    // The sign-in sits on the product's own chrome colour rather than on a
-    // separate marketing surface, so the first thing somebody sees is the
-    // colour they will navigate by all day.
-    <main className="grid min-h-dvh place-items-center bg-shell px-4 py-10">
-      <div className="w-full max-w-[26rem]">
-        <AuthBrand />
-        <div className="rounded-lg border border-line bg-surface p-6 shadow-overlay">
-          <h1 className="text-page font-semibold text-fg">
-            {t('nx.auth.signIn')}
-          </h1>
-          <p className="mt-1 mb-5 text-body text-muted">
-            {t('nx.auth.subtitle')}
-          </p>
+    // The ground, the column, the logo and the "Built by" line are the (auth)
+    // layout's. This page is its card.
+    <div className="rounded-lg border border-line bg-surface p-6 shadow-overlay">
+      <h1 className="text-page font-semibold text-fg">{t('nx.auth.signIn')}</h1>
+      <p className="mt-1 mb-5 text-body text-muted">{t('nx.auth.subtitle')}</p>
 
-          <Suspense fallback={null}>
-            <SignInForm />
-          </Suspense>
-        </div>
-        {/* One line, under the card. The brief allows the developer's name on
-            the sign-in page where it fits the design, and this is where it
-            fits: a sign-in page has nothing else below the fold, and a shop
-            owner signing in for the first time is the one person who has a
-            reason to know who stands behind the product.
-
-            It appears nowhere inside the workspace. A shopkeeper working in
-            their own software all day does not need the vendor's name under
-            every screen. */}
-        <div className="mt-6 text-center">
-          <BuiltBy className="text-shell-fg" />
-        </div>
-      </div>
-    </main>
+      <Suspense fallback={null}>
+        <SignInForm />
+      </Suspense>
+    </div>
   );
 }
